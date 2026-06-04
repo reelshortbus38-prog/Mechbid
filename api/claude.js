@@ -5,11 +5,21 @@ export default async function handler(req, res) {
 
   try {
     const { messages, system, max_tokens } = req.body;
-    
-    // Convert messages format for Gemini
+
     const contents = messages.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
+      parts: Array.isArray(m.content)
+        ? m.content.map(c => {
+            if (c.type === "text") return { text: c.text };
+            if (c.type === "image") return {
+              inlineData: {
+                mimeType: c.source.media_type,
+                data: c.source.data
+              }
+            };
+            return { text: "" };
+          })
+        : [{ text: m.content }]
     }));
 
     const response = await fetch(
@@ -26,12 +36,11 @@ export default async function handler(req, res) {
     );
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
 
-    // Convert Gemini response to Anthropic-like format
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     return res.status(200).json({
       content: [{ type: "text", text }]
