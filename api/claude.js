@@ -2,28 +2,20 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
   try {
     const { messages, system, max_tokens } = req.body;
-
     const contents = messages.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: Array.isArray(m.content)
         ? m.content.map(c => {
             if (c.type === "text") return { text: c.text };
-            if (c.type === "image") return {
-              inlineData: {
-                mimeType: c.source.media_type,
-                data: c.source.data
-              }
-            };
+            if (c.type === "image") return { inlineData: { mimeType: c.source.media_type, data: c.source.data } };
             return { text: "" };
           })
         : [{ text: m.content }]
     }));
-
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6JXhX-Kzy5CHTPXX1qcu_2s1nbdZ8GpTysXXMLTwgjjCQ`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -34,18 +26,10 @@ export default async function handler(req, res) {
         }),
       }
     );
-
     const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json(data);
-    }
-
+    if (!response.ok) return res.status(response.status).json(data);
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return res.status(200).json({
-      content: [{ type: "text", text }]
-    });
-
+    return res.status(200).json({ content: [{ type: "text", text }] });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
