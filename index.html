@@ -1,12 +1,1072 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MechBid — HVAC & Refrigeration Estimating</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MechBid — Commercial & Residential Estimating</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080d08;
+    --surface: #0e150e;
+    --card: #121a12;
+    --card2: #162016;
+    --border: #1c2e1c;
+    --border2: #243824;
+    --green: #22c55e;
+    --green2: #16a34a;
+    --green-glow: rgba(34,197,94,0.12);
+    --green-faint: rgba(34,197,94,0.06);
+    --text: #edfaed;
+    --text-dim: #6b9e6b;
+    --text-muted: #3d5c3d;
+    --orange: #f97316;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --blue: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* HEADER */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px 0;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; flex-wrap: wrap; gap: 12px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px; background: var(--green);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .logo-text span { color: var(--green); }
+  .logo-sub { font-size: 10px; color: var(--text-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 1px; }
+  .mode-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mode-btn {
+    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    font-family: 'DM Sans', sans-serif; cursor: pointer; border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim); transition: all 0.2s;
+  }
+  .mode-btn.active { background: var(--green); color: #000; border-color: var(--green); }
+  .project-bar {
+    display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .project-bar input {
+    flex: 1; min-width: 140px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 14px; font-size: 13px; color: var(--text);
+    font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+  }
+  .project-bar input:focus { border-color: var(--green); }
+  .project-bar input::placeholder { color: var(--text-muted); }
+  .date-chip {
+    padding: 9px 14px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px; color: var(--text-dim); white-space: nowrap;
+  }
+  .tabs { display: flex; overflow-x: auto; gap: 0; }
+  .tab-btn {
+    padding: 12px 18px; font-size: 12px; font-weight: 600; font-family: 'Syne', sans-serif;
+    letter-spacing: 0.04em; background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+    transition: all 0.2s; white-space: nowrap; text-transform: uppercase;
+  }
+  .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* CONTENT */
+  .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* CARDS */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+  }
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 768px) { .card-grid { grid-template-columns: 1fr; } }
+
+  /* SECTION LABEL */
+  .section-label {
+    font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+    color: var(--green); text-transform: uppercase; letter-spacing: 0.12em;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  }
+  .section-label::before {
+    content: ''; width: 3px; height: 14px;
+    background: var(--green); border-radius: 2px; flex-shrink: 0;
+  }
+
+  /* STAT CARDS */
+  .stat-row { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 22px; flex: 1; min-width: 130px;
+  }
+  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; line-height: 1; }
+  .stat-unit { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* UPLOAD ZONES */
+  .upload-zone {
+    border: 2px dashed var(--border2); border-radius: 12px;
+    padding: 32px 20px; text-align: center; transition: all 0.2s;
+    background: var(--green-faint); margin-bottom: 14px; cursor: pointer;
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--green); background: var(--green-glow); }
+  .upload-zone.has-file { border-color: var(--green); border-style: solid; background: var(--green-glow); }
+  .upload-icon { font-size: 32px; margin-bottom: 10px; }
+  .upload-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .upload-sub { font-size: 12px; color: var(--text-muted); }
+  .upload-btn {
+    display: inline-block; margin-top: 12px; padding: 10px 20px;
+    background: var(--green); color: #000; border-radius: 8px;
+    font-weight: 700; font-size: 13px; cursor: pointer; border: none;
+    font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .upload-btn:hover { background: var(--green2); }
+  .upload-btn.red { background: var(--red); color: #fff; }
+  .upload-btn.blue { background: var(--blue); color: #fff; }
+  .upload-btn.orange { background: var(--orange); color: #fff; }
+
+  /* INPUTS */
+  .inp {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; font-size: 14px;
+    color: var(--text); font-family: 'DM Sans', sans-serif; outline: none;
+    transition: border-color 0.2s; margin-bottom: 10px;
+  }
+  .inp:focus { border-color: var(--green); }
+  .inp::placeholder { color: var(--text-muted); }
+  textarea.inp { resize: vertical; line-height: 1.6; }
+
+  /* BUTTONS */
+  .btn {
+    padding: 13px 24px; border-radius: 10px; font-weight: 700;
+    font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-green:hover { background: var(--green2); }
+  .btn-green:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-red { background: var(--red); color: #fff; }
+  .btn-outline { background: transparent; color: var(--green); border: 1px solid var(--green); }
+  .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 8px; }
+  .btn-full { width: 100%; justify-content: center; margin-top: 14px; }
+
+  /* AI OUTPUT */
+  .ai-output {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; min-height: 280px;
+    display: flex; flex-direction: column;
+  }
+  .ai-output.has-content { align-items: flex-start; justify-content: flex-start; }
+  .ai-output.empty { align-items: center; justify-content: center; text-align: center; }
+  .ai-empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .ai-empty-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; max-width: 280px; }
+  .ai-text { font-size: 14px; line-height: 1.75; color: var(--text); white-space: pre-wrap; }
+
+  /* TABLE */
+  .estimate-table { width: 100%; border-collapse: collapse; }
+  .estimate-table th {
+    padding: 11px 16px; text-align: left; font-size: 10px; font-weight: 700;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    font-family: 'Syne', sans-serif;
+  }
+  .estimate-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .estimate-table tr:last-child td { border-bottom: none; }
+  .estimate-table tr:nth-child(even) td { background: var(--surface); }
+  .mono { font-family: 'DM Mono', monospace; }
+
+  /* LEGEND ITEMS */
+  .legend-item {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 10px;
+  }
+  .legend-icon {
+    width: 40px; height: 40px; background: var(--surface);
+    border-radius: 8px; display: flex; align-items: center;
+    justify-content: center; font-size: 20px; flex-shrink: 0;
+  }
+  .legend-code { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: var(--green); }
+  .legend-desc { font-size: 13px; color: var(--text-dim); }
+
+  /* REDLINE NOTES */
+  .redline-note {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; margin-top: 8px;
+  }
+  .redline-note-text { font-size: 13px; color: var(--text); }
+  .del-btn { background: transparent; color: var(--text-muted); border: none; font-size: 18px; cursor: pointer; padding: 0 4px; }
+
+  /* TIMELINE */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--border2); }
+  .timeline-item { position: relative; margin-bottom: 20px; }
+  .timeline-dot {
+    position: absolute; left: -20px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%; background: var(--green);
+    border: 2px solid var(--bg);
+  }
+  .timeline-date { font-size: 11px; color: var(--green); font-family: 'DM Mono', monospace; margin-bottom: 2px; }
+  .timeline-title { font-size: 14px; font-weight: 600; }
+  .timeline-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  /* RATES TABLE */
+  .rates-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 20px; border-bottom: 1px solid var(--border);
+  }
+  .rates-row:last-child { border-bottom: none; }
+  .rates-row:nth-child(even) { background: var(--surface); }
+  .pipe-label { display: flex; align-items: center; gap: 10px; }
+  .pipe-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .pipe-size { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 600; }
+  .pipe-type { font-size: 12px; color: var(--text-muted); }
+  .rate-input-wrap { display: flex; align-items: center; gap: 6px; }
+  .rate-inp {
+    width: 80px; text-align: right; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 13px; color: var(--text);
+    font-family: 'DM Mono', monospace; outline: none; transition: border-color 0.2s;
+  }
+  .rate-inp:focus { border-color: var(--green); }
+  .rate-suffix { font-size: 12px; color: var(--text-muted); }
+
+  /* LABOR TOTAL */
+  .labor-total {
+    background: var(--card); border: 2px solid var(--green);
+    border-radius: 14px; padding: 24px; margin-top: 16px;
+  }
+  .labor-formula { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .labor-amount { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; color: var(--green); line-height: 1; }
+  .labor-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+
+  /* BID PROPOSAL */
+  .proposal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 36px;
+  }
+  .proposal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; flex-wrap: wrap; gap: 20px; }
+  .proposal-logo { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
+  .proposal-logo span { color: var(--green); }
+  .proposal-total-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 0; border-top: 2px solid var(--green); margin-top: 10px;
+  }
+  .proposal-total-label { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+  .proposal-total-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: var(--green); }
+
+  /* QUICK IMPORT */
+  .import-hero {
+    background: linear-gradient(135deg, var(--green-glow), transparent);
+    border: 1px solid var(--green); border-radius: 16px;
+    padding: 32px; text-align: center; margin-bottom: 24px;
+  }
+  .import-hero-icon { font-size: 48px; margin-bottom: 16px; }
+  .import-hero-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .import-hero-sub { font-size: 14px; color: var(--text-dim); line-height: 1.6; max-width: 480px; margin: 0 auto 20px; }
+
+  /* LOADING */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* HIDDEN FILE INPUT */
+  .file-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  /* PILL TAGS */
+  .tag { display: inline-block; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; margin-right: 6px; margin-top: 4px; }
+  .tag-green { background: var(--green-glow); color: var(--green); border: 1px solid var(--green); }
+  .tag-orange { background: rgba(249,115,22,0.12); color: var(--orange); border: 1px solid var(--orange); }
+  .tag-red { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid var(--red); }
+
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .flex-row { display: flex; gap: 12px; align-items: center; }
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+  .mt8 { margin-top: 8px; }
+  .mt16 { margin-top: 16px; }
+  .mb8 { margin-bottom: 8px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">
+      <div class="logo-icon">⚙️</div>
+      <div>
+        <div class="logo-text">MECH<span>BID</span></div>
+        <div class="logo-sub">Commercial & Residential Estimating</div>
+      </div>
+    </div>
+    <div class="mode-btns">
+      <button class="mode-btn active" onclick="setMode(this,'Commercial Refrigeration')">Commercial Refrigeration</button>
+      <button class="mode-btn" onclick="setMode(this,'Commercial HVAC')">Commercial HVAC</button>
+      <button class="mode-btn" onclick="setMode(this,'Residential HVAC')">Residential HVAC</button>
+    </div>
+  </div>
+  <div class="project-bar">
+    <input id="projName" placeholder="Project Name">
+    <input id="projAddr" placeholder="Address">
+    <input id="projCont" placeholder="Contractor">
+    <div class="date-chip" id="dateChip"></div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('import',this)">⚡ Quick Import</button>
+    <button class="tab-btn" onclick="showTab('blueprint',this)">📐 Blueprint</button>
+    <button class="tab-btn" onclick="showTab('legend',this)">📋 Legend Sheet</button>
+    <button class="tab-btn" onclick="showTab('redline',this)">🔴 Redlines</button>
+    <button class="tab-btn" onclick="showTab('schedule',this)">📅 Job Schedule</button>
+    <button class="tab-btn" onclick="showTab('rates',this)">💰 Rates & Labor</button>
+    <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
+    <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- QUICK IMPORT -->
+  <div id="tab-import">
+    <div class="import-hero">
+      <div class="import-hero-icon">📧</div>
+      <div class="import-hero-title">Quick Import from Bid Email</div>
+      <div class="import-hero-sub">Paste your bid email text or upload a screenshot — AI will extract the project info, scope, equipment, and schedule and populate all tabs automatically.</div>
+      <button class="upload-btn" onclick="document.getElementById('importFileInput').click()">📎 Upload Email Screenshot</button>
+      <input type="file" id="importFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleImportFile(event)">
+    </div>
+
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Paste Email Text</div>
+        <textarea class="inp" id="importText" rows="12" placeholder="Paste the full bid email text here...&#10;&#10;The AI will extract:&#10;• Project name, address, contractor&#10;• Scope of work&#10;• Equipment list&#10;• Job schedule / dates&#10;• Special instructions"></textarea>
+        <button class="btn btn-green btn-full" onclick="runQuickImport()" id="importBtn">
+          <span>⚡ Extract & Populate All Tabs</span>
+        </button>
+      </div>
+      <div>
+        <div class="section-label">AI Extraction Results</div>
+        <div class="ai-output empty" id="importOutput">
+          <div class="ai-empty-icon">⚡</div>
+          <div class="ai-empty-text">Paste your bid email and click Extract — the AI will populate your project info, estimate, and schedule automatically.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BLUEPRINT -->
+  <div id="tab-blueprint" class="hidden">
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Blueprint / Plan Upload</div>
+        <div class="upload-zone" id="blueprintZone" ondrop="handleDrop(event,'blueprint')" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
+          <div class="upload-icon">📐</div>
+          <div class="upload-title" id="blueprintZoneTitle">Drag & drop or tap to upload</div>
+          <div class="upload-sub">PDF, PNG, JPG, HEIC, TXT, CSV supported</div>
+          <button class="upload-btn" onclick="document.getElementById('blueprintFileInput').click()">📎 Choose File</button>
+          <input type="file" id="blueprintFileInput" class="file-input-hidden" accept="image/*,.pdf,.txt,.csv" onchange="handleBlueprintFile(event)">
+        </div>
+        <div class="section-label">Or Paste Blueprint Text</div>
+        <textarea class="inp" id="blueprintText" rows="8" placeholder="Paste equipment schedules, spec sections, or plan notes...&#10;&#10;Example:&#10;RTU-1: 5 Ton Carrier 48HCDA06A2A5 on Grid-E&#10;FC-1: Fan Coil 2 Ton, 200 CFM&#10;Suction line 7/8&quot; copper 45ft&#10;Liquid line 3/8&quot; copper 45ft"></textarea>
+        <button class="btn btn-green btn-full" onclick="analyzeBlueprint()" id="blueprintBtn">
+          🔍 Analyze Blueprint & Extract Takeoff
+        </button>
+      </div>
+      <div>
+        <div class="section-label">AI Blueprint Analysis</div>
+        <div class="ai-output empty" id="blueprintOutput">
+          <div class="ai-empty-icon">🔎</div>
+          <div class="ai-empty-text">Upload or paste a blueprint to extract equipment, pipe sizes, quantities, and auto-populate the estimate.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEGEND SHEET -->
+  <div id="tab-legend" class="hidden">
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Upload Legend Sheet</div>
+        <div class="upload-zone" id="legendZone">
+          <div class="upload-icon">📋</div>
+          <div class="upload-title" id="legendZoneTitle">Upload your legend sheet</div>
+          <div class="upload-sub">Image or PDF — AI will read circuits, line sizes & run lengths</div>
+          <button class="upload-btn blue" onclick="document.getElementById('legendFileInput').click()">📎 Choose Legend Sheet</button>
+          <input type="file" id="legendFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleLegendFile(event)">
+        </div>
+        <div class="section-label mt16">Default Symbol Legend — <span id="legendMode">Commercial Refrigeration</span></div>
+        <div id="legendItems">
+          <div class="legend-item"><div class="legend-icon">❄️</div><div><div class="legend-code">EV</div><div class="legend-desc">Evaporator Unit</div></div></div>
+          <div class="legend-item"><div class="legend-icon">🔵</div><div><div class="legend-code">CU</div><div class="legend-desc">Condensing Unit</div></div></div>
+          <div class="legend-item"><div class="legend-icon">➖</div><div><div class="legend-code">SL</div><div class="legend-desc">Suction Line</div></div></div>
+          <div class="legend-item"><div class="legend-icon">➖</div><div><div class="legend-code">LL</div><div class="legend-desc">Liquid Line</div></div></div>
+          <div class="legend-item"><div class="legend-icon">⚡</div><div><div class="legend-code">EP</div><div class="legend-desc">Electrical Panel</div></div></div>
+          <div class="legend-item"><div class="legend-icon">🌡️</div><div><div class="legend-code">TC</div><div class="legend-desc">Temperature Controller</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">AI Legend Analysis</div>
+        <div class="ai-output empty" id="legendOutput">
+          <div class="ai-empty-icon">📋</div>
+          <div class="ai-empty-text">Upload your legend sheet and the AI will identify all circuit types, line sizes, and length of run — then feed that data into the estimate.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REDLINES -->
+  <div id="tab-redline" class="hidden">
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Upload Redlined Drawing</div>
+        <div class="upload-zone" id="redlineZone">
+          <div class="upload-icon">🔴</div>
+          <div class="upload-title" id="redlineZoneTitle">Upload redlined drawing or screenshot</div>
+          <div class="upload-sub">AI reads red lines to find drop points, circuit changes & routing</div>
+          <button class="upload-btn red" onclick="document.getElementById('redlineFileInput').click()">📎 Choose Redline Drawing</button>
+          <input type="file" id="redlineFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleRedlineFile(event)">
+        </div>
+        <div class="section-label mt16">Field Notes / Scope Changes</div>
+        <div class="flex-row">
+          <input type="text" class="inp" id="redlineNoteInput" placeholder="Add a field note or scope change..." style="margin:0;flex:1" onkeydown="if(event.key==='Enter')addRedlineNote()">
+          <button class="btn btn-red btn-sm" onclick="addRedlineNote()">+ Add</button>
+        </div>
+        <div id="redlineNotes"></div>
+        <button class="btn btn-red btn-full" onclick="analyzeRedline()" id="redlineBtn" style="margin-top:14px">
+          🔴 Analyze Redlines & Extract Runs
+        </button>
+      </div>
+      <div>
+        <div class="section-label">AI Redline Interpretation</div>
+        <div class="ai-output empty" id="redlineOutput">
+          <div class="ai-empty-icon">🔴</div>
+          <div class="ai-empty-text">Upload a redlined drawing — the AI will trace the red lines to identify drop points, circuit changes, routing paths, and extract footage and fittings for the refrigeration side.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JOB SCHEDULE -->
+  <div id="tab-schedule" class="hidden">
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Upload Job Schedule</div>
+        <div class="upload-zone" id="scheduleZone">
+          <div class="upload-icon">📅</div>
+          <div class="upload-title" id="scheduleZoneTitle">Upload schedule document or screenshot</div>
+          <div class="upload-sub">AI extracts dates, milestones & labor hours</div>
+          <button class="upload-btn orange" onclick="document.getElementById('scheduleFileInput').click()">📎 Choose Schedule</button>
+          <input type="file" id="scheduleFileInput" class="file-input-hidden" accept="image/*,.pdf,.txt,.csv" onchange="handleScheduleFile(event)">
+        </div>
+        <div class="section-label mt16">Or Paste Schedule Text</div>
+        <textarea class="inp" id="scheduleText" rows="6" placeholder="Paste schedule details, start/end dates, milestones..."></textarea>
+        <button class="btn btn-full" style="background:var(--orange);color:#fff" onclick="analyzeSchedule()" id="scheduleBtn">
+          📅 Extract Schedule & Labor Hours
+        </button>
+      </div>
+      <div>
+        <div class="section-label">Project Timeline</div>
+        <div class="ai-output empty" id="scheduleOutput">
+          <div class="ai-empty-icon">📅</div>
+          <div class="ai-empty-text">Upload or paste your job schedule — AI will extract dates and milestones into a timeline, pull labor hours into Rates & Labor, and attach it to the Bid Proposal.</div>
+        </div>
+        <div id="timeline" class="timeline mt16" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RATES & LABOR -->
+  <div id="tab-rates" class="hidden">
+    <div class="card-grid">
+      <div>
+        <div class="section-label">Copper Line Set — Price per Linear Foot</div>
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+          <div class="rates-row" style="background:var(--surface)">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1/4"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_025" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">3/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_038" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row" style="background:var(--surface)">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1/2"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_050" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">5/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_058" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row" style="background:var(--surface)">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">7/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_078" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-1/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_118" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row" style="background:var(--surface)">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-3/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_138" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+          <div class="rates-row">
+            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-5/8"</span><span class="pipe-type">copper</span></div>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_158" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
+          </div>
+        </div>
+        <div class="section-label">Fittings Markup</div>
+        <div class="card" style="margin-bottom:0">
+          <div class="flex-between">
+            <span style="font-size:14px;color:var(--text-dim)">Markup on copper cost</span>
+            <div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25"><span class="rate-suffix">%</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Labor Rates</div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
+            <span style="font-size:14px;color:var(--text-dim)">Crew Size</span>
+            <div class="rate-input-wrap"><input class="rate-inp" id="crewSize" type="number" placeholder="2" oninput="calcLabor()"><span class="rate-suffix">workers</span></div>
+          </div>
+          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
+            <span style="font-size:14px;color:var(--text-dim)">Labor Rate</span>
+            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="laborRate" type="number" placeholder="85.00" oninput="calcLabor()"><span class="rate-suffix">/hr</span></div>
+          </div>
+          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
+            <span style="font-size:14px;color:var(--text-dim)">Hours per Week</span>
+            <div class="rate-input-wrap"><input class="rate-inp" id="hoursPerWeek" type="number" placeholder="40" oninput="calcLabor()"><span class="rate-suffix">hrs</span></div>
+          </div>
+          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
+            <span style="font-size:14px;color:var(--text-dim)">Weeks on Job</span>
+            <div class="rate-input-wrap"><input class="rate-inp" id="weeksOnJob" type="number" placeholder="4" oninput="calcLabor()"><span class="rate-suffix">wks</span></div>
+          </div>
+          <div class="rates-row" style="background:transparent;padding:12px 0">
+            <span style="font-size:14px;color:var(--text-dim)">Burden Rate</span>
+            <div class="rate-input-wrap"><input class="rate-inp" id="burdenRate" type="number" value="1.35" step="0.01" oninput="calcLabor()"><span class="rate-suffix">× multiplier</span></div>
+          </div>
+        </div>
+        <div class="labor-total">
+          <div class="labor-formula" id="laborFormula">? workers × ? hrs × ? wks × $?/hr × ?x</div>
+          <div class="labor-amount" id="laborAmount">$0</div>
+          <div class="labor-label">Total Burdened Labor Cost</div>
+        </div>
+        <div class="stat-row mt16">
+          <div class="stat-card">
+            <div class="stat-label">Materials</div>
+            <div class="stat-value" id="ratesMaterials" style="color:var(--green)">$0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Project Total</div>
+            <div class="stat-value" id="ratesTotal" style="color:var(--orange)">$0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESTIMATE -->
+  <div id="tab-estimate" class="hidden">
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-label">Materials Total</div><div class="stat-value" id="estMaterials" style="color:var(--green)">$0</div></div>
+      <div class="stat-card"><div class="stat-label">Labor Total</div><div class="stat-value" id="estLabor" style="color:var(--yellow)">$0</div></div>
+      <div class="stat-card"><div class="stat-label">Project Total</div><div class="stat-value" id="estTotal" style="color:var(--orange)">$0</div></div>
+      <div class="stat-card"><div class="stat-label">Line Items</div><div class="stat-value" id="estCount" style="color:var(--text-dim)">0</div></div>
+    </div>
+    <div class="section-label">Line Items</div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="estimateEmpty" style="padding:48px;text-align:center;color:var(--text-muted)">
+        <div style="font-size:36px;margin-bottom:12px">📋</div>
+        <div style="font-size:14px">Run a blueprint or legend analysis to auto-populate line items</div>
+      </div>
+      <table class="estimate-table" id="estimateTable" style="display:none">
+        <thead>
+          <tr>
+            <th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="estimateBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- BID PROPOSAL -->
+  <div id="tab-proposal" class="hidden">
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-label">Materials</div><div class="stat-value" id="propMaterials" style="color:var(--green)">$0</div></div>
+      <div class="stat-card"><div class="stat-label">Labor</div><div class="stat-value" id="propLabor" style="color:var(--yellow)">$0</div></div>
+      <div class="stat-card"><div class="stat-label">Total Bid</div><div class="stat-value" id="propTotal" style="color:var(--orange)">$0</div></div>
+    </div>
+    <div class="proposal">
+      <div class="proposal-header">
+        <div>
+          <div class="proposal-logo">MECH<span>BID</span></div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Commercial & Residential Estimating</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700" id="propProjName">Project Name</div>
+          <div style="font-size:13px;color:var(--text-dim)" id="propAddr">Address</div>
+          <div style="font-size:13px;color:var(--text-dim)" id="propCont">Contractor</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="propDate"></div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px" id="propScope">Scope: Commercial Refrigeration</div>
+      <div id="propScheduleSection" style="display:none;margin-bottom:20px">
+        <div class="section-label">Project Schedule</div>
+        <div id="propScheduleContent" style="font-size:13px;color:var(--text-dim);line-height:1.7"></div>
+        <div class="divider"></div>
+      </div>
+      <table class="estimate-table" id="proposalTable">
+        <thead>
+          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr>
+        </thead>
+        <tbody id="proposalBody"></tbody>
+      </table>
+      <div class="divider"></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:14px;color:var(--text-dim)">Materials Subtotal</span>
+        <span class="mono" style="font-weight:600" id="propMatLine">$0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:14px;color:var(--text-dim)">Labor (burdened)</span>
+        <span class="mono" style="font-weight:600;color:var(--yellow)" id="propLaborLine">$0</span>
+      </div>
+      <div class="proposal-total-row">
+        <div class="proposal-total-label">TOTAL BID</div>
+        <div class="proposal-total-value" id="propTotalLine">$0</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_KEY = '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';
+const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const MODEL = 'google/gemini-2.0-flash-001';
+
+let currentMode = 'Commercial Refrigeration';
+let lineItems = [];
+let laborTotal = 0;
+let scheduleText = '';
+let redlineNotes = [];
+let blueprintFile = null;
+let legendFile = null;
+let redlineFile = null;
+let scheduleFile = null;
+let importFile = null;
+
+// Init
+document.getElementById('dateChip').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+document.getElementById('propDate').textContent = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+
+function setMode(btn, mode) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = mode;
+  document.getElementById('legendMode').textContent = mode;
+  document.getElementById('propScope').textContent = 'Scope: ' + mode;
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.add('hidden'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (name === 'proposal') updateProposal();
+  if (name === 'estimate') updateEstimateTab();
+}
+
+// IMAGE CONVERSION
+function imageToJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1600;
+      let {width, height} = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load image')); };
+    img.src = url;
+  });
+}
+
+// API CALL
+async function callAI(messages) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+    body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callAIWithImage(file, textPrompt) {
+  const base64 = await imageToJpeg(file);
+  return callAI([{
+    role: 'user',
+    content: [
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+      { type: 'text', text: textPrompt }
+    ]
+  }]);
+}
+
+// FILE HANDLERS
+function handleDrop(e, type) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files?.[0];
+  if (file) setFile(type, file);
+}
+
+function setFile(type, file) {
+  if (type === 'blueprint') { blueprintFile = file; updateZone('blueprintZone', 'blueprintZoneTitle', file.name); }
+  if (type === 'legend') { legendFile = file; updateZone('legendZone', 'legendZoneTitle', file.name); }
+  if (type === 'redline') { redlineFile = file; updateZone('redlineZone', 'redlineZoneTitle', file.name); }
+  if (type === 'schedule') { scheduleFile = file; updateZone('scheduleZone', 'scheduleZoneTitle', file.name); }
+  if (type === 'import') { importFile = file; }
+}
+
+function updateZone(zoneId, titleId, name) {
+  document.getElementById(zoneId).classList.add('has-file');
+  document.getElementById(titleId).textContent = '✅ ' + name;
+}
+
+function handleBlueprintFile(e) { const f = e.target.files?.[0]; if(f) setFile('blueprint', f); }
+function handleLegendFile(e) { const f = e.target.files?.[0]; if(f) setFile('legend', f); }
+function handleRedlineFile(e) { const f = e.target.files?.[0]; if(f) setFile('redline', f); }
+function handleScheduleFile(e) { const f = e.target.files?.[0]; if(f) setFile('schedule', f); }
+function handleImportFile(e) { const f = e.target.files?.[0]; if(f) setFile('import', f); }
+
+// REDLINE NOTES
+function addRedlineNote() {
+  const inp = document.getElementById('redlineNoteInput');
+  const val = inp.value.trim();
+  if (!val) return;
+  redlineNotes.push(val);
+  inp.value = '';
+  renderRedlineNotes();
+}
+
+function renderRedlineNotes() {
+  const container = document.getElementById('redlineNotes');
+  container.innerHTML = redlineNotes.map((n, i) => `
+    <div class="redline-note">
+      <span class="redline-note-text">🔴 ${n}</span>
+      <button class="del-btn" onclick="redlineNotes.splice(${i},1);renderRedlineNotes()">×</button>
+    </div>`).join('');
+}
+
+// SET OUTPUT
+function setOutput(id, text, isEmpty) {
+  const el = document.getElementById(id);
+  if (isEmpty) {
+    el.className = 'ai-output empty';
+    el.innerHTML = `<div class="ai-empty-icon">⚠️</div><div class="ai-empty-text">${text}</div>`;
+  } else {
+    el.className = 'ai-output has-content';
+    el.innerHTML = `<div class="ai-text">${text}</div>`;
+  }
+}
+
+function setBtnLoading(id, loading, defaultText) {
+  const btn = document.getElementById(id);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? '<span class="spinner"></span> Analyzing...' : defaultText;
+}
+
+// PARSE LINE ITEMS FROM JSON
+function parseAndAddLineItems(jsonStr) {
+  try {
+    const clean = jsonStr.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+    const items = parsed.lineItems || parsed.items || [];
+    if (items.length) {
+      lineItems = [...lineItems, ...items];
+      updateEstimateTab();
+      updateProposal();
+    }
+    return parsed;
+  } catch { return null; }
+}
+
+// BLUEPRINT ANALYSIS
+async function analyzeBlueprint() {
+  const text = document.getElementById('blueprintText').value;
+  if (!blueprintFile && !text) return;
+  setBtnLoading('blueprintBtn', true, '🔍 Analyze Blueprint & Extract Takeoff');
+  try {
+    const prompt = `You are an expert ${currentMode} estimator. Analyze this blueprint and extract all equipment, pipe sizes, quantities, and materials. Return ONLY a JSON object with: {"summary": "brief description", "lineItems": [{"description": "...", "quantity": 1, "unit": "ea", "unitCost": 0, "total": 0}]}. No markdown, no extra text.`;
+    let result;
+    if (blueprintFile && blueprintFile.type.startsWith('image/')) {
+      result = await callAIWithImage(blueprintFile, prompt);
+    } else {
+      result = await callAI([{ role: 'user', content: prompt + '\n\nBlueprint text:\n' + text }]);
+    }
+    const parsed = parseAndAddLineItems(result);
+    setOutput('blueprintOutput', parsed?.summary || result, false);
+  } catch(e) {
+    setOutput('blueprintOutput', '❌ Error: ' + e.message, true);
+  }
+  setBtnLoading('blueprintBtn', false, '🔍 Analyze Blueprint & Extract Takeoff');
+}
+
+// LEGEND ANALYSIS
+async function handleLegendFile2() {}
+document.getElementById('legendFileInput').addEventListener('change', async function(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  setFile('legend', file);
+  setBtnLoading = () => {};
+  const outputEl = document.getElementById('legendOutput');
+  outputEl.className = 'ai-output empty';
+  outputEl.innerHTML = '<div class="ai-empty-icon"><span class="spinner" style="border-color:rgba(34,197,94,0.3);border-top-color:var(--green);width:32px;height:32px;border-width:3px"></span></div><div class="ai-empty-text">Reading legend sheet...</div>';
+  try {
+    const prompt = `You are an expert ${currentMode} estimator. Analyze this legend sheet image. Extract all circuit types, line sizes (pipe diameters), and any length of run information shown. Also identify any symbols, abbreviations, and their meanings. Return ONLY a JSON object: {"summary": "...", "circuits": [{"name": "...", "pipeSize": "...", "lengthOfRun": "...", "notes": "..."}], "symbols": [{"code": "...", "description": "..."}], "lineItems": [{"description": "...", "quantity": 1, "unit": "ft", "unitCost": 0, "total": 0}]}. No markdown.`;
+    const result = await callAIWithImage(file, prompt);
+    const parsed = parseAndAddLineItems(result);
+    if (parsed?.symbols?.length) {
+      document.getElementById('legendItems').innerHTML = parsed.symbols.map(s => `
+        <div class="legend-item">
+          <div class="legend-icon">🔧</div>
+          <div><div class="legend-code">${s.code}</div><div class="legend-desc">${s.description}</div></div>
+        </div>`).join('');
+    }
+    let display = parsed?.summary || '';
+    if (parsed?.circuits?.length) {
+      display += '\n\nCircuits found:\n' + parsed.circuits.map(c => `• ${c.name}: ${c.pipeSize} — ${c.lengthOfRun}`).join('\n');
+    }
+    setOutput('legendOutput', display || result, false);
+  } catch(e) {
+    setOutput('legendOutput', '❌ Error: ' + e.message, true);
+  }
+});
+
+// REDLINE ANALYSIS
+async function analyzeRedline() {
+  if (!redlineFile && redlineNotes.length === 0) return;
+  document.getElementById('redlineBtn').disabled = true;
+  document.getElementById('redlineBtn').innerHTML = '<span class="spinner"></span> Analyzing...';
+  try {
+    const notesText = redlineNotes.length ? '\n\nField notes:\n' + redlineNotes.join('\n') : '';
+    const prompt = `You are an expert ${currentMode} refrigeration estimator. Analyze this redlined drawing. Focus specifically on the REFRIGERATION side — trace all red lines to identify: 1) Drop points (exactly where lines terminate/connect to equipment), 2) Circuit changes (splits, tees, direction changes), 3) Complete routing paths from condensing units to evaporators, 4) Any pipe size callouts or field notes written on the drawing, 5) Estimated footage for each circuit run. Extract this into line items for the estimate. Return ONLY JSON: {"summary": "...", "dropPoints": ["..."], "circuitChanges": ["..."], "lineItems": [{"description": "...", "quantity": 1, "unit": "ft", "unitCost": 0, "total": 0}]}. No markdown.${notesText}`;
+    let result;
+    if (redlineFile) {
+      result = await callAIWithImage(redlineFile, prompt);
+    } else {
+      result = await callAI([{ role: 'user', content: prompt }]);
+    }
+    const parsed = parseAndAddLineItems(result);
+    let display = parsed?.summary || result;
+    if (parsed?.dropPoints?.length) display += '\n\nDrop Points:\n' + parsed.dropPoints.map(p => '📍 ' + p).join('\n');
+    if (parsed?.circuitChanges?.length) display += '\n\nCircuit Changes:\n' + parsed.circuitChanges.map(c => '🔄 ' + c).join('\n');
+    setOutput('redlineOutput', display, false);
+  } catch(e) {
+    setOutput('redlineOutput', '❌ Error: ' + e.message, true);
+  }
+  document.getElementById('redlineBtn').disabled = false;
+  document.getElementById('redlineBtn').innerHTML = '🔴 Analyze Redlines & Extract Runs';
+}
+
+// SCHEDULE ANALYSIS
+async function analyzeSchedule() {
+  const text = document.getElementById('scheduleText').value;
+  if (!scheduleFile && !text) return;
+  const btn = document.getElementById('scheduleBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Extracting...';
+  try {
+    const prompt = `You are an expert project scheduler. Analyze this job schedule and extract: milestones, start/end dates, labor hours per phase, and total project duration. Return ONLY JSON: {"summary": "...", "startDate": "...", "endDate": "...", "totalWeeks": 0, "totalLaborHours": 0, "milestones": [{"date": "...", "title": "...", "description": "..."}], "scheduleText": "formatted schedule for proposal"}. No markdown.`;
+    let result;
+    if (scheduleFile && scheduleFile.type.startsWith('image/')) {
+      result = await callAIWithImage(scheduleFile, prompt);
+    } else {
+      result = await callAI([{ role: 'user', content: prompt + '\n\nSchedule:\n' + text }]);
+    }
+    try {
+      const clean = result.replace(/```json|```/g,'').trim();
+      const parsed = JSON.parse(clean);
+      scheduleText = parsed.scheduleText || parsed.summary || '';
+      // Auto-fill labor fields if we got hours
+      if (parsed.totalWeeks) document.getElementById('weeksOnJob').value = parsed.totalWeeks;
+      calcLabor();
+      // Render timeline
+      if (parsed.milestones?.length) {
+        const tl = document.getElementById('timeline');
+        tl.style.display = 'block';
+        tl.innerHTML = parsed.milestones.map(m => `
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-date">${m.date}</div>
+            <div class="timeline-title">${m.title}</div>
+            <div class="timeline-desc">${m.description}</div>
+          </div>`).join('');
+      }
+      setOutput('scheduleOutput', parsed.summary || result, false);
+      updateProposal();
+    } catch {
+      setOutput('scheduleOutput', result, false);
+    }
+  } catch(e) {
+    setOutput('scheduleOutput', '❌ Error: ' + e.message, true);
+  }
+  btn.disabled = false; btn.innerHTML = '📅 Extract Schedule & Labor Hours';
+}
+
+// QUICK IMPORT
+async function runQuickImport() {
+  const text = document.getElementById('importText').value;
+  if (!importFile && !text) return;
+  const btn = document.getElementById('importBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Extracting...';
+  setOutput('importOutput', '', true);
+  document.getElementById('importOutput').innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner" style="width:40px;height:40px;border-width:3px;border-color:rgba(34,197,94,0.3);border-top-color:var(--green)"></span><div style="margin-top:16px;color:var(--text-dim);font-size:14px">Reading bid email...</div></div>';
+  try {
+    const prompt = `You are an expert ${currentMode} estimator. Analyze this bid email and extract ALL relevant information. Populate: project details, scope of work, equipment list, schedule, and line items for the estimate. Return ONLY JSON: {"projectName": "...", "address": "...", "contractor": "...", "scope": "...", "summary": "...", "scheduleText": "...", "lineItems": [{"description": "...", "quantity": 1, "unit": "ea", "unitCost": 0, "total": 0}], "milestones": [{"date": "...", "title": "...", "description": "..."}]}. No markdown.`;
+    let result;
+    if (importFile && importFile.type.startsWith('image/')) {
+      result = await callAIWithImage(importFile, prompt);
+    } else {
+      result = await callAI([{ role: 'user', content: prompt + '\n\nEmail:\n' + text }]);
+    }
+    try {
+      const clean = result.replace(/```json|```/g,'').trim();
+      const parsed = JSON.parse(clean);
+      // Auto-populate project fields
+      if (parsed.projectName) document.getElementById('projName').value = parsed.projectName;
+      if (parsed.address) document.getElementById('projAddr').value = parsed.address;
+      if (parsed.contractor) document.getElementById('projCont').value = parsed.contractor;
+      // Add line items
+      if (parsed.lineItems?.length) { lineItems = [...lineItems, ...parsed.lineItems]; updateEstimateTab(); }
+      // Schedule
+      if (parsed.scheduleText) scheduleText = parsed.scheduleText;
+      // Timeline
+      if (parsed.milestones?.length) {
+        const tl = document.getElementById('timeline');
+        tl.style.display = 'block';
+        tl.innerHTML = parsed.milestones.map(m => `
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-date">${m.date}</div>
+            <div class="timeline-title">${m.title}</div>
+            <div class="timeline-desc">${m.description}</div>
+          </div>`).join('');
+      }
+      let display = `✅ Import complete!\n\nProject: ${parsed.projectName || 'N/A'}\nAddress: ${parsed.address || 'N/A'}\nContractor: ${parsed.contractor || 'N/A'}\n\n${parsed.summary || ''}`;
+      if (parsed.lineItems?.length) display += `\n\n${parsed.lineItems.length} line items extracted and added to estimate.`;
+      setOutput('importOutput', display, false);
+      updateProposal();
+    } catch {
+      setOutput('importOutput', result, false);
+    }
+  } catch(e) {
+    setOutput('importOutput', '❌ Error: ' + e.message, true);
+  }
+  btn.disabled = false; btn.innerHTML = '<span>⚡ Extract & Populate All Tabs</span>';
+}
+
+// LABOR CALC
+function calcLabor() {
+  const crew = parseFloat(document.getElementById('crewSize').value) || 0;
+  const rate = parseFloat(document.getElementById('laborRate').value) || 0;
+  const hrs = parseFloat(document.getElementById('hoursPerWeek').value) || 0;
+  const wks = parseFloat(document.getElementById('weeksOnJob').value) || 0;
+  const burden = parseFloat(document.getElementById('burdenRate').value) || 1;
+  laborTotal = crew * rate * hrs * wks * burden;
+  document.getElementById('laborFormula').textContent = `${crew||'?'} workers × ${hrs||'?'} hrs × ${wks||'?'} wks × $${rate||'?'}/hr × ${burden}x`;
+  document.getElementById('laborAmount').textContent = '$' + Math.round(laborTotal).toLocaleString();
+  updateTotals();
+}
+
+function getMaterialsTotal() {
+  return lineItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+}
+
+function updateTotals() {
+  const mat = getMaterialsTotal();
+  const total = mat + laborTotal;
+  ['ratesMaterials','estMaterials','propMaterials'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(mat).toLocaleString(); });
+  ['ratesTotal','estTotal','propTotal'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(total).toLocaleString(); });
+  ['estLabor','propLabor'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(laborTotal).toLocaleString(); });
+  const estCount = document.getElementById('estCount');
+  if(estCount) estCount.textContent = lineItems.length;
+}
+
+function updateEstimateTab() {
+  const tbody = document.getElementById('estimateBody');
+  const table = document.getElementById('estimateTable');
+  const empty = document.getElementById('estimateEmpty');
+  if (lineItems.length === 0) { table.style.display = 'none'; empty.style.display = 'block'; }
+  else {
+    table.style.display = 'table'; empty.style.display = 'none';
+    tbody.innerHTML = lineItems.map(item => `
+      <tr>
+        <td>${item.description}</td>
+        <td style="color:var(--green);font-weight:600">${item.quantity}</td>
+        <td style="color:var(--text-dim)">${item.unit}</td>
+        <td class="mono">$${parseFloat(item.unitCost||0).toFixed(2)}</td>
+        <td class="mono" style="font-weight:700;color:var(--green)">$${parseFloat(item.total||0).toLocaleString()}</td>
+      </tr>`).join('');
+  }
+  updateTotals();
+}
+
+function updateProposal() {
+  const mat = getMaterialsTotal();
+  const total = mat + laborTotal;
+  document.getElementById('propProjName').textContent = document.getElementById('projName').value || 'Project Name';
+  document.getElementById('propAddr').textContent = document.getElementById('projAddr').value || 'Address';
+  document.getElementById('propCont').textContent = document.getElementById('projCont').value || 'Contractor';
+  document.getElementById('propMatLine').textContent = '$' + Math.round(mat).toLocaleString();
+  document.getElementById('propLaborLine').textContent = '$' + Math.round(laborTotal).toLocaleString();
+  document.getElementById('propTotalLine').textContent = '$' + Math.round(total).toLocaleString();
+  document.getElementById('propMaterials').textContent = '$' + Math.round(mat).toLocaleString();
+  document.getElementById('propLabor').textContent = '$' + Math.round(laborTotal).toLocaleString();
+  document.getElementById('propTotal').textContent = '$' + Math.round(total).toLocaleString();
+  if (scheduleText) {
+    document.getElementById('propScheduleSection').style.display = 'block';
+    document.getElementById('propScheduleContent').textContent = scheduleText;
+  }
+  const propBody = document.getElementById('proposalBody');
+  propBody.innerHTML = lineItems.map(item => `
+    <tr>
+      <td>${item.description}</td>
+      <td>${item.quantity}</td>
+      <td style="color:var(--text-dim)">${item.unit}</td>
+      <td class="mono">$${parseFloat(item.unitCost||0).toFixed(2)}</td>
+      <td class="mono" style="font-weight:600">$${parseFloat(item.total||0).toLocaleString()}</td>
+    </tr>`).join('');
+  updateTotals();
+}
+
+// Init labor
+calcLabor();
+</script>
+</body>
 </html>
