@@ -668,7 +668,10 @@ async function callAI(messages, maxTokens=2000) {
     throw new Error(err.error?.message || 'API error '+res.status);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.output?.[0]?.content || data.content?.[0]?.text || '';
+  if(!content && data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  if(!content) throw new Error('Empty response. Raw: '+JSON.stringify(data).slice(0,200));
+  return content;
 }
 
 async function callAIWithImage(file, prompt, maxTokens=2000) {
