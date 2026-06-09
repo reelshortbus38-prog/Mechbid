@@ -1443,32 +1443,38 @@ function toggleMechBot() {
 
 async function sendMechBot() {
   const input = document.getElementById('mechbotInput');
-  const messages = document.getElementById('mechbotMessages');
+  const messagesEl = document.getElementById('mechbotMessages');
   const text = input.value.trim();
   if(!text) return;
   input.value = '';
-  messages.innerHTML += `<div class="msg msg-user">${text}</div>`;
-  messages.scrollTop = messages.scrollHeight;
+  messagesEl.innerHTML += `<div class="msg msg-user">${text}</div>`;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
   const loadId = 'load-'+Date.now();
-  messages.innerHTML += `<div class="msg msg-bot" id="${loadId}"><span class="spinner spinner-green"></span></div>`;
-  messages.scrollTop = messages.scrollHeight;
+  messagesEl.innerHTML += `<div class="msg msg-bot" id="${loadId}"><span class="spinner spinner-green"></span></div>`;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
   try {
-    const jobContext = `
-Mode: ${state.mode}
-Project: ${document.getElementById('projName')?.value||'Unknown'}
-Circuits: ${JSON.stringify(state.circuits.map(c=>({id:c.id,rack:c.rack,run:c.runLength+'ft',riser:c.riserLength+'ft',sucHoriz:c.sucHoriz,sucRiser:c.sucRiser,liqHoriz:c.liqHoriz,temp:c.tempType,riserOnly:c.isRiserOnly,app:c.application})))}
-Line items: ${state.lineItems.length}, Materials: $${Math.round(state.materialsTotal).toLocaleString()}, Labor: $${Math.round(state.laborTotal||0).toLocaleString()}
-Schedule data: ${state.jobMemory.schedule?JSON.stringify(state.jobMemory.schedule):'Not uploaded'}
-Flags: ${JSON.stringify(state.flags)}`;
-    const response = await callAI([
-      {role:'system',content:`You are MechBot, an expert commercial refrigeration and HVAC estimating assistant. Answer questions accurately and concisely based on the job data. Never fabricate.\n\nJob data:\n${jobContext}`},
-      {role:'user',content:text}
-    ],800);
-    document.getElementById(loadId).textContent = response;
+    const projName = document.getElementById('projName')?.value||'Unknown';
+    const circuitSummary = state.circuits.length > 0
+      ? state.circuits.map(c=>`${c.id}: ${c.runLength}ft run, suc ${c.sucHoriz}, liq ${c.liqHoriz}, ${c.tempType} temp`).join('; ')
+      : 'No circuits loaded yet';
+    const contextPrompt = `You are MechBot, an expert commercial refrigeration and HVAC estimating assistant. Be helpful, accurate, and concise. Never fabricate data.
+
+Current job context:
+- Mode: ${state.mode}
+- Project: ${projName}
+- Circuits (new work): ${circuitSummary}
+- Line items: ${state.lineItems.length}, Materials total: $${Math.round(state.materialsTotal).toLocaleString()}, Labor: $${Math.round(state.laborTotal||0).toLocaleString()}
+- Flags: ${state.flags.length > 0 ? state.flags.map(f=>f.text).join('; ') : 'None'}
+
+User question: ${text}`;
+    const response = await callAI([{role:'user', content:contextPrompt}], 600);
+    const el = document.getElementById(loadId);
+    if(el) el.textContent = response || 'No response received.';
   } catch(e) {
-    document.getElementById(loadId).textContent = '❌ Error: '+e.message;
+    const el = document.getElementById(loadId);
+    if(el) el.textContent = '❌ ' + (e.message || 'Connection error. Check your internet and try again.');
   }
-  messages.scrollTop = messages.scrollHeight;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 document.getElementById('mechbotInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')sendMechBot();});
