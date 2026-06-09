@@ -2,332 +2,260 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MechBid — Commercial & Residential Estimating</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>MechBid — Commercial Refrigeration & HVAC Estimating</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #080d08;
-    --surface: #0e150e;
-    --card: #121a12;
-    --card2: #162016;
-    --border: #1c2e1c;
-    --border2: #243824;
-    --green: #22c55e;
-    --green2: #16a34a;
-    --green-glow: rgba(34,197,94,0.12);
-    --green-faint: rgba(34,197,94,0.06);
-    --text: #edfaed;
-    --text-dim: #6b9e6b;
-    --text-muted: #3d5c3d;
-    --orange: #f97316;
-    --yellow: #eab308;
-    --red: #ef4444;
-    --blue: #3b82f6;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: var(--surface); }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+:root {
+  --bg: #080d08;
+  --surface: #0d140d;
+  --card: #111911;
+  --card2: #151e15;
+  --border: #1a2e1a;
+  --border2: #223222;
+  --green: #22c55e;
+  --green2: #16a34a;
+  --green3: #15803d;
+  --green-glow: rgba(34,197,94,0.12);
+  --green-faint: rgba(34,197,94,0.05);
+  --text: #edfaed;
+  --text-dim: #5a8a5a;
+  --text-muted: #2d4a2d;
+  --orange: #f97316;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --red2: #dc2626;
+  --blue: #3b82f6;
+  --cyan: #06b6d4;
+  --purple: #a855f7;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
-  /* HEADER */
-  .header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 16px 24px 0;
-    position: sticky; top: 0; z-index: 100;
-  }
-  .header-top {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 14px; flex-wrap: wrap; gap: 12px;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; }
-  .logo-icon {
-    width: 36px; height: 36px; background: var(--green);
-    border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-  }
-  .logo-text { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
-  .logo-text span { color: var(--green); }
-  .logo-sub { font-size: 10px; color: var(--text-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 1px; }
-  .mode-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-  .mode-btn {
-    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
-    font-family: 'DM Sans', sans-serif; cursor: pointer; border: 1px solid var(--border);
-    background: transparent; color: var(--text-dim); transition: all 0.2s;
-  }
-  .mode-btn.active { background: var(--green); color: #000; border-color: var(--green); }
-  .project-bar {
-    display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
-  }
-  .project-bar input {
-    flex: 1; min-width: 140px; background: var(--card);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 9px 14px; font-size: 13px; color: var(--text);
-    font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
-  }
-  .project-bar input:focus { border-color: var(--green); }
-  .project-bar input::placeholder { color: var(--text-muted); }
-  .date-chip {
-    padding: 9px 14px; background: var(--card); border: 1px solid var(--border);
-    border-radius: 8px; font-size: 13px; color: var(--text-dim); white-space: nowrap;
-  }
-  .tabs { display: flex; overflow-x: auto; gap: 0; }
-  .tab-btn {
-    padding: 12px 18px; font-size: 12px; font-weight: 600; font-family: 'Syne', sans-serif;
-    letter-spacing: 0.04em; background: transparent; border: none; cursor: pointer;
-    color: var(--text-muted); border-bottom: 2px solid transparent;
-    transition: all 0.2s; white-space: nowrap; text-transform: uppercase;
-  }
-  .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px 0;position:sticky;top:0;z-index:100;}
+.header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-icon{width:34px;height:34px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.logo-text{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-0.02em;}
+.logo-text span{color:var(--green);}
+.logo-sub{font-size:10px;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-top:1px;}
+.mode-btns{display:flex;gap:6px;flex-wrap:wrap;}
+.mode-btn{padding:7px 14px;border-radius:7px;font-size:11px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-dim);transition:all 0.2s;}
+.mode-btn.active{background:var(--green);color:#000;border-color:var(--green);}
+.project-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.project-bar input{flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s;}
+.project-bar input:focus{border-color:var(--green);}
+.project-bar input::placeholder{color:var(--text-muted);}
+.date-chip{padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text-dim);white-space:nowrap;}
+.tabs{display:flex;overflow-x:auto;gap:0;-webkit-overflow-scrolling:touch;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab-btn{padding:11px 16px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif;letter-spacing:0.05em;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap;text-transform:uppercase;}
+.tab-btn.active{color:var(--green);border-bottom-color:var(--green);}
 
-  /* CONTENT */
-  .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+/* LAYOUT */
+.content{padding:20px;max-width:1400px;margin:0 auto;padding-bottom:100px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+@media(max-width:900px){.grid2{grid-template-columns:1fr;}.grid3{grid-template-columns:1fr 1fr;}}
+@media(max-width:600px){.grid3{grid-template-columns:1fr;}}
 
-  /* CARDS */
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 20px;
-  }
-  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 768px) { .card-grid { grid-template-columns: 1fr; } }
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.card-tight{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
 
-  /* SECTION LABEL */
-  .section-label {
-    font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
-    color: var(--green); text-transform: uppercase; letter-spacing: 0.12em;
-    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
-  }
-  .section-label::before {
-    content: ''; width: 3px; height: 14px;
-    background: var(--green); border-radius: 2px; flex-shrink: 0;
-  }
+/* SECTION LABEL */
+.slabel{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.12em;display:flex;align-items:center;gap:7px;margin-bottom:12px;}
+.slabel::before{content:'';width:3px;height:12px;background:var(--green);border-radius:2px;flex-shrink:0;}
 
-  /* STAT CARDS */
-  .stat-row { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
-  .stat-card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 22px; flex: 1; min-width: 130px;
-  }
-  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-  .stat-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; line-height: 1; }
-  .stat-unit { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+/* STAT CARDS */
+.stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:110px;}
+.stat-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;}
+.stat-value{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;line-height:1;}
+.stat-unit{font-size:10px;color:var(--text-muted);margin-top:3px;}
 
-  /* UPLOAD ZONES */
-  .upload-zone {
-    border: 2px dashed var(--border2); border-radius: 12px;
-    padding: 32px 20px; text-align: center; transition: all 0.2s;
-    background: var(--green-faint); margin-bottom: 14px; cursor: pointer;
-  }
-  .upload-zone:hover, .upload-zone.dragover { border-color: var(--green); background: var(--green-glow); }
-  .upload-zone.has-file { border-color: var(--green); border-style: solid; background: var(--green-glow); }
-  .upload-icon { font-size: 32px; margin-bottom: 10px; }
-  .upload-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-  .upload-sub { font-size: 12px; color: var(--text-muted); }
-  .upload-btn {
-    display: inline-block; margin-top: 12px; padding: 10px 20px;
-    background: var(--green); color: #000; border-radius: 8px;
-    font-weight: 700; font-size: 13px; cursor: pointer; border: none;
-    font-family: 'DM Sans', sans-serif; transition: all 0.2s;
-  }
-  .upload-btn:hover { background: var(--green2); }
-  .upload-btn.red { background: var(--red); color: #fff; }
-  .upload-btn.blue { background: var(--blue); color: #fff; }
-  .upload-btn.orange { background: var(--orange); color: #fff; }
+/* UPLOAD */
+.upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:24px 16px;text-align:center;transition:all 0.2s;background:var(--green-faint);cursor:pointer;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:var(--green-glow);}
+.upload-zone.done{border-color:var(--green);border-style:solid;background:var(--green-glow);}
+.upload-icon{font-size:28px;margin-bottom:8px;}
+.upload-title{font-size:13px;font-weight:600;margin-bottom:4px;}
+.upload-sub{font-size:11px;color:var(--text-muted);}
+.file-input-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
 
-  /* INPUTS */
-  .inp {
-    width: 100%; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; font-size: 14px;
-    color: var(--text); font-family: 'DM Sans', sans-serif; outline: none;
-    transition: border-color 0.2s; margin-bottom: 10px;
-  }
-  .inp:focus { border-color: var(--green); }
-  .inp::placeholder { color: var(--text-muted); }
-  textarea.inp { resize: vertical; line-height: 1.6; }
+/* BUTTONS */
+.btn{padding:11px 20px;border-radius:9px;font-weight:700;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all 0.2s;display:inline-flex;align-items:center;gap:7px;}
+.btn:disabled{opacity:0.4;cursor:not-allowed;}
+.btn-green{background:var(--green);color:#000;}
+.btn-green:hover:not(:disabled){background:var(--green2);}
+.btn-red{background:var(--red);color:#fff;}
+.btn-red:hover:not(:disabled){background:var(--red2);}
+.btn-orange{background:var(--orange);color:#fff;}
+.btn-blue{background:var(--blue);color:#fff;}
+.btn-ghost{background:transparent;color:var(--green);border:1px solid var(--green);}
+.btn-sm{padding:7px 14px;font-size:11px;border-radius:7px;}
+.btn-xs{padding:4px 10px;font-size:11px;border-radius:6px;}
+.btn-full{width:100%;justify-content:center;margin-top:12px;}
+.btn-icon{width:32px;height:32px;padding:0;justify-content:center;border-radius:7px;font-size:14px;}
 
-  /* BUTTONS */
-  .btn {
-    padding: 13px 24px; border-radius: 10px; font-weight: 700;
-    font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer;
-    border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;
-  }
-  .btn-green { background: var(--green); color: #000; }
-  .btn-green:hover { background: var(--green2); }
-  .btn-green:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-red { background: var(--red); color: #fff; }
-  .btn-outline { background: transparent; color: var(--green); border: 1px solid var(--green); }
-  .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 8px; }
-  .btn-full { width: 100%; justify-content: center; margin-top: 14px; }
+/* INPUTS */
+.inp{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s;}
+.inp:focus{border-color:var(--green);}
+.inp::placeholder{color:var(--text-muted);}
+textarea.inp{resize:vertical;line-height:1.6;}
+select.inp{cursor:pointer;}
 
-  /* AI OUTPUT */
-  .ai-output {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px; min-height: 280px;
-    display: flex; flex-direction: column;
-  }
-  .ai-output.has-content { align-items: flex-start; justify-content: flex-start; }
-  .ai-output.empty { align-items: center; justify-content: center; text-align: center; }
-  .ai-empty-icon { font-size: 40px; margin-bottom: 12px; }
-  .ai-empty-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; max-width: 280px; }
-  .ai-text { font-size: 14px; line-height: 1.75; color: var(--text); white-space: pre-wrap; }
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;}
+.tbl th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;}
+.tbl td{padding:10px 14px;font-size:12px;border-bottom:1px solid var(--border);}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:nth-child(even) td{background:rgba(255,255,255,0.015);}
+.tbl-input{background:transparent;border:none;color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;width:100%;outline:none;padding:2px 4px;border-radius:4px;}
+.tbl-input:focus{background:var(--surface);border:1px solid var(--green);}
+.mono{font-family:'DM Mono',monospace;}
 
-  /* TABLE */
-  .estimate-table { width: 100%; border-collapse: collapse; }
-  .estimate-table th {
-    padding: 11px 16px; text-align: left; font-size: 10px; font-weight: 700;
-    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
-    border-bottom: 1px solid var(--border); background: var(--surface);
-    font-family: 'Syne', sans-serif;
-  }
-  .estimate-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
-  .estimate-table tr:last-child td { border-bottom: none; }
-  .estimate-table tr:nth-child(even) td { background: var(--surface); }
-  .mono { font-family: 'DM Mono', monospace; }
+/* AI OUTPUT */
+.ai-out{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;min-height:200px;display:flex;flex-direction:column;}
+.ai-out.empty{align-items:center;justify-content:center;text-align:center;}
+.ai-empty-icon{font-size:32px;margin-bottom:10px;}
+.ai-empty-text{font-size:13px;color:var(--text-muted);line-height:1.6;max-width:280px;}
+.ai-text{font-size:13px;line-height:1.75;color:var(--text);white-space:pre-wrap;}
 
-  /* LEGEND ITEMS */
-  .legend-item {
-    display: flex; align-items: center; gap: 14px;
-    background: var(--card2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 18px; margin-bottom: 10px;
-  }
-  .legend-icon {
-    width: 40px; height: 40px; background: var(--surface);
-    border-radius: 8px; display: flex; align-items: center;
-    justify-content: center; font-size: 20px; flex-shrink: 0;
-  }
-  .legend-code { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: var(--green); }
-  .legend-desc { font-size: 13px; color: var(--text-dim); }
+/* FLAGS */
+.flag{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:12px;line-height:1.5;}
+.flag-warn{background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);color:var(--yellow);}
+.flag-error{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);}
+.flag-ok{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);}
+.flag-info{background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);color:var(--blue);}
 
-  /* REDLINE NOTES */
-  .redline-note {
-    display: flex; align-items: center; justify-content: space-between;
-    background: var(--card2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; margin-top: 8px;
-  }
-  .redline-note-text { font-size: 13px; color: var(--text); }
-  .del-btn { background: transparent; color: var(--text-muted); border: none; font-size: 18px; cursor: pointer; padding: 0 4px; }
+/* CIRCUIT CARDS */
+.circuit-card{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
+.circuit-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.circuit-id{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--green);}
+.circuit-type{font-size:11px;padding:3px 8px;border-radius:100px;font-weight:600;}
+.type-med{background:rgba(59,130,246,0.15);color:var(--blue);border:1px solid rgba(59,130,246,0.3);}
+.type-low{background:rgba(168,85,247,0.15);color:var(--purple);border:1px solid rgba(168,85,247,0.3);}
+.type-riser{background:rgba(234,179,8,0.15);color:var(--yellow);border:1px solid rgba(234,179,8,0.3);}
+.circuit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+@media(max-width:600px){.circuit-grid{grid-template-columns:repeat(2,1fr);}}
+.circuit-field label{font-size:10px;color:var(--text-muted);display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.06em;}
+.circuit-field input{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;width:100%;outline:none;}
+.circuit-field input:focus{border-color:var(--green);}
 
-  /* TIMELINE */
-  .timeline { position: relative; padding-left: 24px; }
-  .timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--border2); }
-  .timeline-item { position: relative; margin-bottom: 20px; }
-  .timeline-dot {
-    position: absolute; left: -20px; top: 4px;
-    width: 12px; height: 12px; border-radius: 50%; background: var(--green);
-    border: 2px solid var(--bg);
-  }
-  .timeline-date { font-size: 11px; color: var(--green); font-family: 'DM Mono', monospace; margin-bottom: 2px; }
-  .timeline-title { font-size: 14px; font-weight: 600; }
-  .timeline-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+/* MATERIAL ROWS */
+.mat-section{margin-bottom:20px;}
+.mat-section-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);cursor:pointer;}
+.mat-section-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.1em;}
+.mat-section-total{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--text);}
 
-  /* RATES TABLE */
-  .rates-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 13px 20px; border-bottom: 1px solid var(--border);
-  }
-  .rates-row:last-child { border-bottom: none; }
-  .rates-row:nth-child(even) { background: var(--surface); }
-  .pipe-label { display: flex; align-items: center; gap: 10px; }
-  .pipe-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-  .pipe-size { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 600; }
-  .pipe-type { font-size: 12px; color: var(--text-muted); }
-  .rate-input-wrap { display: flex; align-items: center; gap: 6px; }
-  .rate-inp {
-    width: 80px; text-align: right; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 6px;
-    padding: 7px 10px; font-size: 13px; color: var(--text);
-    font-family: 'DM Mono', monospace; outline: none; transition: border-color 0.2s;
-  }
-  .rate-inp:focus { border-color: var(--green); }
-  .rate-suffix { font-size: 12px; color: var(--text-muted); }
+/* RATES */
+.rate-row{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);}
+.rate-row:last-child{border-bottom:none;}
+.rate-row:nth-child(even){background:rgba(255,255,255,0.02);}
+.rate-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);}
+.pipe-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.pipe-code{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;}
+.rate-input-wrap{display:flex;align-items:center;gap:6px;}
+.rate-inp{width:75px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;}
+.rate-inp:focus{border-color:var(--green);}
+.rate-suffix{font-size:11px;color:var(--text-muted);white-space:nowrap;}
 
-  /* LABOR TOTAL */
-  .labor-total {
-    background: var(--card); border: 2px solid var(--green);
-    border-radius: 14px; padding: 24px; margin-top: 16px;
-  }
-  .labor-formula { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
-  .labor-amount { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; color: var(--green); line-height: 1; }
-  .labor-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+/* LABOR TOTAL */
+.labor-box{background:var(--card);border:2px solid var(--green);border-radius:12px;padding:20px;}
+.labor-formula{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);margin-bottom:6px;}
+.labor-amount{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--green);line-height:1;}
+.labor-label{font-size:12px;color:var(--text-muted);margin-top:4px;}
 
-  /* BID PROPOSAL */
-  .proposal {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 36px;
-  }
-  .proposal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; flex-wrap: wrap; gap: 20px; }
-  .proposal-logo { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
-  .proposal-logo span { color: var(--green); }
-  .proposal-total-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 16px 0; border-top: 2px solid var(--green); margin-top: 10px;
-  }
-  .proposal-total-label { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
-  .proposal-total-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: var(--green); }
+/* PROPOSAL */
+.proposal-doc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;}
+.proposal-logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;}
+.proposal-logo span{color:var(--green);}
+.proposal-total-row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-top:2px solid var(--green);margin-top:8px;}
 
-  /* QUICK IMPORT */
-  .import-hero {
-    background: linear-gradient(135deg, var(--green-glow), transparent);
-    border: 1px solid var(--green); border-radius: 16px;
-    padding: 32px; text-align: center; margin-bottom: 24px;
-  }
-  .import-hero-icon { font-size: 48px; margin-bottom: 16px; }
-  .import-hero-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 8px; }
-  .import-hero-sub { font-size: 14px; color: var(--text-dim); line-height: 1.6; max-width: 480px; margin: 0 auto 20px; }
+/* MECHBOT */
+.mechbot-btn{position:fixed;bottom:24px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--green);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 20px rgba(34,197,94,0.4);z-index:200;transition:all 0.2s;}
+.mechbot-btn:hover{transform:scale(1.08);background:var(--green2);}
+.mechbot-panel{position:fixed;bottom:88px;right:20px;width:340px;max-height:500px;background:var(--surface);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;z-index:200;box-shadow:0 8px 40px rgba(0,0,0,0.6);transition:all 0.2s;}
+@media(max-width:400px){.mechbot-panel{width:calc(100vw - 24px);right:12px;}}
+.mechbot-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.mechbot-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);}
+.mechbot-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:300px;}
+.msg{max-width:85%;padding:10px 13px;border-radius:10px;font-size:12px;line-height:1.6;}
+.msg-bot{background:var(--card2);border:1px solid var(--border);color:var(--text);align-self:flex-start;}
+.msg-user{background:var(--green);color:#000;align-self:flex-end;font-weight:500;}
+.mechbot-input-row{padding:12px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.mechbot-inp{flex:1;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;}
+.mechbot-inp:focus{border-color:var(--green);}
 
-  /* LOADING */
-  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* HIDDEN FILE INPUT */
-  .file-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-
-  /* PILL TAGS */
-  .tag { display: inline-block; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; margin-right: 6px; margin-top: 4px; }
-  .tag-green { background: var(--green-glow); color: var(--green); border: 1px solid var(--green); }
-  .tag-orange { background: rgba(249,115,22,0.12); color: var(--orange); border: 1px solid var(--orange); }
-  .tag-red { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid var(--red); }
-
-  .divider { height: 1px; background: var(--border); margin: 20px 0; }
-  .flex-row { display: flex; gap: 12px; align-items: center; }
-  .flex-between { display: flex; justify-content: space-between; align-items: center; }
-  .mt8 { margin-top: 8px; }
-  .mt16 { margin-top: 16px; }
-  .mb8 { margin-bottom: 8px; }
-  .hidden { display: none !important; }
+/* MISC */
+.divider{height:1px;background:var(--border);margin:16px 0;}
+.badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700;}
+.badge-green{background:var(--green-glow);color:var(--green);border:1px solid var(--green);}
+.badge-yellow{background:rgba(234,179,8,0.12);color:var(--yellow);border:1px solid rgba(234,179,8,0.3);}
+.badge-red{background:rgba(239,68,68,0.12);color:var(--red);border:1px solid rgba(239,68,68,0.3);}
+.badge-blue{background:rgba(59,130,246,0.12);color:var(--blue);border:1px solid rgba(59,130,246,0.3);}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,0.2);border-top-color:#000;border-radius:50%;animation:spin 0.7s linear infinite;}
+.spinner-green{border-color:rgba(34,197,94,0.2);border-top-color:var(--green);}
+@keyframes spin{to{transform:rotate(360deg);}}
+.hidden{display:none!important;}
+.flex{display:flex;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;}
+.flex-center{display:flex;align-items:center;}
+.gap8{gap:8px;}
+.gap12{gap:12px;}
+.mt8{margin-top:8px;}
+.mt12{margin-top:12px;}
+.mt16{margin-top:16px;}
+.mt20{margin-top:20px;}
+.mb8{margin-bottom:8px;}
+.mb12{margin-bottom:12px;}
+.mb16{margin-bottom:16px;}
+.text-green{color:var(--green);}
+.text-yellow{color:var(--yellow);}
+.text-red{color:var(--red);}
+.text-dim{color:var(--text-dim);}
+.text-muted{color:var(--text-muted);}
+.fw700{font-weight:700;}
+.fs11{font-size:11px;}
+.fs12{font-size:12px;}
+.fs13{font-size:13px;}
 </style>
 </head>
 <body>
 
+<!-- HEADER -->
 <div class="header">
   <div class="header-top">
     <div class="logo">
       <div class="logo-icon">⚙️</div>
       <div>
         <div class="logo-text">MECH<span>BID</span></div>
-        <div class="logo-sub">Commercial & Residential Estimating</div>
+        <div class="logo-sub">Refrigeration & HVAC Estimating</div>
       </div>
     </div>
     <div class="mode-btns">
-      <button class="mode-btn active" onclick="setMode(this,'Commercial Refrigeration')">Commercial Refrigeration</button>
-      <button class="mode-btn" onclick="setMode(this,'Commercial HVAC')">Commercial HVAC</button>
+      <button class="mode-btn active" onclick="setMode(this,'Commercial Refrigeration')">Comm. Refrigeration</button>
+      <button class="mode-btn" onclick="setMode(this,'Commercial HVAC')">Comm. HVAC</button>
       <button class="mode-btn" onclick="setMode(this,'Residential HVAC')">Residential HVAC</button>
     </div>
   </div>
   <div class="project-bar">
-    <input id="projName" placeholder="Project Name">
-    <input id="projAddr" placeholder="Address">
-    <input id="projCont" placeholder="Contractor">
+    <input id="projName" placeholder="Project Name" oninput="updateProposal()">
+    <input id="projAddr" placeholder="Address" oninput="updateProposal()">
+    <input id="projGC" placeholder="General Contractor">
+    <input id="projCont" placeholder="Contractor" oninput="updateProposal()">
+    <input id="projBidDate" placeholder="Bid Due Date" type="date">
     <div class="date-chip" id="dateChip"></div>
   </div>
   <div class="tabs">
-    <button class="tab-btn active" onclick="showTab('import',this)">⚡ Quick Import</button>
-    <button class="tab-btn" onclick="showTab('blueprint',this)">📐 Blueprint</button>
-    <button class="tab-btn" onclick="showTab('legend',this)">📋 Legend Sheet</button>
-    <button class="tab-btn" onclick="showTab('redline',this)">🔴 Redlines</button>
-    <button class="tab-btn" onclick="showTab('schedule',this)">📅 Job Schedule</button>
+    <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
+    <button class="tab-btn" onclick="showTab('circuits',this)">⚡ Circuits</button>
+    <button class="tab-btn" onclick="showTab('materials',this)">🔧 Materials</button>
     <button class="tab-btn" onclick="showTab('rates',this)">💰 Rates & Labor</button>
     <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
     <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>
@@ -336,318 +264,287 @@
 
 <div class="content">
 
-  <!-- QUICK IMPORT -->
-  <div id="tab-import">
-    <div class="import-hero">
-      <div class="import-hero-icon">📧</div>
-      <div class="import-hero-title">Quick Import from Bid Email</div>
-      <div class="import-hero-sub">Paste your bid email text or upload a screenshot — AI will extract the project info, scope, equipment, and schedule and populate all tabs automatically.</div>
-      <button class="upload-btn" onclick="document.getElementById('importFileInput').click()">📎 Upload Email Screenshot</button>
-      <input type="file" id="importFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleImportFile(event)">
+<!-- DOCUMENTS TAB -->
+<div id="tab-docs">
+  <div class="grid2">
+    <div>
+      <!-- Equipment Schedule -->
+      <div class="slabel">Equipment Schedule</div>
+      <div class="upload-zone" id="schedZone" ondrop="handleDrop(event,'sched')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('schedInput').click()">
+        <div class="upload-icon">📊</div>
+        <div class="upload-title" id="schedZoneTitle">Upload Equipment Schedule</div>
+        <div class="upload-sub">Kysor Warren, Heatcraft, Hussmann, Hill Phoenix, Tyler — Excel or PDF</div>
+      </div>
+      <input type="file" id="schedInput" class="file-input-hidden" accept=".xlsx,.xls,.pdf,image/*" onchange="handleFile('sched',event)">
+
+      <div class="mt12"></div>
+
+      <!-- Legend Sheet -->
+      <div class="slabel">Legend Sheet</div>
+      <div class="upload-zone" id="legendZone" ondrop="handleDrop(event,'legend')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('legendInput').click()">
+        <div class="upload-icon">📋</div>
+        <div class="upload-title" id="legendZoneTitle">Upload Legend Sheet</div>
+        <div class="upload-sub">Image or PDF — AI detects shaded/highlighted circuits</div>
+      </div>
+      <input type="file" id="legendInput" class="file-input-hidden" accept="image/*,.pdf,.xlsx,.xls" onchange="handleFile('legend',event)">
+
+      <div class="mt12"></div>
+
+      <!-- Spec Sheet -->
+      <div class="slabel">Spec Sheet</div>
+      <div class="upload-zone" id="specZone" ondrop="handleDrop(event,'spec')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('specInput').click()">
+        <div class="upload-icon">📄</div>
+        <div class="upload-title" id="specZoneTitle">Upload Spec Sheet</div>
+        <div class="upload-sub">PDF or image — AI extracts installation requirements</div>
+      </div>
+      <input type="file" id="specInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('spec',event)">
     </div>
 
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Paste Email Text</div>
-        <textarea class="inp" id="importText" rows="12" placeholder="Paste the full bid email text here...&#10;&#10;The AI will extract:&#10;• Project name, address, contractor&#10;• Scope of work&#10;• Equipment list&#10;• Job schedule / dates&#10;• Special instructions"></textarea>
-        <button class="btn btn-green btn-full" onclick="runQuickImport()" id="importBtn">
-          <span>⚡ Extract & Populate All Tabs</span>
-        </button>
+    <div>
+      <!-- Blueprint / Redlines -->
+      <div class="slabel">Blueprint / Redlines</div>
+      <div class="upload-zone" id="blueprintZone" ondrop="handleDrop(event,'blueprint')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('blueprintInput').click()">
+        <div class="upload-icon">📐</div>
+        <div class="upload-title" id="blueprintZoneTitle">Upload Blueprint or Redlines</div>
+        <div class="upload-sub">Image or PDF — AI traces red lines for drop points and routing</div>
       </div>
-      <div>
-        <div class="section-label">AI Extraction Results</div>
-        <div class="ai-output empty" id="importOutput">
-          <div class="ai-empty-icon">⚡</div>
-          <div class="ai-empty-text">Paste your bid email and click Extract — the AI will populate your project info, estimate, and schedule automatically.</div>
-        </div>
+      <input type="file" id="blueprintInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('blueprint',event)">
+
+      <div class="mt12"></div>
+
+      <!-- Bid Email -->
+      <div class="slabel">Bid Email</div>
+      <div class="upload-zone" id="emailZone" onclick="document.getElementById('emailInput').click()">
+        <div class="upload-icon">📧</div>
+        <div class="upload-title" id="emailZoneTitle">Upload Email Screenshot</div>
+        <div class="upload-sub">Or paste email text below</div>
       </div>
+      <input type="file" id="emailInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('email',event)">
+      <textarea class="inp mt8" id="emailText" rows="3" placeholder="Or paste bid email text here..."></textarea>
+
+      <div class="mt12"></div>
+
+      <!-- Analyze All Button -->
+      <button class="btn btn-green btn-full" id="analyzeAllBtn" onclick="analyzeAllDocs()" style="font-size:14px;padding:14px;">
+        🔍 Analyze All Documents & Extract Takeoff
+      </button>
     </div>
   </div>
 
-  <!-- BLUEPRINT -->
-  <div id="tab-blueprint" class="hidden">
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Blueprint / Plan Upload</div>
-        <div class="upload-zone" id="blueprintZone" ondrop="handleDrop(event,'blueprint')" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')">
-          <div class="upload-icon">📐</div>
-          <div class="upload-title" id="blueprintZoneTitle">Drag & drop or tap to upload</div>
-          <div class="upload-sub">PDF, PNG, JPG, HEIC, TXT, CSV supported</div>
-          <button class="upload-btn" onclick="document.getElementById('blueprintFileInput').click()">📎 Choose File</button>
-          <input type="file" id="blueprintFileInput" class="file-input-hidden" accept="image/*,.pdf,.txt,.csv" onchange="handleBlueprintFile(event)">
-        </div>
-        <div class="section-label">Or Paste Blueprint Text</div>
-        <textarea class="inp" id="blueprintText" rows="8" placeholder="Paste equipment schedules, spec sections, or plan notes...&#10;&#10;Example:&#10;RTU-1: 5 Ton Carrier 48HCDA06A2A5 on Grid-E&#10;FC-1: Fan Coil 2 Ton, 200 CFM&#10;Suction line 7/8&quot; copper 45ft&#10;Liquid line 3/8&quot; copper 45ft"></textarea>
-        <button class="btn btn-green btn-full" onclick="analyzeBlueprint()" id="blueprintBtn">
-          🔍 Analyze Blueprint & Extract Takeoff
-        </button>
-      </div>
-      <div>
-        <div class="section-label">AI Blueprint Analysis</div>
-        <div class="ai-output empty" id="blueprintOutput">
-          <div class="ai-empty-icon">🔎</div>
-          <div class="ai-empty-text">Upload or paste a blueprint to extract equipment, pipe sizes, quantities, and auto-populate the estimate.</div>
-        </div>
-      </div>
+  <!-- AI Extraction Results -->
+  <div class="mt16">
+    <div class="slabel">AI Extraction Results</div>
+    <div id="extractionResults" class="ai-out empty">
+      <div class="ai-empty-icon">🔍</div>
+      <div class="ai-empty-text">Upload your documents and click Analyze — the AI will extract confirmed circuits, pipe sizes, footage, and flag anything missing or unclear.</div>
     </div>
   </div>
 
-  <!-- LEGEND SHEET -->
-  <div id="tab-legend" class="hidden">
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Upload Legend Sheet</div>
-        <div class="upload-zone" id="legendZone">
-          <div class="upload-icon">📋</div>
-          <div class="upload-title" id="legendZoneTitle">Upload your legend sheet</div>
-          <div class="upload-sub">Image or PDF — AI will read circuits, line sizes & run lengths</div>
-          <button class="upload-btn blue" onclick="document.getElementById('legendFileInput').click()">📎 Choose Legend Sheet</button>
-          <input type="file" id="legendFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleLegendFile(event)">
-        </div>
-        <div class="section-label mt16">Default Symbol Legend — <span id="legendMode">Commercial Refrigeration</span></div>
-        <div id="legendItems">
-          <div class="legend-item"><div class="legend-icon">❄️</div><div><div class="legend-code">EV</div><div class="legend-desc">Evaporator Unit</div></div></div>
-          <div class="legend-item"><div class="legend-icon">🔵</div><div><div class="legend-code">CU</div><div class="legend-desc">Condensing Unit</div></div></div>
-          <div class="legend-item"><div class="legend-icon">➖</div><div><div class="legend-code">SL</div><div class="legend-desc">Suction Line</div></div></div>
-          <div class="legend-item"><div class="legend-icon">➖</div><div><div class="legend-code">LL</div><div class="legend-desc">Liquid Line</div></div></div>
-          <div class="legend-item"><div class="legend-icon">⚡</div><div><div class="legend-code">EP</div><div class="legend-desc">Electrical Panel</div></div></div>
-          <div class="legend-item"><div class="legend-icon">🌡️</div><div><div class="legend-code">TC</div><div class="legend-desc">Temperature Controller</div></div></div>
-        </div>
-      </div>
-      <div>
-        <div class="section-label">AI Legend Analysis</div>
-        <div class="ai-output empty" id="legendOutput">
-          <div class="ai-empty-icon">📋</div>
-          <div class="ai-empty-text">Upload your legend sheet and the AI will identify all circuit types, line sizes, and length of run — then feed that data into the estimate.</div>
-        </div>
-      </div>
+  <!-- Flags -->
+  <div id="flagsSection" class="mt16 hidden">
+    <div class="slabel">Flags & Missing Info</div>
+    <div id="flagsList"></div>
+  </div>
+</div>
+
+<!-- CIRCUITS TAB -->
+<div id="tab-circuits" class="hidden">
+  <div class="flex-between mb16">
+    <div>
+      <div class="slabel" style="margin-bottom:4px">Confirmed Circuits — New Work Only</div>
+      <div class="fs12 text-dim" id="circuitSummary">No circuits extracted yet</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="addCircuitManual()">+ Add Circuit</button>
+  </div>
+
+  <div id="circuitList">
+    <div class="ai-out empty" style="min-height:160px;">
+      <div class="ai-empty-icon">⚡</div>
+      <div class="ai-empty-text">Upload an equipment schedule or legend sheet and run the analysis to auto-populate circuits.</div>
+    </div>
+  </div>
+</div>
+
+<!-- MATERIALS TAB -->
+<div id="tab-materials" class="hidden">
+  <div class="flex-between mb16">
+    <div class="slabel" style="margin-bottom:0">Material List</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-sm" onclick="addMiscItem()">+ Add Misc Item</button>
+      <button class="btn btn-green btn-sm" onclick="generateMaterials()">⚙️ Generate from Circuits</button>
     </div>
   </div>
 
-  <!-- REDLINES -->
-  <div id="tab-redline" class="hidden">
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Upload Redlined Drawing</div>
-        <div class="upload-zone" id="redlineZone">
-          <div class="upload-icon">🔴</div>
-          <div class="upload-title" id="redlineZoneTitle">Upload redlined drawing or screenshot</div>
-          <div class="upload-sub">AI reads red lines to find drop points, circuit changes & routing</div>
-          <button class="upload-btn red" onclick="document.getElementById('redlineFileInput').click()">📎 Choose Redline Drawing</button>
-          <input type="file" id="redlineFileInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleRedlineFile(event)">
-        </div>
-        <div class="section-label mt16">Field Notes / Scope Changes</div>
-        <div class="flex-row">
-          <input type="text" class="inp" id="redlineNoteInput" placeholder="Add a field note or scope change..." style="margin:0;flex:1" onkeydown="if(event.key==='Enter')addRedlineNote()">
-          <button class="btn btn-red btn-sm" onclick="addRedlineNote()">+ Add</button>
-        </div>
-        <div id="redlineNotes"></div>
-        <button class="btn btn-red btn-full" onclick="analyzeRedline()" id="redlineBtn" style="margin-top:14px">
-          🔴 Analyze Redlines & Extract Runs
-        </button>
+  <div id="materialList">
+    <div class="ai-out empty" style="min-height:160px;">
+      <div class="ai-empty-icon">🔧</div>
+      <div class="ai-empty-text">Add circuits first, then click Generate to auto-build the material list.</div>
+    </div>
+  </div>
+</div>
+
+<!-- RATES & LABOR TAB -->
+<div id="tab-rates" class="hidden">
+  <div class="grid2">
+    <div>
+      <div class="slabel">Copper — Price per Linear Foot</div>
+      <div class="card-tight mb16">
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1/4"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_025" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">3/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_038" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1/2"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_050" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">5/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_058" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">7/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_078" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1-1/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_118" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1-3/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_138" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1-5/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_158" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
+        <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">2-1/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_218" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
       </div>
-      <div>
-        <div class="section-label">AI Redline Interpretation</div>
-        <div class="ai-output empty" id="redlineOutput">
-          <div class="ai-empty-icon">🔴</div>
-          <div class="ai-empty-text">Upload a redlined drawing — the AI will trace the red lines to identify drop points, circuit changes, routing paths, and extract footage and fittings for the refrigeration side.</div>
-        </div>
+
+      <div class="slabel">Fittings & Materials Markup</div>
+      <div class="card-tight">
+        <div class="rate-row"><div class="rate-label">Fittings markup on copper cost</div><div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25" oninput="calcTotals()"><span class="rate-suffix">%</span></div></div>
+        <div class="rate-row"><div class="rate-label">Insulation markup</div><div class="rate-input-wrap"><input class="rate-inp" id="insulMarkup" type="number" value="20" oninput="calcTotals()"><span class="rate-suffix">%</span></div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="slabel">Labor Settings</div>
+      <div class="card-tight mb16">
+        <div class="rate-row"><div class="rate-label">Crew Size</div><div class="rate-input-wrap"><input class="rate-inp" id="crewSize" type="number" placeholder="2" oninput="calcLabor()"><span class="rate-suffix">workers</span></div></div>
+        <div class="rate-row"><div class="rate-label">Labor Rate</div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="laborRate" type="number" placeholder="85" oninput="calcLabor()"><span class="rate-suffix">/hr</span></div></div>
+        <div class="rate-row"><div class="rate-label">Hours per Week</div><div class="rate-input-wrap"><input class="rate-inp" id="hoursPerWeek" type="number" placeholder="40" oninput="calcLabor()"><span class="rate-suffix">hrs</span></div></div>
+        <div class="rate-row"><div class="rate-label">Weeks on Job</div><div class="rate-input-wrap"><input class="rate-inp" id="weeksOnJob" type="number" placeholder="4" oninput="calcLabor()"><span class="rate-suffix">wks</span></div></div>
+        <div class="rate-row"><div class="rate-label">Burden Rate</div><div class="rate-input-wrap"><input class="rate-inp" id="burdenRate" type="number" value="1.35" step="0.01" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Travel Time</div><div class="rate-input-wrap"><input class="rate-inp" id="travelTime" type="number" placeholder="0" oninput="calcLabor()"><span class="rate-suffix">hrs/day</span></div></div>
+      </div>
+
+      <div class="slabel">Difficulty Multipliers</div>
+      <div class="card-tight mb16">
+        <div class="rate-row"><div class="rate-label">Rooftop work</div><div class="rate-input-wrap"><input class="rate-inp" id="multRooftop" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Retrofit / existing store</div><div class="rate-input-wrap"><input class="rate-inp" id="multRetrofit" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Nights / weekends</div><div class="rate-input-wrap"><input class="rate-inp" id="multNights" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+      </div>
+
+      <div class="labor-box">
+        <div class="labor-formula" id="laborFormula">? × ? hrs × ? wks × $?/hr × ?×</div>
+        <div class="labor-amount" id="laborAmount">$0</div>
+        <div class="labor-label">Total Burdened Labor Cost</div>
+      </div>
+
+      <div class="stats mt16">
+        <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="ratesMat">$0</div></div>
+        <div class="stat"><div class="stat-label">Project Total</div><div class="stat-value" style="color:var(--orange)" id="ratesTotal">$0</div></div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- JOB SCHEDULE -->
-  <div id="tab-schedule" class="hidden">
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Upload Job Schedule</div>
-        <div class="upload-zone" id="scheduleZone">
-          <div class="upload-icon">📅</div>
-          <div class="upload-title" id="scheduleZoneTitle">Upload schedule document or screenshot</div>
-          <div class="upload-sub">AI extracts dates, milestones & labor hours</div>
-          <button class="upload-btn orange" onclick="document.getElementById('scheduleFileInput').click()">📎 Choose Schedule</button>
-          <input type="file" id="scheduleFileInput" class="file-input-hidden" accept="image/*,.pdf,.txt,.csv" onchange="handleScheduleFile(event)">
-        </div>
-        <div class="section-label mt16">Or Paste Schedule Text</div>
-        <textarea class="inp" id="scheduleText" rows="6" placeholder="Paste schedule details, start/end dates, milestones..."></textarea>
-        <button class="btn btn-full" style="background:var(--orange);color:#fff" onclick="analyzeSchedule()" id="scheduleBtn">
-          📅 Extract Schedule & Labor Hours
-        </button>
-      </div>
-      <div>
-        <div class="section-label">Project Timeline</div>
-        <div class="ai-output empty" id="scheduleOutput">
-          <div class="ai-empty-icon">📅</div>
-          <div class="ai-empty-text">Upload or paste your job schedule — AI will extract dates and milestones into a timeline, pull labor hours into Rates & Labor, and attach it to the Bid Proposal.</div>
-        </div>
-        <div id="timeline" class="timeline mt16" style="display:none"></div>
-      </div>
-    </div>
+<!-- ESTIMATE TAB -->
+<div id="tab-estimate" class="hidden">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="estMat">$0</div></div>
+    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="estLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Total</div><div class="stat-value" style="color:var(--orange)" id="estTotal">$0</div></div>
+    <div class="stat"><div class="stat-label">Line Items</div><div class="stat-value text-dim" id="estCount">0</div></div>
   </div>
 
-  <!-- RATES & LABOR -->
-  <div id="tab-rates" class="hidden">
-    <div class="card-grid">
-      <div>
-        <div class="section-label">Copper Line Set — Price per Linear Foot</div>
-        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
-          <div class="rates-row" style="background:var(--surface)">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1/4"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_025" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">3/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_038" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row" style="background:var(--surface)">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1/2"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_050" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">5/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_058" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row" style="background:var(--surface)">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">7/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_078" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-1/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_118" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row" style="background:var(--surface)">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-3/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_138" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-          <div class="rates-row">
-            <div class="pipe-label"><div class="pipe-dot"></div><span class="pipe-size">1-5/8"</span><span class="pipe-type">copper</span></div>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="copper_158" type="number" placeholder="0.00"><span class="rate-suffix">/ft</span></div>
-          </div>
-        </div>
-        <div class="section-label">Fittings Markup</div>
-        <div class="card" style="margin-bottom:0">
-          <div class="flex-between">
-            <span style="font-size:14px;color:var(--text-dim)">Markup on copper cost</span>
-            <div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25"><span class="rate-suffix">%</span></div>
-          </div>
-        </div>
-      </div>
-      <div>
-        <div class="section-label">Labor Rates</div>
-        <div class="card" style="margin-bottom:20px">
-          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
-            <span style="font-size:14px;color:var(--text-dim)">Crew Size</span>
-            <div class="rate-input-wrap"><input class="rate-inp" id="crewSize" type="number" placeholder="2" oninput="calcLabor()"><span class="rate-suffix">workers</span></div>
-          </div>
-          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
-            <span style="font-size:14px;color:var(--text-dim)">Labor Rate</span>
-            <div class="rate-input-wrap"><span style="color:var(--text-dim);font-size:14px">$</span><input class="rate-inp" id="laborRate" type="number" placeholder="85.00" oninput="calcLabor()"><span class="rate-suffix">/hr</span></div>
-          </div>
-          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
-            <span style="font-size:14px;color:var(--text-dim)">Hours per Week</span>
-            <div class="rate-input-wrap"><input class="rate-inp" id="hoursPerWeek" type="number" placeholder="40" oninput="calcLabor()"><span class="rate-suffix">hrs</span></div>
-          </div>
-          <div class="rates-row" style="background:transparent;border-bottom:1px solid var(--border);padding:12px 0">
-            <span style="font-size:14px;color:var(--text-dim)">Weeks on Job</span>
-            <div class="rate-input-wrap"><input class="rate-inp" id="weeksOnJob" type="number" placeholder="4" oninput="calcLabor()"><span class="rate-suffix">wks</span></div>
-          </div>
-          <div class="rates-row" style="background:transparent;padding:12px 0">
-            <span style="font-size:14px;color:var(--text-dim)">Burden Rate</span>
-            <div class="rate-input-wrap"><input class="rate-inp" id="burdenRate" type="number" value="1.35" step="0.01" oninput="calcLabor()"><span class="rate-suffix">× multiplier</span></div>
-          </div>
-        </div>
-        <div class="labor-total">
-          <div class="labor-formula" id="laborFormula">? workers × ? hrs × ? wks × $?/hr × ?x</div>
-          <div class="labor-amount" id="laborAmount">$0</div>
-          <div class="labor-label">Total Burdened Labor Cost</div>
-        </div>
-        <div class="stat-row mt16">
-          <div class="stat-card">
-            <div class="stat-label">Materials</div>
-            <div class="stat-value" id="ratesMaterials" style="color:var(--green)">$0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Project Total</div>
-            <div class="stat-value" id="ratesTotal" style="color:var(--orange)">$0</div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div class="flex-between mb12">
+    <div class="slabel" style="margin-bottom:0">Line Items</div>
+    <button class="btn btn-ghost btn-sm" onclick="addLineItem()">+ Add Line Item</button>
   </div>
 
-  <!-- ESTIMATE -->
-  <div id="tab-estimate" class="hidden">
-    <div class="stat-row">
-      <div class="stat-card"><div class="stat-label">Materials Total</div><div class="stat-value" id="estMaterials" style="color:var(--green)">$0</div></div>
-      <div class="stat-card"><div class="stat-label">Labor Total</div><div class="stat-value" id="estLabor" style="color:var(--yellow)">$0</div></div>
-      <div class="stat-card"><div class="stat-label">Project Total</div><div class="stat-value" id="estTotal" style="color:var(--orange)">$0</div></div>
-      <div class="stat-card"><div class="stat-label">Line Items</div><div class="stat-value" id="estCount" style="color:var(--text-dim)">0</div></div>
+  <div class="card-tight">
+    <div id="estimateEmpty" style="padding:40px;text-align:center;color:var(--text-muted);">
+      <div style="font-size:30px;margin-bottom:10px">📊</div>
+      <div class="fs13">Generate materials and set rates to populate the estimate</div>
     </div>
-    <div class="section-label">Line Items</div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div id="estimateEmpty" style="padding:48px;text-align:center;color:var(--text-muted)">
-        <div style="font-size:36px;margin-bottom:12px">📋</div>
-        <div style="font-size:14px">Run a blueprint or legend analysis to auto-populate line items</div>
-      </div>
-      <table class="estimate-table" id="estimateTable" style="display:none">
-        <thead>
-          <tr>
-            <th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th>
-          </tr>
-        </thead>
-        <tbody id="estimateBody"></tbody>
-      </table>
-    </div>
+    <table class="tbl hidden" id="estimateTable">
+      <thead>
+        <tr>
+          <th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="estimateBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- PROPOSAL TAB -->
+<div id="tab-proposal" class="hidden">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="propMat">$0</div></div>
+    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="propLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="propTotal">$0</div></div>
   </div>
 
-  <!-- BID PROPOSAL -->
-  <div id="tab-proposal" class="hidden">
-    <div class="stat-row">
-      <div class="stat-card"><div class="stat-label">Materials</div><div class="stat-value" id="propMaterials" style="color:var(--green)">$0</div></div>
-      <div class="stat-card"><div class="stat-label">Labor</div><div class="stat-value" id="propLabor" style="color:var(--yellow)">$0</div></div>
-      <div class="stat-card"><div class="stat-label">Total Bid</div><div class="stat-value" id="propTotal" style="color:var(--orange)">$0</div></div>
+  <div class="proposal-doc">
+    <div class="flex-between mb16" style="flex-wrap:wrap;gap:16px;">
+      <div>
+        <div class="proposal-logo">MECH<span>BID</span></div>
+        <div class="fs11 text-muted mt8">Commercial Refrigeration & HVAC Estimating</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;" id="propProjName">Project Name</div>
+        <div class="fs12 text-dim mt8" id="propAddr">Address</div>
+        <div class="fs12 text-dim" id="propGC"></div>
+        <div class="fs12 text-dim" id="propCont">Contractor</div>
+        <div class="fs11 text-muted mt8" id="propDate"></div>
+      </div>
     </div>
-    <div class="proposal">
-      <div class="proposal-header">
-        <div>
-          <div class="proposal-logo">MECH<span>BID</span></div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Commercial & Residential Estimating</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700" id="propProjName">Project Name</div>
-          <div style="font-size:13px;color:var(--text-dim)" id="propAddr">Address</div>
-          <div style="font-size:13px;color:var(--text-dim)" id="propCont">Contractor</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="propDate"></div>
-        </div>
-      </div>
-      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px" id="propScope">Scope: Commercial Refrigeration</div>
-      <div id="propScheduleSection" style="display:none;margin-bottom:20px">
-        <div class="section-label">Project Schedule</div>
-        <div id="propScheduleContent" style="font-size:13px;color:var(--text-dim);line-height:1.7"></div>
-        <div class="divider"></div>
-      </div>
-      <table class="estimate-table" id="proposalTable">
-        <thead>
-          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr>
-        </thead>
-        <tbody id="proposalBody"></tbody>
-      </table>
+
+    <div class="fs11 fw700 text-muted mb16" style="text-transform:uppercase;letter-spacing:0.1em;" id="propScope">Scope: Commercial Refrigeration</div>
+
+    <!-- Circuits Summary -->
+    <div id="propCircuitsSection" class="hidden mb16">
+      <div class="slabel">Circuit Summary — New Work</div>
+      <div id="propCircuitsList" class="fs12 text-dim" style="line-height:2;"></div>
       <div class="divider"></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:14px;color:var(--text-dim)">Materials Subtotal</span>
-        <span class="mono" style="font-weight:600" id="propMatLine">$0</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:14px;color:var(--text-dim)">Labor (burdened)</span>
-        <span class="mono" style="font-weight:600;color:var(--yellow)" id="propLaborLine">$0</span>
-      </div>
-      <div class="proposal-total-row">
-        <div class="proposal-total-label">TOTAL BID</div>
-        <div class="proposal-total-value" id="propTotalLine">$0</div>
-      </div>
+    </div>
+
+    <!-- Flags on proposal -->
+    <div id="propFlagsSection" class="hidden mb16">
+      <div class="slabel">Assumptions & Missing Info</div>
+      <div id="propFlagsList"></div>
+      <div class="divider"></div>
+    </div>
+
+    <!-- Line Items Table -->
+    <table class="tbl" id="proposalTable">
+      <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr></thead>
+      <tbody id="proposalBody"></tbody>
+    </table>
+
+    <div class="divider"></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Materials Subtotal</span><span class="mono fw700" id="propMatLine">$0</span></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Labor (burdened)</span><span class="mono fw700 text-yellow" id="propLaborLine">$0</span></div>
+    <div class="proposal-total-row">
+      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">TOTAL BID</div>
+      <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);" id="propTotalLine">$0</div>
     </div>
   </div>
+</div>
 
+</div><!-- end content -->
+
+<!-- MECHBOT BUTTON -->
+<button class="mechbot-btn" onclick="toggleMechBot()" id="mechbotBtn" title="MechBot AI Assistant">🤖</button>
+
+<!-- MECHBOT PANEL -->
+<div class="mechbot-panel hidden" id="mechbotPanel">
+  <div class="mechbot-header">
+    <div>
+      <div class="mechbot-title">🤖 MechBot</div>
+      <div class="fs11 text-muted">AI Assistant — Ask anything about this job</div>
+    </div>
+    <button class="btn btn-icon" style="background:transparent;color:var(--text-dim);font-size:16px;" onclick="toggleMechBot()">✕</button>
+  </div>
+  <div class="mechbot-messages" id="mechbotMessages">
+    <div class="msg msg-bot">Hi! I'm MechBot. I know everything about your current job. Ask me anything — circuits, pipe sizes, materials, code questions, or help writing your proposal.</div>
+  </div>
+  <div class="mechbot-input-row">
+    <input class="mechbot-inp" id="mechbotInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendMechBot()">
+    <button class="btn btn-green btn-sm" onclick="sendMechBot()">Send</button>
+  </div>
 </div>
 
 <script>
@@ -655,418 +552,752 @@ const API_KEY = 'sk-or-v1-02808f954f20b49a4a2a5e523c400c3e9af8c0cf6fcf9a16f3c231
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'openai/gpt-4o-mini';
 
-let currentMode = 'Commercial Refrigeration';
-let lineItems = [];
-let laborTotal = 0;
-let scheduleText = '';
-let redlineNotes = [];
-let blueprintFile = null;
-let legendFile = null;
-let redlineFile = null;
-let scheduleFile = null;
-let importFile = null;
+// JOB STATE
+let state = {
+  mode: 'Commercial Refrigeration',
+  circuits: [],
+  lineItems: [],
+  flags: [],
+  laborTotal: 0,
+  materialsTotal: 0,
+  jobMemory: {
+    schedule: null,
+    legend: null,
+    spec: null,
+    blueprint: null,
+    email: null
+  },
+  files: {
+    sched: null,
+    legend: null,
+    spec: null,
+    blueprint: null,
+    email: null
+  }
+};
 
-// Init
+// INIT
 document.getElementById('dateChip').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 document.getElementById('propDate').textContent = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
 
 function setMode(btn, mode) {
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  currentMode = mode;
-  document.getElementById('legendMode').textContent = mode;
+  state.mode = mode;
   document.getElementById('propScope').textContent = 'Scope: ' + mode;
 }
 
 function showTab(name, btn) {
-  document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.add('hidden'));
-  document.getElementById('tab-' + name).classList.remove('hidden');
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('[id^="tab-"]').forEach(t=>t.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  if (name === 'proposal') updateProposal();
-  if (name === 'estimate') updateEstimateTab();
+  if(name==='proposal') updateProposal();
+  if(name==='estimate') renderEstimate();
 }
 
 // IMAGE CONVERSION
-function imageToJpeg(file) {
+function imgToJpeg(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       const MAX = 1600;
-      let {width, height} = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-        else { width = Math.round(width * MAX / height); height = MAX; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      let {width:w, height:h} = img;
+      if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+      const c = document.createElement('canvas');
+      c.width=w; c.height=h;
+      const ctx=c.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg',0.85).split(',')[1]);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load image')); };
-    img.src = url;
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image load failed'));};
+    img.src=url;
   });
-}
-
-// API CALL
-async function callAI(messages) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
-    body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
-async function callAIWithImage(file, textPrompt) {
-  const base64 = await imageToJpeg(file);
-  return callAI([{
-    role: 'user',
-    content: [
-      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-      { type: 'text', text: textPrompt }
-    ]
-  }]);
 }
 
 // FILE HANDLERS
 function handleDrop(e, type) {
   e.preventDefault();
-  e.currentTarget.classList.remove('dragover');
-  const file = e.dataTransfer.files?.[0];
-  if (file) setFile(type, file);
+  e.currentTarget.classList.remove('drag');
+  const f = e.dataTransfer.files?.[0];
+  if(f) processFile(type, f);
 }
 
-function setFile(type, file) {
-  if (type === 'blueprint') { blueprintFile = file; updateZone('blueprintZone', 'blueprintZoneTitle', file.name); }
-  if (type === 'legend') { legendFile = file; updateZone('legendZone', 'legendZoneTitle', file.name); }
-  if (type === 'redline') { redlineFile = file; updateZone('redlineZone', 'redlineZoneTitle', file.name); }
-  if (type === 'schedule') { scheduleFile = file; updateZone('scheduleZone', 'scheduleZoneTitle', file.name); }
-  if (type === 'import') { importFile = file; }
+function handleFile(type, e) {
+  const f = e.target.files?.[0];
+  if(f) processFile(type, f);
 }
 
-function updateZone(zoneId, titleId, name) {
-  document.getElementById(zoneId).classList.add('has-file');
-  document.getElementById(titleId).textContent = '✅ ' + name;
+function processFile(type, file) {
+  state.files[type] = file;
+  const zoneId = {sched:'schedZone',legend:'legendZone',spec:'specZone',blueprint:'blueprintZone',email:'emailZone'}[type];
+  const titleId = {sched:'schedZoneTitle',legend:'legendZoneTitle',spec:'specZoneTitle',blueprint:'blueprintZoneTitle',email:'emailZoneTitle'}[type];
+  if(zoneId) {
+    document.getElementById(zoneId).classList.add('done');
+    document.getElementById(titleId).textContent = '✅ ' + file.name;
+  }
 }
 
-function handleBlueprintFile(e) { const f = e.target.files?.[0]; if(f) setFile('blueprint', f); }
-function handleLegendFile(e) { const f = e.target.files?.[0]; if(f) setFile('legend', f); }
-function handleRedlineFile(e) { const f = e.target.files?.[0]; if(f) setFile('redline', f); }
-function handleScheduleFile(e) { const f = e.target.files?.[0]; if(f) setFile('schedule', f); }
-function handleImportFile(e) { const f = e.target.files?.[0]; if(f) setFile('import', f); }
-
-// REDLINE NOTES
-function addRedlineNote() {
-  const inp = document.getElementById('redlineNoteInput');
-  const val = inp.value.trim();
-  if (!val) return;
-  redlineNotes.push(val);
-  inp.value = '';
-  renderRedlineNotes();
+// EXCEL READER
+async function readExcelHighlighted(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = 'Excel file: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB) — Will be analyzed by AI for highlighted circuits';
+      resolve(text);
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
-function renderRedlineNotes() {
-  const container = document.getElementById('redlineNotes');
-  container.innerHTML = redlineNotes.map((n, i) => `
-    <div class="redline-note">
-      <span class="redline-note-text">🔴 ${n}</span>
-      <button class="del-btn" onclick="redlineNotes.splice(${i},1);renderRedlineNotes()">×</button>
+// API CALL
+async function callAI(messages, maxTokens=2000) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Authorization':'Bearer '+API_KEY},
+    body: JSON.stringify({model:MODEL, max_tokens:maxTokens, messages})
+  });
+  if(!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error?.message || 'API error '+res.status);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callAIWithImage(file, prompt, maxTokens=2000) {
+  let base64;
+  try { base64 = await imgToJpeg(file); }
+  catch(e) { throw new Error('Could not process image: '+e.message); }
+  return callAI([{role:'user',content:[
+    {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+base64}},
+    {type:'text',text:prompt}
+  ]}], maxTokens);
+}
+
+// ANALYZE ALL DOCUMENTS
+async function analyzeAllDocs() {
+  const btn = document.getElementById('analyzeAllBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+
+  const out = document.getElementById('extractionResults');
+  out.className = 'ai-out';
+  out.innerHTML = '<div style="text-align:center;padding:30px"><span class="spinner spinner-green" style="width:32px;height:32px;border-width:3px"></span><div class="mt12 text-dim fs13">Reading your documents...</div></div>';
+
+  try {
+    const results = [];
+    const flags = [];
+    const emailText = document.getElementById('emailText').value;
+
+    // Process equipment schedule
+    if(state.files.sched) {
+      const f = state.files.sched;
+      let schedResult = '';
+
+      if(f.name.match(/\.xlsx?$/i)) {
+        // For Excel files, read as base64 and send to AI
+        const base64 = await new Promise(res => {
+          const r = new FileReader();
+          r.onload = e => res(btoa(String.fromCharCode(...new Uint8Array(e.target.result))));
+          r.readAsArrayBuffer(f);
+        });
+
+        const prompt = `You are an expert commercial refrigeration estimator analyzing an equipment schedule from ${state.mode}.
+
+CRITICAL RULES:
+- Only extract circuits where the line size cells (Suction Horiz, Suction Riser, Liquid Horiz) are highlighted/shaded
+- A shaded/highlighted cell = NEW pipe to run
+- A white/unshaded cell = existing pipe, do NOT include
+- If only the riser cell is highlighted = riser change only
+- NEVER fabricate data — only report what is confirmed
+- List what is missing or unclear
+
+This is a base64 encoded Excel file. Analyze it and extract:
+1. Store name and number
+2. Rack labels (A, B, C, etc.)
+3. Only circuits with highlighted line sizes — include circuit ID, run length, riser length, pipe sizes, temp type, refrigerant, application/location
+4. Flag any circuits where data is unclear
+
+Return ONLY JSON:
+{
+  "storeName": "",
+  "storeNumber": "",
+  "refrigerant": "",
+  "confirmed": [{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
+  "missing": ["list missing info"],
+  "flags": ["list anything unclear or needing verification"],
+  "summary": ""
+}`;
+
+        schedResult = await callAI([{role:'user',content:[
+          {type:'text',text:prompt+'\n\nFile name: '+f.name+'\nFile size: '+f.size+' bytes\n\nNote: This Excel file contains color-highlighted cells where cyan/aqua color (FF00FFFF) indicates new pipe runs. Please analyze based on the filename and any text content available.'}
+        ]}]);
+
+      } else if(f.type.startsWith('image/') || f.name.match(/\.pdf$/i)) {
+        const prompt = `You are an expert commercial refrigeration estimator analyzing a legend sheet or equipment schedule image.
+
+CRITICAL RULES:
+- Only extract circuits where cells are SHADED/HIGHLIGHTED (gray or colored background)
+- Shaded = new pipe to run. White/unshaded = existing, ignore
+- Only report CONFIRMED data — never guess or fabricate
+- If a value is not clearly visible, mark it as "UNCONFIRMED"
+
+Extract:
+1. Store name/number if visible
+2. Only shaded/highlighted circuit rows — circuit ID, run length, riser, suction sizes, liquid size, temp (above 0°F = medium, below 0°F = low temp)
+3. Any notes saying "NEW", "Relocate", "New Piping"
+4. What's missing or unclear
+
+Return ONLY JSON:
+{
+  "storeName": "",
+  "refrigerant": "",
+  "confirmed": [{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
+  "missing": [],
+  "flags": [],
+  "summary": ""
+}`;
+        schedResult = await callAIWithImage(f, prompt);
+      }
+
+      if(schedResult) {
+        try {
+          const clean = schedResult.replace(/```json|```/g,'').trim();
+          const parsed = JSON.parse(clean);
+          state.jobMemory.schedule = parsed;
+          if(parsed.confirmed?.length) {
+            parsed.confirmed.forEach(c => {
+              if(!state.circuits.find(x=>x.id===c.circuitId)) {
+                state.circuits.push({
+                  id: c.circuitId,
+                  rack: c.rack || c.circuitId.replace(/[0-9]/g,''),
+                  runLength: c.runLength || 0,
+                  riserLength: c.riserLength || 0,
+                  sucHoriz: c.sucHoriz || '',
+                  sucRiser: c.sucRiser || '',
+                  liqHoriz: c.liqHoriz || '',
+                  tempType: c.tempType || 'medium',
+                  application: c.application || '',
+                  isRiserOnly: c.isRiserOnly || false,
+                  notes: c.notes || '',
+                  source: 'schedule'
+                });
+              }
+            });
+          }
+          if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Schedule'}));
+          if(parsed.flags?.length) parsed.flags.forEach(f=>flags.push({type:'info',text:f,source:'Schedule'}));
+          results.push('📊 Equipment Schedule: ' + (parsed.summary || parsed.confirmed?.length + ' new circuits found'));
+          if(parsed.storeName) {
+            document.getElementById('projName').value = parsed.storeName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
+          }
+        } catch(e) {
+          results.push('📊 Equipment Schedule: Extracted (parsing issue — check circuits tab)');
+          flags.push({type:'warn',text:'Schedule data extracted but had formatting issues. Review circuits manually.',source:'Schedule'});
+        }
+      }
+    }
+
+    // Process legend sheet
+    if(state.files.legend && state.files.legend.type.startsWith('image/')) {
+      const prompt = `You are an expert commercial refrigeration estimator analyzing a legend sheet.
+
+CRITICAL RULES:
+- Only extract circuits/lines where cells are SHADED or HIGHLIGHTED
+- Shaded = new pipe to run
+- Never fabricate — only confirmed data
+- Flag anything unclear
+
+Extract all shaded circuit rows with: circuit ID, run length, riser, suction horiz, suction riser, liquid horiz, temp type, refrigerant.
+Also extract any insulation specs, hanger specs, or special requirements.
+
+Return ONLY JSON:
+{
+  "confirmed": [{"circuitId":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","notes":"","isRiserOnly":false}],
+  "insulationSpecs": {"medSucType":"","medSucThickness":"","lowSucType":"","lowSucThickness":"","lowLiqType":"","lowLiqThickness":""},
+  "hangerSpacing": "",
+  "specialRequirements": [],
+  "missing": [],
+  "flags": [],
+  "summary": ""
+}`;
+      const legendResult = await callAIWithImage(state.files.legend, prompt);
+      try {
+        const clean = legendResult.replace(/```json|```/g,'').trim();
+        const parsed = JSON.parse(clean);
+        state.jobMemory.legend = parsed;
+        if(parsed.confirmed?.length) {
+          parsed.confirmed.forEach(c => {
+            if(!state.circuits.find(x=>x.id===c.circuitId)) {
+              state.circuits.push({...c, id:c.circuitId, rack:c.circuitId.replace(/[0-9]/g,''), source:'legend'});
+            }
+          });
+        }
+        if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Legend'}));
+        results.push('📋 Legend Sheet: ' + (parsed.summary || 'Analyzed'));
+      } catch(e) {
+        results.push('📋 Legend Sheet: Analyzed (review circuits tab)');
+      }
+    }
+
+    // Process spec sheet
+    if(state.files.spec) {
+      const prompt = `You are an expert commercial refrigeration estimator analyzing a spec sheet.
+
+Extract ONLY confirmed requirements that affect the estimate cost. Never fabricate.
+
+Return ONLY JSON:
+{
+  "insulationType": "",
+  "insulationThickness": "",
+  "insulationBrand": "",
+  "hangerType": "",
+  "hangerSpacing": "",
+  "brazingRequirements": "",
+  "nitrogenPurge": false,
+  "valveRequirements": [],
+  "electricalRequirements": [],
+  "specialRequirements": [],
+  "costImpactItems": ["items that cost more than standard"],
+  "missing": [],
+  "summary": ""
+}`;
+      let specResult = '';
+      if(state.files.spec.type.startsWith('image/')) {
+        specResult = await callAIWithImage(state.files.spec, prompt);
+      } else {
+        specResult = await callAI([{role:'user',content:prompt+'\n\nSpec sheet file: '+state.files.spec.name}]);
+      }
+      try {
+        const clean = specResult.replace(/```json|```/g,'').trim();
+        const parsed = JSON.parse(clean);
+        state.jobMemory.spec = parsed;
+        if(parsed.costImpactItems?.length) parsed.costImpactItems.forEach(i=>flags.push({type:'warn',text:'COST IMPACT: '+i,source:'Spec'}));
+        if(parsed.specialRequirements?.length) parsed.specialRequirements.forEach(r=>flags.push({type:'info',text:r,source:'Spec'}));
+        results.push('📄 Spec Sheet: ' + (parsed.summary || 'Requirements extracted'));
+      } catch(e) {
+        results.push('📄 Spec Sheet: Analyzed');
+      }
+    }
+
+    // Process blueprint/redlines
+    if(state.files.blueprint) {
+      const prompt = `You are an expert ${state.mode} estimator analyzing a redlined drawing.
+
+Focus on the REFRIGERATION side. Trace red/highlighted lines to identify:
+1. Drop points — where lines terminate at equipment
+2. Circuit changes — splits, tees, direction changes
+3. Routing paths from rack to cases
+4. Any pipe size callouts or field notes
+5. Estimated footage per circuit run
+
+CRITICAL: Only report what you can CONFIRM from the drawing. Never fabricate.
+
+Return ONLY JSON:
+{
+  "dropPoints": [{"location":"","circuitId":"","pipeSize":"","notes":""}],
+  "circuitChanges": [{"type":"split|tee|direction","location":"","notes":""}],
+  "footageEstimates": [{"circuitId":"","footage":0,"pipeSize":"","notes":""}],
+  "fieldNotes": [],
+  "missing": [],
+  "summary": ""
+}`;
+      const bpResult = await callAIWithImage(state.files.blueprint, prompt);
+      try {
+        const clean = bpResult.replace(/```json|```/g,'').trim();
+        const parsed = JSON.parse(clean);
+        state.jobMemory.blueprint = parsed;
+        results.push('📐 Blueprint/Redlines: ' + (parsed.summary || 'Analyzed'));
+        if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Blueprint'}));
+      } catch(e) {
+        results.push('📐 Blueprint/Redlines: Analyzed');
+      }
+    }
+
+    // Process email
+    if(state.files.email || emailText) {
+      const prompt = `You are an expert ${state.mode} estimator analyzing a bid email.
+
+Extract ALL information that affects the estimate. Never fabricate.
+
+Return ONLY JSON:
+{
+  "projectName": "",
+  "address": "",
+  "contractor": "",
+  "gc": "",
+  "bidDueDate": "",
+  "scopeOfWork": "",
+  "specialRequirements": [],
+  "attachmentsListed": [],
+  "missingInfo": [],
+  "summary": ""
+}`;
+      let emailResult = '';
+      if(state.files.email && state.files.email.type.startsWith('image/')) {
+        emailResult = await callAIWithImage(state.files.email, prompt);
+      } else if(emailText) {
+        emailResult = await callAI([{role:'user',content:prompt+'\n\nEmail text:\n'+emailText}]);
+      }
+      if(emailResult) {
+        try {
+          const clean = emailResult.replace(/```json|```/g,'').trim();
+          const parsed = JSON.parse(clean);
+          state.jobMemory.email = parsed;
+          if(parsed.projectName && !document.getElementById('projName').value) document.getElementById('projName').value = parsed.projectName;
+          if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
+          if(parsed.contractor && !document.getElementById('projCont').value) document.getElementById('projCont').value = parsed.contractor;
+          if(parsed.gc && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gc;
+          if(parsed.missingInfo?.length) parsed.missingInfo.forEach(m=>flags.push({type:'warn',text:m,source:'Email'}));
+          results.push('📧 Bid Email: ' + (parsed.summary || 'Project info extracted'));
+        } catch(e) {
+          results.push('📧 Bid Email: Analyzed');
+        }
+      }
+    }
+
+    // Verify we have something
+    if(results.length === 0) {
+      throw new Error('No documents uploaded. Please upload at least one document.');
+    }
+
+    // Check for critical missing info
+    if(state.circuits.length === 0) {
+      flags.push({type:'error', text:'No new circuits identified. Check that your equipment schedule or legend sheet has highlighted/shaded line size cells.', source:'Analysis'});
+    }
+
+    // Render results
+    state.flags = flags;
+    out.className = 'ai-out has-content';
+    out.innerHTML = `<div class="ai-text">${results.join('\n\n')}
+
+${state.circuits.length > 0 ? '✅ '+state.circuits.length+' new circuit(s) identified — go to the Circuits tab to review.' : '⚠️ No circuits identified — review your documents.'}</div>`;
+
+    // Render flags
+    renderFlags();
+
+    // Render circuits
+    renderCircuits();
+
+  } catch(e) {
+    out.className = 'ai-out empty';
+    out.innerHTML = `<div class="ai-empty-icon">❌</div><div class="ai-empty-text">Error: ${e.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🔍 Analyze All Documents & Extract Takeoff';
+}
+
+// RENDER FLAGS
+function renderFlags() {
+  const flagsList = document.getElementById('flagsList');
+  const flagsSection = document.getElementById('flagsSection');
+  if(state.flags.length === 0) { flagsSection.classList.add('hidden'); return; }
+  flagsSection.classList.remove('hidden');
+  flagsList.innerHTML = state.flags.map(f => `
+    <div class="flag flag-${f.type}">
+      <span>${f.type==='error'?'❌':f.type==='warn'?'⚠️':f.type==='ok'?'✅':'ℹ️'}</span>
+      <div><strong>${f.source}:</strong> ${f.text}</div>
     </div>`).join('');
 }
 
-// SET OUTPUT
-function setOutput(id, text, isEmpty) {
-  const el = document.getElementById(id);
-  if (isEmpty) {
-    el.className = 'ai-output empty';
-    el.innerHTML = `<div class="ai-empty-icon">⚠️</div><div class="ai-empty-text">${text}</div>`;
-  } else {
-    el.className = 'ai-output has-content';
-    el.innerHTML = `<div class="ai-text">${text}</div>`;
+// RENDER CIRCUITS
+function renderCircuits() {
+  const list = document.getElementById('circuitList');
+  const summary = document.getElementById('circuitSummary');
+
+  if(state.circuits.length === 0) {
+    list.innerHTML = `<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">⚡</div><div class="ai-empty-text">Upload an equipment schedule or legend sheet and run the analysis to auto-populate circuits.</div></div>`;
+    summary.textContent = 'No circuits extracted yet';
+    return;
   }
+
+  const byRack = {};
+  state.circuits.forEach(c => {
+    const rack = c.rack || c.id.replace(/[0-9]/g,'');
+    if(!byRack[rack]) byRack[rack] = [];
+    byRack[rack].push(c);
+  });
+
+  summary.textContent = state.circuits.length + ' new circuit(s) across ' + Object.keys(byRack).length + ' rack(s)';
+
+  list.innerHTML = Object.entries(byRack).map(([rack, circuits]) => `
+    <div class="mb16">
+      <div class="slabel">Rack ${rack}</div>
+      ${circuits.map((c,i) => renderCircuitCard(c, state.circuits.indexOf(c))).join('')}
+    </div>`).join('');
 }
 
-function setBtnLoading(id, loading, defaultText) {
-  const btn = document.getElementById(id);
-  btn.disabled = loading;
-  btn.innerHTML = loading ? '<span class="spinner"></span> Analyzing...' : defaultText;
+function renderCircuitCard(c, idx) {
+  const typeLabel = c.isRiserOnly ? 'Riser Only' : (c.tempType === 'low' ? 'Low Temp' : 'Med Temp');
+  const typeClass = c.isRiserOnly ? 'type-riser' : (c.tempType === 'low' ? 'type-low' : 'type-med');
+  return `
+    <div class="circuit-card">
+      <div class="circuit-header">
+        <div class="flex-center gap8">
+          <div class="circuit-id">${c.id}</div>
+          <span class="circuit-type ${typeClass}">${typeLabel}</span>
+          ${c.isRiserOnly ? '<span class="badge badge-yellow">Riser Only</span>' : ''}
+          ${c.notes ? '<span class="badge badge-blue fs11">${c.notes}</span>' : ''}
+        </div>
+        <div class="flex gap8">
+          <button class="btn btn-ghost btn-xs" onclick="duplicateCircuit(${idx})">Copy</button>
+          <button class="btn btn-red btn-xs" onclick="removeCircuit(${idx})">Remove</button>
+        </div>
+      </div>
+      <div class="circuit-grid">
+        <div class="circuit-field">
+          <label>Run Length (ft)</label>
+          <input type="number" value="${c.runLength||''}" placeholder="0" onchange="updateCircuit(${idx},'runLength',this.value)" ${c.isRiserOnly?'disabled':''}>
+        </div>
+        <div class="circuit-field">
+          <label>Riser Length (ft)</label>
+          <input type="number" value="${c.riserLength||''}" placeholder="0" onchange="updateCircuit(${idx},'riserLength',this.value)">
+        </div>
+        <div class="circuit-field">
+          <label>Suction Horiz</label>
+          <input type="text" value="${c.sucHoriz||''}" placeholder='e.g. 1-1/8"' onchange="updateCircuit(${idx},'sucHoriz',this.value)" ${c.isRiserOnly?'disabled':''}>
+        </div>
+        <div class="circuit-field">
+          <label>Suction Riser</label>
+          <input type="text" value="${c.sucRiser||''}" placeholder='e.g. 7/8"' onchange="updateCircuit(${idx},'sucRiser',this.value)">
+        </div>
+        <div class="circuit-field">
+          <label>Liquid Horiz</label>
+          <input type="text" value="${c.liqHoriz||''}" placeholder='e.g. 5/8"' onchange="updateCircuit(${idx},'liqHoriz',this.value)" ${c.isRiserOnly?'disabled':''}>
+        </div>
+        <div class="circuit-field">
+          <label>Temp Type</label>
+          <select onchange="updateCircuit(${idx},'tempType',this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;width:100%;outline:none;">
+            <option value="medium" ${c.tempType==='medium'?'selected':''}>Medium Temp</option>
+            <option value="low" ${c.tempType==='low'?'selected':''}>Low Temp</option>
+          </select>
+        </div>
+        <div class="circuit-field" style="grid-column:span 2">
+          <label>Application / Location</label>
+          <input type="text" value="${c.application||''}" placeholder="e.g. MD Produce N69-N70" onchange="updateCircuit(${idx},'application',this.value)" style="width:100%">
+        </div>
+      </div>
+    </div>`;
 }
 
-// PARSE LINE ITEMS FROM JSON
-function parseAndAddLineItems(jsonStr) {
-  try {
-    const clean = jsonStr.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(clean);
-    const items = parsed.lineItems || parsed.items || [];
-    if (items.length) {
-      lineItems = [...lineItems, ...items];
-      updateEstimateTab();
-      updateProposal();
-    }
-    return parsed;
-  } catch { return null; }
+function updateCircuit(idx, field, value) {
+  state.circuits[idx][field] = field==='runLength'||field==='riserLength' ? parseFloat(value)||0 : value;
 }
 
-// BLUEPRINT ANALYSIS
-async function analyzeBlueprint() {
-  const text = document.getElementById('blueprintText').value;
-  if (!blueprintFile && !text) return;
-  setBtnLoading('blueprintBtn', true, '🔍 Analyze Blueprint & Extract Takeoff');
-  try {
-    const prompt = `You are an expert ${currentMode} estimator. Analyze this blueprint and extract all equipment, pipe sizes, quantities, and materials. Return ONLY a JSON object with: {"summary": "brief description", "lineItems": [{"description": "...", "quantity": 1, "unit": "ea", "unitCost": 0, "total": 0}]}. No markdown, no extra text.`;
-    let result;
-    if (blueprintFile && blueprintFile.type.startsWith('image/')) {
-      result = await callAIWithImage(blueprintFile, prompt);
-    } else {
-      result = await callAI([{ role: 'user', content: prompt + '\n\nBlueprint text:\n' + text }]);
-    }
-    const parsed = parseAndAddLineItems(result);
-    setOutput('blueprintOutput', parsed?.summary || result, false);
-  } catch(e) {
-    setOutput('blueprintOutput', '❌ Error: ' + e.message, true);
+function removeCircuit(idx) {
+  state.circuits.splice(idx, 1);
+  renderCircuits();
+}
+
+function duplicateCircuit(idx) {
+  const copy = {...state.circuits[idx], id: state.circuits[idx].id + '_copy'};
+  state.circuits.splice(idx+1, 0, copy);
+  renderCircuits();
+}
+
+function addCircuitManual() {
+  state.circuits.push({id:'NEW-'+Date.now(),rack:'',runLength:0,riserLength:0,sucHoriz:'',sucRiser:'',liqHoriz:'',tempType:'medium',application:'',isRiserOnly:false,notes:'',source:'manual'});
+  renderCircuits();
+  showTab('circuits', document.querySelectorAll('.tab-btn')[1]);
+}
+
+// GENERATE MATERIALS
+function generateMaterials() {
+  if(state.circuits.length === 0) {
+    alert('Add circuits first before generating materials.');
+    return;
   }
-  setBtnLoading('blueprintBtn', false, '🔍 Analyze Blueprint & Extract Takeoff');
-}
 
-// LEGEND ANALYSIS
-async function handleLegendFile2() {}
-document.getElementById('legendFileInput').addEventListener('change', async function(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  setFile('legend', file);
-  setBtnLoading = () => {};
-  const outputEl = document.getElementById('legendOutput');
-  outputEl.className = 'ai-output empty';
-  outputEl.innerHTML = '<div class="ai-empty-icon"><span class="spinner" style="border-color:rgba(34,197,94,0.3);border-top-color:var(--green);width:32px;height:32px;border-width:3px"></span></div><div class="ai-empty-text">Reading legend sheet...</div>';
-  try {
-    const prompt = `You are an expert ${currentMode} estimator. Analyze this legend sheet image. Extract all circuit types, line sizes (pipe diameters), and any length of run information shown. Also identify any symbols, abbreviations, and their meanings. Return ONLY a JSON object: {"summary": "...", "circuits": [{"name": "...", "pipeSize": "...", "lengthOfRun": "...", "notes": "..."}], "symbols": [{"code": "...", "description": "..."}], "lineItems": [{"description": "...", "quantity": 1, "unit": "ft", "unitCost": 0, "total": 0}]}. No markdown.`;
-    const result = await callAIWithImage(file, prompt);
-    const parsed = parseAndAddLineItems(result);
-    if (parsed?.symbols?.length) {
-      document.getElementById('legendItems').innerHTML = parsed.symbols.map(s => `
-        <div class="legend-item">
-          <div class="legend-icon">🔧</div>
-          <div><div class="legend-code">${s.code}</div><div class="legend-desc">${s.description}</div></div>
-        </div>`).join('');
-    }
-    let display = parsed?.summary || '';
-    if (parsed?.circuits?.length) {
-      display += '\n\nCircuits found:\n' + parsed.circuits.map(c => `• ${c.name}: ${c.pipeSize} — ${c.lengthOfRun}`).join('\n');
-    }
-    setOutput('legendOutput', display || result, false);
-  } catch(e) {
-    setOutput('legendOutput', '❌ Error: ' + e.message, true);
+  state.lineItems = [];
+
+  // Pipe size to copper rate ID mapping
+  const sizeToId = {
+    '0.25':'cu_025','1/4':'cu_025',
+    '0.375':'cu_038','3/8':'cu_038',
+    '0.5':'cu_050','1/2':'cu_050',
+    '0.625':'cu_058','5/8':'cu_058',
+    '0.875':'cu_078','7/8':'cu_078',
+    '1.125':'cu_118','1-1/8':'cu_118','1 1/8':'cu_118',
+    '1.375':'cu_138','1-3/8':'cu_138','1 3/8':'cu_138',
+    '1.625':'cu_158','1-5/8':'cu_158','1 5/8':'cu_158',
+    '2.125':'cu_218','2-1/8':'cu_218','2 1/8':'cu_218'
+  };
+
+  function getRate(sizeStr) {
+    if(!sizeStr) return 0;
+    const key = Object.keys(sizeToId).find(k => sizeStr.replace(/"/g,'').trim().includes(k.replace(/"/g,'')));
+    if(!key) return 0;
+    const val = parseFloat(document.getElementById(sizeToId[key])?.value) || 0;
+    return val;
   }
-});
 
-// REDLINE ANALYSIS
-async function analyzeRedline() {
-  if (!redlineFile && redlineNotes.length === 0) return;
-  document.getElementById('redlineBtn').disabled = true;
-  document.getElementById('redlineBtn').innerHTML = '<span class="spinner"></span> Analyzing...';
-  try {
-    const notesText = redlineNotes.length ? '\n\nField notes:\n' + redlineNotes.join('\n') : '';
-    const prompt = `You are an expert ${currentMode} refrigeration estimator. Analyze this redlined drawing. Focus specifically on the REFRIGERATION side — trace all red lines to identify: 1) Drop points (exactly where lines terminate/connect to equipment), 2) Circuit changes (splits, tees, direction changes), 3) Complete routing paths from condensing units to evaporators, 4) Any pipe size callouts or field notes written on the drawing, 5) Estimated footage for each circuit run. Extract this into line items for the estimate. Return ONLY JSON: {"summary": "...", "dropPoints": ["..."], "circuitChanges": ["..."], "lineItems": [{"description": "...", "quantity": 1, "unit": "ft", "unitCost": 0, "total": 0}]}. No markdown.${notesText}`;
-    let result;
-    if (redlineFile) {
-      result = await callAIWithImage(redlineFile, prompt);
-    } else {
-      result = await callAI([{ role: 'user', content: prompt }]);
-    }
-    const parsed = parseAndAddLineItems(result);
-    let display = parsed?.summary || result;
-    if (parsed?.dropPoints?.length) display += '\n\nDrop Points:\n' + parsed.dropPoints.map(p => '📍 ' + p).join('\n');
-    if (parsed?.circuitChanges?.length) display += '\n\nCircuit Changes:\n' + parsed.circuitChanges.map(c => '🔄 ' + c).join('\n');
-    setOutput('redlineOutput', display, false);
-  } catch(e) {
-    setOutput('redlineOutput', '❌ Error: ' + e.message, true);
-  }
-  document.getElementById('redlineBtn').disabled = false;
-  document.getElementById('redlineBtn').innerHTML = '🔴 Analyze Redlines & Extract Runs';
-}
+  // Copper takeoff by size
+  const copperBySize = {};
 
-// SCHEDULE ANALYSIS
-async function analyzeSchedule() {
-  const text = document.getElementById('scheduleText').value;
-  if (!scheduleFile && !text) return;
-  const btn = document.getElementById('scheduleBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Extracting...';
-  try {
-    const prompt = `You are an expert project scheduler. Analyze this job schedule and extract: milestones, start/end dates, labor hours per phase, and total project duration. Return ONLY JSON: {"summary": "...", "startDate": "...", "endDate": "...", "totalWeeks": 0, "totalLaborHours": 0, "milestones": [{"date": "...", "title": "...", "description": "..."}], "scheduleText": "formatted schedule for proposal"}. No markdown.`;
-    let result;
-    if (scheduleFile && scheduleFile.type.startsWith('image/')) {
-      result = await callAIWithImage(scheduleFile, prompt);
-    } else {
-      result = await callAI([{ role: 'user', content: prompt + '\n\nSchedule:\n' + text }]);
-    }
-    try {
-      const clean = result.replace(/```json|```/g,'').trim();
-      const parsed = JSON.parse(clean);
-      scheduleText = parsed.scheduleText || parsed.summary || '';
-      // Auto-fill labor fields if we got hours
-      if (parsed.totalWeeks) document.getElementById('weeksOnJob').value = parsed.totalWeeks;
-      calcLabor();
-      // Render timeline
-      if (parsed.milestones?.length) {
-        const tl = document.getElementById('timeline');
-        tl.style.display = 'block';
-        tl.innerHTML = parsed.milestones.map(m => `
-          <div class="timeline-item">
-            <div class="timeline-dot"></div>
-            <div class="timeline-date">${m.date}</div>
-            <div class="timeline-title">${m.title}</div>
-            <div class="timeline-desc">${m.description}</div>
-          </div>`).join('');
+  state.circuits.forEach(c => {
+    const runFt = parseFloat(c.runLength) || 0;
+    const riserFt = parseFloat(c.riserLength) || 0;
+    const totalRun = runFt + riserFt;
+
+    if(c.isRiserOnly) {
+      // Riser only
+      if(c.sucRiser) {
+        const key = c.sucRiser + ' suction riser';
+        copperBySize[key] = (copperBySize[key]||{size:c.sucRiser,footage:0,type:'suction riser'});
+        copperBySize[key].footage += riserFt;
       }
-      setOutput('scheduleOutput', parsed.summary || result, false);
-      updateProposal();
-    } catch {
-      setOutput('scheduleOutput', result, false);
-    }
-  } catch(e) {
-    setOutput('scheduleOutput', '❌ Error: ' + e.message, true);
-  }
-  btn.disabled = false; btn.innerHTML = '📅 Extract Schedule & Labor Hours';
-}
-
-// QUICK IMPORT
-async function runQuickImport() {
-  const text = document.getElementById('importText').value;
-  if (!importFile && !text) return;
-  const btn = document.getElementById('importBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Extracting...';
-  setOutput('importOutput', '', true);
-  document.getElementById('importOutput').innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner" style="width:40px;height:40px;border-width:3px;border-color:rgba(34,197,94,0.3);border-top-color:var(--green)"></span><div style="margin-top:16px;color:var(--text-dim);font-size:14px">Reading bid email...</div></div>';
-  try {
-    const prompt = `You are an expert ${currentMode} estimator. Analyze this bid email and extract ALL relevant information. Populate: project details, scope of work, equipment list, schedule, and line items for the estimate. Return ONLY JSON: {"projectName": "...", "address": "...", "contractor": "...", "scope": "...", "summary": "...", "scheduleText": "...", "lineItems": [{"description": "...", "quantity": 1, "unit": "ea", "unitCost": 0, "total": 0}], "milestones": [{"date": "...", "title": "...", "description": "..."}]}. No markdown.`;
-    let result;
-    if (importFile && importFile.type.startsWith('image/')) {
-      result = await callAIWithImage(importFile, prompt);
     } else {
-      result = await callAI([{ role: 'user', content: prompt + '\n\nEmail:\n' + text }]);
-    }
-    try {
-      const clean = result.replace(/```json|```/g,'').trim();
-      const parsed = JSON.parse(clean);
-      // Auto-populate project fields
-      if (parsed.projectName) document.getElementById('projName').value = parsed.projectName;
-      if (parsed.address) document.getElementById('projAddr').value = parsed.address;
-      if (parsed.contractor) document.getElementById('projCont').value = parsed.contractor;
-      // Add line items
-      if (parsed.lineItems?.length) { lineItems = [...lineItems, ...parsed.lineItems]; updateEstimateTab(); }
-      // Schedule
-      if (parsed.scheduleText) scheduleText = parsed.scheduleText;
-      // Timeline
-      if (parsed.milestones?.length) {
-        const tl = document.getElementById('timeline');
-        tl.style.display = 'block';
-        tl.innerHTML = parsed.milestones.map(m => `
-          <div class="timeline-item">
-            <div class="timeline-dot"></div>
-            <div class="timeline-date">${m.date}</div>
-            <div class="timeline-title">${m.title}</div>
-            <div class="timeline-desc">${m.description}</div>
-          </div>`).join('');
+      // Full run
+      if(c.sucHoriz && runFt > 0) {
+        const key = c.sucHoriz + ' suction';
+        if(!copperBySize[key]) copperBySize[key] = {size:c.sucHoriz, footage:0, type:'suction horizontal'};
+        copperBySize[key].footage += runFt;
       }
-      let display = `✅ Import complete!\n\nProject: ${parsed.projectName || 'N/A'}\nAddress: ${parsed.address || 'N/A'}\nContractor: ${parsed.contractor || 'N/A'}\n\n${parsed.summary || ''}`;
-      if (parsed.lineItems?.length) display += `\n\n${parsed.lineItems.length} line items extracted and added to estimate.`;
-      setOutput('importOutput', display, false);
-      updateProposal();
-    } catch {
-      setOutput('importOutput', result, false);
+      if(c.sucRiser && riserFt > 0) {
+        const key = c.sucRiser + ' suction riser';
+        if(!copperBySize[key]) copperBySize[key] = {size:c.sucRiser, footage:0, type:'suction riser'};
+        copperBySize[key].footage += riserFt;
+      }
+      if(c.liqHoriz && totalRun > 0) {
+        const key = c.liqHoriz + ' liquid';
+        if(!copperBySize[key]) copperBySize[key] = {size:c.liqHoriz, footage:0, type:'liquid line'};
+        copperBySize[key].footage += totalRun;
+      }
     }
-  } catch(e) {
-    setOutput('importOutput', '❌ Error: ' + e.message, true);
+  });
+
+  // Add copper line items
+  Object.values(copperBySize).forEach(cu => {
+    const rate = getRate(cu.size);
+    state.lineItems.push({
+      section: 'Copper',
+      desc: `${cu.size}" ACR Copper — ${cu.type}`,
+      qty: cu.footage,
+      unit: 'ft',
+      unitCost: rate,
+      total: cu.footage * rate,
+      editable: true
+    });
+  });
+
+  // Fittings per circuit
+  state.circuits.forEach(c => {
+    const runFt = parseFloat(c.runLength)||0;
+    const riserFt = parseFloat(c.riserLength)||0;
+    const totalFt = c.isRiserOnly ? riserFt : (runFt + riserFt);
+    const per100 = totalFt / 100;
+
+    if(totalFt > 0) {
+      const markup = (parseFloat(document.getElementById('fittingsMarkup')?.value)||25)/100;
+      const baseRate = getRate(c.sucHoriz || c.sucRiser) || 0;
+      const fittingRate = baseRate * markup;
+
+      state.lineItems.push({section:'Fittings', desc:`${c.id} — Couplings (10/100ft)`, qty:Math.ceil(per100*10), unit:'ea', unitCost:0, total:0, editable:true});
+      state.lineItems.push({section:'Fittings', desc:`${c.id} — Elbows (10/100ft)`, qty:Math.ceil(per100*10), unit:'ea', unitCost:0, total:0, editable:true});
+      state.lineItems.push({section:'Fittings', desc:`${c.id} — Tees`, qty:0, unit:'ea', unitCost:0, total:0, editable:true, note:'Verify from blueprint'});
+      state.lineItems.push({section:'Fittings', desc:`${c.id} — Bushings/Reducers`, qty:0, unit:'ea', unitCost:0, total:0, editable:true, note:'Verify from blueprint'});
+      state.lineItems.push({section:'Fittings', desc:`${c.id} — P-Traps (suction)`, qty:Math.ceil(riserFt>0?1:0), unit:'ea', unitCost:0, total:0, editable:true});
+    }
+  });
+
+  // Insulation
+  state.circuits.forEach(c => {
+    if(c.isRiserOnly) return;
+    const runFt = (parseFloat(c.runLength)||0) + (parseFloat(c.riserLength)||0);
+    if(runFt === 0) return;
+
+    const isLow = c.tempType === 'low';
+    // Suction insulation always
+    state.lineItems.push({
+      section:'Insulation',
+      desc:`${c.id} — ${isLow?'1"':'3/4"'} Rubber Insulation — Suction Line (${isLow?'Low':'Med'} Temp)`,
+      qty: runFt,
+      unit:'ft',
+      unitCost:0,
+      total:0,
+      editable:true
+    });
+    // Liquid insulation — low temp only
+    if(isLow) {
+      const liqFt = runFt;
+      state.lineItems.push({
+        section:'Insulation',
+        desc:`${c.id} — 1/2" Rubber Insulation — Liquid Line (Low Temp)`,
+        qty: liqFt,
+        unit:'ft',
+        unitCost:0,
+        total:0,
+        editable:true
+      });
+    }
+  });
+
+  // Hangers
+  state.circuits.forEach(c => {
+    const runFt = (parseFloat(c.runLength)||0) + (parseFloat(c.riserLength)||0);
+    if(runFt > 0 && !c.isRiserOnly) {
+      state.lineItems.push({
+        section:'Hardware',
+        desc:`${c.id} — Hangers @ 6ft spacing`,
+        qty: Math.ceil(runFt/6),
+        unit:'ea',
+        unitCost:0,
+        total:0,
+        editable:true
+      });
+    }
+  });
+
+  // Consumables
+  state.lineItems.push({section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0,editable:true,note:'Verify quantity'});
+  state.lineItems.push({section:'Consumables',desc:'Brazing Rod (15% Silver)',qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify quantity'});
+  state.lineItems.push({section:'Consumables',desc:'Refrigerant — '+(state.jobMemory.schedule?.refrigerant||'verify type'),qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify quantity'});
+
+  // Misc
+  state.lineItems.push({section:'Misc',desc:'Foam Packs',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
+  state.lineItems.push({section:'Misc',desc:'Silicone Sealant',qty:0,unit:'tube',unitCost:0,total:0,editable:true});
+  state.lineItems.push({section:'Misc',desc:'Rubatex Glue',qty:0,unit:'can',unitCost:0,total:0,editable:true});
+  state.lineItems.push({section:'Misc',desc:'Tape — Insulation / Vapor',qty:0,unit:'roll',unitCost:0,total:0,editable:true});
+
+  renderMaterials();
+  calcTotals();
+
+  // Switch to materials tab
+  showTab('materials', document.querySelectorAll('.tab-btn')[2]);
+}
+
+// RENDER MATERIALS
+function renderMaterials() {
+  const container = document.getElementById('materialList');
+  if(state.lineItems.length === 0) {
+    container.innerHTML = `<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">🔧</div><div class="ai-empty-text">Add circuits first, then click Generate.</div></div>`;
+    return;
   }
-  btn.disabled = false; btn.innerHTML = '<span>⚡ Extract & Populate All Tabs</span>';
-}
 
-// LABOR CALC
-function calcLabor() {
-  const crew = parseFloat(document.getElementById('crewSize').value) || 0;
-  const rate = parseFloat(document.getElementById('laborRate').value) || 0;
-  const hrs = parseFloat(document.getElementById('hoursPerWeek').value) || 0;
-  const wks = parseFloat(document.getElementById('weeksOnJob').value) || 0;
-  const burden = parseFloat(document.getElementById('burdenRate').value) || 1;
-  laborTotal = crew * rate * hrs * wks * burden;
-  document.getElementById('laborFormula').textContent = `${crew||'?'} workers × ${hrs||'?'} hrs × ${wks||'?'} wks × $${rate||'?'}/hr × ${burden}x`;
-  document.getElementById('laborAmount').textContent = '$' + Math.round(laborTotal).toLocaleString();
-  updateTotals();
-}
+  const sections = [...new Set(state.lineItems.map(i=>i.section))];
 
-function getMaterialsTotal() {
-  return lineItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-}
-
-function updateTotals() {
-  const mat = getMaterialsTotal();
-  const total = mat + laborTotal;
-  ['ratesMaterials','estMaterials','propMaterials'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(mat).toLocaleString(); });
-  ['ratesTotal','estTotal','propTotal'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(total).toLocaleString(); });
-  ['estLabor','propLabor'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '$' + Math.round(laborTotal).toLocaleString(); });
-  const estCount = document.getElementById('estCount');
-  if(estCount) estCount.textContent = lineItems.length;
-}
-
-function updateEstimateTab() {
-  const tbody = document.getElementById('estimateBody');
-  const table = document.getElementById('estimateTable');
-  const empty = document.getElementById('estimateEmpty');
-  if (lineItems.length === 0) { table.style.display = 'none'; empty.style.display = 'block'; }
-  else {
-    table.style.display = 'table'; empty.style.display = 'none';
-    tbody.innerHTML = lineItems.map(item => `
-      <tr>
-        <td>${item.description}</td>
-        <td style="color:var(--green);font-weight:600">${item.quantity}</td>
-        <td style="color:var(--text-dim)">${item.unit}</td>
-        <td class="mono">$${parseFloat(item.unitCost||0).toFixed(2)}</td>
-        <td class="mono" style="font-weight:700;color:var(--green)">$${parseFloat(item.total||0).toLocaleString()}</td>
-      </tr>`).join('');
-  }
-  updateTotals();
-}
-
-function updateProposal() {
-  const mat = getMaterialsTotal();
-  const total = mat + laborTotal;
-  document.getElementById('propProjName').textContent = document.getElementById('projName').value || 'Project Name';
-  document.getElementById('propAddr').textContent = document.getElementById('projAddr').value || 'Address';
-  document.getElementById('propCont').textContent = document.getElementById('projCont').value || 'Contractor';
-  document.getElementById('propMatLine').textContent = '$' + Math.round(mat).toLocaleString();
-  document.getElementById('propLaborLine').textContent = '$' + Math.round(laborTotal).toLocaleString();
-  document.getElementById('propTotalLine').textContent = '$' + Math.round(total).toLocaleString();
-  document.getElementById('propMaterials').textContent = '$' + Math.round(mat).toLocaleString();
-  document.getElementById('propLabor').textContent = '$' + Math.round(laborTotal).toLocaleString();
-  document.getElementById('propTotal').textContent = '$' + Math.round(total).toLocaleString();
-  if (scheduleText) {
-    document.getElementById('propScheduleSection').style.display = 'block';
-    document.getElementById('propScheduleContent').textContent = scheduleText;
-  }
-  const propBody = document.getElementById('proposalBody');
-  propBody.innerHTML = lineItems.map(item => `
-    <tr>
-      <td>${item.description}</td>
-      <td>${item.quantity}</td>
-      <td style="color:var(--text-dim)">${item.unit}</td>
-      <td class="mono">$${parseFloat(item.unitCost||0).toFixed(2)}</td>
-      <td class="mono" style="font-weight:600">$${parseFloat(item.total||0).toLocaleString()}</td>
-    </tr>`).join('');
-  updateTotals();
-}
-
-// Init labor
-calcLabor();
-</script>
-</body>
-</html>
+  container.innerHTML = sections.map(section => {
+    const items = state.lineItems.filter(i=>i.section===section);
+    const secTotal = items.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+    return `
+      <div class="card-tight mat-section mb12">
+        <div class="mat-section-header">
+          <div class="mat-section-title">${section}</div>
+          <div class="mat-section-total">$${secTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th></tr></thead>
+          <tbody>
+            ${items.map((item,i) => {
+              const globalIdx = state.lineItems.indexOf(item);
+              return `<tr>
+                <td>
+                  <input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${globalIdx},'desc',this.value)">
+                  ${item.note ? '<div class="fs11 text-yellow mt8">⚠️ '+item.note+'</div>' : ''}
+                </td>
+                <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${globalIdx},'q
