@@ -806,7 +806,7 @@ Return ONLY JSON:
     }
 
     // Process legend sheet
-    if(state.files.legend && state.files.legend.type.startsWith('image/')) {
+    if(state.files.legend) {
       const prompt = `You are an expert commercial refrigeration estimator analyzing a legend sheet.
 
 CRITICAL RULES:
@@ -828,7 +828,13 @@ Return ONLY JSON:
   "flags": [],
   "summary": ""
 }`;
-      const legendResult = await callAIWithImage(state.files.legend, prompt);
+      const legendFile = state.files.legend;
+      let legendResult;
+      if(legendFile.type.startsWith("image/") || legendFile.name.match(/\.pdf$/i)) {
+        legendResult = await callAIWithImage(legendFile, prompt);
+      } else {
+        legendResult = await callAI([{role:"user",content:prompt+"\n\nFile: "+legendFile.name}]);
+      }
       try {
         const clean = legendResult.replace(/```json|```/g,'').trim();
         const parsed = JSON.parse(clean);
@@ -870,7 +876,7 @@ Return ONLY JSON:
   "summary": ""
 }`;
       let specResult = '';
-      if(state.files.spec.type.startsWith('image/')) {
+      if(state.files.spec.type.startsWith('image/') || state.files.spec.name.match(/\.pdf$/i)) {
         specResult = await callAIWithImage(state.files.spec, prompt);
       } else {
         specResult = await callAI([{role:'user',content:prompt+'\n\nSpec sheet file: '+state.files.spec.name}]);
@@ -941,7 +947,7 @@ Return ONLY JSON:
   "summary": ""
 }`;
       let emailResult = '';
-      if(state.files.email && state.files.email.type.startsWith('image/')) {
+      if(state.files.email && (state.files.email.type.startsWith('image/') || state.files.email.name.match(/\.pdf$/i))) {
         emailResult = await callAIWithImage(state.files.email, prompt);
       } else if(emailText) {
         emailResult = await callAI([{role:'user',content:prompt+'\n\nEmail text:\n'+emailText}]);
