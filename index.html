@@ -627,18 +627,21 @@ function handleDrop(e, type) {
 }
 
 function handleFile(type, e) {
-  const f = e.target.files?.[0];
+  const files = e.target.files;
+  if(!files || files.length === 0) return;
+  const f = files[0];
   if(f) processFile(type, f);
 }
 
 function processFile(type, file) {
+  if(!file) return;
   state.files[type] = file;
-  const zoneId = {sched:'schedZone',legend:'legendZone',spec:'specZone',blueprint:'blueprintZone',email:'emailZone'}[type];
-  const titleId = {sched:'schedZoneTitle',legend:'legendZoneTitle',spec:'specZoneTitle',blueprint:'blueprintZoneTitle',email:'emailZoneTitle'}[type];
-  if(zoneId) {
-    document.getElementById(zoneId).classList.add('done');
-    document.getElementById(titleId).textContent = '✅ ' + file.name;
-  }
+  const zoneMap = {sched:"schedZone",legend:"legendZone",spec:"specZone",blueprint:"blueprintZone",email:"emailZone"};
+  const titleMap = {sched:"schedZoneTitle",legend:"legendZoneTitle",spec:"specZoneTitle",blueprint:"blueprintZoneTitle",email:"emailZoneTitle"};
+  const zoneId = zoneMap[type];
+  const titleId = titleMap[type];
+  if(zoneId) { const el = document.getElementById(zoneId); if(el) el.classList.add("done"); }
+  if(titleId) { const el = document.getElementById(titleId); if(el) el.textContent = "✅ " + (file.name||"Selected file"); }
 }
 
 // EXCEL READER
@@ -1300,4 +1303,172 @@ function renderMaterials() {
                   <input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${globalIdx},'desc',this.value)">
                   ${item.note ? '<div class="fs11 text-yellow mt8">⚠️ '+item.note+'</div>' : ''}
                 </td>
-                <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${globalIdx},'q
+                <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${globalIdx},'qty',this.value)"></td>
+                <td class="text-dim">${item.unit}</td>
+                <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" placeholder="0.00" onchange="updateLineItem(${globalIdx},'unitCost',this.value)"></td>
+                <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+                <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${globalIdx})">×</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }).join('');
+}
+
+function updateLineItem(idx, field, value) {
+  if(!state.lineItems[idx]) return;
+  state.lineItems[idx][field] = (field==='qty'||field==='unitCost') ? parseFloat(value)||0 : value;
+  if(field==='qty'||field==='unitCost') {
+    state.lineItems[idx].total = (state.lineItems[idx].qty||0) * (state.lineItems[idx].unitCost||0);
+  }
+  renderMaterials();
+  calcTotals();
+}
+
+function removeLineItem(idx) {
+  state.lineItems.splice(idx,1);
+  renderMaterials();
+  calcTotals();
+}
+
+function addLineItem() {
+  state.lineItems.push({section:'Custom',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
+  renderMaterials();
+  renderEstimate();
+}
+
+function addMiscItem() {
+  state.lineItems.push({section:'Misc',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
+  renderMaterials();
+}
+
+function calcLabor() {
+  const crew = parseFloat(document.getElementById('crewSize')?.value)||0;
+  const rate = parseFloat(document.getElementById('laborRate')?.value)||0;
+  const hrs = parseFloat(document.getElementById('hoursPerWeek')?.value)||0;
+  const wks = parseFloat(document.getElementById('weeksOnJob')?.value)||0;
+  const burden = parseFloat(document.getElementById('burdenRate')?.value)||1;
+  const travel = parseFloat(document.getElementById('travelTime')?.value)||0;
+  const rooftop = parseFloat(document.getElementById('multRooftop')?.value)||1;
+  const retrofit = parseFloat(document.getElementById('multRetrofit')?.value)||1;
+  const nights = parseFloat(document.getElementById('multNights')?.value)||1;
+  const travelCost = crew * travel * rate * (wks*5) * burden;
+  state.laborTotal = crew * rate * hrs * wks * burden * rooftop * retrofit * nights + travelCost;
+  const el = document.getElementById('laborAmount');
+  const formula = document.getElementById('laborFormula');
+  if(el) el.textContent = '$'+Math.round(state.laborTotal).toLocaleString();
+  if(formula) formula.textContent = `${crew||'?'} × ${hrs||'?'}hrs × ${wks||'?'}wks × $${rate||'?'}/hr × ${burden}×`;
+  calcTotals();
+}
+
+function calcTotals() {
+  state.materialsTotal = state.lineItems.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+  const total = state.materialsTotal + (state.laborTotal||0);
+  const fmt = v=>'$'+Math.round(v).toLocaleString();
+  ['estMat','ratesMat','propMat'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(state.materialsTotal);});
+  ['estLabor','propLabor'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(state.laborTotal||0);});
+  ['estTotal','ratesTotal','propTotal'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(total);});
+  const ec=document.getElementById('estCount'); if(ec) ec.textContent=state.lineItems.length;
+}
+
+function renderEstimate() {
+  const tbody = document.getElementById('estimateBody');
+  const table = document.getElementById('estimateTable');
+  const empty = document.getElementById('estimateEmpty');
+  if(!tbody) return;
+  if(state.lineItems.length===0){table.classList.add('hidden');empty.style.display='block';return;}
+  table.classList.remove('hidden');empty.style.display='none';
+  tbody.innerHTML = state.lineItems.map((item,idx)=>`
+    <tr>
+      <td><input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${idx},'desc',this.value)"></td>
+      <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${idx},'qty',this.value)"></td>
+      <td class="text-dim">${item.unit}</td>
+      <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" onchange="updateLineItem(${idx},'unitCost',this.value)"></td>
+      <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+      <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${idx});renderEstimate()">×</button></td>
+    </tr>`).join('');
+  calcTotals();
+}
+
+function updateProposal() {
+  const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  set('propProjName',document.getElementById('projName')?.value||'Project Name');
+  set('propAddr',document.getElementById('projAddr')?.value||'');
+  set('propGC',document.getElementById('projGC')?.value?'GC: '+document.getElementById('projGC').value:'');
+  set('propCont',document.getElementById('projCont')?.value||'');
+  const mat=state.materialsTotal||0, labor=state.laborTotal||0, total=mat+labor;
+  const fmt=v=>'$'+Math.round(v).toLocaleString();
+  set('propMatLine',fmt(mat)); set('propLaborLine',fmt(labor)); set('propTotalLine',fmt(total));
+  set('propMat',fmt(mat)); set('propLabor',fmt(labor)); set('propTotal',fmt(total));
+  const propCircuits=document.getElementById('propCircuitsList');
+  const propCircSection=document.getElementById('propCircuitsSection');
+  if(state.circuits.length>0&&propCircSection&&propCircuits){
+    propCircSection.classList.remove('hidden');
+    propCircuits.innerHTML=state.circuits.map(c=>`${c.id}: ${c.isRiserOnly?'Riser only — '+c.sucRiser:c.runLength+'ft — Suc: '+c.sucHoriz+' / Liq: '+c.liqHoriz} — ${c.application||''}`).join('<br>');
+  }
+  const propFlags=document.getElementById('propFlagsSection');
+  const propFlagsList=document.getElementById('propFlagsList');
+  const critFlags=state.flags.filter(f=>f.type==='error'||f.type==='warn');
+  if(critFlags.length>0&&propFlags&&propFlagsList){
+    propFlags.classList.remove('hidden');
+    propFlagsList.innerHTML=critFlags.map(f=>`<div class="flag flag-${f.type}"><span>${f.type==='error'?'❌':'⚠️'}</span><div>${f.text}</div></div>`).join('');
+  }
+  const propBody=document.getElementById('proposalBody');
+  if(propBody){
+    propBody.innerHTML=state.lineItems.map(item=>`
+      <tr><td>${item.desc}</td><td>${item.qty||0}</td><td class="text-dim">${item.unit}</td>
+      <td class="mono">$${(parseFloat(item.unitCost)||0).toFixed(2)}</td>
+      <td class="mono fw700">$${(parseFloat(item.total)||0).toLocaleString()}</td></tr>`).join('');
+  }
+}
+
+// MECHBOT
+let mechbotOpen = false;
+
+function toggleMechBot() {
+  mechbotOpen = !mechbotOpen;
+  const panel = document.getElementById('mechbotPanel');
+  if(panel) {
+    if(mechbotOpen) panel.classList.remove('hidden');
+    else panel.classList.add('hidden');
+  }
+}
+
+async function sendMechBot() {
+  const input = document.getElementById('mechbotInput');
+  const messages = document.getElementById('mechbotMessages');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+  messages.innerHTML += `<div class="msg msg-user">${text}</div>`;
+  messages.scrollTop = messages.scrollHeight;
+  const loadId = 'load-'+Date.now();
+  messages.innerHTML += `<div class="msg msg-bot" id="${loadId}"><span class="spinner spinner-green"></span></div>`;
+  messages.scrollTop = messages.scrollHeight;
+  try {
+    const jobContext = `
+Mode: ${state.mode}
+Project: ${document.getElementById('projName')?.value||'Unknown'}
+Circuits: ${JSON.stringify(state.circuits.map(c=>({id:c.id,rack:c.rack,run:c.runLength+'ft',riser:c.riserLength+'ft',sucHoriz:c.sucHoriz,sucRiser:c.sucRiser,liqHoriz:c.liqHoriz,temp:c.tempType,riserOnly:c.isRiserOnly,app:c.application})))}
+Line items: ${state.lineItems.length}, Materials: $${Math.round(state.materialsTotal).toLocaleString()}, Labor: $${Math.round(state.laborTotal||0).toLocaleString()}
+Schedule data: ${state.jobMemory.schedule?JSON.stringify(state.jobMemory.schedule):'Not uploaded'}
+Flags: ${JSON.stringify(state.flags)}`;
+    const response = await callAI([
+      {role:'system',content:`You are MechBot, an expert commercial refrigeration and HVAC estimating assistant. Answer questions accurately and concisely based on the job data. Never fabricate.\n\nJob data:\n${jobContext}`},
+      {role:'user',content:text}
+    ],800);
+    document.getElementById(loadId).textContent = response;
+  } catch(e) {
+    document.getElementById(loadId).textContent = '❌ Error: '+e.message;
+  }
+  messages.scrollTop = messages.scrollHeight;
+}
+
+document.getElementById('mechbotInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')sendMechBot();});
+
+calcLabor();
+calcTotals();
+</script>
+</body>
+</html>
