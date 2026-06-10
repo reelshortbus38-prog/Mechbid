@@ -550,7 +550,7 @@ select.inp{cursor:pointer;}
 <script>
 const API_KEY = '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';
 const API_URL = '/api/claude';
-const MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+const MODEL = 'mistralai/mistral-7b-instruct:free';
 
 // JOB STATE
 let state = {
@@ -744,19 +744,23 @@ Return ONLY JSON:
         ]}]);
 
       } else if(f.type.startsWith('image/') || f.name.match(/\.pdf$/i)) {
-        const prompt = `You are an expert commercial refrigeration estimator analyzing a legend sheet or equipment schedule image.
+        const prompt = `You are an expert commercial refrigeration estimator analyzing a refrigeration legend sheet or equipment schedule.
 
-CRITICAL RULES:
-- Only extract circuits where cells are SHADED/HIGHLIGHTED (gray or colored background)
-- Shaded = new pipe to run. White/unshaded = existing, ignore
-- Only report CONFIRMED data — never guess or fabricate
-- If a value is not clearly visible, mark it as "UNCONFIRMED"
+This is a table showing refrigeration circuits. Each row is a circuit. The columns on the right side show: Run Length, Suction Horizontal pipe size, Suction Riser pipe size, and Liquid Horizontal pipe size.
 
-Extract:
-1. Store name/number if visible
-2. Only shaded/highlighted circuit rows — circuit ID, run length, riser, suction sizes, liquid size, temp (above 0°F = medium, below 0°F = low temp)
-3. Any notes saying "NEW", "Relocate", "New Piping"
-4. What's missing or unclear
+YOUR JOB: Find which circuits have NEW pipe to run.
+
+HOW TO IDENTIFY NEW CIRCUITS:
+- Look for rows where the Run Length column AND pipe size columns have values filled in
+- Rows that are shaded gray, highlighted, or have a darker background = new work
+- Rows with text like "NEW", "New Piping Line", "Relocate" = new work  
+- Rows where the run length and pipe sizes are filled in but other rows are blank = new work
+- Empty run length or blank pipe size cells = existing pipe, skip it
+- If you cannot detect shading clearly, extract ALL rows that have a run length value filled in
+
+BE GENEROUS — it is better to include a circuit than to miss it. The contractor will verify.
+
+Extract for each new circuit: circuit ID (like C5, A7, E14), run length in feet, riser length in feet, suction horizontal size, suction riser size, liquid horizontal size, whether it is above 0F (medium temp) or below 0F (low temp).
 
 Return ONLY JSON:
 {
@@ -858,21 +862,36 @@ Return ONLY JSON:
 
     // Process spec sheet
     if(state.files.spec) {
-      const prompt = `You are an expert commercial refrigeration estimator analyzing a spec sheet.
+      const prompt = `You are an expert commercial refrigeration estimator analyzing a job schedule, spec sheet, or scope document.
 
-Extract ONLY confirmed requirements that affect the estimate cost. Never fabricate.
+READ ALL TEXT carefully. Extract everything relevant to the Refrigeration Contractor (RC).
+
+Look specifically for:
+- Any line mentioning "RC", "Refrigeration Contractor", "refrigeration", "ref contractor"
+- Night work or after-hours requirements
+- Work sequence and phasing (what week, what day)
+- Pipe run requirements
+- Special conditions or restrictions
+- Dates and milestones affecting refrigeration work
+- Insulation specs, hanger specs, brazing requirements
+- Any cost impact items (special materials, overtime, etc.)
+- Electrical requirements for refrigeration
+- Inspection or testing requirements
 
 Return ONLY JSON:
 {
+  "rcNotes": ["every note or requirement specifically for the refrigeration contractor"],
+  "nightWorkRequired": false,
+  "nightWorkDetails": "",
+  "workSequence": ["phased work items in order"],
+  "startDate": "",
+  "endDate": "",
   "insulationType": "",
   "insulationThickness": "",
-  "insulationBrand": "",
   "hangerType": "",
   "hangerSpacing": "",
   "brazingRequirements": "",
   "nitrogenPurge": false,
-  "valveRequirements": [],
-  "electricalRequirements": [],
   "specialRequirements": [],
   "costImpactItems": ["items that cost more than standard"],
   "missing": [],
@@ -888,11 +907,16 @@ Return ONLY JSON:
         const clean = specResult.replace(/```json|```/g,'').trim();
         const parsed = JSON.parse(clean);
         state.jobMemory.spec = parsed;
+        if(parsed.rcNotes?.length) parsed.rcNotes.forEach(n=>flags.push({type:'info',text:n,source:'RC Requirements'}));
+        if(parsed.nightWorkRequired) flags.push({type:'warn',text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails,source:'Spec'});
         if(parsed.costImpactItems?.length) parsed.costImpactItems.forEach(i=>flags.push({type:'warn',text:'COST IMPACT: '+i,source:'Spec'}));
         if(parsed.specialRequirements?.length) parsed.specialRequirements.forEach(r=>flags.push({type:'info',text:r,source:'Spec'}));
-        results.push('📄 Spec Sheet: ' + (parsed.summary || 'Requirements extracted'));
+        if(parsed.workSequence?.length) parsed.workSequence.forEach(w=>flags.push({type:'info',text:w,source:'Work Sequence'}));
+        let specSummary = parsed.summary || 'Requirements extracted';
+        if(parsed.rcNotes?.length) specSummary += ' — ' + parsed.rcNotes.length + ' RC requirements found';
+        results.push('📄 Spec/Schedule: ' + specSummary);
       } catch(e) {
-        results.push('📄 Spec Sheet: Analyzed');
+        results.push('📄 Spec/Schedule: ' + specResult.slice(0,200));
       }
     }
 
