@@ -744,30 +744,28 @@ Return ONLY JSON:
         ]}]);
 
       } else if(f.type.startsWith('image/') || f.name.match(/\.pdf$/i)) {
-        const prompt = `You are an expert commercial refrigeration estimator reading a Heatcraft, Kysor Warren, Hussmann, Hill Phoenix, or Tyler refrigeration legend sheet.
+        const prompt = `You are a commercial refrigeration estimator. You are reading a refrigeration legend sheet image.
 
-This document is a table of refrigeration circuits. Read ALL text carefully.
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-STEP 1 — IDENTIFY THE RACK: Look for "Rack A", "Rack B", "Rack C" etc at the top.
+1. First, find the rack letter at the top of the document (Rack A, Rack B, Rack C, etc). ALL circuit IDs on this sheet will start with that letter. If it says "Rack A" then circuits are A1, A2, A3, etc. NEVER invent circuit IDs that start with a different letter.
 
-STEP 2 — READ EVERY CIRCUIT ROW: Each row has a Circuit ID (like A1, A2, B3, C5), Size, Model, Application, Load, Evap Temp, and on the far right: Run Length, Suction Horiz size, Suction Riser size, Liquid Horiz size.
+2. Look at the far RIGHT side of the table. There are columns labeled: Run Length, Suction Horiz, Suction Riser, Liquid Horiz. These contain the pipe sizes you need.
 
-STEP 3 — IDENTIFY NEW CIRCUITS using these rules in order of priority:
-1. Application column contains "NEW", "New Piping", "Relocate", "Revised" = DEFINITELY NEW
-2. Row is highlighted yellow, cyan, green, or any color = NEW
-3. Row is shaded gray = NEW  
-4. Revision notes at top mention this circuit = NEW
-5. Run length has a value AND pipe sizes have values = likely new, include it
+3. Read each row from LEFT to RIGHT. The leftmost column is the Circuit ID. Copy it EXACTLY as written.
 
-STEP 4 — FOR RISER-ONLY CHANGES: If only the Suction Riser column has a value but Run Length is blank or 0 = riser change only.
+4. A circuit is NEW work if ANY of these are true:
+   - The word "NEW" appears anywhere in that row
+   - The row background is yellow, green, cyan, or any non-white color
+   - The application description says "Relocate" or "Revised"
 
-STEP 5 — READ PIPE SIZES CAREFULLY: Sizes are fractions like 1-3/8, 7/8, 5/8, 1-1/8, 1-5/8. Read them exactly as written.
+5. ONLY report circuits you can actually SEE and READ in the image. Do NOT make up or estimate circuit IDs or pipe sizes. If you cannot read a value clearly, write "UNCONFIRMED".
 
-STEP 6 — TEMPERATURE TYPE: Evap temp above 0°F = medium temp. Evap temp below 0°F = low temp.
+6. Pipe sizes look like: 1-3/8, 7/8, 5/8, 1-1/8, 1-5/8, 1/2, 3/4. Copy them EXACTLY.
 
-CRITICAL: Read the actual text in each cell. Do not guess. If you can see the word NEW in a row, that circuit is new work regardless of color.
+7. Temperature type: if Evap °F column shows positive number = medium temp. Negative number = low temp.
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON with no markdown backticks:
 {
   "storeName": "",
   "storeNumber": "",
