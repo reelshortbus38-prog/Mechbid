@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+const ExcelJS = require('exceljs');
 
 const CYAN = 'FF00FFFF';
 const YELLOW = 'FFFFFF00';
