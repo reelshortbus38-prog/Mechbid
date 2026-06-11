@@ -266,83 +266,50 @@ select.inp{cursor:pointer;}
 
 <!-- DOCUMENTS TAB -->
 <div id="tab-docs">
-  <div class="grid2">
-    <div>
-      <!-- Equipment Schedule -->
-      <div class="slabel">Equipment Schedule</div>
-      <div class="upload-zone" id="schedZone" ondrop="handleDrop(event,'sched')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('schedInput').click()">
-        <div class="upload-icon">📊</div>
-        <div class="upload-title" id="schedZoneTitle">Upload Equipment Schedule</div>
-        <div class="upload-sub">Kysor Warren, Heatcraft, Hussmann, Hill Phoenix, Tyler — Excel or PDF</div>
-      </div>
-      <input type="file" id="schedInput" class="file-input-hidden" accept=".xlsx,.xls,.pdf,image/*" onchange="handleFile('sched',event)">
-
-      <div class="mt12"></div>
-
-      <!-- Legend Sheet -->
-      <div class="slabel">Legend Sheet</div>
-      <div class="upload-zone" id="legendZone" ondrop="handleDrop(event,'legend')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('legendInput').click()">
-        <div class="upload-icon">📋</div>
-        <div class="upload-title" id="legendZoneTitle">Upload Legend Sheet</div>
-        <div class="upload-sub">Image or PDF — AI detects shaded/highlighted circuits</div>
-      </div>
-      <input type="file" id="legendInput" class="file-input-hidden" accept="image/*,.pdf,.xlsx,.xls" onchange="handleFile('legend',event)">
-
-      <div class="mt12"></div>
-
-      <!-- Spec Sheet -->
-      <div class="slabel">Spec Sheet / Job Schedule</div>
-      <div class="upload-zone" id="specZone" ondrop="handleDrop(event,'spec')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('specInput').click()">
-        <div class="upload-icon">📄</div>
-        <div class="upload-title" id="specZoneTitle">Upload Spec Sheet or Job Schedule</div>
-        <div class="upload-sub">PDF or image — AI extracts RC notes, night work, start dates, requirements</div>
-      </div>
-      <input type="file" id="specInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('spec',event)">
-    </div>
-
-    <div>
-      <!-- Blueprint / Redlines -->
-      <div class="slabel">Blueprint / Redlines</div>
-      <div class="upload-zone" id="blueprintZone" ondrop="handleDrop(event,'blueprint')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('blueprintInput').click()">
-        <div class="upload-icon">📐</div>
-        <div class="upload-title" id="blueprintZoneTitle">Upload Blueprint or Redlines</div>
-        <div class="upload-sub">Image or PDF — AI traces red lines for drop points and routing</div>
-      </div>
-      <input type="file" id="blueprintInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('blueprint',event)">
-
-      <div class="mt12"></div>
-
-      <!-- Bid Email -->
-      <div class="slabel">Bid Email</div>
-      <div class="upload-zone" id="emailZone" onclick="document.getElementById('emailInput').click()">
-        <div class="upload-icon">📧</div>
-        <div class="upload-title" id="emailZoneTitle">Upload Email Screenshot</div>
-        <div class="upload-sub">Or paste email text below</div>
-      </div>
-      <input type="file" id="emailInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('email',event)">
-      <textarea class="inp mt8" id="emailText" rows="3" placeholder="Or paste bid email text here..."></textarea>
-
-      <div class="mt12"></div>
-
-      <!-- Analyze All Button -->
-      <button class="btn btn-green btn-full" id="analyzeAllBtn" onclick="analyzeAllDocs()" style="font-size:14px;padding:14px;">
-        🔍 Analyze All Documents & Extract Takeoff
-      </button>
+  <!-- Multi-file upload zone -->
+  <div class="upload-zone" id="mainUploadZone"
+    ondrop="handleMultiDrop(event)"
+    ondragover="event.preventDefault();this.classList.add('drag')"
+    ondragleave="this.classList.remove('drag')"
+    onclick="document.getElementById('mainFileInput').click()"
+    style="margin-bottom:16px;padding:40px 20px;">
+    <div class="upload-icon">📁</div>
+    <div class="upload-title">Upload Any Files or Photos</div>
+    <div class="upload-sub" style="margin-top:6px">Excel schedules, legend sheets, spec sheets, job schedules, blueprints, redlines, bid emails, remodel scopes — anything<br>Tap to select multiple files or drag and drop</div>
+    <div style="margin-top:14px">
+      <span style="background:var(--green);color:#000;padding:8px 18px;border-radius:8px;font-weight:700;font-size:13px">📎 Choose Files</span>
     </div>
   </div>
+  <input type="file" id="mainFileInput" class="file-input-hidden" accept=".xlsx,.xls,.pdf,.doc,.docx,image/*,.txt,.csv" multiple onchange="handleMultiFileSelect(event)">
+
+  <!-- Paste email text -->
+  <div class="slabel">Or Paste Bid Email Text</div>
+  <textarea class="inp mb16" id="emailText" rows="3" placeholder="Paste bid email text here..."></textarea>
+
+  <!-- Uploaded files list -->
+  <div id="uploadedFilesList" class="hidden mb16">
+    <div class="flex-between mb8">
+      <div class="slabel" style="margin-bottom:0">Uploaded Files</div>
+      <button class="btn btn-ghost btn-sm" onclick="clearAllFiles()">Clear All</button>
+    </div>
+    <div id="filesGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+
+  <!-- Analyze button -->
+  <button class="btn btn-green btn-full" id="analyzeAllBtn" onclick="analyzeAllDocs()" style="font-size:14px;padding:14px;margin-bottom:20px">
+    🔍 Analyze All Documents & Extract Takeoff
+  </button>
 
   <!-- AI Extraction Results -->
-  <div class="mt16">
-    <div class="slabel">AI Extraction Results</div>
-    <div id="extractionResults" class="ai-out empty">
-      <div class="ai-empty-icon">🔍</div>
-      <div class="ai-empty-text">Upload your documents and click Analyze — the AI will extract confirmed circuits, pipe sizes, footage, and flag anything missing or unclear.</div>
-    </div>
+  <div class="slabel">AI Extraction Results</div>
+  <div id="extractionResults" class="ai-out empty" style="margin-bottom:16px">
+    <div class="ai-empty-icon">🔍</div>
+    <div class="ai-empty-text">Upload your documents and click Analyze — AI extracts circuits, parts, RC requirements, schedule info, and flags anything missing.</div>
   </div>
 
   <!-- Flags -->
-  <div id="flagsSection" class="mt16 hidden">
-    <div class="slabel">Flags & Missing Info</div>
+  <div id="flagsSection" class="hidden">
+    <div class="slabel">Flags & RC Requirements</div>
     <div id="flagsList"></div>
   </div>
 </div>
@@ -560,21 +527,21 @@ let state = {
   flags: [],
   laborTotal: 0,
   materialsTotal: 0,
-  jobMemory: {
-    schedule: null,
-    legend: null,
-    spec: null,
-    blueprint: null,
-    email: null
-  },
-  files: {
-    sched: null,
-    legend: null,
-    spec: null,
-    blueprint: null,
-    email: null
-  }
+  jobMemory: {},
+  uploadedFiles: []  // Array of {id, file, name, type, status, detectedType}
 };
+
+// File type detection
+function detectFileType(file) {
+  const name = file.name.toLowerCase();
+  const mime = file.type.toLowerCase();
+  if(name.match(/\.xlsx?$/)) return {type:'excel', icon:'📊', label:'Equipment Schedule'};
+  if(name.match(/\.docx?$/)) return {type:'scope', icon:'📝', label:'Scope of Work'};
+  if(mime.startsWith('image/')) return {type:'image', icon:'🖼️', label:'Image — AI will identify'};
+  if(name.match(/\.pdf$/)) return {type:'pdf', icon:'📄', label:'PDF — AI will identify'};
+  if(name.match(/\.csv$/)) return {type:'csv', icon:'📊', label:'CSV Data'};
+  return {type:'unknown', icon:'📎', label:'Document'};
+}
 
 // INIT
 document.getElementById('dateChip').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -684,8 +651,72 @@ async function callAIWithImage(file, prompt, maxTokens=2000) {
   ]}], maxTokens);
 }
 
+// MULTI-FILE HANDLERS
+function handleMultiDrop(e) {
+  e.preventDefault();
+  document.getElementById('mainUploadZone').classList.remove('drag');
+  Array.from(e.dataTransfer.files||[]).forEach(f => addFile(f));
+}
+
+function handleMultiFileSelect(e) {
+  Array.from(e.target.files||[]).forEach(f => addFile(f));
+  e.target.value = '';
+}
+
+function addFile(file) {
+  if(!file) return;
+  if(state.uploadedFiles.find(f => f.name===file.name && f.file.size===file.size)) return;
+  const detected = detectFileType(file);
+  const id = 'file_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+  state.uploadedFiles.push({id, file, name:file.name, size:file.size, type:detected.type, icon:detected.icon, label:detected.label, status:'ready'});
+  renderFilesList();
+}
+
+function removeFile(id) {
+  state.uploadedFiles = state.uploadedFiles.filter(f => f.id !== id);
+  renderFilesList();
+}
+
+function clearAllFiles() {
+  state.uploadedFiles = [];
+  renderFilesList();
+}
+
+function renderFilesList() {
+  const list = document.getElementById('uploadedFilesList');
+  const grid = document.getElementById('filesGrid');
+  const zone = document.getElementById('mainUploadZone');
+  if(!list || !grid) return;
+  if(state.uploadedFiles.length === 0) {
+    list.classList.add('hidden');
+    if(zone) zone.style.borderColor = '';
+    return;
+  }
+  list.classList.remove('hidden');
+  if(zone) zone.style.borderColor = 'var(--green)';
+  grid.innerHTML = state.uploadedFiles.map(f => `
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+        <span style="font-size:20px">${f.icon}</span>
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${f.label} · ${Math.round(f.size/1024)}KB · <span id="status_${f.id}" style="color:${f.status==='done'?'var(--green)':f.status==='error'?'var(--red)':'var(--text-muted)'}">
+            ${f.status==='done'?'✅ Analyzed':f.status==='error'?'❌ Error':f.status==='analyzing'?'⏳ Analyzing...':'Ready'}
+          </span></div>
+        </div>
+      </div>
+      <button onclick="removeFile('${f.id}')" style="background:transparent;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 4px;flex-shrink:0">×</button>
+    </div>`).join('');
+}
+
 // ANALYZE ALL DOCUMENTS
 async function analyzeAllDocs() {
+  const emailText = document.getElementById('emailText')?.value?.trim();
+  if(state.uploadedFiles.length === 0 && !emailText) {
+    alert('Please upload at least one file or paste email text first.');
+    return;
+  }
+
   const btn = document.getElementById('analyzeAllBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Analyzing...';
@@ -694,434 +725,309 @@ async function analyzeAllDocs() {
   out.className = 'ai-out';
   out.innerHTML = '<div style="text-align:center;padding:30px"><span class="spinner spinner-green" style="width:32px;height:32px;border-width:3px"></span><div class="mt12 text-dim fs13">Reading your documents...</div></div>';
 
+  const results = [];
+  const flags = [];
+
   try {
-    const results = [];
-    const flags = [];
-    const emailText = document.getElementById('emailText').value;
+    // Process each uploaded file
+    for(const fileObj of state.uploadedFiles) {
+      fileObj.status = 'analyzing';
+      renderFilesList();
 
-    // Process equipment schedule
-    if(state.files.sched) {
-      const f = state.files.sched;
-      let schedResult = '';
-
-      if(f.name.match(/\.xlsx?$/i)) {
-        // Use dedicated Excel parser that reads cell colors accurately
-        try {
-          // Safe base64 encoding for large files
-          const base64 = await new Promise((res, rej) => {
-            const r = new FileReader();
-            r.onload = e => {
-              const bytes = new Uint8Array(e.target.result);
-              let binary = '';
-              const chunkSize = 8192;
-              for(let i = 0; i < bytes.length; i += chunkSize) {
-                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-              }
-              res(btoa(binary));
-            };
-            r.onerror = rej;
-            r.readAsArrayBuffer(f);
-          });
-
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 20000);
-          let parseRes, parseData;
-          try {
-            parseRes = await fetch('/api/parse-excel', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({fileData: base64, fileName: f.name}),
-              signal: controller.signal
-            });
-            parseData = await parseRes.json();
-          } catch(fetchErr) {
-            parseData = {error: fetchErr.name === 'AbortError' ? 'Request timed out after 20 seconds' : fetchErr.message};
-          } finally {
-            clearTimeout(timeout);
-          }
-
-          if(parseData.error) {
-            results.push('📊 Equipment Schedule: Parser error — ' + parseData.error);
-            flags.push({type:'warn', text:'Excel parser error: '+parseData.error, source:'Schedule'});
-          } else {
-            state.jobMemory.schedule = parseData;
-            if(parseData.circuits?.length) {
-              parseData.circuits.forEach(c => {
-                if(!state.circuits.find(x=>x.id===c.circuitId)) {
-                  state.circuits.push({
-                    id: c.circuitId,
-                    rack: c.rack,
-                    runLength: c.runLength,
-                    riserLength: c.riserLength || 20,
-                    sucHoriz: c.sucHoriz,
-                    sucRiser: c.sucRiser,
-                    liqHoriz: c.liqHoriz,
-                    tempType: c.tempType,
-                    application: c.application,
-                    isRiserOnly: c.isRiserOnly,
-                    notes: c.notes || '',
-                    source: 'excel'
-                  });
-                }
-              });
-              renderCircuits();
-            }
-            if(parseData.storeName && !document.getElementById('projName').value) {
-              document.getElementById('projName').value = parseData.storeName + (parseData.storeNumber ? ' #'+parseData.storeNumber : '');
-            }
-            results.push('📊 Equipment Schedule (Excel): ' + (parseData.summary || parseData.circuits?.length + ' circuits found'));
-          }
-        } catch(excelErr) {
-          results.push('📊 Equipment Schedule: ' + excelErr.message);
-          flags.push({type:'warn', text:'Excel parsing failed: '+excelErr.message, source:'Schedule'});
-        }
-
-      } else if(f.type.startsWith('image/') || f.name.match(/\.pdf$/i)) {
-        const prompt = `You are a commercial refrigeration estimator. You are reading a refrigeration legend sheet image.
-
-CRITICAL INSTRUCTIONS - READ CAREFULLY:
-
-1. First, find the rack letter at the top of the document (Rack A, Rack B, Rack C, etc). ALL circuit IDs on this sheet will start with that letter. If it says "Rack A" then circuits are A1, A2, A3, etc. NEVER invent circuit IDs that start with a different letter.
-
-2. Look at the far RIGHT side of the table. There are columns labeled: Run Length, Suction Horiz, Suction Riser, Liquid Horiz. These contain the pipe sizes you need.
-
-3. Read each row from LEFT to RIGHT. The leftmost column is the Circuit ID. Copy it EXACTLY as written.
-
-4. A circuit is NEW work if ANY of these are true:
-   - The word "NEW" appears anywhere in that row
-   - The row background is yellow, green, cyan, or any non-white color
-   - The application description says "Relocate" or "Revised"
-
-5. ONLY report circuits you can actually SEE and READ in the image. Do NOT make up or estimate circuit IDs or pipe sizes. If you cannot read a value clearly, write "UNCONFIRMED".
-
-6. Pipe sizes look like: 1-3/8, 7/8, 5/8, 1-1/8, 1-5/8, 1/2, 3/4. Copy them EXACTLY.
-
-7. Temperature type: if Evap °F column shows positive number = medium temp. Negative number = low temp.
-
-Return ONLY valid JSON with no markdown backticks:
-{
-  "storeName": "",
-  "storeNumber": "",
-  "rack": "",
-  "refrigerant": "",
-  "confirmed": [{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
-  "missing": [],
-  "flags": [],
-  "summary": ""
-}`;
-        schedResult = await callAIWithImage(f, prompt);
-      }
-
-      if(schedResult) {
-        try {
-          const clean = schedResult.replace(/```json|```/g,'').trim();
-          const parsed = JSON.parse(clean);
-          state.jobMemory.schedule = parsed;
-          if(parsed.confirmed?.length) {
-            parsed.confirmed.forEach(c => {
-              if(!state.circuits.find(x=>x.id===c.circuitId)) {
-                state.circuits.push({
-                  id: c.circuitId,
-                  rack: c.rack || c.circuitId.replace(/[0-9]/g,''),
-                  runLength: c.runLength || 0,
-                  riserLength: c.riserLength || 0,
-                  sucHoriz: c.sucHoriz || '',
-                  sucRiser: c.sucRiser || '',
-                  liqHoriz: c.liqHoriz || '',
-                  tempType: c.tempType || 'medium',
-                  application: c.application || '',
-                  isRiserOnly: c.isRiserOnly || false,
-                  notes: c.notes || '',
-                  source: 'schedule'
-                });
-              }
-            });
-          }
-          if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Schedule'}));
-          if(parsed.flags?.length) parsed.flags.forEach(f=>flags.push({type:'info',text:f,source:'Schedule'}));
-          results.push('📊 Equipment Schedule: ' + (parsed.summary || parsed.confirmed?.length + ' new circuits found'));
-          if(parsed.storeName) {
-            document.getElementById('projName').value = parsed.storeName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
-          }
-        } catch(e) {
-          results.push('📊 Equipment Schedule: Extracted (parsing issue — check circuits tab)');
-          flags.push({type:'warn',text:'Schedule data extracted but had formatting issues. Review circuits manually.',source:'Schedule'});
-        }
-      }
-    }
-
-    // Process legend sheet
-    if(state.files.legend) {
-      const prompt = `You are an expert commercial refrigeration estimator analyzing a legend sheet.
-
-CRITICAL RULES:
-- Only extract circuits/lines where cells are SHADED or HIGHLIGHTED
-- Shaded = new pipe to run
-- Never fabricate — only confirmed data
-- Flag anything unclear
-
-Extract all shaded circuit rows with: circuit ID, run length, riser, suction horiz, suction riser, liquid horiz, temp type, refrigerant.
-Also extract any insulation specs, hanger specs, or special requirements.
-
-Return ONLY JSON:
-{
-  "confirmed": [{"circuitId":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","notes":"","isRiserOnly":false}],
-  "insulationSpecs": {"medSucType":"","medSucThickness":"","lowSucType":"","lowSucThickness":"","lowLiqType":"","lowLiqThickness":""},
-  "hangerSpacing": "",
-  "specialRequirements": [],
-  "missing": [],
-  "flags": [],
-  "summary": ""
-}`;
-      const legendFile = state.files.legend;
-      let legendResult;
-      if(legendFile.type.startsWith("image/") || legendFile.name.match(/\.pdf$/i)) {
-        legendResult = await callAIWithImage(legendFile, prompt);
-      } else {
-        legendResult = await callAI([{role:"user",content:prompt+"\n\nFile: "+legendFile.name}]);
-      }
       try {
-        const clean = legendResult.replace(/```json|```/g,'').trim();
-        const parsed = JSON.parse(clean);
-        state.jobMemory.legend = parsed;
-        if(parsed.confirmed?.length) {
-          parsed.confirmed.forEach(c => {
-            if(!state.circuits.find(x=>x.id===c.circuitId)) {
-              state.circuits.push({...c, id:c.circuitId, rack:c.circuitId.replace(/[0-9]/g,''), source:'legend'});
-            }
-          });
+        if(fileObj.type === 'excel') {
+          await processExcelFile(fileObj, results, flags);
+        } else if(fileObj.type === 'image') {
+          await processImageFile(fileObj, results, flags);
+        } else if(fileObj.type === 'pdf' || fileObj.type === 'scope') {
+          await processDocFile(fileObj, results, flags);
         }
-        if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Legend'}));
-        results.push('📋 Legend Sheet: ' + (parsed.summary || 'Analyzed'));
-      } catch(e) {
-        results.push('📋 Legend Sheet: Analyzed (review circuits tab)');
+        fileObj.status = 'done';
+      } catch(err) {
+        fileObj.status = 'error';
+        results.push(`❌ ${fileObj.name}: ${err.message}`);
       }
+      renderFilesList();
     }
 
-    // Process spec sheet
-    if(state.files.spec) {
-      const prompt = `You are an expert commercial refrigeration contractor reading a job schedule or spec document. Your job is to find EVERY piece of information that affects the refrigeration contractor's work, schedule, and costs.
-
-INSTRUCTIONS:
-Read the ENTIRE document word by word. Extract every sentence or bullet point that mentions any of these:
-- "RC" or "R.C." or "Refrigeration Contractor" or "refrigeration" or "ref contractor"
-- Night work, after hours, nights, weekends, overnight
-- Pre-con meeting or pre-construction
-- Start date, mobilize, week 1, day 1
-- Sensor cables, case sensors, sensor wires (these often involve RC)
-- Line work, pipe runs, new lines, running lines
-- Cooler tops, back room, machine room
-- Any work that must happen in sequence with refrigeration
-- Permit, inspection, testing requirements
-- Any special materials, brands, or installation methods specified
-- Overtime, double time, premium pay requirements
-- Store hours, store manager approval requirements
-
-For EACH item found, copy the EXACT text from the document and note which section it came from.
-
-Also extract:
-- The project start date (Week 1 Day 1)
-- Project end date if shown
-- Store name and number
-- General contractor name
-
-Return ONLY valid JSON, no markdown:
-{
-  "storeName": "",
-  "storeNumber": "",
-  "gcName": "",
-  "startDate": "",
-  "endDate": "",
-  "preConDate": "",
-  "rcNotes": [{"week":"","day":"","text":"exact text from document","section":"section name","costImpact":false}],
-  "nightWorkRequired": false,
-  "nightWorkDetails": "",
-  "workSequence": [{"week":"","milestone":"","rcInvolved":true}],
-  "costImpactItems": ["items that increase cost above standard"],
-  "insulationSpec": "",
-  "hangerSpec": "",
-  "brazingSpec": "",
-  "permitRequired": false,
-  "specialRequirements": [],
-  "summary": "2-3 sentence summary of RC scope and key requirements"
-}`;
-      let specResult = '';
-      if(state.files.spec.type.startsWith('image/') || state.files.spec.name.match(/\.pdf$/i)) {
-        specResult = await callAIWithImage(state.files.spec, prompt);
-      } else {
-        specResult = await callAI([{role:'user',content:prompt+'\n\nSpec sheet file: '+state.files.spec.name}]);
-      }
-      try {
-        const clean = specResult.replace(/```json|```/g,'').trim();
-        const parsed = JSON.parse(clean);
-        state.jobMemory.spec = parsed;
-        // Store full schedule data for display
-        state.jobMemory.spec = parsed;
-        
-        // Auto-fill project info if found
-        if(parsed.storeName && !document.getElementById('projName').value) {
-          document.getElementById('projName').value = parsed.storeName + (parsed.storeNumber ? ' #'+parsed.storeNumber : '');
-        }
-        if(parsed.gcName && !document.getElementById('projGC').value) {
-          document.getElementById('projGC').value = parsed.gcName;
-        }
-
-        // Night work = cost impact flag
-        if(parsed.nightWorkRequired) {
-          flags.push({type:'warn', text:'⚠️ NIGHT WORK REQUIRED: '+parsed.nightWorkDetails, source:'Schedule'});
-          // Suggest turning on nights multiplier
-          flags.push({type:'info', text:'Consider adjusting the Nights/Weekends multiplier in Rates & Labor', source:'Schedule'});
-        }
-
-        // RC notes as flags
-        if(parsed.rcNotes?.length) {
-          parsed.rcNotes.forEach(n => {
-            const text = typeof n === 'object' ? (n.week ? `Week ${n.week}: ` : '') + n.text : n;
-            const type = (typeof n === 'object' && n.costImpact) ? 'warn' : 'info';
-            flags.push({type, text, source:'RC Requirements'});
-          });
-        }
-
-        // Cost impacts
-        if(parsed.costImpactItems?.length) {
-          parsed.costImpactItems.forEach(i => flags.push({type:'warn', text:'COST IMPACT: '+i, source:'Schedule'}));
-        }
-
-        // Work sequence
-        if(parsed.workSequence?.length) {
-          parsed.workSequence.filter(w => w.rcInvolved !== false).forEach(w => {
-            flags.push({type:'info', text:(w.week ? 'Week '+w.week+': ' : '')+w.milestone, source:'Work Sequence'});
-          });
-        }
-
-        // Special requirements
-        if(parsed.specialRequirements?.length) {
-          parsed.specialRequirements.forEach(r => flags.push({type:'info', text:r, source:'Spec'}));
-        }
-
-        // Start date info
-        if(parsed.startDate) {
-          flags.push({type:'ok', text:'Project Start: '+parsed.startDate+(parsed.preConDate ? ' | Pre-Con: '+parsed.preConDate : ''), source:'Schedule'});
-        }
-
-        let specSummary = parsed.summary || 'Requirements extracted';
-        if(parsed.rcNotes?.length) specSummary += ' — ' + parsed.rcNotes.length + ' RC note(s) found';
-        results.push('📄 Spec/Schedule: ' + specSummary);
-        renderFlags();
-      } catch(e) {
-        results.push('📄 Spec/Schedule: ' + specResult.slice(0,300));
-        flags.push({type:'warn', text:'Could not parse schedule data — showing raw: '+specResult.slice(0,200), source:'Schedule'});
-      }
+    // Process pasted email
+    if(emailText) {
+      await processPastedEmail(emailText, results, flags);
     }
 
-    // Process blueprint/redlines
-    if(state.files.blueprint) {
-      const prompt = `You are an expert ${state.mode} estimator analyzing a redlined drawing.
-
-Focus on the REFRIGERATION side. Trace red/highlighted lines to identify:
-1. Drop points — where lines terminate at equipment
-2. Circuit changes — splits, tees, direction changes
-3. Routing paths from rack to cases
-4. Any pipe size callouts or field notes
-5. Estimated footage per circuit run
-
-CRITICAL: Only report what you can CONFIRM from the drawing. Never fabricate.
-
-Return ONLY JSON:
-{
-  "dropPoints": [{"location":"","circuitId":"","pipeSize":"","notes":""}],
-  "circuitChanges": [{"type":"split|tee|direction","location":"","notes":""}],
-  "footageEstimates": [{"circuitId":"","footage":0,"pipeSize":"","notes":""}],
-  "fieldNotes": [],
-  "missing": [],
-  "summary": ""
-}`;
-      const bpResult = await callAIWithImage(state.files.blueprint, prompt);
-      try {
-        const clean = bpResult.replace(/```json|```/g,'').trim();
-        const parsed = JSON.parse(clean);
-        state.jobMemory.blueprint = parsed;
-        results.push('📐 Blueprint/Redlines: ' + (parsed.summary || 'Analyzed'));
-        if(parsed.missing?.length) parsed.missing.forEach(m=>flags.push({type:'warn',text:m,source:'Blueprint'}));
-      } catch(e) {
-        results.push('📐 Blueprint/Redlines: Analyzed');
-      }
-    }
-
-    // Process email
-    if(state.files.email || emailText) {
-      const prompt = `You are an expert ${state.mode} estimator analyzing a bid email.
-
-Extract ALL information that affects the estimate. Never fabricate.
-
-Return ONLY JSON:
-{
-  "projectName": "",
-  "address": "",
-  "contractor": "",
-  "gc": "",
-  "bidDueDate": "",
-  "scopeOfWork": "",
-  "specialRequirements": [],
-  "attachmentsListed": [],
-  "missingInfo": [],
-  "summary": ""
-}`;
-      let emailResult = '';
-      if(state.files.email && (state.files.email.type.startsWith('image/') || state.files.email.name.match(/\.pdf$/i))) {
-        emailResult = await callAIWithImage(state.files.email, prompt);
-      } else if(emailText) {
-        emailResult = await callAI([{role:'user',content:prompt+'\n\nEmail text:\n'+emailText}]);
-      }
-      if(emailResult) {
-        try {
-          const clean = emailResult.replace(/```json|```/g,'').trim();
-          const parsed = JSON.parse(clean);
-          state.jobMemory.email = parsed;
-          if(parsed.projectName && !document.getElementById('projName').value) document.getElementById('projName').value = parsed.projectName;
-          if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
-          if(parsed.contractor && !document.getElementById('projCont').value) document.getElementById('projCont').value = parsed.contractor;
-          if(parsed.gc && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gc;
-          if(parsed.missingInfo?.length) parsed.missingInfo.forEach(m=>flags.push({type:'warn',text:m,source:'Email'}));
-          results.push('📧 Bid Email: ' + (parsed.summary || 'Project info extracted'));
-        } catch(e) {
-          results.push('📧 Bid Email: Analyzed');
-        }
-      }
-    }
-
-    // Verify we have something
+    // Check results
     if(results.length === 0) {
-      throw new Error('No documents uploaded. Please upload at least one document.');
+      throw new Error('No documents processed. Please upload files and try again.');
     }
-
-    // Check for critical missing info
     if(state.circuits.length === 0) {
-      flags.push({type:'error', text:'No new circuits identified. Check that your equipment schedule or legend sheet has highlighted/shaded line size cells.', source:'Analysis'});
+      flags.push({type:'error', text:'No new circuits identified. Upload an equipment schedule (Excel) with highlighted line sizes.', source:'Analysis'});
     }
 
     // Render results
     state.flags = flags;
     out.className = 'ai-out has-content';
-    out.innerHTML = `<div class="ai-text">${results.join('\n\n')}
-
-${state.circuits.length > 0 ? '✅ '+state.circuits.length+' new circuit(s) identified — go to the Circuits tab to review.' : '⚠️ No circuits identified — review your documents.'}</div>`;
-
-    // Render flags
+    out.innerHTML = `<div class="ai-text">${results.join('\n\n')}${state.circuits.length > 0 ? '\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.' : ''}</div>`;
     renderFlags();
-
-    // Render circuits
     renderCircuits();
 
   } catch(e) {
     out.className = 'ai-out empty';
-    out.innerHTML = `<div class="ai-empty-icon">❌</div><div class="ai-empty-text">Error: ${e.message}</div>`;
+    out.innerHTML = `<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
   }
 
   btn.disabled = false;
   btn.innerHTML = '🔍 Analyze All Documents & Extract Takeoff';
 }
 
+// PROCESS EXCEL FILE
+async function processExcelFile(fileObj, results, flags) {
+  const base64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => {
+      const bytes = new Uint8Array(e.target.result);
+      let binary = '';
+      const chunk = 8192;
+      for(let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      res(btoa(binary));
+    };
+    r.onerror = rej;
+    r.readAsArrayBuffer(fileObj.file);
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  try {
+    const parseRes = await fetch('/api/parse-excel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fileData: base64, fileName: fileObj.name}),
+      signal: controller.signal
+    });
+    const parseData = await parseRes.json();
+    clearTimeout(timeout);
+
+    if(parseData.error) {
+      flags.push({type:'warn', text:'Excel parser error: '+parseData.error, source:fileObj.name});
+      results.push(`📊 ${fileObj.name}: Parser error — ${parseData.error}`);
+    } else {
+      state.jobMemory.schedule = parseData;
+      if(parseData.circuits?.length) {
+        parseData.circuits.forEach(c => {
+          if(!state.circuits.find(x=>x.id===c.circuitId)) {
+            state.circuits.push({
+              id: c.circuitId, rack: c.rack, runLength: c.runLength,
+              riserLength: c.riserLength||20, sucHoriz: c.sucHoriz,
+              sucRiser: c.sucRiser, liqHoriz: c.liqHoriz,
+              tempType: c.tempType, application: c.application,
+              isRiserOnly: c.isRiserOnly, notes: c.notes||'', source:'excel'
+            });
+          }
+        });
+      }
+      if(parseData.storeName && !document.getElementById('projName').value) {
+        document.getElementById('projName').value = parseData.storeName + (parseData.storeNumber?' #'+parseData.storeNumber:'');
+      }
+      results.push(`📊 ${fileObj.name}: ${parseData.summary || parseData.circuits?.length+' circuits found'}`);
+    }
+  } catch(err) {
+    clearTimeout(timeout);
+    throw err;
+  }
+}
+
+// PROCESS IMAGE FILE — AI identifies what it is and extracts accordingly
+async function processImageFile(fileObj, results, flags) {
+  const base64 = await imgToJpeg(fileObj.file);
+  const prompt = `You are an expert commercial refrigeration estimator. Analyze this image and determine what type of document it is, then extract the relevant information.
+
+DOCUMENT TYPES TO IDENTIFY:
+1. REFRIGERATION LEGEND SHEET — table with circuit IDs, run lengths, pipe sizes. Extract all circuits where cells are highlighted/shaded or text says "NEW"
+2. JOB SCHEDULE / REMODEL SCHEDULE — has dates, weeks, contractor notes. Extract all RC/refrigeration mentions, night work requirements, start dates
+3. REMODEL SCOPE SHEET — has rack notes and parts list. Extract parts, circuit notes, rack instructions
+4. BID EMAIL — extract project name, address, GC, scope
+5. BLUEPRINT / REDLINE — extract drop points, circuit routing, any labeled pipe sizes
+6. EQUIPMENT SCHEDULE — similar to legend sheet but different format
+
+For each type extract the appropriate data.
+
+Return ONLY valid JSON:
+{
+  "documentType": "legend_sheet|job_schedule|remodel_scope|bid_email|blueprint|equipment_schedule|unknown",
+  "storeName": "",
+  "storeNumber": "",
+  "circuits": [{"circuitId":"","rack":"","runLength":0,"riserLength":20,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
+  "parts": [{"partId":"","qty":0,"description":""}],
+  "rcNotes": [{"text":"","week":"","costImpact":false}],
+  "nightWorkRequired": false,
+  "nightWorkDetails": "",
+  "startDate": "",
+  "workSequence": [],
+  "rackNotes": [{"rack":"","notes":[]}],
+  "dropPoints": [],
+  "flags": [],
+  "summary": ""
+}`;
+
+  const result = await callAI([{role:'user', content:[
+    {type:'image_url', image_url:{url:`data:image/jpeg;base64,${base64}`}},
+    {type:'text', text:prompt}
+  ]}], 2000);
+
+  await processAIResult(result, fileObj.name, results, flags);
+}
+
+// PROCESS PDF/DOC FILE
+async function processDocFile(fileObj, results, flags) {
+  // For doc/pdf we send filename and ask AI to identify
+  const prompt = `You are an expert commercial refrigeration estimator. Based on the filename "${fileObj.name}", this appears to be a document from a commercial refrigeration remodel bid package.
+
+The user has uploaded this file. Without seeing the content, help identify what it likely contains and what fields would be relevant. Then the user should re-upload it as an image or PDF screenshot for full analysis.
+
+Actually, since I cannot read the raw bytes, return a placeholder:
+{
+  "documentType": "unknown",
+  "summary": "File uploaded: ${fileObj.name} — Please upload as image/screenshot for AI analysis, or upload a PDF version",
+  "flags": ["${fileObj.name} cannot be read directly — convert to image or PDF for analysis"],
+  "circuits": [], "parts": [], "rcNotes": [], "rackNotes": [], "dropPoints": [],
+  "nightWorkRequired": false, "nightWorkDetails": "", "startDate": "", "workSequence": []
+}`;
+
+  // Try to process as image if possible
+  if(fileObj.file.type === 'application/pdf') {
+    try {
+      const base64 = await imgToJpeg(fileObj.file);
+      const imgPrompt = prompt.replace('Actually, since I cannot read the raw bytes', 'Analyze this document.');
+      const result = await callAIWithImage(fileObj.file, prompt);
+      await processAIResult(result, fileObj.name, results, flags);
+      return;
+    } catch(e) {
+      // Fall through to text-only
+    }
+  }
+
+  results.push(`📄 ${fileObj.name}: Uploaded — convert to image for full AI analysis`);
+  flags.push({type:'info', text:`${fileObj.name}: For best results, take a screenshot and upload the image version`, source:'Upload'});
+}
+
+// PROCESS PASTED EMAIL
+async function processPastedEmail(text, results, flags) {
+  const prompt = `You are an expert commercial refrigeration estimator analyzing a bid email.
+Extract ALL relevant information. Return ONLY valid JSON:
+{
+  "documentType": "bid_email",
+  "storeName": "", "storeNumber": "", "gcName": "", "address": "", "contractor": "", "bidDueDate": "",
+  "circuits": [], "parts": [],
+  "rcNotes": [{"text":"","week":"","costImpact":false}],
+  "nightWorkRequired": false, "nightWorkDetails": "", "startDate": "",
+  "workSequence": [], "rackNotes": [], "dropPoints": [],
+  "flags": ["list missing info"],
+  "summary": ""
+}
+
+Email text:
+${text}`;
+
+  const result = await callAI([{role:'user', content:prompt}], 1500);
+  await processAIResult(result, 'Bid Email', results, flags);
+}
+
+// PROCESS AI RESULT — common handler for all document types
+async function processAIResult(resultText, sourceName, results, flags) {
+  try {
+    const clean = resultText.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+
+    // Auto-fill project info
+    if(parsed.storeName && !document.getElementById('projName').value) {
+      let name = parsed.storeName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
+      document.getElementById('projName').value = name;
+    }
+    if(parsed.gcName && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gcName;
+    if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
+    if(parsed.contractor && !document.getElementById('projCont').value) document.getElementById('projCont').value = parsed.contractor;
+
+    // Add circuits
+    if(parsed.circuits?.length) {
+      parsed.circuits.forEach(c => {
+        if(c.circuitId && !state.circuits.find(x=>x.id===c.circuitId)) {
+          state.circuits.push({
+            id:c.circuitId, rack:c.rack||(c.circuitId.replace(/[0-9]/g,'')),
+            runLength:c.runLength||0, riserLength:c.riserLength||20,
+            sucHoriz:c.sucHoriz||'', sucRiser:c.sucRiser||'',
+            liqHoriz:c.liqHoriz||'', tempType:c.tempType||'medium',
+            application:c.application||'', isRiserOnly:c.isRiserOnly||false,
+            notes:c.notes||'', source:sourceName
+          });
+        }
+      });
+    }
+
+    // Add parts to line items
+    if(parsed.parts?.length) {
+      parsed.parts.forEach(p => {
+        state.lineItems.push({
+          section:'Parts — From Scope',
+          desc: (p.partId ? p.partId+' — ' : '') + p.description,
+          qty: p.qty||1, unit:'ea', unitCost:0, total:0, editable:true,
+          notes:'From scope document — verify pricing'
+        });
+      });
+      if(parsed.parts.length > 0) {
+        flags.push({type:'info', text:`${parsed.parts.length} part(s) from scope added to material list — prices need to be entered`, source:sourceName});
+      }
+    }
+
+    // RC notes
+    if(parsed.rcNotes?.length) {
+      parsed.rcNotes.forEach(n => {
+        const text = typeof n === 'object' ? (n.week?'Week '+n.week+': ':'')+n.text : n;
+        flags.push({type: (typeof n === 'object' && n.costImpact)?'warn':'info', text, source:'RC — '+sourceName});
+      });
+    }
+
+    // Night work
+    if(parsed.nightWorkRequired) {
+      flags.push({type:'warn', text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails, source:sourceName});
+      flags.push({type:'info', text:'Adjust Nights/Weekends multiplier in Rates & Labor tab', source:'Suggestion'});
+    }
+
+    // Start date
+    if(parsed.startDate) {
+      flags.push({type:'ok', text:'RC Start Date: '+parsed.startDate, source:sourceName});
+    }
+
+    // Rack notes
+    if(parsed.rackNotes?.length) {
+      parsed.rackNotes.forEach(r => {
+        if(r.notes?.length) r.notes.forEach(n => flags.push({type:'info', text:`Rack ${r.rack}: ${n}`, source:sourceName}));
+      });
+    }
+
+    // Work sequence
+    if(parsed.workSequence?.length) {
+      parsed.workSequence.forEach(w => flags.push({type:'info', text:typeof w==='object'?(w.week?'Week '+w.week+': ':'')+w.milestone:w, source:'Schedule'}));
+    }
+
+    // Cost impacts
+    if(parsed.flags?.length) {
+      parsed.flags.forEach(f => flags.push({type:'warn', text:f, source:sourceName}));
+    }
+
+    const docTypeLabel = {
+      legend_sheet:'Legend Sheet', job_schedule:'Job Schedule',
+      remodel_scope:'Remodel Scope', bid_email:'Bid Email',
+      blueprint:'Blueprint/Redlines', equipment_schedule:'Equipment Schedule',
+      unknown:'Document'
+    }[parsed.documentType] || 'Document';
+
+    results.push(`${docTypeLabel === 'Legend Sheet'?'📋':docTypeLabel==='Job Schedule'?'📅':docTypeLabel==='Remodel Scope'?'📝':docTypeLabel==='Bid Email'?'📧':docTypeLabel==='Blueprint/Redlines'?'📐':'📄'} ${sourceName} (${docTypeLabel}): ${parsed.summary||'Analyzed'}`);
+
+  } catch(e) {
+    results.push(`📄 ${sourceName}: Analyzed — ${resultText.slice(0,150)}`);
+  }
+}
 // RENDER FLAGS
 function renderFlags() {
   const flagsList = document.getElementById('flagsList');
