@@ -1,9 +1,13 @@
 {
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.7.0"
   },
   "functions": {
     "api/parse-excel.js": {
+      "maxDuration": 30
+    },
+    "api/parse-doc.js": {
       "maxDuration": 30
     }
   }
