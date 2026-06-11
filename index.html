@@ -291,11 +291,11 @@ select.inp{cursor:pointer;}
       <div class="mt12"></div>
 
       <!-- Spec Sheet -->
-      <div class="slabel">Spec Sheet</div>
+      <div class="slabel">Spec Sheet / Job Schedule</div>
       <div class="upload-zone" id="specZone" ondrop="handleDrop(event,'spec')" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" onclick="document.getElementById('specInput').click()">
         <div class="upload-icon">📄</div>
-        <div class="upload-title" id="specZoneTitle">Upload Spec Sheet</div>
-        <div class="upload-sub">PDF or image — AI extracts installation requirements</div>
+        <div class="upload-title" id="specZoneTitle">Upload Spec Sheet or Job Schedule</div>
+        <div class="upload-sub">PDF or image — AI extracts RC notes, night work, start dates, requirements</div>
       </div>
       <input type="file" id="specInput" class="file-input-hidden" accept="image/*,.pdf" onchange="handleFile('spec',event)">
     </div>
@@ -900,40 +900,50 @@ Return ONLY JSON:
 
     // Process spec sheet
     if(state.files.spec) {
-      const prompt = `You are an expert commercial refrigeration estimator analyzing a job schedule, spec sheet, or scope document.
+      const prompt = `You are an expert commercial refrigeration contractor reading a job schedule or spec document. Your job is to find EVERY piece of information that affects the refrigeration contractor's work, schedule, and costs.
 
-READ ALL TEXT carefully. Extract everything relevant to the Refrigeration Contractor (RC).
+INSTRUCTIONS:
+Read the ENTIRE document word by word. Extract every sentence or bullet point that mentions any of these:
+- "RC" or "R.C." or "Refrigeration Contractor" or "refrigeration" or "ref contractor"
+- Night work, after hours, nights, weekends, overnight
+- Pre-con meeting or pre-construction
+- Start date, mobilize, week 1, day 1
+- Sensor cables, case sensors, sensor wires (these often involve RC)
+- Line work, pipe runs, new lines, running lines
+- Cooler tops, back room, machine room
+- Any work that must happen in sequence with refrigeration
+- Permit, inspection, testing requirements
+- Any special materials, brands, or installation methods specified
+- Overtime, double time, premium pay requirements
+- Store hours, store manager approval requirements
 
-Look specifically for:
-- Any line mentioning "RC", "Refrigeration Contractor", "refrigeration", "ref contractor"
-- Night work or after-hours requirements
-- Work sequence and phasing (what week, what day)
-- Pipe run requirements
-- Special conditions or restrictions
-- Dates and milestones affecting refrigeration work
-- Insulation specs, hanger specs, brazing requirements
-- Any cost impact items (special materials, overtime, etc.)
-- Electrical requirements for refrigeration
-- Inspection or testing requirements
+For EACH item found, copy the EXACT text from the document and note which section it came from.
 
-Return ONLY JSON:
+Also extract:
+- The project start date (Week 1 Day 1)
+- Project end date if shown
+- Store name and number
+- General contractor name
+
+Return ONLY valid JSON, no markdown:
 {
-  "rcNotes": ["every note or requirement specifically for the refrigeration contractor"],
-  "nightWorkRequired": false,
-  "nightWorkDetails": "",
-  "workSequence": ["phased work items in order"],
+  "storeName": "",
+  "storeNumber": "",
+  "gcName": "",
   "startDate": "",
   "endDate": "",
-  "insulationType": "",
-  "insulationThickness": "",
-  "hangerType": "",
-  "hangerSpacing": "",
-  "brazingRequirements": "",
-  "nitrogenPurge": false,
+  "preConDate": "",
+  "rcNotes": [{"week":"","day":"","text":"exact text from document","section":"section name","costImpact":false}],
+  "nightWorkRequired": false,
+  "nightWorkDetails": "",
+  "workSequence": [{"week":"","milestone":"","rcInvolved":true}],
+  "costImpactItems": ["items that increase cost above standard"],
+  "insulationSpec": "",
+  "hangerSpec": "",
+  "brazingSpec": "",
+  "permitRequired": false,
   "specialRequirements": [],
-  "costImpactItems": ["items that cost more than standard"],
-  "missing": [],
-  "summary": ""
+  "summary": "2-3 sentence summary of RC scope and key requirements"
 }`;
       let specResult = '';
       if(state.files.spec.type.startsWith('image/') || state.files.spec.name.match(/\.pdf$/i)) {
@@ -945,16 +955,62 @@ Return ONLY JSON:
         const clean = specResult.replace(/```json|```/g,'').trim();
         const parsed = JSON.parse(clean);
         state.jobMemory.spec = parsed;
-        if(parsed.rcNotes?.length) parsed.rcNotes.forEach(n=>flags.push({type:'info',text:n,source:'RC Requirements'}));
-        if(parsed.nightWorkRequired) flags.push({type:'warn',text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails,source:'Spec'});
-        if(parsed.costImpactItems?.length) parsed.costImpactItems.forEach(i=>flags.push({type:'warn',text:'COST IMPACT: '+i,source:'Spec'}));
-        if(parsed.specialRequirements?.length) parsed.specialRequirements.forEach(r=>flags.push({type:'info',text:r,source:'Spec'}));
-        if(parsed.workSequence?.length) parsed.workSequence.forEach(w=>flags.push({type:'info',text:w,source:'Work Sequence'}));
+        // Store full schedule data for display
+        state.jobMemory.spec = parsed;
+        
+        // Auto-fill project info if found
+        if(parsed.storeName && !document.getElementById('projName').value) {
+          document.getElementById('projName').value = parsed.storeName + (parsed.storeNumber ? ' #'+parsed.storeNumber : '');
+        }
+        if(parsed.gcName && !document.getElementById('projGC').value) {
+          document.getElementById('projGC').value = parsed.gcName;
+        }
+
+        // Night work = cost impact flag
+        if(parsed.nightWorkRequired) {
+          flags.push({type:'warn', text:'⚠️ NIGHT WORK REQUIRED: '+parsed.nightWorkDetails, source:'Schedule'});
+          // Suggest turning on nights multiplier
+          flags.push({type:'info', text:'Consider adjusting the Nights/Weekends multiplier in Rates & Labor', source:'Schedule'});
+        }
+
+        // RC notes as flags
+        if(parsed.rcNotes?.length) {
+          parsed.rcNotes.forEach(n => {
+            const text = typeof n === 'object' ? (n.week ? `Week ${n.week}: ` : '') + n.text : n;
+            const type = (typeof n === 'object' && n.costImpact) ? 'warn' : 'info';
+            flags.push({type, text, source:'RC Requirements'});
+          });
+        }
+
+        // Cost impacts
+        if(parsed.costImpactItems?.length) {
+          parsed.costImpactItems.forEach(i => flags.push({type:'warn', text:'COST IMPACT: '+i, source:'Schedule'}));
+        }
+
+        // Work sequence
+        if(parsed.workSequence?.length) {
+          parsed.workSequence.filter(w => w.rcInvolved !== false).forEach(w => {
+            flags.push({type:'info', text:(w.week ? 'Week '+w.week+': ' : '')+w.milestone, source:'Work Sequence'});
+          });
+        }
+
+        // Special requirements
+        if(parsed.specialRequirements?.length) {
+          parsed.specialRequirements.forEach(r => flags.push({type:'info', text:r, source:'Spec'}));
+        }
+
+        // Start date info
+        if(parsed.startDate) {
+          flags.push({type:'ok', text:'Project Start: '+parsed.startDate+(parsed.preConDate ? ' | Pre-Con: '+parsed.preConDate : ''), source:'Schedule'});
+        }
+
         let specSummary = parsed.summary || 'Requirements extracted';
-        if(parsed.rcNotes?.length) specSummary += ' — ' + parsed.rcNotes.length + ' RC requirements found';
+        if(parsed.rcNotes?.length) specSummary += ' — ' + parsed.rcNotes.length + ' RC note(s) found';
         results.push('📄 Spec/Schedule: ' + specSummary);
+        renderFlags();
       } catch(e) {
-        results.push('📄 Spec/Schedule: ' + specResult.slice(0,200));
+        results.push('📄 Spec/Schedule: ' + specResult.slice(0,300));
+        flags.push({type:'warn', text:'Could not parse schedule data — showing raw: '+specResult.slice(0,200), source:'Schedule'});
       }
     }
 
