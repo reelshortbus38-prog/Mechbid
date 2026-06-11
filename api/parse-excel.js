@@ -4,7 +4,7 @@ const CYAN = 'FF00FFFF';
 const YELLOW = 'FFFFFF00';
 
 function sizeToFraction(val) {
-  if (!val || val === 0) return '';
+  if(!val || val === 0) return '';
   const map = {
     0.25:'1/4"',0.375:'3/8"',0.5:'1/2"',0.625:'5/8"',
     0.75:'3/4"',0.875:'7/8"',1.0:'1"',1.125:'1-1/8"',
@@ -35,23 +35,33 @@ module.exports = async function handler(req, res) {
 
     const buffer = Buffer.from(fileData, 'base64');
     const wb = new ExcelJS.Workbook();
-    
-    // Set timeout
+
     await Promise.race([
       wb.xlsx.load(buffer),
-      new Promise((_,reject) => setTimeout(() => reject(new Error('Timeout loading Excel file')), 8000))
+      new Promise((_,reject) => setTimeout(() => reject(new Error('Timeout loading Excel')), 8000))
     ]);
 
     const circuits = [];
     let storeName = '';
     let storeNo = '';
 
+    // Column positions for Kysor Warren format
+    const COL_CIRC_ID = 1;
+    const COL_NOTE = 4;       // Heat Exchanger notes (New Piping Line, etc)
+    const COL_APP = 7;        // Application / location description
+    const COL_EVAP = 9;       // Evap °F temperature
+    const COL_RUN = 21;       // Run Length (ft)
+    const COL_VERT_RISER = 22; // Vertical Riser (ft)
+    const COL_SUC_H = 23;     // Suction Horizontal size
+    const COL_SUC_R = 24;     // Suction Riser size
+    const COL_LIQ = 25;       // Liquid Horizontal size
+
     wb.eachSheet((ws, sheetId) => {
       const sName = ws.name;
       if(!sName.startsWith('Rack')) return;
       const rack = sName.replace('Rack ','');
 
-      // Get store info from sheet 1
+      // Get store info from first sheet
       if(sheetId === 1) {
         for(let r = 1; r <= 8; r++) {
           const row = ws.getRow(r);
@@ -61,19 +71,17 @@ module.exports = async function handler(req, res) {
               const next = ws.getRow(r).getCell(colNum+1);
               if(next.value) storeNo = String(next.value);
             }
-            if(v === 'Food Lion' || (v.includes('Customer') && colNum < 5)) {
-              const next = ws.getRow(r).getCell(colNum+1);
-              if(next.value && !storeName) storeName = String(next.value);
+            if(v === 'Food Lion') {
+              if(!storeName) storeName = v;
             }
           });
         }
       }
 
-      // Process circuit rows
+      // Process circuit rows (header on row 13, data starts row 14)
       for(let rowNum = 14; rowNum <= 45; rowNum++) {
         const row = ws.getRow(rowNum);
-        const circCell = row.getCell(1);
-        const circId = String(circCell.value||'').trim();
+        const circId = String(row.getCell(COL_CIRC_ID).value||'').trim();
         if(!circId || !circId.startsWith(rack)) continue;
 
         // Check highlight on first 6 cells
@@ -86,13 +94,14 @@ module.exports = async function handler(req, res) {
         }
         if(!highlighted) continue;
 
-        const run = parseFloat(row.getCell(21).value) || 0;
-        const sh = sizeToFraction(row.getCell(23).value);
-        const sr = sizeToFraction(row.getCell(24).value);
-        const lh = sizeToFraction(row.getCell(25).value);
-        const evapRaw = String(row.getCell(6).value||'').replace('+','').trim();
-        const evap = parseFloat(evapRaw) || 0;
-        const app = String(row.getCell(5).value||'');
+        const run = parseFloat(row.getCell(COL_RUN).value) || 0;
+        const riser = parseFloat(row.getCell(COL_VERT_RISER).value) || 20;
+        const sh = sizeToFraction(row.getCell(COL_SUC_H).value);
+        const sr = sizeToFraction(row.getCell(COL_SUC_R).value);
+        const lh = sizeToFraction(row.getCell(COL_LIQ).value);
+        const evap = parseFloat(String(row.getCell(COL_EVAP).value||'').replace('+','')) || 0;
+        const app = String(row.getCell(COL_APP).value||'');
+        const noteVal = String(row.getCell(COL_NOTE).value||'');
         const tempType = evap < 0 ? 'low' : 'medium';
         const isRiserOnly = run === 0 && sr !== '';
 
@@ -100,7 +109,7 @@ module.exports = async function handler(req, res) {
           circuitId: circId,
           rack,
           runLength: run,
-          riserLength: vertRiser,
+          riserLength: riser,
           sucHoriz: sh,
           sucRiser: sr,
           liqHoriz: lh,
@@ -108,7 +117,7 @@ module.exports = async function handler(req, res) {
           application: app,
           isRiserOnly,
           colorType,
-          notes: noteVal || (colorType === 'yellow' ? 'Yellow highlight — verify work type' : '')
+          notes: noteVal || (colorType === 'yellow' ? 'Yellow highlight — verify' : '')
         });
       }
     });
@@ -116,9 +125,9 @@ module.exports = async function handler(req, res) {
     const racks = [...new Set(circuits.map(c=>c.rack))];
     return res.status(200).json({
       circuits,
-      storeName,
+      storeName: storeName || 'Food Lion',
       storeNumber: storeNo,
-      summary: `${circuits.length} highlighted circuit(s) found across ${racks.length} rack(s): ${racks.join(', ')}`
+      summary: `${circuits.length} highlighted circuit(s) across rack(s): ${racks.join(', ')}`
     });
 
   } catch(err) {
