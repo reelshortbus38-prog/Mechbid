@@ -707,19 +707,38 @@ async function analyzeAllDocs() {
       if(f.name.match(/\.xlsx?$/i)) {
         // Use dedicated Excel parser that reads cell colors accurately
         try {
+          // Safe base64 encoding for large files
           const base64 = await new Promise((res, rej) => {
             const r = new FileReader();
-            r.onload = e => res(btoa(String.fromCharCode(...new Uint8Array(e.target.result))));
+            r.onload = e => {
+              const bytes = new Uint8Array(e.target.result);
+              let binary = '';
+              const chunkSize = 8192;
+              for(let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+              }
+              res(btoa(binary));
+            };
             r.onerror = rej;
             r.readAsArrayBuffer(f);
           });
 
-          const parseRes = await fetch('/api/parse-excel', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({fileData: base64, fileName: f.name})
-          });
-          const parseData = await parseRes.json();
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 20000);
+          let parseRes, parseData;
+          try {
+            parseRes = await fetch('/api/parse-excel', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({fileData: base64, fileName: f.name}),
+              signal: controller.signal
+            });
+            parseData = await parseRes.json();
+          } catch(fetchErr) {
+            parseData = {error: fetchErr.name === 'AbortError' ? 'Request timed out after 20 seconds' : fetchErr.message};
+          } finally {
+            clearTimeout(timeout);
+          }
 
           if(parseData.error) {
             results.push('📊 Equipment Schedule: Parser error — ' + parseData.error);
