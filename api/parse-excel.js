@@ -4,101 +4,95 @@ const CYAN = 'FF00FFFF';
 const YELLOW = 'FFFFFF00';
 
 function sizeToFraction(val) {
-  if (val === null || val === undefined || val === 0) return '';
+  if (!val || val === 0) return '';
   const map = {
-    0.25: '1/4"', 0.375: '3/8"', 0.5: '1/2"', 0.625: '5/8"',
-    0.75: '3/4"', 0.875: '7/8"', 1.0: '1"', 1.125: '1-1/8"',
-    1.25: '1-1/4"', 1.375: '1-3/8"', 1.5: '1-1/2"', 1.625: '1-5/8"',
-    2.125: '2-1/8"'
+    0.25:'1/4"',0.375:'3/8"',0.5:'1/2"',0.625:'5/8"',
+    0.75:'3/4"',0.875:'7/8"',1.0:'1"',1.125:'1-1/8"',
+    1.25:'1-1/4"',1.375:'1-3/8"',1.5:'1-1/2"',1.625:'1-5/8"',
+    2.125:'2-1/8"'
   };
   const f = parseFloat(val);
-  return map[Math.round(f * 1000) / 1000] || `${val}"`;
+  if(isNaN(f)) return String(val);
+  return map[Math.round(f*1000)/1000] || f+'"';
 }
 
 function getCellColor(cell) {
   try {
     const fill = cell.fill;
-    if (!fill || fill.type !== 'pattern') return null;
+    if(!fill || fill.type !== 'pattern') return null;
     const fg = fill.fgColor;
-    if (!fg) return null;
-    if (fg.argb) return fg.argb;
-    return null;
+    if(!fg) return null;
+    return fg.argb || null;
   } catch { return null; }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+module.exports = async function handler(req, res) {
+  if(req.method !== 'POST') return res.status(405).json({error:'Method not allowed'});
 
   try {
-    // Get base64 Excel data from request
-    const { fileData, fileName } = req.body;
-    if (!fileData) return res.status(400).json({ error: 'No file data provided' });
+    const {fileData, fileName} = req.body;
+    if(!fileData) return res.status(400).json({error:'No file data'});
 
     const buffer = Buffer.from(fileData, 'base64');
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const wb = new ExcelJS.Workbook();
+    
+    // Set timeout
+    await Promise.race([
+      wb.xlsx.load(buffer),
+      new Promise((_,reject) => setTimeout(() => reject(new Error('Timeout loading Excel file')), 8000))
+    ]);
 
     const circuits = [];
-    const storeName = [];
+    let storeName = '';
     let storeNo = '';
-    let refrigerant = '';
 
-    workbook.eachSheet((worksheet, sheetId) => {
-      const sheetName = worksheet.name;
-      if (!sheetName.startsWith('Rack')) return;
-      const rack = sheetName.replace('Rack ', '');
+    wb.eachSheet((ws, sheetId) => {
+      const sName = ws.name;
+      if(!sName.startsWith('Rack')) return;
+      const rack = sName.replace('Rack ','');
 
-      // Get store info from first sheet
-      if (sheetId === 1) {
-        worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
-          if (rowNum > 10) return;
-          row.eachCell((cell) => {
-            const v = String(cell.value || '');
-            if (v.includes('Store No')) {
-              const next = row.getCell(cell.col + 1);
-              if (next.value) storeNo = String(next.value);
+      // Get store info from sheet 1
+      if(sheetId === 1) {
+        for(let r = 1; r <= 8; r++) {
+          const row = ws.getRow(r);
+          row.eachCell((cell, colNum) => {
+            const v = String(cell.value||'');
+            if(v.includes('Store No')) {
+              const next = ws.getRow(r).getCell(colNum+1);
+              if(next.value) storeNo = String(next.value);
             }
-            if (v.includes('Customer')) {
-              const next = row.getCell(cell.col + 1);
-              if (next.value) storeName.push(String(next.value));
+            if(v === 'Food Lion' || (v.includes('Customer') && colNum < 5)) {
+              const next = ws.getRow(r).getCell(colNum+1);
+              if(next.value && !storeName) storeName = String(next.value);
             }
           });
-        });
+        }
       }
 
-      const RUN_COL = 21;
-      const SUC_H_COL = 23;
-      const SUC_R_COL = 24;
-      const LIQ_COL = 25;
-      const EVAP_COL = 6;
-      const APP_COL = 5;
-      const HEADER_ROW = 13;
-
-      worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
-        if (rowNum <= HEADER_ROW) return;
-
+      // Process circuit rows
+      for(let rowNum = 14; rowNum <= 45; rowNum++) {
+        const row = ws.getRow(rowNum);
         const circCell = row.getCell(1);
-        const circId = String(circCell.value || '').trim();
-        if (!circId || !circId.startsWith(rack)) return;
+        const circId = String(circCell.value||'').trim();
+        if(!circId || !circId.startsWith(rack)) continue;
 
-        // Check for highlighting on first 6 cells
+        // Check highlight on first 6 cells
         let highlighted = false;
         let colorType = null;
-
-        for (let c = 1; c <= 6; c++) {
+        for(let c = 1; c <= 6; c++) {
           const color = getCellColor(row.getCell(c));
-          if (color === CYAN) { highlighted = true; colorType = 'new'; break; }
-          if (color === YELLOW) { highlighted = true; colorType = 'yellow'; break; }
+          if(color === CYAN) { highlighted = true; colorType = 'new'; break; }
+          if(color === YELLOW) { highlighted = true; colorType = 'yellow'; break; }
         }
+        if(!highlighted) continue;
 
-        if (!highlighted) return;
-
-        const run = parseFloat(row.getCell(RUN_COL).value) || 0;
-        const sh = sizeToFraction(row.getCell(SUC_H_COL).value);
-        const sr = sizeToFraction(row.getCell(SUC_R_COL).value);
-        const lh = sizeToFraction(row.getCell(LIQ_COL).value);
-        const evap = parseFloat(String(row.getCell(EVAP_COL).value || '').replace('+', '')) || 0;
-        const app = String(row.getCell(APP_COL).value || '');
+        const run = parseFloat(row.getCell(21).value) || 0;
+        const sh = sizeToFraction(row.getCell(23).value);
+        const sr = sizeToFraction(row.getCell(24).value);
+        const lh = sizeToFraction(row.getCell(25).value);
+        const evapRaw = String(row.getCell(6).value||'').replace('+','').trim();
+        const evap = parseFloat(evapRaw) || 0;
+        const app = String(row.getCell(5).value||'');
         const tempType = evap < 0 ? 'low' : 'medium';
         const isRiserOnly = run === 0 && sr !== '';
 
@@ -116,18 +110,18 @@ export default async function handler(req, res) {
           colorType,
           notes: colorType === 'yellow' ? 'Yellow highlight — verify work type' : ''
         });
-      });
+      }
     });
 
+    const racks = [...new Set(circuits.map(c=>c.rack))];
     return res.status(200).json({
       circuits,
-      storeName: storeName[0] || '',
+      storeName,
       storeNumber: storeNo,
-      refrigerant,
-      summary: `${circuits.length} highlighted circuit(s) found across ${[...new Set(circuits.map(c => c.rack))].length} rack(s)`
+      summary: `${circuits.length} highlighted circuit(s) found across ${racks.length} rack(s): ${racks.join(', ')}`
     });
 
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+  } catch(err) {
+    return res.status(500).json({error: err.message});
   }
-}
+};
