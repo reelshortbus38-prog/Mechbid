@@ -705,43 +705,57 @@ async function analyzeAllDocs() {
       let schedResult = '';
 
       if(f.name.match(/\.xlsx?$/i)) {
-        // For Excel files, read as base64 and send to AI
-        const base64 = await new Promise(res => {
-          const r = new FileReader();
-          r.onload = e => res(btoa(String.fromCharCode(...new Uint8Array(e.target.result))));
-          r.readAsArrayBuffer(f);
-        });
+        // Use dedicated Excel parser that reads cell colors accurately
+        try {
+          const base64 = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = e => res(btoa(String.fromCharCode(...new Uint8Array(e.target.result))));
+            r.onerror = rej;
+            r.readAsArrayBuffer(f);
+          });
 
-        const prompt = `You are an expert commercial refrigeration estimator analyzing an equipment schedule from ${state.mode}.
+          const parseRes = await fetch('/api/parse-excel', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({fileData: base64, fileName: f.name})
+          });
+          const parseData = await parseRes.json();
 
-CRITICAL RULES:
-- Only extract circuits where the line size cells (Suction Horiz, Suction Riser, Liquid Horiz) are highlighted/shaded
-- A shaded/highlighted cell = NEW pipe to run
-- A white/unshaded cell = existing pipe, do NOT include
-- If only the riser cell is highlighted = riser change only
-- NEVER fabricate data — only report what is confirmed
-- List what is missing or unclear
-
-This is a base64 encoded Excel file. Analyze it and extract:
-1. Store name and number
-2. Rack labels (A, B, C, etc.)
-3. Only circuits with highlighted line sizes — include circuit ID, run length, riser length, pipe sizes, temp type, refrigerant, application/location
-4. Flag any circuits where data is unclear
-
-Return ONLY JSON:
-{
-  "storeName": "",
-  "storeNumber": "",
-  "refrigerant": "",
-  "confirmed": [{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
-  "missing": ["list missing info"],
-  "flags": ["list anything unclear or needing verification"],
-  "summary": ""
-}`;
-
-        schedResult = await callAI([{role:'user',content:[
-          {type:'text',text:prompt+'\n\nFile name: '+f.name+'\nFile size: '+f.size+' bytes\n\nNote: This Excel file contains color-highlighted cells where cyan/aqua color (FF00FFFF) indicates new pipe runs. Please analyze based on the filename and any text content available.'}
-        ]}]);
+          if(parseData.error) {
+            results.push('📊 Equipment Schedule: Parser error — ' + parseData.error);
+            flags.push({type:'warn', text:'Excel parser error: '+parseData.error, source:'Schedule'});
+          } else {
+            state.jobMemory.schedule = parseData;
+            if(parseData.circuits?.length) {
+              parseData.circuits.forEach(c => {
+                if(!state.circuits.find(x=>x.id===c.circuitId)) {
+                  state.circuits.push({
+                    id: c.circuitId,
+                    rack: c.rack,
+                    runLength: c.runLength,
+                    riserLength: c.riserLength || 20,
+                    sucHoriz: c.sucHoriz,
+                    sucRiser: c.sucRiser,
+                    liqHoriz: c.liqHoriz,
+                    tempType: c.tempType,
+                    application: c.application,
+                    isRiserOnly: c.isRiserOnly,
+                    notes: c.notes || '',
+                    source: 'excel'
+                  });
+                }
+              });
+              renderCircuits();
+            }
+            if(parseData.storeName && !document.getElementById('projName').value) {
+              document.getElementById('projName').value = parseData.storeName + (parseData.storeNumber ? ' #'+parseData.storeNumber : '');
+            }
+            results.push('📊 Equipment Schedule (Excel): ' + (parseData.summary || parseData.circuits?.length + ' circuits found'));
+          }
+        } catch(excelErr) {
+          results.push('📊 Equipment Schedule: ' + excelErr.message);
+          flags.push({type:'warn', text:'Excel parsing failed: '+excelErr.message, source:'Schedule'});
+        }
 
       } else if(f.type.startsWith('image/') || f.name.match(/\.pdf$/i)) {
         const prompt = `You are a commercial refrigeration estimator. You are reading a refrigeration legend sheet image.
