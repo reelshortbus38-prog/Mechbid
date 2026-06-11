@@ -1064,7 +1064,7 @@ async function processAIResult(resultText, sourceName, results, flags) {
 
     // Work sequence
     if(parsed.workSequence?.length) {
-      parsed.workSequence.forEach(w => flags.push({type:'info', text:typeof w==='object'?(w.week?'Week '+w.week+': ':'')+w.milestone:w, source:'Schedule'}));
+      parsed.workSequence.forEach(w => flags.push({type:'info', text:typeof w==='object'?(w.week?'Week '+w.week.replace(/^Week /i,'')+': ':'')+w.milestone:w, source:'Schedule'}));
     }
 
     // Cost impacts
