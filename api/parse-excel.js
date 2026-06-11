@@ -1,4 +1,5 @@
 const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 
 const CYAN = 'FF00FFFF';
 const YELLOW = 'FFFFFF00';
