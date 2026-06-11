@@ -1,5 +1,10 @@
 {
   "dependencies": {
     "exceljs": "^4.4.0"
+  },
+  "functions": {
+    "api/parse-excel.js": {
+      "maxDuration": 30
+    }
   }
 }
