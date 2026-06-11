@@ -880,35 +880,92 @@ Return ONLY valid JSON:
 
 // PROCESS PDF/DOC FILE
 async function processDocFile(fileObj, results, flags) {
-  // For doc/pdf we send filename and ask AI to identify
-  const prompt = `You are an expert commercial refrigeration estimator. Based on the filename "${fileObj.name}", this appears to be a document from a commercial refrigeration remodel bid package.
+  const isWord = fileObj.name.match(/\.docx?$/i);
+  const isPdf = fileObj.file.type === 'application/pdf' || fileObj.name.match(/\.pdf$/i);
 
-The user has uploaded this file. Without seeing the content, help identify what it likely contains and what fields would be relevant. Then the user should re-upload it as an image or PDF screenshot for full analysis.
+  let docText = '';
 
-Actually, since I cannot read the raw bytes, return a placeholder:
-{
-  "documentType": "unknown",
-  "summary": "File uploaded: ${fileObj.name} — Please upload as image/screenshot for AI analysis, or upload a PDF version",
-  "flags": ["${fileObj.name} cannot be read directly — convert to image or PDF for analysis"],
-  "circuits": [], "parts": [], "rcNotes": [], "rackNotes": [], "dropPoints": [],
-  "nightWorkRequired": false, "nightWorkDetails": "", "startDate": "", "workSequence": []
-}`;
-
-  // Try to process as image if possible
-  if(fileObj.file.type === 'application/pdf') {
+  if(isWord) {
+    // Send to server-side Word parser
     try {
-      const base64 = await imgToJpeg(fileObj.file);
-      const imgPrompt = prompt.replace('Actually, since I cannot read the raw bytes', 'Analyze this document.');
-      const result = await callAIWithImage(fileObj.file, prompt);
-      await processAIResult(result, fileObj.name, results, flags);
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => {
+          const bytes = new Uint8Array(e.target.result);
+          let binary = '';
+          const chunk = 8192;
+          for(let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i+chunk));
+          res(btoa(binary));
+        };
+        r.onerror = rej;
+        r.readAsArrayBuffer(fileObj.file);
+      });
+
+      const parseRes = await fetch('/api/parse-doc', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({fileData: base64, fileName: fileObj.name})
+      });
+      const parseData = await parseRes.json();
+      if(parseData.text) docText = parseData.text;
+    } catch(e) {
+      flags.push({type:'warn', text:`Could not parse ${fileObj.name}: ${e.message}`, source:'Upload'});
+    }
+  } else if(isPdf) {
+    // Try as image
+    try {
+      await processImageFile(fileObj, results, flags);
       return;
     } catch(e) {
-      // Fall through to text-only
+      flags.push({type:'warn', text:`Could not process PDF ${fileObj.name}: ${e.message}`, source:'Upload'});
     }
   }
 
-  results.push(`📄 ${fileObj.name}: Uploaded — convert to image for full AI analysis`);
-  flags.push({type:'info', text:`${fileObj.name}: For best results, take a screenshot and upload the image version`, source:'Upload'});
+  if(docText) {
+    // Send extracted text to AI for analysis
+    const prompt = `You are an expert commercial refrigeration contractor reading a job document. Analyze this text and extract ALL information relevant to the Refrigeration Contractor (RC).
+
+FIND AND EXTRACT:
+1. Every sentence mentioning "RC", "Refrigeration Contractor", "refrigeration", or "ref contractor"
+2. Night work requirements — any mention of night work, after hours, overnight
+3. Start date — Week 1, Day 1, first date mentioned
+4. Pre-con meeting date
+5. Work sequence — what RC does each week
+6. Any parts list or materials mentioned
+7. Any rack-specific notes (Rack A, Rack B, etc.)
+8. Special requirements, restrictions, or conditions
+9. Cost impact items (overtime, premium materials, minimum crew size)
+10. Store name, store number, GC name
+
+For each RC item found, copy the EXACT text and note the week/date context.
+
+Document text:
+${docText.slice(0, 8000)}
+
+Return ONLY valid JSON:
+{
+  "documentType": "job_schedule|remodel_scope|scope_of_work|bid_email|unknown",
+  "storeName": "", "storeNumber": "", "gcName": "", "address": "",
+  "startDate": "", "endDate": "", "preConDate": "",
+  "circuits": [],
+  "parts": [{"partId":"","qty":0,"description":""}],
+  "rcNotes": [{"week":"","date":"","text":"exact text","costImpact":false}],
+  "nightWorkRequired": false,
+  "nightWorkDetails": "",
+  "workSequence": [{"week":"","date":"","milestone":"","rcInvolved":true,"details":""}],
+  "rackNotes": [{"rack":"","notes":[]}],
+  "costImpactItems": [],
+  "specialRequirements": [],
+  "flags": [],
+  "summary": "2-3 sentences summarizing RC scope and key requirements"
+}`;
+
+    const aiResult = await callAI([{role:'user', content:prompt}], 2000);
+    await processAIResult(aiResult, fileObj.name, results, flags);
+  } else {
+    results.push(`📄 ${fileObj.name}: Uploaded — could not extract text content`);
+    flags.push({type:'info', text:`${fileObj.name}: Try uploading as a screenshot image for best results`, source:'Upload'});
+  }
 }
 
 // PROCESS PASTED EMAIL
