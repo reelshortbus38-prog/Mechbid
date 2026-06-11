@@ -100,7 +100,7 @@ module.exports = async function handler(req, res) {
           circuitId: circId,
           rack,
           runLength: run,
-          riserLength: 20,
+          riserLength: vertRiser,
           sucHoriz: sh,
           sucRiser: sr,
           liqHoriz: lh,
@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
           application: app,
           isRiserOnly,
           colorType,
-          notes: colorType === 'yellow' ? 'Yellow highlight — verify work type' : ''
+          notes: noteVal || (colorType === 'yellow' ? 'Yellow highlight — verify work type' : '')
         });
       }
     });
