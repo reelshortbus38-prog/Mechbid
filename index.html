@@ -232,6 +232,7 @@ select.inp{cursor:pointer;}
     <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
     <button class="tab-btn" onclick="showTab('circuits',this)">⚡ Circuits</button>
     <button class="tab-btn" onclick="showTab('materials',this)">🔧 Materials</button>
+    <button class="tab-btn" onclick="showTab('scope',this)">📋 Scope of Work</button>
     <button class="tab-btn" onclick="showTab('rates',this)">💰 Rates & Labor</button>
     <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
     <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>
@@ -311,11 +312,99 @@ select.inp{cursor:pointer;}
       <button class="btn btn-green btn-sm" onclick="generateMaterials()">⚙️ Generate from Circuits</button>
     </div>
   </div>
-  <div id="materialList">
+  
+  <div class="card mb16" id="hangerCard" style="display:none;">
+    <div class="slabel" style="margin-bottom:12px">Hangers</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="fs11 text-muted mb8">Longest Run (ft)</div>
+        <input type="number" id="hangerLongestRun" class="inp" style="width:100px"
+          oninput="calcHangers()" placeholder="auto">
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Circuits per Hanger</div>
+        <input type="number" id="hangerCircuits" class="inp" value="1" min="1" style="width:80px"
+          oninput="calcHangers()">
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Spacing (ft)</div>
+        <input type="number" id="hangerSpacing" class="inp" value="6" min="1" style="width:80px"
+          oninput="calcHangers()">
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Unit Cost ($)</div>
+        <input type="number" id="hangerUnitCost" class="inp" value="0" style="width:80px"
+          oninput="calcHangers()">
+      </div>
+      <div style="padding-top:16px">
+        <div class="fs12 text-dim">Qty: <span class="mono fw700 text-green" id="hangerQty">0</span></div>
+        <div class="fs12 text-dim">Total: <span class="mono fw700 text-green" id="hangerTotalDisplay">$0</span></div>
+      </div>
+    </div>
+  </div>
+
+<div id="materialList">
     <div class="ai-out empty" style="min-height:160px;">
       <div class="ai-empty-icon">🔧</div>
       <div class="ai-empty-text">Add circuits first, then click Generate to auto-build the material list.</div>
     </div>
+  </div>
+</div>
+
+
+<!-- SCOPE OF WORK TAB -->
+<div id="tab-scope" class="hidden">
+
+  <!-- FIELD WORK -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Field Work</div>
+      <div class="fs12 text-dim">Line runs, case work, sensor terminations — auto-populated from circuits & scope doc</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="addFieldTask()">+ Add Task</button>
+  </div>
+  <div class="card-tight mb20">
+    <table class="tbl" id="fieldWorkTable">
+      <thead><tr><th style="width:40%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="fieldWorkBody">
+        <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
+          Upload a scope doc or add circuits to auto-populate field tasks
+        </td></tr>
+      </tbody>
+    </table>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <span class="fs12 text-dim">Field Work Total</span>
+      <span class="mono fw700 text-green" id="fieldWorkTotal">$0</span>
+    </div>
+  </div>
+
+  <!-- RACK WORK -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Rack Work</div>
+      <div class="fs12 text-dim">Contractor fills in — men and hours based on site conditions</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addRackTask()">+ Add Task</button>
+  </div>
+  <div class="card-tight mb16">
+    <table class="tbl" id="rackWorkTable">
+      <thead><tr><th style="width:40%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="rackWorkBody">
+        <tr id="rackWorkEmpty"><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
+          Add rack tasks manually — EPR valves, oil floats, filter changes, controller programming, etc.
+        </td></tr>
+      </tbody>
+    </table>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <span class="fs12 text-dim">Rack Work Total</span>
+      <span class="mono fw700 text-green" id="rackWorkTotal">$0</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Field Work</div><div class="stat-value text-green" id="scopeFieldStat">$0</div></div>
+    <div class="stat"><div class="stat-label">Rack Work</div><div class="stat-value text-yellow" id="scopeRackStat">$0</div></div>
+    <div class="stat"><div class="stat-label">Total Scope</div><div class="stat-value" style="color:var(--orange)" id="scopeTotalStat">$0</div></div>
   </div>
 </div>
 
@@ -338,7 +427,23 @@ select.inp{cursor:pointer;}
         <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">2-1/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_218" type="number" placeholder="0.00" oninput="syncCopperRates()"><span class="rate-suffix">/ft</span></div></div>
       </div>
 
-      <div class="slabel">Fittings & Insulation Markup</div>
+
+      <div class="slabel mt16">Insulation — Price per Linear Foot</div>
+      <div class="card-tight mb16">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;">Pipe Size</th>
+              <th style="padding:9px 14px;text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;">1/2" Wall</th>
+              <th style="padding:9px 14px;text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;">3/4" Wall</th>
+              <th style="padding:9px 14px;text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;">1" Wall</th>
+            </tr>
+          </thead>
+          <tbody id="insulRateBody"></tbody>
+        </table>
+      </div>
+
+      <div class="slabel">Fittings & Markup</div>
       <div class="card-tight">
         <div class="rate-row"><div class="rate-label">Fittings markup on copper cost</div><div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25" oninput="syncCopperRates()"><span class="rate-suffix">%</span></div></div>
         <div class="rate-row"><div class="rate-label">Insulation markup</div><div class="rate-input-wrap"><input class="rate-inp" id="insulMarkup" type="number" value="20" oninput="syncCopperRates()"><span class="rate-suffix">%</span></div></div>
@@ -384,19 +489,6 @@ select.inp{cursor:pointer;}
         <div class="rate-row"><div class="rate-label">Overtime Multiplier</div><div class="rate-input-wrap"><input class="rate-inp" id="otMult" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
         <div class="rate-row"><div class="rate-label">Night / Weekend Premium</div><div class="rate-input-wrap"><input class="rate-inp" id="nightMult" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
         <div class="rate-row"><div class="rate-label">Out of Town Expenses/day</div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="ootExpenses" type="number" placeholder="0" oninput="calcLabor()"><span class="rate-suffix">/day</span></div></div>
-      </div>
-
-      <!-- Scope Tasks -->
-      <div class="slabel mt16">Scope Tasks — Rack & Field Work</div>
-      <div class="card-tight mb16" id="scopeTasksCard">
-        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
-          <span class="fs12 text-dim" id="scopeTaskCount">No tasks loaded — upload a scope of work doc</span>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost btn-sm" onclick="addScopeTask()">+ Add Task</button>
-            <button class="btn btn-green btn-sm" onclick="pushScopeTasksToMaterials()">→ Add to Materials</button>
-          </div>
-        </div>
-        <div id="scopeTaskList" style="max-height:260px;overflow-y:auto;"></div>
       </div>
 
       <!-- Labor total box -->
@@ -869,7 +961,8 @@ function calcLabor() {
 function calcTotals() {
   state.materialsTotal = state.lineItems.reduce((s,i) => s + (parseFloat(i.total)||0), 0);
   const laborOnly = state.laborTotal - state.ootTotal;
-  const total = state.materialsTotal + state.laborTotal;
+  const scopeTotal = (state.fieldWorkTotal||0) + (state.rackWorkTotal||0);
+  const total = state.materialsTotal + state.laborTotal + scopeTotal;
   const fmt = v => '$' + Math.round(v).toLocaleString();
 
   ['estMat','ratesMat','propMat'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(state.materialsTotal); });
@@ -1011,7 +1104,7 @@ async function analyzeAllDocs() {
     state.flags=flags;
     out.className='ai-out has-content';
     out.innerHTML=`<div class="ai-text">${results.join('\n\n')}${state.circuits.length>0?'\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.':''}</div>`;
-    renderFlags(); renderCircuits();
+    renderFlags(); renderCircuits(); autoPopulateFieldTasks();
   } catch(e) {
     out.className='ai-out empty';
     out.innerHTML=`<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
@@ -1230,13 +1323,39 @@ function generateMaterials() {
     unitCost:fittingsAmt, total:fittingsAmt,
     editable:true, isFittingsAllowance:true
   });
-  state.circuits.forEach(c=>{
-    if(c.isRiserOnly)return;
-    const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
-    if(runFt===0)return;
-    const isLow=c.tempType==='low';
-    state.lineItems.push({section:'Insulation',desc:`${c.id} — ${isLow?'1"':'3/4"'} Rubber Insulation — Suction (${isLow?'Low':'Med'} Temp)`,qty:runFt,unit:'ft',unitCost:0,total:0,editable:true});
-    if(isLow) state.lineItems.push({section:'Insulation',desc:`${c.id} — 1/2" Rubber Insulation — Liquid (Low Temp)`,qty:runFt,unit:'ft',unitCost:0,total:0,editable:true});
+  // Insulation — consolidate by pipe size + wall thickness
+  const insulByKey = {};
+  function addInsul(pipeSize, wallThickness, footage) {
+    if(!pipeSize || footage <= 0) return;
+    const size = normalizePipeSize(pipeSize);
+    const key = size + '_' + wallThickness;
+    if(!insulByKey[key]) insulByKey[key] = {pipeSize: size, wallThickness, footage: 0};
+    insulByKey[key].footage += footage;
+  }
+  state.circuits.forEach(c => {
+    if(c.isRiserOnly) return;
+    const runFt = (parseFloat(c.runLength)||0) + (parseFloat(c.riserLength)||0);
+    if(runFt === 0) return;
+    const isLow = c.tempType === 'low';
+    // Suction line insulation
+    addInsul(c.sucHoriz, isLow ? '100' : '075', runFt);
+    // Liquid line insulation
+    addInsul(c.liqHoriz, '050', runFt);
+  });
+  Object.values(insulByKey).forEach(ins => {
+    const wallLabel = {'050':'1/2"','075':'3/4"','100':'1"'}[ins.wallThickness] || ins.wallThickness;
+    const rate = getInsulRate(ins.pipeSize, ins.wallThickness);
+    state.lineItems.push({
+      section:'Insulation',
+      desc:`${ins.pipeSize}" Pipe × ${wallLabel} Wall Rubber Insulation`,
+      qty: Math.ceil(ins.footage * wasteFactor),
+      unit:'ft', unitCost: rate,
+      total: Math.ceil(ins.footage * wasteFactor) * rate,
+      editable:true,
+      pipeSize: ins.pipeSize,
+      wallThickness: ins.wallThickness,
+      baseQty: ins.footage
+    });
   });
   state.circuits.forEach(c=>{
     const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
@@ -1406,7 +1525,8 @@ function updateProposal() {
   const mat=state.materialsTotal||0;
   const laborOnly=state.laborTotal-(state.ootTotal||0);
   const oot=state.ootTotal||0;
-  const total=mat+state.laborTotal;
+  const scopeT=(state.fieldWorkTotal||0)+(state.rackWorkTotal||0);
+  const total=mat+state.laborTotal+scopeT;
   const fmt=v=>'$'+Math.round(v).toLocaleString();
 
   // Refrigerant line item subtotal
@@ -1473,6 +1593,7 @@ function showTab(name, btn) {
   btn.classList.add('active');
   if(name==='proposal') updateProposal();
   if(name==='estimate') renderEstimate();
+  if(name==='scope') renderScopeTab();
 }
 
 let mechbotOpen=false;
@@ -1510,9 +1631,222 @@ Question: ${text}`;
 
 document.getElementById('mechbotInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')sendMechBot();});
 
+
+// ── PIPE SIZES ─────────────────────────────────────────────────────────────────
+const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8','3-5/8'];
+const INSUL_WALLS = ['050','075','100']; // 1/2", 3/4", 1"
+const INSUL_WALL_LABELS = {'050':'1/2"','075':'3/4"','100':'1"'};
+
+// ── INSULATION RATE TABLE RENDER ───────────────────────────────────────────────
+function renderInsulRateTable() {
+  const tbody = document.getElementById('insulRateBody');
+  if(!tbody) return;
+  tbody.innerHTML = PIPE_SIZES.map((size, i) => `
+    <tr style="${i%2===0?'background:rgba(255,255,255,0.015)':''}">
+      <td style="padding:8px 14px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--cyan);flex-shrink:0;"></div>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;">${size}"</span>
+        </div>
+      </td>
+      ${INSUL_WALLS.map(wall => `
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:center;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+            <span style="color:var(--text-dim);font-size:12px;">$</span>
+            <input class="rate-inp" type="number" placeholder="0.00" min="0" step="0.01"
+              id="ins_${size.replace(/[^0-9]/g,'')}_${wall}"
+              oninput="syncInsulRates()"
+              style="width:65px;">
+            <span style="font-size:10px;color:var(--text-muted)">/ft</span>
+          </div>
+        </td>`).join('')}
+    </tr>`).join('');
+}
+
+// ── INSULATION RATE SYNC ───────────────────────────────────────────────────────
+function getInsulRate(pipeSize, wallThickness) {
+  // pipeSize e.g. '1-3/8', wallThickness e.g. '075'
+  const sizeKey = normalizePipeSize(pipeSize).replace(/[^0-9]/g,'');
+  const el = document.getElementById(`ins_${sizeKey}_${wallThickness}`);
+  return parseFloat(el?.value) || 0;
+}
+
+function syncInsulRates() {
+  if(state.lineItems.length === 0) return;
+  state.lineItems.forEach(item => {
+    if(item.section !== 'Insulation') return;
+    const rate = getInsulRate(item.pipeSize || '', item.wallThickness || '075');
+    item.unitCost = rate;
+    item.total = (item.qty || 0) * rate;
+  });
+  renderMaterials();
+  calcTotals();
+}
+
+// ── HANGERS ────────────────────────────────────────────────────────────────────
+function calcHangers() {
+  const longestRun = parseFloat(document.getElementById('hangerLongestRun')?.value) || 0;
+  const circuitsPerHanger = parseFloat(document.getElementById('hangerCircuits')?.value) || 1;
+  const spacing = parseFloat(document.getElementById('hangerSpacing')?.value) || 6;
+  const unitCost = parseFloat(document.getElementById('hangerUnitCost')?.value) || 0;
+  const qty = Math.ceil(longestRun / spacing / circuitsPerHanger);
+  const total = qty * unitCost;
+
+  const qtyEl = document.getElementById('hangerQty');
+  const totalEl = document.getElementById('hangerTotalDisplay');
+  if(qtyEl) qtyEl.textContent = qty;
+  if(totalEl) totalEl.textContent = '$' + total.toLocaleString();
+
+  // Update hanger line item in materials
+  const hangerItem = state.lineItems.find(i => i.isHangerItem);
+  if(hangerItem) {
+    hangerItem.qty = qty;
+    hangerItem.unitCost = unitCost;
+    hangerItem.total = total;
+    renderMaterials();
+    calcTotals();
+  }
+}
+
+function autoSetHangers() {
+  if(state.circuits.length === 0) return;
+  const longestRun = Math.max(...state.circuits.filter(c=>!c.isRiserOnly).map(c => parseFloat(c.runLength)||0));
+  const el = document.getElementById('hangerLongestRun');
+  if(el && longestRun > 0) { el.value = longestRun; calcHangers(); }
+  const card = document.getElementById('hangerCard');
+  if(card) card.style.display = 'block';
+}
+
+// ── SCOPE OF WORK ──────────────────────────────────────────────────────────────
+if(!state.fieldTasks) state.fieldTasks = [];
+if(!state.rackTasks)  state.rackTasks  = [];
+
+function getCrewRateForMen(men) {
+  // Get blended rate — average rate per person × number of men
+  if(state.crew.length === 0) return (men || 1) * 100; // fallback $100/hr
+  const avgRate = state.crew.reduce((s,m) => s + (parseFloat(m.rate)||0), 0) / state.crew.length;
+  return (men || 1) * avgRate;
+}
+
+function addFieldTask(desc='', men=1, hrs=0, notes='') {
+  state.fieldTasks.push({id:'ft_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc, men, hrs, notes});
+  renderScopeTab();
+}
+
+function addRackTask(desc='', men=1, hrs=0, notes='') {
+  state.rackTasks.push({id:'rt_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc, men, hrs, notes});
+  renderScopeTab();
+}
+
+function updateFieldTask(id, field, value) {
+  const t = state.fieldTasks.find(t=>t.id===id);
+  if(t) { t[field] = (field==='men'||field==='hrs') ? parseFloat(value)||0 : value; renderScopeTab(); }
+}
+
+function updateRackTask(id, field, value) {
+  const t = state.rackTasks.find(t=>t.id===id);
+  if(t) { t[field] = (field==='men'||field==='hrs') ? parseFloat(value)||0 : value; renderScopeTab(); }
+}
+
+function removeFieldTask(id) { state.fieldTasks = state.fieldTasks.filter(t=>t.id!==id); renderScopeTab(); }
+function removeRackTask(id)  { state.rackTasks  = state.rackTasks.filter(t=>t.id!==id);  renderScopeTab(); }
+
+function scopeTaskCost(task) {
+  return task.men * task.hrs * (getCrewRateForMen(1)); // rate per person × men × hrs
+}
+
+function renderScopeTab() {
+  const fieldBody = document.getElementById('fieldWorkBody');
+  const rackBody  = document.getElementById('rackWorkBody');
+  if(!fieldBody || !rackBody) return;
+
+  const fmt = v => '$' + Math.round(v).toLocaleString();
+
+  // Field work
+  if(state.fieldTasks.length === 0) {
+    fieldBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">Upload a scope doc or add circuits to auto-populate field tasks</td></tr>`;
+  } else {
+    fieldBody.innerHTML = state.fieldTasks.map(t => {
+      const cost = scopeTaskCost(t);
+      return `<tr>
+        <td><input class="tbl-input" value="${t.desc}" placeholder="Task description"
+          onchange="updateFieldTask('${t.id}','desc',this.value)" style="width:100%"></td>
+        <td><input class="tbl-input mono" type="number" value="${t.men}" min="1"
+          onchange="updateFieldTask('${t.id}','men',this.value)" style="width:50px;text-align:center"></td>
+        <td><input class="tbl-input mono" type="number" value="${t.hrs}" min="0" step="0.5"
+          onchange="updateFieldTask('${t.id}','hrs',this.value)" style="width:60px;text-align:center"></td>
+        <td class="mono fw700 text-green">${fmt(cost)}</td>
+        <td><input class="tbl-input" value="${t.notes}" placeholder="Notes"
+          onchange="updateFieldTask('${t.id}','notes',this.value)"></td>
+        <td><button class="btn btn-red btn-xs" onclick="removeFieldTask('${t.id}')">×</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Rack work
+  if(state.rackTasks.length === 0) {
+    rackBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">Add rack tasks manually — EPR valves, oil floats, filter changes, controller programming, etc.</td></tr>`;
+  } else {
+    rackBody.innerHTML = state.rackTasks.map(t => {
+      const cost = scopeTaskCost(t);
+      return `<tr>
+        <td><input class="tbl-input" value="${t.desc}" placeholder="Task description"
+          onchange="updateRackTask('${t.id}','desc',this.value)" style="width:100%"></td>
+        <td><input class="tbl-input mono" type="number" value="${t.men}" min="1"
+          onchange="updateRackTask('${t.id}','men',this.value)" style="width:50px;text-align:center"></td>
+        <td><input class="tbl-input mono" type="number" value="${t.hrs}" min="0" step="0.5"
+          onchange="updateRackTask('${t.id}','hrs',this.value)" style="width:60px;text-align:center"></td>
+        <td class="mono fw700 text-green">${fmt(cost)}</td>
+        <td><input class="tbl-input" value="${t.notes}" placeholder="Notes"
+          onchange="updateRackTask('${t.id}','notes',this.value)"></td>
+        <td><button class="btn btn-red btn-xs" onclick="removeRackTask('${t.id}')">×</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Totals
+  const fieldTotal = state.fieldTasks.reduce((s,t) => s + scopeTaskCost(t), 0);
+  const rackTotal  = state.rackTasks.reduce((s,t)  => s + scopeTaskCost(t), 0);
+  const scopeTotal = fieldTotal + rackTotal;
+
+  state.fieldWorkTotal = fieldTotal;
+  state.rackWorkTotal  = rackTotal;
+
+  ['fieldWorkTotal'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(fieldTotal); });
+  ['rackWorkTotal'].forEach(id  => { const el=document.getElementById(id); if(el) el.textContent=fmt(rackTotal);  });
+  ['scopeFieldStat'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(fieldTotal); });
+  ['scopeRackStat'].forEach(id  => { const el=document.getElementById(id); if(el) el.textContent=fmt(rackTotal);  });
+  ['scopeTotalStat'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(scopeTotal); });
+
+  calcTotals();
+}
+
+// Auto-populate field tasks from circuits
+function autoPopulateFieldTasks() {
+  if(state.circuits.length === 0) return;
+  state.fieldTasks = [];
+  const newCircuits = state.circuits.filter(c => !c.isRiserOnly);
+  const riserOnly   = state.circuits.filter(c => c.isRiserOnly);
+
+  if(newCircuits.length > 0)
+    addFieldTask(`Run & connect new line sets (${newCircuits.length} circuits)`, 2, newCircuits.length * 2, 'Avg 2hrs/circuit');
+  if(riserOnly.length > 0)
+    addFieldTask(`Install riser connections (${riserOnly.length} circuits)`, 1, riserOnly.length * 0.75, 'Riser only');
+
+  addFieldTask('Insulate all new line sets', 2, 0, 'Enter hours');
+  addFieldTask('Pressure test & leak check', 2, 0, 'Enter hours');
+  addFieldTask('Terminate sensor cables at cases', 1, 0, 'Enter hours');
+  addFieldTask('Install drip pans above ceilings', 2, 0, 'Enter hours');
+  addFieldTask('Seal all penetrations', 1, 0, 'Enter hours');
+  addFieldTask('Final cleanup & punch list', 2, 0, 'Enter hours');
+
+  renderScopeTab();
+}
+
 // ── STARTUP ────────────────────────────────────────────────────────────────────
 renderCrew();
-renderScopeTasks();
+renderInsulRateTable();
+renderScopeTab();
 calcLabor();
 calcTotals();
 </script>
