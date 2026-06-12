@@ -143,19 +143,29 @@ function parseXLS(xlsBuffer, circuits, meta) {
 
     const ws = wb.Sheets[sName];
     const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-
-    // Detect format from sheet name
-    const isBPR = sName.match(/Remote\s*Hdr|Rack|RACK/i);
-    const isKysor = sName.match(/^Rack\s+[A-Za-z]/i);
+    if(!data || data.length < 5) continue;
 
     let rack = sName.replace(/Remote\s*Hdr\s*/i,'Hdr').replace(/\s*\(\d+\)/,'')
       .replace(/^Rack\s*/i,'').replace(/^RACK\s*/i,'').trim();
+
+    // For generic sheet names (Sheet1, Sheet2), try to find rack name from data content
+    if(!rack || rack.match(/^Sheet\d+$/i)) {
+      for(let r = 0; r < Math.min(data.length, 15); r++) {
+        for(let c = 0; c < Math.min((data[r]||[]).length, 5); c++) {
+          const v = String(data[r][c]||'').trim();
+          if(v.match(/^Rack\s+[A-Z]$/i)) { rack = v.replace(/^Rack\s*/i,'').trim(); break; }
+          if(v.match(/^Remote\s*Hdr/i)) { rack = v.replace(/Remote\s*Hdr\s*/i,'Hdr').replace(/\s*\(\d+\)/,'').trim(); break; }
+        }
+        if(rack && !rack.match(/^Sheet/i)) break;
+      }
+      if(!rack || rack.match(/^Sheet\d+$/i)) rack = 'S'+(wb.SheetNames.indexOf(sName)+1);
+    }
 
     // Find header row
     let headerRow = -1;
     let runCol = -1, sucHCol = -1, sucRCol = -1, liqCol = -1, evapCol = -1, appCol = -1, exChrCol = -1;
 
-    for(let r = 8; r < Math.min(data.length, 16); r++) {
+    for(let r = 5; r < Math.min(data.length, 20); r++) {
       const row = data[r];
       for(let c = 0; c < row.length; c++) {
         const v = String(row[c]||'').toLowerCase();
@@ -165,7 +175,7 @@ function parseXLS(xlsBuffer, circuits, meta) {
         if(v.includes('liq') && (v.includes('hor') || v.includes('horiz'))) liqCol = c;
         if(v.includes('evap') || v === '° f' || v === 'evap °f') evapCol = c;
         if(v.includes('applic') || v === 'application') appCol = c;
-        if(v.includes('exchr') || v.includes('heat') && v.includes('exch')) exChrCol = c;
+        if(v.includes('exchr') || (v.includes('heat') && v.includes('exch'))) exChrCol = c;
       }
       if(runCol >= 0) break;
     }
