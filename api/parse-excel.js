@@ -139,32 +139,30 @@ function parseBPR(wb, circuits, meta) {
       const app = String(row.getCell(7).value||'').trim();
       if(!app || app.match(/SPARE/i)) continue;
 
-      // Require run length and at least suction horiz size — skip rows with no piping data
+      // New circuit = any line size cell (cols 22/23/24) is highlighted.
+      // Col 22 = Suction Horiz, Col 23 = Suction Riser, Col 24 = Liquid Horiz
+      const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
+      if(!lineSizeHighlighted) continue;
+
       const run = parseFloat(row.getCell(21).value)||0;
       const sh = sizeToFraction(row.getCell(22).value);
-      if(!run || !sh) continue;
-
       const sr = sizeToFraction(row.getCell(23).value);
       const lh = sizeToFraction(row.getCell(24).value);
       const evap = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
 
-      // Tag circuit as new/existing/unspecified for UI display
-      // Check exchr column first, then fall back to highlighted line size cells
-      const exchr = String(row.getCell(4).value||'').trim().toUpperCase();
-      const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
-      let colorType, notes;
-      if(exchr === 'NEW' || lineSizeHighlighted) {
-        colorType = 'new';
-        notes = exchr === 'NEW' ? 'NEW — BPR format' : 'NEW — highlighted line sizes';
-      } else if(exchr === 'EXISTING') { colorType = 'existing'; notes = 'EXISTING — BPR format'; }
-      else                            { colorType = 'bpr';      notes = 'BPR format'; }
+      // Riser-only: highlighted riser but no run length
+      const isRiserOnly = !run && !!sr;
+      if(!run && !sr) continue;
+
+      const colorType = 'new';
+      const notes = isRiserOnly ? 'NEW - riser only' : 'NEW - highlighted line sizes';
 
       circuits.push({
         circuitId: `${rack}-${circIdRaw}`, rack,
         runLength: run, riserLength: 20,
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
-        application: app, isRiserOnly: false,
+        application: app, isRiserOnly,
         colorType, notes
       });
     }
