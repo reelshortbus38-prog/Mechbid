@@ -654,10 +654,8 @@ function syncCopperRates() {
 
   state.lineItems.forEach(item => {
     if(item.section !== 'Copper') return;
-    // Extract pipe size from description e.g. '1-3/8" ACR Copper — suction horizontal'
-    const sizeMatch = item.desc.match(/^([0-9\/\- ]+(?:\/[0-9]+)?)"?\s/);
-    if(!sizeMatch) return;
-    const size = sizeMatch[1].trim();
+    // Use stored pipeSize property, fall back to parsing description
+    const size = item.pipeSize || item.desc.replace(/".*/, '').replace(' ACR Copper', '').trim();
     const newRate = getRateForSize(size);
 
     // Apply waste factor to base footage (stored in item.baseQty if set, else item.qty)
@@ -1210,18 +1208,26 @@ function generateMaterials() {
   state.lineItems=[];
   const sizeToId={'0.25':'cu_025','1/4':'cu_025','0.375':'cu_038','3/8':'cu_038','0.5':'cu_050','1/2':'cu_050','0.625':'cu_058','5/8':'cu_058','0.875':'cu_078','7/8':'cu_078','1.125':'cu_118','1-1/8':'cu_118','1 1/8':'cu_118','1.375':'cu_138','1-3/8':'cu_138','1 3/8':'cu_138','1.625':'cu_158','1-5/8':'cu_158','1 5/8':'cu_158','2.125':'cu_218','2-1/8':'cu_218','2 1/8':'cu_218'};
   function getRate(sizeStr){if(!sizeStr)return 0;const key=Object.keys(sizeToId).find(k=>sizeStr.replace(/"/g,'').trim().includes(k.replace(/"/g,'')));if(!key)return 0;return parseFloat(document.getElementById(sizeToId[key])?.value)||0;}
+  // Consolidate copper footage by size only — one line per size regardless of suction/liquid/riser
   const copperBySize={};
+  function addCopper(size, footage) {
+    if(!size || footage <= 0) return;
+    const key = size.replace(/"/g,'').trim();
+    if(!copperBySize[key]) copperBySize[key] = {size: key, footage: 0};
+    copperBySize[key].footage += footage;
+  }
   state.circuits.forEach(c=>{
-    const runFt=parseFloat(c.runLength)||0,riserFt=parseFloat(c.riserLength)||0,totalRun=runFt+riserFt;
-    if(c.isRiserOnly){if(c.sucRiser){const key=c.sucRiser+' suction riser';if(!copperBySize[key])copperBySize[key]={size:c.sucRiser,footage:0,type:'suction riser'};copperBySize[key].footage+=riserFt;}}
-    else{
-      if(c.sucHoriz&&runFt>0){const key=c.sucHoriz+' suction';if(!copperBySize[key])copperBySize[key]={size:c.sucHoriz,footage:0,type:'suction horizontal'};copperBySize[key].footage+=runFt;}
-      if(c.sucRiser&&riserFt>0){const key=c.sucRiser+' suction riser';if(!copperBySize[key])copperBySize[key]={size:c.sucRiser,footage:0,type:'suction riser'};copperBySize[key].footage+=riserFt;}
-      if(c.liqHoriz&&totalRun>0){const key=c.liqHoriz+' liquid';if(!copperBySize[key])copperBySize[key]={size:c.liqHoriz,footage:0,type:'liquid line'};copperBySize[key].footage+=totalRun;}
+    const runFt=parseFloat(c.runLength)||0, riserFt=parseFloat(c.riserLength)||0, totalRun=runFt+riserFt;
+    if(c.isRiserOnly){
+      addCopper(c.sucRiser, riserFt);
+    } else {
+      addCopper(c.sucHoriz, runFt);
+      addCopper(c.sucRiser, riserFt);
+      addCopper(c.liqHoriz, totalRun);
     }
   });
   const wasteFactor = 1 + (parseFloat(document.getElementById('wasteFactor')?.value) || 0) / 100;
-  Object.values(copperBySize).forEach(cu=>{const rate=getRateForSize(cu.size);const adjustedQty=Math.ceil(cu.footage*wasteFactor);state.lineItems.push({section:'Copper',desc:`${cu.size}" ACR Copper — ${cu.type}`,qty:adjustedQty,unit:'ft',unitCost:rate,total:adjustedQty*rate,editable:true,baseQty:cu.footage});});
+  Object.values(copperBySize).forEach(cu=>{const rate=getRateForSize(cu.size);const adjustedQty=Math.ceil(cu.footage*wasteFactor);state.lineItems.push({section:'Copper',desc:`${cu.size}" ACR Copper`,qty:adjustedQty,unit:'ft',unitCost:rate,total:adjustedQty*rate,editable:true,baseQty:cu.footage,pipeSize:cu.size});});
   // Single fittings allowance line item — % of copper total
   const fittingsPct = parseFloat(document.getElementById('fittingsMarkup')?.value) || 25;
   const copperSubtotal = state.lineItems.filter(i=>i.section==='Copper').reduce((s,i)=>s+(i.total||0),0);
