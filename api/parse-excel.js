@@ -22,13 +22,26 @@ function sizeToFraction(val) {
   return str ? str+'"' : '';
 }
 
+// Excel indexed color palette (default) — only the ones relevant to highlighting
+const INDEXED_HIGHLIGHT = {
+  12: CYAN,    // indexed 12 = cyan
+  13: YELLOW,  // indexed 13 = yellow
+  42: LIGHT_GREEN, // indexed 42 = light green (some Excel versions)
+};
+
 function getCellColor(cell) {
   try {
     const fill = cell.fill;
     if(!fill || fill.type !== 'pattern') return null;
     const fg = fill.fgColor;
     if(!fg) return null;
-    return fg.argb || null;
+    // ARGB hex color (most common in newer files)
+    if(fg.argb) return fg.argb;
+    // Indexed color (older files / LibreOffice-saved files)
+    if(fg.indexed !== undefined && fg.indexed !== null) {
+      return INDEXED_HIGHLIGHT[fg.indexed] || `indexed:${fg.indexed}`;
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -136,11 +149,15 @@ function parseBPR(wb, circuits, meta) {
       const evap = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
 
       // Tag circuit as new/existing/unspecified for UI display
+      // Check exchr column first, then fall back to highlighted line size cells
       const exchr = String(row.getCell(4).value||'').trim().toUpperCase();
+      const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
       let colorType, notes;
-      if(exchr === 'NEW')      { colorType = 'new';      notes = 'NEW — BPR format'; }
-      else if(exchr === 'EXISTING') { colorType = 'existing'; notes = 'EXISTING — BPR format'; }
-      else                     { colorType = 'bpr';      notes = 'BPR format'; }
+      if(exchr === 'NEW' || lineSizeHighlighted) {
+        colorType = 'new';
+        notes = exchr === 'NEW' ? 'NEW — BPR format' : 'NEW — highlighted line sizes';
+      } else if(exchr === 'EXISTING') { colorType = 'existing'; notes = 'EXISTING — BPR format'; }
+      else                            { colorType = 'bpr';      notes = 'BPR format'; }
 
       circuits.push({
         circuitId: `${rack}-${circIdRaw}`, rack,
@@ -287,16 +304,21 @@ module.exports = async function handler(req, res) {
 
       let isBPR = false, isKysor = false;
       wb.eachSheet((ws) => {
-        if(ws.name.match(/^Rack\s+[A-Za-z]/i)) isKysor = true;
+        // Remote Hdr sheet name is a strong BPR signal — check this first
         if(ws.name.match(/Remote\s*Hdr/i)) isBPR = true;
+        // Only flag Kysor if there are NO Remote Hdr sheets (avoid misdetection on BPR files
+        // that also have sheets named "Rack A", "RACK D", etc.)
+        if(!isBPR && ws.name.match(/^Rack\s+[A-Za-z]/i)) isKysor = true;
         for(let r = 13; r <= 16; r++) {
           const v = String(ws.getRow(r).getCell(1).value||'').trim();
           if(!isNaN(parseFloat(v)) && parseFloat(v) < 200) isBPR = true;
-          if(v.match(/^[A-Z]\d+$/i)) isKysor = true;
+          if(!isBPR && v.match(/^[A-Z]\d+$/i)) isKysor = true;
         }
       });
+      // Re-evaluate: if BPR was detected at any point, don't let Rack sheet names flip it to Kysor
+      if(isBPR) isKysor = false;
 
-      if(isBPR && !isKysor) { parseBPR(wb, circuits, meta); format = 'bpr'; }
+      if(isBPR) { parseBPR(wb, circuits, meta); format = 'bpr'; }
       else if(isKysor) { parseKysorWarren(wb, circuits, meta); format = 'kysor'; }
       else {
         parseKysorWarren(wb, circuits, meta);
