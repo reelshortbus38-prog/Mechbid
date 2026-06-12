@@ -651,39 +651,26 @@ function getRateForSize(sizeStr) {
 }
 
 function syncCopperRates() {
-  // For every copper line item, re-derive the rate from the size in its description
-  // and apply the waste factor to the qty
+  if(state.lineItems.length === 0) return;
   const wasteFactor = 1 + (parseFloat(document.getElementById('wasteFactor')?.value) || 0) / 100;
-  let changed = false;
 
   state.lineItems.forEach(item => {
     if(item.section !== 'Copper') return;
-    // Use stored pipeSize property, fall back to parsing description
     const size = item.pipeSize || item.desc.replace(/".*/, '').replace(' ACR Copper', '').trim();
     const newRate = getRateForSize(size);
-
-    // Apply waste factor to base footage (stored in item.baseQty if set, else item.qty)
-    if(!item.baseQty) item.baseQty = item.qty; // Save original footage first time
+    if(!item.baseQty) item.baseQty = item.qty;
     const adjustedQty = Math.ceil(item.baseQty * wasteFactor);
-
-    if(item.unitCost !== newRate || item.qty !== adjustedQty) {
-      item.unitCost = newRate;
-      item.qty = adjustedQty;
-      item.total = adjustedQty * newRate;
-      changed = true;
-    }
+    item.unitCost = newRate;
+    item.qty = adjustedQty;
+    item.total = adjustedQty * newRate;
   });
 
-  if(changed) {
-    renderMaterials();
-  }
-  // Also update fittings allowance line item
-  const fittingsPct2 = parseFloat(document.getElementById('fittingsMarkup')?.value) || 25;
-  const copperNow = state.lineItems.filter(i => i.section === 'Copper').reduce((s,i) => s + (i.total||0), 0);
-  const newAllowance = Math.round(copperNow * (fittingsPct2/100));
+  const fittingsPct = parseFloat(document.getElementById('fittingsMarkup')?.value) || 25;
+  const copperTotal = state.lineItems.filter(i => i.section === 'Copper').reduce((s,i) => s + (i.total||0), 0);
+  const newAllowance = Math.round(copperTotal * (fittingsPct / 100));
   state.lineItems.forEach(item => {
     if(item.isFittingsAllowance) {
-      item.desc = `Fittings Allowance (${fittingsPct2}% of copper)`;
+      item.desc = 'Fittings Allowance (' + fittingsPct + '% of copper)';
       item.unitCost = newAllowance;
       item.total = newAllowance;
     }
