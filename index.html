@@ -34,8 +34,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-track{background:var(--surface);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
-
-/* HEADER */
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px 0;position:sticky;top:0;z-index:100;}
 .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
 .logo{display:flex;align-items:center;gap:10px;}
@@ -55,30 +53,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .tabs::-webkit-scrollbar{display:none;}
 .tab-btn{padding:11px 16px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif;letter-spacing:0.05em;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap;text-transform:uppercase;}
 .tab-btn.active{color:var(--green);border-bottom-color:var(--green);}
-
-/* LAYOUT */
 .content{padding:20px;max-width:1400px;margin:0 auto;padding-bottom:100px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
 @media(max-width:900px){.grid2{grid-template-columns:1fr;}.grid3{grid-template-columns:1fr 1fr;}}
 @media(max-width:600px){.grid3{grid-template-columns:1fr;}}
-
-/* CARDS */
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;}
 .card-tight{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
-
-/* SECTION LABEL */
 .slabel{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.12em;display:flex;align-items:center;gap:7px;margin-bottom:12px;}
 .slabel::before{content:'';width:3px;height:12px;background:var(--green);border-radius:2px;flex-shrink:0;}
-
-/* STAT CARDS */
 .stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
 .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:110px;}
 .stat-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;}
 .stat-value{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;line-height:1;}
 .stat-unit{font-size:10px;color:var(--text-muted);margin-top:3px;}
-
-/* UPLOAD */
 .upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:24px 16px;text-align:center;transition:all 0.2s;background:var(--green-faint);cursor:pointer;}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:var(--green-glow);}
 .upload-zone.done{border-color:var(--green);border-style:solid;background:var(--green-glow);}
@@ -86,8 +74,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .upload-title{font-size:13px;font-weight:600;margin-bottom:4px;}
 .upload-sub{font-size:11px;color:var(--text-muted);}
 .file-input-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
-
-/* BUTTONS */
 .btn{padding:11px 20px;border-radius:9px;font-weight:700;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all 0.2s;display:inline-flex;align-items:center;gap:7px;}
 .btn:disabled{opacity:0.4;cursor:not-allowed;}
 .btn-green{background:var(--green);color:#000;}
@@ -101,15 +87,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .btn-xs{padding:4px 10px;font-size:11px;border-radius:6px;}
 .btn-full{width:100%;justify-content:center;margin-top:12px;}
 .btn-icon{width:32px;height:32px;padding:0;justify-content:center;border-radius:7px;font-size:14px;}
-
-/* INPUTS */
 .inp{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s;}
 .inp:focus{border-color:var(--green);}
 .inp::placeholder{color:var(--text-muted);}
 textarea.inp{resize:vertical;line-height:1.6;}
 select.inp{cursor:pointer;}
-
-/* TABLE */
 .tbl{width:100%;border-collapse:collapse;}
 .tbl th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;}
 .tbl td{padding:10px 14px;font-size:12px;border-bottom:1px solid var(--border);}
@@ -118,22 +100,16 @@ select.inp{cursor:pointer;}
 .tbl-input{background:transparent;border:none;color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;width:100%;outline:none;padding:2px 4px;border-radius:4px;}
 .tbl-input:focus{background:var(--surface);border:1px solid var(--green);}
 .mono{font-family:'DM Mono',monospace;}
-
-/* AI OUTPUT */
 .ai-out{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;min-height:200px;display:flex;flex-direction:column;}
 .ai-out.empty{align-items:center;justify-content:center;text-align:center;}
 .ai-empty-icon{font-size:32px;margin-bottom:10px;}
 .ai-empty-text{font-size:13px;color:var(--text-muted);line-height:1.6;max-width:280px;}
 .ai-text{font-size:13px;line-height:1.75;color:var(--text);white-space:pre-wrap;}
-
-/* FLAGS */
 .flag{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:12px;line-height:1.5;}
 .flag-warn{background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);color:var(--yellow);}
 .flag-error{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);}
 .flag-ok{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);}
 .flag-info{background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);color:var(--blue);}
-
-/* CIRCUIT CARDS */
 .circuit-card{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
 .circuit-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .circuit-id{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--green);}
@@ -144,16 +120,12 @@ select.inp{cursor:pointer;}
 .circuit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
 @media(max-width:600px){.circuit-grid{grid-template-columns:repeat(2,1fr);}}
 .circuit-field label{font-size:10px;color:var(--text-muted);display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.06em;}
-.circuit-field input{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;width:100%;outline:none;}
-.circuit-field input:focus{border-color:var(--green);}
-
-/* MATERIAL ROWS */
+.circuit-field input,.circuit-field select{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;width:100%;outline:none;}
+.circuit-field input:focus,.circuit-field select:focus{border-color:var(--green);}
 .mat-section{margin-bottom:20px;}
-.mat-section-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);cursor:pointer;}
+.mat-section-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
 .mat-section-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.1em;}
 .mat-section-total{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--text);}
-
-/* RATES */
 .rate-row{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);}
 .rate-row:last-child{border-bottom:none;}
 .rate-row:nth-child(even){background:rgba(255,255,255,0.02);}
@@ -165,22 +137,29 @@ select.inp{cursor:pointer;}
 .rate-inp:focus{border-color:var(--green);}
 .rate-suffix{font-size:11px;color:var(--text-muted);white-space:nowrap;}
 
-/* LABOR TOTAL */
+/* ── CREW BUILDER ── */
+.crew-table{width:100%;border-collapse:collapse;}
+.crew-table th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);font-family:'Syne',sans-serif;}
+.crew-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.crew-table tr:last-child td{border-bottom:none;}
+.crew-inp{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;width:100%;}
+.crew-inp:focus{border-color:var(--green);}
+.crew-inp-rate{width:80px;text-align:right;font-family:'DM Mono',monospace;}
+.crew-total-row{background:rgba(34,197,94,0.06);border-top:2px solid var(--green)!important;}
+.crew-total-row td{font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--green);padding:14px 14px;}
+.crew-rate-badge{display:inline-block;background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:22px;padding:10px 18px;border-radius:10px;letter-spacing:-0.01em;}
+
 .labor-box{background:var(--card);border:2px solid var(--green);border-radius:12px;padding:20px;}
 .labor-formula{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);margin-bottom:6px;}
 .labor-amount{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--green);line-height:1;}
 .labor-label{font-size:12px;color:var(--text-muted);margin-top:4px;}
-
-/* PROPOSAL */
 .proposal-doc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;}
 .proposal-logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;}
 .proposal-logo span{color:var(--green);}
 .proposal-total-row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-top:2px solid var(--green);margin-top:8px;}
-
-/* MECHBOT */
 .mechbot-btn{position:fixed;bottom:24px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--green);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 20px rgba(34,197,94,0.4);z-index:200;transition:all 0.2s;}
 .mechbot-btn:hover{transform:scale(1.08);background:var(--green2);}
-.mechbot-panel{position:fixed;bottom:88px;right:20px;width:340px;max-height:500px;background:var(--surface);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;z-index:200;box-shadow:0 8px 40px rgba(0,0,0,0.6);transition:all 0.2s;}
+.mechbot-panel{position:fixed;bottom:88px;right:20px;width:340px;max-height:500px;background:var(--surface);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;z-index:200;box-shadow:0 8px 40px rgba(0,0,0,0.6);}
 @media(max-width:400px){.mechbot-panel{width:calc(100vw - 24px);right:12px;}}
 .mechbot-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .mechbot-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);}
@@ -191,8 +170,6 @@ select.inp{cursor:pointer;}
 .mechbot-input-row{padding:12px;border-top:1px solid var(--border);display:flex;gap:8px;}
 .mechbot-inp{flex:1;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;}
 .mechbot-inp:focus{border-color:var(--green);}
-
-/* MISC */
 .divider{height:1px;background:var(--border);margin:16px 0;}
 .badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700;}
 .badge-green{background:var(--green-glow);color:var(--green);border:1px solid var(--green);}
@@ -228,7 +205,6 @@ select.inp{cursor:pointer;}
 </head>
 <body>
 
-<!-- HEADER -->
 <div class="header">
   <div class="header-top">
     <div class="logo">
@@ -266,7 +242,6 @@ select.inp{cursor:pointer;}
 
 <!-- DOCUMENTS TAB -->
 <div id="tab-docs">
-  <!-- Multi-file upload zone -->
   <div class="upload-zone" id="mainUploadZone"
     ondrop="handleMultiDrop(event)"
     ondragover="event.preventDefault();this.classList.add('drag')"
@@ -282,11 +257,9 @@ select.inp{cursor:pointer;}
   </div>
   <input type="file" id="mainFileInput" class="file-input-hidden" accept=".xlsx,.xls,.pdf,.doc,.docx,image/*,.txt,.csv" multiple onchange="handleMultiFileSelect(event)">
 
-  <!-- Paste email text -->
   <div class="slabel">Or Paste Bid Email Text</div>
   <textarea class="inp mb16" id="emailText" rows="3" placeholder="Paste bid email text here..."></textarea>
 
-  <!-- Uploaded files list -->
   <div id="uploadedFilesList" class="hidden mb16">
     <div class="flex-between mb8">
       <div class="slabel" style="margin-bottom:0">Uploaded Files</div>
@@ -295,19 +268,16 @@ select.inp{cursor:pointer;}
     <div id="filesGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 
-  <!-- Analyze button -->
   <button class="btn btn-green btn-full" id="analyzeAllBtn" onclick="analyzeAllDocs()" style="font-size:14px;padding:14px;margin-bottom:20px">
     🔍 Analyze All Documents & Extract Takeoff
   </button>
 
-  <!-- AI Extraction Results -->
   <div class="slabel">AI Extraction Results</div>
   <div id="extractionResults" class="ai-out empty" style="margin-bottom:16px">
     <div class="ai-empty-icon">🔍</div>
     <div class="ai-empty-text">Upload your documents and click Analyze — AI extracts circuits, parts, RC requirements, schedule info, and flags anything missing.</div>
   </div>
 
-  <!-- Flags -->
   <div id="flagsSection" class="hidden">
     <div class="slabel">Flags & RC Requirements</div>
     <div id="flagsList"></div>
@@ -323,7 +293,6 @@ select.inp{cursor:pointer;}
     </div>
     <button class="btn btn-ghost btn-sm" onclick="addCircuitManual()">+ Add Circuit</button>
   </div>
-
   <div id="circuitList">
     <div class="ai-out empty" style="min-height:160px;">
       <div class="ai-empty-icon">⚡</div>
@@ -341,7 +310,6 @@ select.inp{cursor:pointer;}
       <button class="btn btn-green btn-sm" onclick="generateMaterials()">⚙️ Generate from Circuits</button>
     </div>
   </div>
-
   <div id="materialList">
     <div class="ai-out empty" style="min-height:160px;">
       <div class="ai-empty-icon">🔧</div>
@@ -353,6 +321,8 @@ select.inp{cursor:pointer;}
 <!-- RATES & LABOR TAB -->
 <div id="tab-rates" class="hidden">
   <div class="grid2">
+
+    <!-- LEFT: Copper rates -->
     <div>
       <div class="slabel">Copper — Price per Linear Foot</div>
       <div class="card-tight mb16">
@@ -367,35 +337,66 @@ select.inp{cursor:pointer;}
         <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">2-1/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_218" type="number" placeholder="0.00" oninput="calcTotals()"><span class="rate-suffix">/ft</span></div></div>
       </div>
 
-      <div class="slabel">Fittings & Materials Markup</div>
+      <div class="slabel">Fittings & Insulation Markup</div>
       <div class="card-tight">
         <div class="rate-row"><div class="rate-label">Fittings markup on copper cost</div><div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25" oninput="calcTotals()"><span class="rate-suffix">%</span></div></div>
         <div class="rate-row"><div class="rate-label">Insulation markup</div><div class="rate-input-wrap"><input class="rate-inp" id="insulMarkup" type="number" value="20" oninput="calcTotals()"><span class="rate-suffix">%</span></div></div>
       </div>
     </div>
 
+    <!-- RIGHT: Crew builder + labor settings -->
     <div>
-      <div class="slabel">Labor Settings</div>
+      <!-- ── CREW BUILDER ── -->
+      <div class="slabel">Crew — Add & Remove Workers</div>
       <div class="card-tight mb16">
-        <div class="rate-row"><div class="rate-label">Crew Size</div><div class="rate-input-wrap"><input class="rate-inp" id="crewSize" type="number" placeholder="2" oninput="calcLabor()"><span class="rate-suffix">workers</span></div></div>
-        <div class="rate-row"><div class="rate-label">Labor Rate</div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="laborRate" type="number" placeholder="85" oninput="calcLabor()"><span class="rate-suffix">/hr</span></div></div>
-        <div class="rate-row"><div class="rate-label">Hours per Week</div><div class="rate-input-wrap"><input class="rate-inp" id="hoursPerWeek" type="number" placeholder="40" oninput="calcLabor()"><span class="rate-suffix">hrs</span></div></div>
-        <div class="rate-row"><div class="rate-label">Weeks on Job</div><div class="rate-input-wrap"><input class="rate-inp" id="weeksOnJob" type="number" placeholder="4" oninput="calcLabor()"><span class="rate-suffix">wks</span></div></div>
-        <div class="rate-row"><div class="rate-label">Burden Rate</div><div class="rate-input-wrap"><input class="rate-inp" id="burdenRate" type="number" value="1.35" step="0.01" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
-        <div class="rate-row"><div class="rate-label">Travel Time</div><div class="rate-input-wrap"><input class="rate-inp" id="travelTime" type="number" placeholder="0" oninput="calcLabor()"><span class="rate-suffix">hrs/day</span></div></div>
+        <table class="crew-table">
+          <thead>
+            <tr>
+              <th style="width:40%">Role / Name</th>
+              <th style="width:25%">Rate/hr</th>
+              <th style="width:20%">Hrs/Day</th>
+              <th style="width:15%"></th>
+            </tr>
+          </thead>
+          <tbody id="crewBody"></tbody>
+          <tfoot>
+            <tr class="crew-total-row">
+              <td colspan="2">Crew Rate</td>
+              <td colspan="2"><span class="crew-rate-badge" id="crewRateBadge">$0/hr</span></td>
+            </tr>
+          </tfoot>
+        </table>
+        <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-green btn-sm" onclick="addCrewMember('Technician',150,8)">+ Tech</button>
+          <button class="btn btn-ghost btn-sm" onclick="addCrewMember('Helper',100,8)">+ Helper</button>
+          <button class="btn btn-ghost btn-sm" onclick="addCrewMember('Foreman',175,8)">+ Foreman</button>
+          <button class="btn btn-ghost btn-sm" onclick="addCrewMember('Apprentice',75,8)">+ Apprentice</button>
+          <button class="btn btn-ghost btn-sm" onclick="addCrewMember('',0,8)">+ Custom</button>
+        </div>
       </div>
 
-      <div class="slabel">Difficulty Multipliers</div>
+      <!-- Labor schedule -->
+      <div class="slabel">Labor Schedule</div>
       <div class="card-tight mb16">
-        <div class="rate-row"><div class="rate-label">Rooftop work</div><div class="rate-input-wrap"><input class="rate-inp" id="multRooftop" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
-        <div class="rate-row"><div class="rate-label">Retrofit / existing store</div><div class="rate-input-wrap"><input class="rate-inp" id="multRetrofit" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
-        <div class="rate-row"><div class="rate-label">Nights / weekends</div><div class="rate-input-wrap"><input class="rate-inp" id="multNights" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Days on Job</div><div class="rate-input-wrap"><input class="rate-inp" id="daysOnJob" type="number" placeholder="0" oninput="calcLabor()"><span class="rate-suffix">days</span></div></div>
+        <div class="rate-row"><div class="rate-label">Overtime Multiplier</div><div class="rate-input-wrap"><input class="rate-inp" id="otMult" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Night / Weekend Premium</div><div class="rate-input-wrap"><input class="rate-inp" id="nightMult" type="number" value="1.0" step="0.1" oninput="calcLabor()"><span class="rate-suffix">×</span></div></div>
+        <div class="rate-row"><div class="rate-label">Out of Town Expenses/day</div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="ootExpenses" type="number" placeholder="0" oninput="calcLabor()"><span class="rate-suffix">/day</span></div></div>
       </div>
 
+      <!-- Labor total box -->
       <div class="labor-box">
-        <div class="labor-formula" id="laborFormula">? × ? hrs × ? wks × $?/hr × ?×</div>
+        <div class="labor-formula" id="laborFormula">Set crew and days above</div>
         <div class="labor-amount" id="laborAmount">$0</div>
-        <div class="labor-label">Total Burdened Labor Cost</div>
+        <div class="labor-label">Total Labor Cost</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(34,197,94,0.2);">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
+            <span class="text-dim">Labor</span><span class="mono" id="laborLineOnly">$0</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;">
+            <span class="text-dim">Out of Town</span><span class="mono" id="ootLine">$0</span>
+          </div>
+        </div>
       </div>
 
       <div class="stats mt16">
@@ -411,6 +412,7 @@ select.inp{cursor:pointer;}
   <div class="stats">
     <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="estMat">$0</div></div>
     <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="estLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Out of Town</div><div class="stat-value" style="color:var(--cyan)" id="estOOT">$0</div></div>
     <div class="stat"><div class="stat-label">Total</div><div class="stat-value" style="color:var(--orange)" id="estTotal">$0</div></div>
     <div class="stat"><div class="stat-label">Line Items</div><div class="stat-value text-dim" id="estCount">0</div></div>
   </div>
@@ -426,11 +428,7 @@ select.inp{cursor:pointer;}
       <div class="fs13">Generate materials and set rates to populate the estimate</div>
     </div>
     <table class="tbl hidden" id="estimateTable">
-      <thead>
-        <tr>
-          <th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th>
-        </tr>
-      </thead>
+      <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th></tr></thead>
       <tbody id="estimateBody"></tbody>
     </table>
   </div>
@@ -441,6 +439,7 @@ select.inp{cursor:pointer;}
   <div class="stats">
     <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="propMat">$0</div></div>
     <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="propLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Out of Town</div><div class="stat-value" style="color:var(--cyan)" id="propOOT">$0</div></div>
     <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="propTotal">$0</div></div>
   </div>
 
@@ -452,40 +451,46 @@ select.inp{cursor:pointer;}
       </div>
       <div style="text-align:right;">
         <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;" id="propProjName">Project Name</div>
-        <div class="fs12 text-dim mt8" id="propAddr">Address</div>
+        <div class="fs12 text-dim mt8" id="propAddr"></div>
         <div class="fs12 text-dim" id="propGC"></div>
-        <div class="fs12 text-dim" id="propCont">Contractor</div>
+        <div class="fs12 text-dim" id="propCont"></div>
         <div class="fs11 text-muted mt8" id="propDate"></div>
       </div>
     </div>
 
     <div class="fs11 fw700 text-muted mb16" style="text-transform:uppercase;letter-spacing:0.1em;" id="propScope">Scope: Commercial Refrigeration</div>
 
-    <!-- Circuits Summary -->
     <div id="propCircuitsSection" class="hidden mb16">
       <div class="slabel">Circuit Summary — New Work</div>
       <div id="propCircuitsList" class="fs12 text-dim" style="line-height:2;"></div>
       <div class="divider"></div>
     </div>
 
-    <!-- Flags on proposal -->
     <div id="propFlagsSection" class="hidden mb16">
       <div class="slabel">Assumptions & Missing Info</div>
       <div id="propFlagsList"></div>
       <div class="divider"></div>
     </div>
 
-    <!-- Line Items Table -->
+    <!-- Crew summary on proposal -->
+    <div id="propCrewSection" class="hidden mb16">
+      <div class="slabel">Crew</div>
+      <div id="propCrewList" class="fs12 text-dim" style="line-height:2;"></div>
+      <div class="divider"></div>
+    </div>
+
     <table class="tbl" id="proposalTable">
       <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr></thead>
       <tbody id="proposalBody"></tbody>
     </table>
 
     <div class="divider"></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Materials Subtotal</span><span class="mono fw700" id="propMatLine">$0</span></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Labor (burdened)</span><span class="mono fw700 text-yellow" id="propLaborLine">$0</span></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Materials</span><span class="mono fw700" id="propMatLine">$0</span></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Refrigerant</span><span class="mono fw700 text-cyan" id="propRefrigLine">$0</span></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow" id="propLaborLine">$0</span></div>
+    <div class="flex-between mb8"><span class="fs13 text-dim">Out of Town Expenses</span><span class="mono fw700" style="color:var(--cyan)" id="propOOTLine">$0</span></div>
     <div class="proposal-total-row">
-      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">TOTAL BID</div>
+      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">TOTAL BID PRICE</div>
       <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);" id="propTotalLine">$0</div>
     </div>
   </div>
@@ -493,10 +498,8 @@ select.inp{cursor:pointer;}
 
 </div><!-- end content -->
 
-<!-- MECHBOT BUTTON -->
 <button class="mechbot-btn" onclick="toggleMechBot()" id="mechbotBtn" title="MechBot AI Assistant">🤖</button>
 
-<!-- MECHBOT PANEL -->
 <div class="mechbot-panel hidden" id="mechbotPanel">
   <div class="mechbot-header">
     <div>
@@ -515,143 +518,163 @@ select.inp{cursor:pointer;}
 </div>
 
 <script>
-const API_KEY = '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';
 const API_URL = '/api/claude';
 const MODEL = 'mistralai/mistral-7b-instruct:free';
 
-// JOB STATE
+// ── STATE ──────────────────────────────────────────────────────────────────────
 let state = {
   mode: 'Commercial Refrigeration',
   circuits: [],
   lineItems: [],
   flags: [],
   laborTotal: 0,
+  ootTotal: 0,
   materialsTotal: 0,
   jobMemory: {},
-  uploadedFiles: []  // Array of {id, file, name, type, status, detectedType}
+  uploadedFiles: [],
+  crew: []   // [{id, role, rate, hrsPerDay}]
 };
 
-// File type detection
+// ── INIT ───────────────────────────────────────────────────────────────────────
+document.getElementById('dateChip').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+document.getElementById('propDate').textContent  = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+
+// ── CREW BUILDER ───────────────────────────────────────────────────────────────
+
+function addCrewMember(role, rate, hrsPerDay) {
+  const id = 'crew_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+  state.crew.push({id, role, rate, hrsPerDay});
+  renderCrew();
+  calcLabor();
+}
+
+function removeCrewMember(id) {
+  state.crew = state.crew.filter(c => c.id !== id);
+  renderCrew();
+  calcLabor();
+}
+
+function updateCrewMember(id, field, value) {
+  const member = state.crew.find(c => c.id === id);
+  if(!member) return;
+  member[field] = (field === 'role') ? value : (parseFloat(value) || 0);
+  renderCrewRateBadge();
+  calcLabor();
+}
+
+function renderCrew() {
+  const tbody = document.getElementById('crewBody');
+  if(!tbody) return;
+  if(state.crew.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">No crew added yet — use the buttons below to add workers</td></tr>`;
+    renderCrewRateBadge();
+    return;
+  }
+  tbody.innerHTML = state.crew.map(m => `
+    <tr>
+      <td>
+        <input class="crew-inp" value="${m.role}" placeholder="Role / Name"
+          oninput="updateCrewMember('${m.id}','role',this.value)">
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <span class="text-dim fs13">$</span>
+          <input class="crew-inp crew-inp-rate" type="number" value="${m.rate}" placeholder="0"
+            oninput="updateCrewMember('${m.id}','rate',this.value)">
+          <span class="rate-suffix">/hr</span>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input class="crew-inp" type="number" value="${m.hrsPerDay}" placeholder="8" style="width:50px;text-align:center;font-family:'DM Mono',monospace;"
+            oninput="updateCrewMember('${m.id}','hrsPerDay',this.value)">
+          <span class="rate-suffix">hrs</span>
+        </div>
+      </td>
+      <td style="text-align:center;">
+        <button class="btn btn-red btn-xs" onclick="removeCrewMember('${m.id}')">Remove</button>
+      </td>
+    </tr>`).join('');
+  renderCrewRateBadge();
+}
+
+function getCrewHourlyRate() {
+  return state.crew.reduce((sum, m) => sum + (parseFloat(m.rate) || 0), 0);
+}
+
+function renderCrewRateBadge() {
+  const total = getCrewHourlyRate();
+  const badge = document.getElementById('crewRateBadge');
+  if(badge) badge.textContent = '$' + total.toLocaleString() + '/hr';
+}
+
+// ── LABOR CALC ─────────────────────────────────────────────────────────────────
+
+function calcLabor() {
+  const crewRate = getCrewHourlyRate();
+  const days     = parseFloat(document.getElementById('daysOnJob')?.value) || 0;
+  const otMult   = parseFloat(document.getElementById('otMult')?.value) || 1;
+  const nightMult= parseFloat(document.getElementById('nightMult')?.value) || 1;
+  const ootPerDay= parseFloat(document.getElementById('ootExpenses')?.value) || 0;
+
+  // Weighted avg hrs/day from crew (use max hrs if crew differ)
+  const hrsPerDay = state.crew.length > 0
+    ? Math.max(...state.crew.map(m => parseFloat(m.hrsPerDay) || 8))
+    : 8;
+
+  const laborOnly = crewRate * hrsPerDay * days * otMult * nightMult;
+  const oot = ootPerDay * days;
+
+  state.laborTotal = laborOnly + oot;
+  state.ootTotal = oot;
+
+  // Build crew summary for formula display
+  const crewDesc = state.crew.length > 0
+    ? state.crew.map(m => `${m.role||'Worker'} $${m.rate}/hr`).join(', ')
+    : 'No crew set';
+  const formula = `${crewDesc} × ${hrsPerDay}hrs/day × ${days} days × ${otMult}× OT × ${nightMult}× night`;
+
+  const el = document.getElementById('laborAmount');
+  const formulaEl = document.getElementById('laborFormula');
+  const laborLineEl = document.getElementById('laborLineOnly');
+  const ootLineEl = document.getElementById('ootLine');
+
+  if(el) el.textContent = '$' + Math.round(state.laborTotal).toLocaleString();
+  if(formulaEl) formulaEl.textContent = formula;
+  if(laborLineEl) laborLineEl.textContent = '$' + Math.round(laborOnly).toLocaleString();
+  if(ootLineEl) ootLineEl.textContent = '$' + Math.round(oot).toLocaleString();
+
+  calcTotals();
+}
+
+// ── TOTALS ─────────────────────────────────────────────────────────────────────
+
+function calcTotals() {
+  state.materialsTotal = state.lineItems.reduce((s,i) => s + (parseFloat(i.total)||0), 0);
+  const laborOnly = state.laborTotal - state.ootTotal;
+  const total = state.materialsTotal + state.laborTotal;
+  const fmt = v => '$' + Math.round(v).toLocaleString();
+
+  ['estMat','ratesMat','propMat'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(state.materialsTotal); });
+  ['estLabor','propLabor'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(laborOnly); });
+  ['estOOT','propOOT'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(state.ootTotal); });
+  ['estTotal','ratesTotal','propTotal'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(total); });
+  const ec = document.getElementById('estCount'); if(ec) ec.textContent = state.lineItems.length;
+}
+
+// ── FILE HANDLING ──────────────────────────────────────────────────────────────
+
 function detectFileType(file) {
   const name = file.name.toLowerCase();
   const mime = file.type.toLowerCase();
   if(name.match(/\.xlsx?$/)) return {type:'excel', icon:'📊', label:'Equipment Schedule'};
-  if(name.match(/\.docx?$/)) return {type:'scope', icon:'📝', label:'Scope of Work'};
+  if(name.match(/\.docx?$/)) return {type:'scope',  icon:'📝', label:'Scope of Work'};
   if(mime.startsWith('image/')) return {type:'image', icon:'🖼️', label:'Image — AI will identify'};
-  if(name.match(/\.pdf$/)) return {type:'pdf', icon:'📄', label:'PDF — AI will identify'};
-  if(name.match(/\.csv$/)) return {type:'csv', icon:'📊', label:'CSV Data'};
+  if(name.match(/\.pdf$/))     return {type:'pdf',   icon:'📄', label:'PDF — AI will identify'};
+  if(name.match(/\.csv$/))     return {type:'csv',   icon:'📊', label:'CSV Data'};
   return {type:'unknown', icon:'📎', label:'Document'};
 }
 
-// INIT
-document.getElementById('dateChip').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-document.getElementById('propDate').textContent = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-
-function setMode(btn, mode) {
-  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  state.mode = mode;
-  document.getElementById('propScope').textContent = 'Scope: ' + mode;
-}
-
-function showTab(name, btn) {
-  document.querySelectorAll('[id^="tab-"]').forEach(t=>t.classList.add('hidden'));
-  document.getElementById('tab-'+name).classList.remove('hidden');
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  if(name==='proposal') updateProposal();
-  if(name==='estimate') renderEstimate();
-}
-
-// IMAGE CONVERSION
-function imgToJpeg(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 1600;
-      let {width:w, height:h} = img;
-      if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
-      const c = document.createElement('canvas');
-      c.width=w; c.height=h;
-      const ctx=c.getContext('2d');
-      ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
-      ctx.drawImage(img,0,0,w,h);
-      resolve(c.toDataURL('image/jpeg',0.85).split(',')[1]);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image load failed'));};
-    img.src=url;
-  });
-}
-
-// FILE HANDLERS
-function handleDrop(e, type) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag');
-  const f = e.dataTransfer.files?.[0];
-  if(f) processFile(type, f);
-}
-
-function handleFile(type, e) {
-  const files = e.target.files;
-  if(!files || files.length === 0) return;
-  const f = files[0];
-  if(f) processFile(type, f);
-}
-
-function processFile(type, file) {
-  if(!file) return;
-  state.files[type] = file;
-  const zoneMap = {sched:"schedZone",legend:"legendZone",spec:"specZone",blueprint:"blueprintZone",email:"emailZone"};
-  const titleMap = {sched:"schedZoneTitle",legend:"legendZoneTitle",spec:"specZoneTitle",blueprint:"blueprintZoneTitle",email:"emailZoneTitle"};
-  const zoneId = zoneMap[type];
-  const titleId = titleMap[type];
-  if(zoneId) { const el = document.getElementById(zoneId); if(el) el.classList.add("done"); }
-  if(titleId) { const el = document.getElementById(titleId); if(el) el.textContent = "✅ " + (file.name||"Selected file"); }
-}
-
-// EXCEL READER
-async function readExcelHighlighted(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = 'Excel file: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB) — Will be analyzed by AI for highlighted circuits';
-      resolve(text);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-// API CALL
-async function callAI(messages, maxTokens=2000) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({model:MODEL, max_tokens:maxTokens, messages})
-  });
-  if(!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error?.message || 'API error '+res.status);
-  }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.output?.[0]?.content || data.content?.[0]?.text || '';
-  if(!content && data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  if(!content) throw new Error('Empty response. Raw: '+JSON.stringify(data).slice(0,200));
-  return content;
-}
-
-async function callAIWithImage(file, prompt, maxTokens=2000) {
-  let base64;
-  try { base64 = await imgToJpeg(file); }
-  catch(e) { throw new Error('Could not process image: '+e.message); }
-  return callAI([{role:'user',content:[
-    {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+base64}},
-    {type:'text',text:prompt}
-  ]}], maxTokens);
-}
-
-// MULTI-FILE HANDLERS
 function handleMultiDrop(e) {
   e.preventDefault();
   document.getElementById('mainUploadZone').classList.remove('drag');
@@ -687,11 +710,7 @@ function renderFilesList() {
   const grid = document.getElementById('filesGrid');
   const zone = document.getElementById('mainUploadZone');
   if(!list || !grid) return;
-  if(state.uploadedFiles.length === 0) {
-    list.classList.add('hidden');
-    if(zone) zone.style.borderColor = '';
-    return;
-  }
+  if(state.uploadedFiles.length === 0) { list.classList.add('hidden'); if(zone) zone.style.borderColor=''; return; }
   list.classList.remove('hidden');
   if(zone) zone.style.borderColor = 'var(--green)';
   grid.innerHTML = state.uploadedFiles.map(f => `
@@ -709,777 +728,357 @@ function renderFilesList() {
     </div>`).join('');
 }
 
-// ANALYZE ALL DOCUMENTS
-async function analyzeAllDocs() {
-  const emailText = document.getElementById('emailText')?.value?.trim();
-  if(state.uploadedFiles.length === 0 && !emailText) {
-    alert('Please upload at least one file or paste email text first.');
-    return;
-  }
+// ── IMAGE CONVERSION ───────────────────────────────────────────────────────────
 
-  const btn = document.getElementById('analyzeAllBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Analyzing...';
-
-  const out = document.getElementById('extractionResults');
-  out.className = 'ai-out';
-  out.innerHTML = '<div style="text-align:center;padding:30px"><span class="spinner spinner-green" style="width:32px;height:32px;border-width:3px"></span><div class="mt12 text-dim fs13">Reading your documents...</div></div>';
-
-  const results = [];
-  const flags = [];
-
-  try {
-    // Process each uploaded file
-    for(const fileObj of state.uploadedFiles) {
-      fileObj.status = 'analyzing';
-      renderFilesList();
-
-      try {
-        if(fileObj.type === 'excel') {
-          await processExcelFile(fileObj, results, flags);
-        } else if(fileObj.type === 'image') {
-          await processImageFile(fileObj, results, flags);
-        } else if(fileObj.type === 'pdf' || fileObj.type === 'scope') {
-          await processDocFile(fileObj, results, flags);
-        }
-        fileObj.status = 'done';
-      } catch(err) {
-        fileObj.status = 'error';
-        results.push(`❌ ${fileObj.name}: ${err.message}`);
-      }
-      renderFilesList();
-    }
-
-    // Process pasted email
-    if(emailText) {
-      await processPastedEmail(emailText, results, flags);
-    }
-
-    // Check results
-    if(results.length === 0) {
-      throw new Error('No documents processed. Please upload files and try again.');
-    }
-    if(state.circuits.length === 0) {
-      flags.push({type:'error', text:'No new circuits identified. Upload an equipment schedule (Excel) with highlighted line sizes.', source:'Analysis'});
-    }
-
-    // Render results
-    state.flags = flags;
-    out.className = 'ai-out has-content';
-    out.innerHTML = `<div class="ai-text">${results.join('\n\n')}${state.circuits.length > 0 ? '\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.' : ''}</div>`;
-    renderFlags();
-    renderCircuits();
-
-  } catch(e) {
-    out.className = 'ai-out empty';
-    out.innerHTML = `<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
-  }
-
-  btn.disabled = false;
-  btn.innerHTML = '🔍 Analyze All Documents & Extract Takeoff';
+function imgToJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX=1600; let {width:w,height:h}=img;
+      if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg',0.85).split(',')[1]);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image load failed'));};
+    img.src=url;
+  });
 }
 
-// PROCESS EXCEL FILE
-async function processExcelFile(fileObj, results, flags) {
-  const base64 = await new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = e => {
-      const bytes = new Uint8Array(e.target.result);
-      let binary = '';
-      const chunk = 8192;
-      for(let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      res(btoa(binary));
-    };
-    r.onerror = rej;
-    r.readAsArrayBuffer(fileObj.file);
-  });
+// ── API CALL ───────────────────────────────────────────────────────────────────
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
+async function callAI(messages, maxTokens=2000) {
+  const res = await fetch(API_URL, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({model:MODEL, max_tokens:maxTokens, messages})
+  });
+  if(!res.ok) { const err=await res.json().catch(()=>({})); throw new Error(err.error?.message||'API error '+res.status); }
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
+  if(!content && data.error) throw new Error(data.error.message||JSON.stringify(data.error));
+  if(!content) throw new Error('Empty response');
+  return content;
+}
+
+// ── ANALYZE ALL DOCS ───────────────────────────────────────────────────────────
+
+async function analyzeAllDocs() {
+  const emailText = document.getElementById('emailText')?.value?.trim();
+  if(state.uploadedFiles.length===0 && !emailText) { alert('Please upload at least one file or paste email text first.'); return; }
+
+  const btn = document.getElementById('analyzeAllBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyzing...';
+  const out = document.getElementById('extractionResults');
+  out.className='ai-out';
+  out.innerHTML='<div style="text-align:center;padding:30px"><span class="spinner spinner-green" style="width:32px;height:32px;border-width:3px"></span><div class="mt12 text-dim fs13">Reading your documents...</div></div>';
+
+  const results=[]; const flags=[];
+
   try {
-    const parseRes = await fetch('/api/parse-excel', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fileData: base64, fileName: fileObj.name}),
-      signal: controller.signal
-    });
+    for(const fileObj of state.uploadedFiles) {
+      fileObj.status='analyzing'; renderFilesList();
+      try {
+        if(fileObj.type==='excel')       await processExcelFile(fileObj, results, flags);
+        else if(fileObj.type==='image')  await processImageFile(fileObj, results, flags);
+        else if(fileObj.type==='pdf'||fileObj.type==='scope') await processDocFile(fileObj, results, flags);
+        fileObj.status='done';
+      } catch(err) { fileObj.status='error'; results.push(`❌ ${fileObj.name}: ${err.message}`); }
+      renderFilesList();
+    }
+    if(emailText) await processPastedEmail(emailText, results, flags);
+    if(results.length===0) throw new Error('No documents processed.');
+    if(state.circuits.length===0) flags.push({type:'error',text:'No new circuits identified. Upload an equipment schedule (Excel) with highlighted line sizes.',source:'Analysis'});
+
+    state.flags=flags;
+    out.className='ai-out has-content';
+    out.innerHTML=`<div class="ai-text">${results.join('\n\n')}${state.circuits.length>0?'\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.':''}</div>`;
+    renderFlags(); renderCircuits();
+  } catch(e) {
+    out.className='ai-out empty';
+    out.innerHTML=`<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
+  }
+  btn.disabled=false; btn.innerHTML='🔍 Analyze All Documents & Extract Takeoff';
+}
+
+async function processExcelFile(fileObj, results, flags) {
+  const base64 = await fileToBase64(fileObj.file);
+  const controller = new AbortController();
+  const timeout = setTimeout(()=>controller.abort(), 25000);
+  try {
+    const parseRes = await fetch('/api/parse-excel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileData:base64,fileName:fileObj.name}),signal:controller.signal});
     const parseData = await parseRes.json();
     clearTimeout(timeout);
-
-    if(parseData.error) {
-      flags.push({type:'warn', text:'Excel parser error: '+parseData.error, source:fileObj.name});
-      results.push(`📊 ${fileObj.name}: Parser error — ${parseData.error}`);
-    } else {
-      state.jobMemory.schedule = parseData;
+    if(parseData.error) { flags.push({type:'warn',text:'Excel parser error: '+parseData.error,source:fileObj.name}); results.push(`📊 ${fileObj.name}: Parser error — ${parseData.error}`); }
+    else {
+      state.jobMemory.schedule=parseData;
       if(parseData.circuits?.length) {
         parseData.circuits.forEach(c => {
           if(!state.circuits.find(x=>x.id===c.circuitId)) {
-            state.circuits.push({
-              id: c.circuitId, rack: c.rack, runLength: c.runLength,
-              riserLength: c.riserLength||20, sucHoriz: c.sucHoriz,
-              sucRiser: c.sucRiser, liqHoriz: c.liqHoriz,
-              tempType: c.tempType, application: c.application,
-              isRiserOnly: c.isRiserOnly, notes: c.notes||'', source:'excel'
-            });
+            state.circuits.push({id:c.circuitId,rack:c.rack,runLength:c.runLength,riserLength:c.riserLength||20,sucHoriz:c.sucHoriz,sucRiser:c.sucRiser,liqHoriz:c.liqHoriz,tempType:c.tempType,application:c.application,isRiserOnly:c.isRiserOnly,notes:c.notes||'',source:'excel'});
           }
         });
       }
       if(parseData.storeName && !document.getElementById('projName').value) {
-        document.getElementById('projName').value = parseData.storeName + (parseData.storeNumber?' #'+parseData.storeNumber:'');
+        document.getElementById('projName').value = parseData.storeName+(parseData.storeNumber?' #'+parseData.storeNumber:'');
       }
-      results.push(`📊 ${fileObj.name}: ${parseData.summary || parseData.circuits?.length+' circuits found'}`);
+      results.push(`📊 ${fileObj.name}: ${parseData.summary||parseData.circuits?.length+' circuits found'}`);
+      if(parseData.warning) flags.push({type:'warn',text:parseData.warning,source:fileObj.name});
     }
-  } catch(err) {
-    clearTimeout(timeout);
-    throw err;
-  }
+  } catch(err) { clearTimeout(timeout); throw err; }
 }
 
-// PROCESS IMAGE FILE — AI identifies what it is and extracts accordingly
 async function processImageFile(fileObj, results, flags) {
   const base64 = await imgToJpeg(fileObj.file);
-  const prompt = `You are an expert commercial refrigeration estimator. Analyze this image and determine what type of document it is, then extract the relevant information.
-
-DOCUMENT TYPES TO IDENTIFY:
-1. REFRIGERATION LEGEND SHEET — table with circuit IDs, run lengths, pipe sizes. Extract all circuits where cells are highlighted/shaded or text says "NEW"
-2. JOB SCHEDULE / REMODEL SCHEDULE — has dates, weeks, contractor notes. Extract all RC/refrigeration mentions, night work requirements, start dates
-3. REMODEL SCOPE SHEET — has rack notes and parts list. Extract parts, circuit notes, rack instructions
-4. BID EMAIL — extract project name, address, GC, scope
-5. BLUEPRINT / REDLINE — extract drop points, circuit routing, any labeled pipe sizes
-6. EQUIPMENT SCHEDULE — similar to legend sheet but different format
-
-For each type extract the appropriate data.
-
-Return ONLY valid JSON:
-{
-  "documentType": "legend_sheet|job_schedule|remodel_scope|bid_email|blueprint|equipment_schedule|unknown",
-  "storeName": "",
-  "storeNumber": "",
-  "circuits": [{"circuitId":"","rack":"","runLength":0,"riserLength":20,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium|low","application":"","isRiserOnly":false,"notes":""}],
-  "parts": [{"partId":"","qty":0,"description":""}],
-  "rcNotes": [{"text":"","week":"","costImpact":false}],
-  "nightWorkRequired": false,
-  "nightWorkDetails": "",
-  "startDate": "",
-  "workSequence": [],
-  "rackNotes": [{"rack":"","notes":[]}],
-  "dropPoints": [],
-  "flags": [],
-  "summary": ""
-}`;
-
-  const result = await callAI([{role:'user', content:[
-    {type:'image_url', image_url:{url:`data:image/jpeg;base64,${base64}`}},
-    {type:'text', text:prompt}
-  ]}], 2000);
-
+  const prompt = `You are an expert commercial refrigeration estimator. Analyze this image and extract all relevant information. Return ONLY valid JSON:
+{"documentType":"legend_sheet|job_schedule|remodel_scope|bid_email|blueprint|equipment_schedule|unknown","storeName":"","storeNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":20,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"notes":""}],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"text":"","week":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","startDate":"","workSequence":[],"rackNotes":[{"rack":"","notes":[]}],"flags":[],"summary":""}`;
+  const result = await callAI([{role:'user',content:[{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+base64}},{type:'text',text:prompt}]}], 2000);
   await processAIResult(result, fileObj.name, results, flags);
 }
 
-// PROCESS PDF/DOC FILE
 async function processDocFile(fileObj, results, flags) {
   const isWord = fileObj.name.match(/\.docx?$/i);
-  const isPdf = fileObj.file.type === 'application/pdf' || fileObj.name.match(/\.pdf$/i);
-
   let docText = '';
-
   if(isWord) {
-    // Send to server-side Word parser
     try {
-      const base64 = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = e => {
-          const bytes = new Uint8Array(e.target.result);
-          let binary = '';
-          const chunk = 8192;
-          for(let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i+chunk));
-          res(btoa(binary));
-        };
-        r.onerror = rej;
-        r.readAsArrayBuffer(fileObj.file);
-      });
-
-      const parseRes = await fetch('/api/parse-doc', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({fileData: base64, fileName: fileObj.name})
-      });
+      const base64 = await fileToBase64(fileObj.file);
+      const parseRes = await fetch('/api/parse-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileData:base64,fileName:fileObj.name})});
       const parseData = await parseRes.json();
       if(parseData.text) docText = parseData.text;
-    } catch(e) {
-      flags.push({type:'warn', text:`Could not parse ${fileObj.name}: ${e.message}`, source:'Upload'});
-    }
-  } else if(isPdf) {
-    // Try as image
-    try {
-      await processImageFile(fileObj, results, flags);
-      return;
-    } catch(e) {
-      flags.push({type:'warn', text:`Could not process PDF ${fileObj.name}: ${e.message}`, source:'Upload'});
-    }
+    } catch(e) { flags.push({type:'warn',text:`Could not parse ${fileObj.name}: ${e.message}`,source:'Upload'}); }
+  } else {
+    try { await processImageFile(fileObj, results, flags); return; } catch(e) { flags.push({type:'warn',text:`Could not process ${fileObj.name}: ${e.message}`,source:'Upload'}); }
   }
-
   if(docText) {
-    // Send extracted text to AI for analysis
-    const prompt = `You are an expert commercial refrigeration contractor reading a job document. Analyze this text and extract ALL information relevant to the Refrigeration Contractor (RC).
+    const prompt = `You are an expert commercial refrigeration contractor. Analyze this scope of work document and extract all RC-relevant information. Return ONLY valid JSON:
+{"documentType":"scope_of_work","storeName":"","storeNumber":"","gcName":"","address":"","startDate":"","circuits":[],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"week":"","text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","workSequence":[{"week":"","milestone":"","rcInvolved":true,"details":""}],"rackNotes":[{"rack":"","notes":[]}],"flags":[],"summary":""}
 
-FIND AND EXTRACT:
-1. Every sentence mentioning "RC", "Refrigeration Contractor", "refrigeration", or "ref contractor"
-2. Night work requirements — any mention of night work, after hours, overnight
-3. Start date — Week 1, Day 1, first date mentioned
-4. Pre-con meeting date
-5. Work sequence — what RC does each week
-6. Any parts list or materials mentioned
-7. Any rack-specific notes (Rack A, Rack B, etc.)
-8. Special requirements, restrictions, or conditions
-9. Cost impact items (overtime, premium materials, minimum crew size)
-10. Store name, store number, GC name
-
-For each RC item found, copy the EXACT text and note the week/date context.
-
-Document text:
-${docText.slice(0, 8000)}
-
-Return ONLY valid JSON:
-{
-  "documentType": "job_schedule|remodel_scope|scope_of_work|bid_email|unknown",
-  "storeName": "", "storeNumber": "", "gcName": "", "address": "",
-  "startDate": "", "endDate": "", "preConDate": "",
-  "circuits": [],
-  "parts": [{"partId":"","qty":0,"description":""}],
-  "rcNotes": [{"week":"","date":"","text":"exact text","costImpact":false}],
-  "nightWorkRequired": false,
-  "nightWorkDetails": "",
-  "workSequence": [{"week":"","date":"","milestone":"","rcInvolved":true,"details":""}],
-  "rackNotes": [{"rack":"","notes":[]}],
-  "costImpactItems": [],
-  "specialRequirements": [],
-  "flags": [],
-  "summary": "2-3 sentences summarizing RC scope and key requirements"
-}`;
-
-    const aiResult = await callAI([{role:'user', content:prompt}], 2000);
+Document:
+${docText.slice(0,8000)}`;
+    const aiResult = await callAI([{role:'user',content:prompt}], 2000);
     await processAIResult(aiResult, fileObj.name, results, flags);
   } else {
-    results.push(`📄 ${fileObj.name}: Uploaded — could not extract text content`);
-    flags.push({type:'info', text:`${fileObj.name}: Try uploading as a screenshot image for best results`, source:'Upload'});
+    results.push(`📄 ${fileObj.name}: Uploaded — could not extract text`);
+    flags.push({type:'info',text:`${fileObj.name}: Try uploading as a screenshot for best results`,source:'Upload'});
   }
 }
 
-// PROCESS PASTED EMAIL
 async function processPastedEmail(text, results, flags) {
-  const prompt = `You are an expert commercial refrigeration estimator analyzing a bid email.
-Extract ALL relevant information. Return ONLY valid JSON:
-{
-  "documentType": "bid_email",
-  "storeName": "", "storeNumber": "", "gcName": "", "address": "", "contractor": "", "bidDueDate": "",
-  "circuits": [], "parts": [],
-  "rcNotes": [{"text":"","week":"","costImpact":false}],
-  "nightWorkRequired": false, "nightWorkDetails": "", "startDate": "",
-  "workSequence": [], "rackNotes": [], "dropPoints": [],
-  "flags": ["list missing info"],
-  "summary": ""
-}
-
-Email text:
-${text}`;
-
-  const result = await callAI([{role:'user', content:prompt}], 1500);
+  const prompt = `Extract all relevant bid information from this email. Return ONLY valid JSON:
+{"documentType":"bid_email","storeName":"","storeNumber":"","gcName":"","address":"","contractor":"","bidDueDate":"","circuits":[],"parts":[],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":["list missing info"],"summary":""}
+Email: ${text}`;
+  const result = await callAI([{role:'user',content:prompt}], 1500);
   await processAIResult(result, 'Bid Email', results, flags);
 }
 
-// PROCESS AI RESULT — common handler for all document types
 async function processAIResult(resultText, sourceName, results, flags) {
   try {
     const clean = resultText.replace(/```json|```/g,'').trim();
     const parsed = JSON.parse(clean);
-
-    // Auto-fill project info
-    if(parsed.storeName && !document.getElementById('projName').value) {
-      let name = parsed.storeName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
-      document.getElementById('projName').value = name;
-    }
+    if(parsed.storeName && !document.getElementById('projName').value) document.getElementById('projName').value = parsed.storeName+(parsed.storeNumber?' #'+parsed.storeNumber:'');
     if(parsed.gcName && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gcName;
     if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
     if(parsed.contractor && !document.getElementById('projCont').value) document.getElementById('projCont').value = parsed.contractor;
-
-    // Add circuits
     if(parsed.circuits?.length) {
       parsed.circuits.forEach(c => {
         if(c.circuitId && !state.circuits.find(x=>x.id===c.circuitId)) {
-          state.circuits.push({
-            id:c.circuitId, rack:c.rack||(c.circuitId.replace(/[0-9]/g,'')),
-            runLength:c.runLength||0, riserLength:c.riserLength||20,
-            sucHoriz:c.sucHoriz||'', sucRiser:c.sucRiser||'',
-            liqHoriz:c.liqHoriz||'', tempType:c.tempType||'medium',
-            application:c.application||'', isRiserOnly:c.isRiserOnly||false,
-            notes:c.notes||'', source:sourceName
-          });
+          state.circuits.push({id:c.circuitId,rack:c.rack||(c.circuitId.replace(/[0-9]/g,'')),runLength:c.runLength||0,riserLength:c.riserLength||20,sucHoriz:c.sucHoriz||'',sucRiser:c.sucRiser||'',liqHoriz:c.liqHoriz||'',tempType:c.tempType||'medium',application:c.application||'',isRiserOnly:c.isRiserOnly||false,notes:c.notes||'',source:sourceName});
         }
       });
     }
-
-    // Add parts to line items
     if(parsed.parts?.length) {
-      parsed.parts.forEach(p => {
-        state.lineItems.push({
-          section:'Parts — From Scope',
-          desc: (p.partId ? p.partId+' — ' : '') + p.description,
-          qty: p.qty||1, unit:'ea', unitCost:0, total:0, editable:true,
-          notes:'From scope document — verify pricing'
-        });
-      });
-      if(parsed.parts.length > 0) {
-        flags.push({type:'info', text:`${parsed.parts.length} part(s) from scope added to material list — prices need to be entered`, source:sourceName});
-      }
+      parsed.parts.forEach(p => state.lineItems.push({section:'Parts — From Scope',desc:(p.partId?p.partId+' — ':'')+p.description,qty:p.qty||1,unit:'ea',unitCost:0,total:0,editable:true,notes:'From scope — verify pricing'}));
+      flags.push({type:'info',text:`${parsed.parts.length} part(s) from scope added to material list — prices need to be entered`,source:sourceName});
     }
-
-    // RC notes
-    if(parsed.rcNotes?.length) {
-      parsed.rcNotes.forEach(n => {
-        const text = typeof n === 'object' ? (n.week?'Week '+n.week+': ':'')+n.text : n;
-        flags.push({type: (typeof n === 'object' && n.costImpact)?'warn':'info', text, source:'RC — '+sourceName});
-      });
-    }
-
-    // Night work
-    if(parsed.nightWorkRequired) {
-      flags.push({type:'warn', text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails, source:sourceName});
-      flags.push({type:'info', text:'Adjust Nights/Weekends multiplier in Rates & Labor tab', source:'Suggestion'});
-    }
-
-    // Start date
-    if(parsed.startDate) {
-      flags.push({type:'ok', text:'RC Start Date: '+parsed.startDate, source:sourceName});
-    }
-
-    // Rack notes
-    if(parsed.rackNotes?.length) {
-      parsed.rackNotes.forEach(r => {
-        if(r.notes?.length) r.notes.forEach(n => flags.push({type:'info', text:`Rack ${r.rack}: ${n}`, source:sourceName}));
-      });
-    }
-
-    // Work sequence
-    if(parsed.workSequence?.length) {
-      parsed.workSequence.forEach(w => flags.push({type:'info', text:typeof w==='object'?(w.week?'Week '+w.week.replace(/^Week /i,'')+': ':'')+w.milestone:w, source:'Schedule'}));
-    }
-
-    // Cost impacts
-    if(parsed.flags?.length) {
-      parsed.flags.forEach(f => flags.push({type:'warn', text:f, source:sourceName}));
-    }
-
-    const docTypeLabel = {
-      legend_sheet:'Legend Sheet', job_schedule:'Job Schedule',
-      remodel_scope:'Remodel Scope', bid_email:'Bid Email',
-      blueprint:'Blueprint/Redlines', equipment_schedule:'Equipment Schedule',
-      unknown:'Document'
-    }[parsed.documentType] || 'Document';
-
-    results.push(`${docTypeLabel === 'Legend Sheet'?'📋':docTypeLabel==='Job Schedule'?'📅':docTypeLabel==='Remodel Scope'?'📝':docTypeLabel==='Bid Email'?'📧':docTypeLabel==='Blueprint/Redlines'?'📐':'📄'} ${sourceName} (${docTypeLabel}): ${parsed.summary||'Analyzed'}`);
-
+    if(parsed.rcNotes?.length) parsed.rcNotes.forEach(n => { const text=typeof n==='object'?(n.week?'Week '+n.week+': ':'')+n.text:n; flags.push({type:(typeof n==='object'&&n.costImpact)?'warn':'info',text,source:'RC — '+sourceName}); });
+    if(parsed.nightWorkRequired) { flags.push({type:'warn',text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails,source:sourceName}); flags.push({type:'info',text:'Set Night/Weekend multiplier in Rates & Labor tab',source:'Suggestion'}); }
+    if(parsed.startDate) flags.push({type:'ok',text:'RC Start Date: '+parsed.startDate,source:sourceName});
+    if(parsed.rackNotes?.length) parsed.rackNotes.forEach(r => { if(r.notes?.length) r.notes.forEach(n => flags.push({type:'info',text:`Rack ${r.rack}: ${n}`,source:sourceName})); });
+    if(parsed.workSequence?.length) parsed.workSequence.forEach(w => flags.push({type:'info',text:typeof w==='object'?(w.week?'Week '+w.week.replace(/^Week /i,'')+': ':'')+w.milestone:w,source:'Schedule'}));
+    if(parsed.flags?.length) parsed.flags.forEach(f => flags.push({type:'warn',text:f,source:sourceName}));
+    const docTypeLabel = {legend_sheet:'Legend Sheet',job_schedule:'Job Schedule',remodel_scope:'Remodel Scope',bid_email:'Bid Email',blueprint:'Blueprint',scope_of_work:'Scope of Work',equipment_schedule:'Equipment Schedule',unknown:'Document'}[parsed.documentType]||'Document';
+    results.push(`📄 ${sourceName} (${docTypeLabel}): ${parsed.summary||'Analyzed'}`);
   } catch(e) {
     results.push(`📄 ${sourceName}: Analyzed — ${resultText.slice(0,150)}`);
   }
 }
-// RENDER FLAGS
-function renderFlags() {
-  const flagsList = document.getElementById('flagsList');
-  const flagsSection = document.getElementById('flagsSection');
-  if(state.flags.length === 0) { flagsSection.classList.add('hidden'); return; }
-  flagsSection.classList.remove('hidden');
-  flagsList.innerHTML = state.flags.map(f => `
-    <div class="flag flag-${f.type}">
-      <span>${f.type==='error'?'❌':f.type==='warn'?'⚠️':f.type==='ok'?'✅':'ℹ️'}</span>
-      <div><strong>${f.source}:</strong> ${f.text}</div>
-    </div>`).join('');
+
+// ── HELPERS ────────────────────────────────────────────────────────────────────
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => { const bytes=new Uint8Array(e.target.result); let bin=''; const chunk=8192; for(let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode(...bytes.subarray(i,i+chunk)); res(btoa(bin)); };
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
 }
 
-// RENDER CIRCUITS
+// ── RENDER FLAGS ───────────────────────────────────────────────────────────────
+
+function renderFlags() {
+  const flagsList=document.getElementById('flagsList');
+  const flagsSection=document.getElementById('flagsSection');
+  if(state.flags.length===0){flagsSection.classList.add('hidden');return;}
+  flagsSection.classList.remove('hidden');
+  flagsList.innerHTML=state.flags.map(f=>`<div class="flag flag-${f.type}"><span>${f.type==='error'?'❌':f.type==='warn'?'⚠️':f.type==='ok'?'✅':'ℹ️'}</span><div><strong>${f.source}:</strong> ${f.text}</div></div>`).join('');
+}
+
+// ── RENDER CIRCUITS ────────────────────────────────────────────────────────────
+
 function renderCircuits() {
-  const list = document.getElementById('circuitList');
-  const summary = document.getElementById('circuitSummary');
-
-  if(state.circuits.length === 0) {
-    list.innerHTML = `<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">⚡</div><div class="ai-empty-text">Upload an equipment schedule or legend sheet and run the analysis to auto-populate circuits.</div></div>`;
-    summary.textContent = 'No circuits extracted yet';
-    return;
-  }
-
-  const byRack = {};
-  state.circuits.forEach(c => {
-    const rack = c.rack || c.id.replace(/[0-9]/g,'');
-    if(!byRack[rack]) byRack[rack] = [];
-    byRack[rack].push(c);
-  });
-
-  summary.textContent = state.circuits.length + ' new circuit(s) across ' + Object.keys(byRack).length + ' rack(s)';
-
-  list.innerHTML = Object.entries(byRack).map(([rack, circuits]) => `
-    <div class="mb16">
-      <div class="slabel">Rack ${rack}</div>
-      ${circuits.map((c,i) => renderCircuitCard(c, state.circuits.indexOf(c))).join('')}
-    </div>`).join('');
+  const list=document.getElementById('circuitList');
+  const summary=document.getElementById('circuitSummary');
+  if(state.circuits.length===0){list.innerHTML=`<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">⚡</div><div class="ai-empty-text">Upload an equipment schedule or legend sheet and run the analysis to auto-populate circuits.</div></div>`;summary.textContent='No circuits extracted yet';return;}
+  const byRack={};
+  state.circuits.forEach(c=>{const rack=c.rack||c.id.replace(/[0-9]/g,'');if(!byRack[rack])byRack[rack]=[];byRack[rack].push(c);});
+  summary.textContent=state.circuits.length+' new circuit(s) across '+Object.keys(byRack).length+' rack(s)';
+  list.innerHTML=Object.entries(byRack).map(([rack,circuits])=>`<div class="mb16"><div class="slabel">Rack ${rack}</div>${circuits.map(c=>renderCircuitCard(c,state.circuits.indexOf(c))).join('')}</div>`).join('');
 }
 
 function renderCircuitCard(c, idx) {
-  const typeLabel = c.isRiserOnly ? 'Riser Only' : (c.tempType === 'low' ? 'Low Temp' : 'Med Temp');
-  const typeClass = c.isRiserOnly ? 'type-riser' : (c.tempType === 'low' ? 'type-low' : 'type-med');
-  return `
-    <div class="circuit-card">
-      <div class="circuit-header">
-        <div class="flex-center gap8">
-          <div class="circuit-id">${c.id}</div>
-          <span class="circuit-type ${typeClass}">${typeLabel}</span>
-          ${c.isRiserOnly ? '<span class="badge badge-yellow">Riser Only</span>' : ''}
-          ${c.notes ? '<span class="badge badge-blue fs11">${c.notes}</span>' : ''}
-        </div>
-        <div class="flex gap8">
-          <button class="btn btn-ghost btn-xs" onclick="duplicateCircuit(${idx})">Copy</button>
-          <button class="btn btn-red btn-xs" onclick="removeCircuit(${idx})">Remove</button>
-        </div>
+  const typeLabel=c.isRiserOnly?'Riser Only':(c.tempType==='low'?'Low Temp':'Med Temp');
+  const typeClass=c.isRiserOnly?'type-riser':(c.tempType==='low'?'type-low':'type-med');
+  return `<div class="circuit-card">
+    <div class="circuit-header">
+      <div class="flex-center gap8">
+        <div class="circuit-id">${c.id}</div>
+        <span class="circuit-type ${typeClass}">${typeLabel}</span>
+        ${c.notes?`<span class="badge badge-blue fs11">${c.notes}</span>`:''}
       </div>
-      <div class="circuit-grid">
-        <div class="circuit-field">
-          <label>Run Length (ft)</label>
-          <input type="number" value="${c.runLength||''}" placeholder="0" onchange="updateCircuit(${idx},'runLength',this.value)" ${c.isRiserOnly?'disabled':''}>
-        </div>
-        <div class="circuit-field">
-          <label>Riser Length (ft)</label>
-          <input type="number" value="${c.riserLength||''}" placeholder="0" onchange="updateCircuit(${idx},'riserLength',this.value)">
-        </div>
-        <div class="circuit-field">
-          <label>Suction Horiz</label>
-          <input type="text" value="${c.sucHoriz||''}" placeholder='e.g. 1-1/8"' onchange="updateCircuit(${idx},'sucHoriz',this.value)" ${c.isRiserOnly?'disabled':''}>
-        </div>
-        <div class="circuit-field">
-          <label>Suction Riser</label>
-          <input type="text" value="${c.sucRiser||''}" placeholder='e.g. 7/8"' onchange="updateCircuit(${idx},'sucRiser',this.value)">
-        </div>
-        <div class="circuit-field">
-          <label>Liquid Horiz</label>
-          <input type="text" value="${c.liqHoriz||''}" placeholder='e.g. 5/8"' onchange="updateCircuit(${idx},'liqHoriz',this.value)" ${c.isRiserOnly?'disabled':''}>
-        </div>
-        <div class="circuit-field">
-          <label>Temp Type</label>
-          <select onchange="updateCircuit(${idx},'tempType',this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;width:100%;outline:none;">
-            <option value="medium" ${c.tempType==='medium'?'selected':''}>Medium Temp</option>
-            <option value="low" ${c.tempType==='low'?'selected':''}>Low Temp</option>
-          </select>
-        </div>
-        <div class="circuit-field" style="grid-column:span 2">
-          <label>Application / Location</label>
-          <input type="text" value="${c.application||''}" placeholder="e.g. MD Produce N69-N70" onchange="updateCircuit(${idx},'application',this.value)" style="width:100%">
-        </div>
+      <div class="flex gap8">
+        <button class="btn btn-ghost btn-xs" onclick="duplicateCircuit(${idx})">Copy</button>
+        <button class="btn btn-red btn-xs" onclick="removeCircuit(${idx})">Remove</button>
       </div>
-    </div>`;
+    </div>
+    <div class="circuit-grid">
+      <div class="circuit-field"><label>Run Length (ft)</label><input type="number" value="${c.runLength||''}" placeholder="0" onchange="updateCircuit(${idx},'runLength',this.value)" ${c.isRiserOnly?'disabled':''}></div>
+      <div class="circuit-field"><label>Riser Length (ft)</label><input type="number" value="${c.riserLength||''}" placeholder="0" onchange="updateCircuit(${idx},'riserLength',this.value)"></div>
+      <div class="circuit-field"><label>Suction Horiz</label><input type="text" value="${c.sucHoriz||''}" placeholder='1-1/8"' onchange="updateCircuit(${idx},'sucHoriz',this.value)" ${c.isRiserOnly?'disabled':''}></div>
+      <div class="circuit-field"><label>Suction Riser</label><input type="text" value="${c.sucRiser||''}" placeholder='7/8"' onchange="updateCircuit(${idx},'sucRiser',this.value)"></div>
+      <div class="circuit-field"><label>Liquid Horiz</label><input type="text" value="${c.liqHoriz||''}" placeholder='5/8"' onchange="updateCircuit(${idx},'liqHoriz',this.value)" ${c.isRiserOnly?'disabled':''}></div>
+      <div class="circuit-field"><label>Temp Type</label>
+        <select onchange="updateCircuit(${idx},'tempType',this.value)">
+          <option value="medium" ${c.tempType==='medium'?'selected':''}>Medium Temp</option>
+          <option value="low" ${c.tempType==='low'?'selected':''}>Low Temp</option>
+        </select>
+      </div>
+      <div class="circuit-field" style="grid-column:span 2"><label>Application / Location</label><input type="text" value="${c.application||''}" placeholder="e.g. MD Produce N69-N70" onchange="updateCircuit(${idx},'application',this.value)" style="width:100%"></div>
+    </div>
+  </div>`;
 }
 
-function updateCircuit(idx, field, value) {
-  state.circuits[idx][field] = field==='runLength'||field==='riserLength' ? parseFloat(value)||0 : value;
-}
+function updateCircuit(idx,field,value){state.circuits[idx][field]=(field==='runLength'||field==='riserLength')?parseFloat(value)||0:value;}
+function removeCircuit(idx){state.circuits.splice(idx,1);renderCircuits();}
+function duplicateCircuit(idx){const copy={...state.circuits[idx],id:state.circuits[idx].id+'_copy'};state.circuits.splice(idx+1,0,copy);renderCircuits();}
+function addCircuitManual(){state.circuits.push({id:'NEW-'+Date.now(),rack:'',runLength:0,riserLength:0,sucHoriz:'',sucRiser:'',liqHoriz:'',tempType:'medium',application:'',isRiserOnly:false,notes:'',source:'manual'});renderCircuits();showTab('circuits',document.querySelectorAll('.tab-btn')[1]);}
 
-function removeCircuit(idx) {
-  state.circuits.splice(idx, 1);
-  renderCircuits();
-}
+// ── GENERATE MATERIALS ─────────────────────────────────────────────────────────
 
-function duplicateCircuit(idx) {
-  const copy = {...state.circuits[idx], id: state.circuits[idx].id + '_copy'};
-  state.circuits.splice(idx+1, 0, copy);
-  renderCircuits();
-}
-
-function addCircuitManual() {
-  state.circuits.push({id:'NEW-'+Date.now(),rack:'',runLength:0,riserLength:0,sucHoriz:'',sucRiser:'',liqHoriz:'',tempType:'medium',application:'',isRiserOnly:false,notes:'',source:'manual'});
-  renderCircuits();
-  showTab('circuits', document.querySelectorAll('.tab-btn')[1]);
-}
-
-// GENERATE MATERIALS
 function generateMaterials() {
-  if(state.circuits.length === 0) {
-    alert('Add circuits first before generating materials.');
-    return;
-  }
-
-  state.lineItems = [];
-
-  // Pipe size to copper rate ID mapping
-  const sizeToId = {
-    '0.25':'cu_025','1/4':'cu_025',
-    '0.375':'cu_038','3/8':'cu_038',
-    '0.5':'cu_050','1/2':'cu_050',
-    '0.625':'cu_058','5/8':'cu_058',
-    '0.875':'cu_078','7/8':'cu_078',
-    '1.125':'cu_118','1-1/8':'cu_118','1 1/8':'cu_118',
-    '1.375':'cu_138','1-3/8':'cu_138','1 3/8':'cu_138',
-    '1.625':'cu_158','1-5/8':'cu_158','1 5/8':'cu_158',
-    '2.125':'cu_218','2-1/8':'cu_218','2 1/8':'cu_218'
-  };
-
-  function getRate(sizeStr) {
-    if(!sizeStr) return 0;
-    const key = Object.keys(sizeToId).find(k => sizeStr.replace(/"/g,'').trim().includes(k.replace(/"/g,'')));
-    if(!key) return 0;
-    const val = parseFloat(document.getElementById(sizeToId[key])?.value) || 0;
-    return val;
-  }
-
-  // Copper takeoff by size
-  const copperBySize = {};
-
-  state.circuits.forEach(c => {
-    const runFt = parseFloat(c.runLength) || 0;
-    const riserFt = parseFloat(c.riserLength) || 0;
-    const totalRun = runFt + riserFt;
-
-    if(c.isRiserOnly) {
-      // Riser only
-      if(c.sucRiser) {
-        const key = c.sucRiser + ' suction riser';
-        copperBySize[key] = (copperBySize[key]||{size:c.sucRiser,footage:0,type:'suction riser'});
-        copperBySize[key].footage += riserFt;
-      }
-    } else {
-      // Full run
-      if(c.sucHoriz && runFt > 0) {
-        const key = c.sucHoriz + ' suction';
-        if(!copperBySize[key]) copperBySize[key] = {size:c.sucHoriz, footage:0, type:'suction horizontal'};
-        copperBySize[key].footage += runFt;
-      }
-      if(c.sucRiser && riserFt > 0) {
-        const key = c.sucRiser + ' suction riser';
-        if(!copperBySize[key]) copperBySize[key] = {size:c.sucRiser, footage:0, type:'suction riser'};
-        copperBySize[key].footage += riserFt;
-      }
-      if(c.liqHoriz && totalRun > 0) {
-        const key = c.liqHoriz + ' liquid';
-        if(!copperBySize[key]) copperBySize[key] = {size:c.liqHoriz, footage:0, type:'liquid line'};
-        copperBySize[key].footage += totalRun;
-      }
+  if(state.circuits.length===0){alert('Add circuits first before generating materials.');return;}
+  state.lineItems=[];
+  const sizeToId={'0.25':'cu_025','1/4':'cu_025','0.375':'cu_038','3/8':'cu_038','0.5':'cu_050','1/2':'cu_050','0.625':'cu_058','5/8':'cu_058','0.875':'cu_078','7/8':'cu_078','1.125':'cu_118','1-1/8':'cu_118','1 1/8':'cu_118','1.375':'cu_138','1-3/8':'cu_138','1 3/8':'cu_138','1.625':'cu_158','1-5/8':'cu_158','1 5/8':'cu_158','2.125':'cu_218','2-1/8':'cu_218','2 1/8':'cu_218'};
+  function getRate(sizeStr){if(!sizeStr)return 0;const key=Object.keys(sizeToId).find(k=>sizeStr.replace(/"/g,'').trim().includes(k.replace(/"/g,'')));if(!key)return 0;return parseFloat(document.getElementById(sizeToId[key])?.value)||0;}
+  const copperBySize={};
+  state.circuits.forEach(c=>{
+    const runFt=parseFloat(c.runLength)||0,riserFt=parseFloat(c.riserLength)||0,totalRun=runFt+riserFt;
+    if(c.isRiserOnly){if(c.sucRiser){const key=c.sucRiser+' suction riser';if(!copperBySize[key])copperBySize[key]={size:c.sucRiser,footage:0,type:'suction riser'};copperBySize[key].footage+=riserFt;}}
+    else{
+      if(c.sucHoriz&&runFt>0){const key=c.sucHoriz+' suction';if(!copperBySize[key])copperBySize[key]={size:c.sucHoriz,footage:0,type:'suction horizontal'};copperBySize[key].footage+=runFt;}
+      if(c.sucRiser&&riserFt>0){const key=c.sucRiser+' suction riser';if(!copperBySize[key])copperBySize[key]={size:c.sucRiser,footage:0,type:'suction riser'};copperBySize[key].footage+=riserFt;}
+      if(c.liqHoriz&&totalRun>0){const key=c.liqHoriz+' liquid';if(!copperBySize[key])copperBySize[key]={size:c.liqHoriz,footage:0,type:'liquid line'};copperBySize[key].footage+=totalRun;}
     }
   });
-
-  // Add copper line items
-  Object.values(copperBySize).forEach(cu => {
-    const rate = getRate(cu.size);
-    state.lineItems.push({
-      section: 'Copper',
-      desc: `${cu.size}" ACR Copper — ${cu.type}`,
-      qty: cu.footage,
-      unit: 'ft',
-      unitCost: rate,
-      total: cu.footage * rate,
-      editable: true
-    });
-  });
-
-  // Fittings per circuit
-  state.circuits.forEach(c => {
-    const runFt = parseFloat(c.runLength)||0;
-    const riserFt = parseFloat(c.riserLength)||0;
-    const totalFt = c.isRiserOnly ? riserFt : (runFt + riserFt);
-    const per100 = totalFt / 100;
-
-    if(totalFt > 0) {
-      const markup = (parseFloat(document.getElementById('fittingsMarkup')?.value)||25)/100;
-      const baseRate = getRate(c.sucHoriz || c.sucRiser) || 0;
-      const fittingRate = baseRate * markup;
-
-      state.lineItems.push({section:'Fittings', desc:`${c.id} — Couplings (10/100ft)`, qty:Math.ceil(per100*10), unit:'ea', unitCost:0, total:0, editable:true});
-      state.lineItems.push({section:'Fittings', desc:`${c.id} — Elbows (10/100ft)`, qty:Math.ceil(per100*10), unit:'ea', unitCost:0, total:0, editable:true});
-      state.lineItems.push({section:'Fittings', desc:`${c.id} — Tees`, qty:0, unit:'ea', unitCost:0, total:0, editable:true, note:'Verify from blueprint'});
-      state.lineItems.push({section:'Fittings', desc:`${c.id} — Bushings/Reducers`, qty:0, unit:'ea', unitCost:0, total:0, editable:true, note:'Verify from blueprint'});
-      state.lineItems.push({section:'Fittings', desc:`${c.id} — P-Traps (suction)`, qty:Math.ceil(riserFt>0?1:0), unit:'ea', unitCost:0, total:0, editable:true});
+  Object.values(copperBySize).forEach(cu=>{const rate=getRate(cu.size);state.lineItems.push({section:'Copper',desc:`${cu.size}" ACR Copper — ${cu.type}`,qty:cu.footage,unit:'ft',unitCost:rate,total:cu.footage*rate,editable:true});});
+  state.circuits.forEach(c=>{
+    const runFt=parseFloat(c.runLength)||0,riserFt=parseFloat(c.riserLength)||0,totalFt=c.isRiserOnly?riserFt:(runFt+riserFt),per100=totalFt/100;
+    if(totalFt>0){
+      state.lineItems.push({section:'Fittings',desc:`${c.id} — Couplings (10/100ft)`,qty:Math.ceil(per100*10),unit:'ea',unitCost:0,total:0,editable:true});
+      state.lineItems.push({section:'Fittings',desc:`${c.id} — Elbows (10/100ft)`,qty:Math.ceil(per100*10),unit:'ea',unitCost:0,total:0,editable:true});
+      state.lineItems.push({section:'Fittings',desc:`${c.id} — Tees`,qty:0,unit:'ea',unitCost:0,total:0,editable:true,note:'Verify from blueprint'});
+      state.lineItems.push({section:'Fittings',desc:`${c.id} — Bushings/Reducers`,qty:0,unit:'ea',unitCost:0,total:0,editable:true,note:'Verify from blueprint'});
+      state.lineItems.push({section:'Fittings',desc:`${c.id} — P-Traps (suction)`,qty:riserFt>0?1:0,unit:'ea',unitCost:0,total:0,editable:true});
     }
   });
-
-  // Insulation
-  state.circuits.forEach(c => {
-    if(c.isRiserOnly) return;
-    const runFt = (parseFloat(c.runLength)||0) + (parseFloat(c.riserLength)||0);
-    if(runFt === 0) return;
-
-    const isLow = c.tempType === 'low';
-    // Suction insulation always
-    state.lineItems.push({
-      section:'Insulation',
-      desc:`${c.id} — ${isLow?'1"':'3/4"'} Rubber Insulation — Suction Line (${isLow?'Low':'Med'} Temp)`,
-      qty: runFt,
-      unit:'ft',
-      unitCost:0,
-      total:0,
-      editable:true
-    });
-    // Liquid insulation — low temp only
-    if(isLow) {
-      const liqFt = runFt;
-      state.lineItems.push({
-        section:'Insulation',
-        desc:`${c.id} — 1/2" Rubber Insulation — Liquid Line (Low Temp)`,
-        qty: liqFt,
-        unit:'ft',
-        unitCost:0,
-        total:0,
-        editable:true
-      });
-    }
+  state.circuits.forEach(c=>{
+    if(c.isRiserOnly)return;
+    const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
+    if(runFt===0)return;
+    const isLow=c.tempType==='low';
+    state.lineItems.push({section:'Insulation',desc:`${c.id} — ${isLow?'1"':'3/4"'} Rubber Insulation — Suction (${isLow?'Low':'Med'} Temp)`,qty:runFt,unit:'ft',unitCost:0,total:0,editable:true});
+    if(isLow) state.lineItems.push({section:'Insulation',desc:`${c.id} — 1/2" Rubber Insulation — Liquid (Low Temp)`,qty:runFt,unit:'ft',unitCost:0,total:0,editable:true});
   });
-
-  // Hangers
-  state.circuits.forEach(c => {
-    const runFt = (parseFloat(c.runLength)||0) + (parseFloat(c.riserLength)||0);
-    if(runFt > 0 && !c.isRiserOnly) {
-      state.lineItems.push({
-        section:'Hardware',
-        desc:`${c.id} — Hangers @ 6ft spacing`,
-        qty: Math.ceil(runFt/6),
-        unit:'ea',
-        unitCost:0,
-        total:0,
-        editable:true
-      });
-    }
+  state.circuits.forEach(c=>{
+    const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
+    if(runFt>0&&!c.isRiserOnly) state.lineItems.push({section:'Hardware',desc:`${c.id} — Hangers @ 6ft spacing`,qty:Math.ceil(runFt/6),unit:'ea',unitCost:0,total:0,editable:true});
   });
-
-  // Consumables
-  state.lineItems.push({section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0,editable:true,note:'Verify quantity'});
-  state.lineItems.push({section:'Consumables',desc:'Brazing Rod (15% Silver)',qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify quantity'});
-  state.lineItems.push({section:'Consumables',desc:'Refrigerant — '+(state.jobMemory.schedule?.refrigerant||'verify type'),qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify quantity'});
-
-  // Misc
+  state.lineItems.push({section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0,editable:true,note:'Verify qty'});
+  state.lineItems.push({section:'Consumables',desc:'Brazing Rod (15% Silver)',qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify qty'});
+  state.lineItems.push({section:'Consumables',desc:'Refrigerant — '+(state.jobMemory.schedule?.refrigerant||'verify type'),qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify qty'});
   state.lineItems.push({section:'Misc',desc:'Foam Packs',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
   state.lineItems.push({section:'Misc',desc:'Silicone Sealant',qty:0,unit:'tube',unitCost:0,total:0,editable:true});
   state.lineItems.push({section:'Misc',desc:'Rubatex Glue',qty:0,unit:'can',unitCost:0,total:0,editable:true});
   state.lineItems.push({section:'Misc',desc:'Tape — Insulation / Vapor',qty:0,unit:'roll',unitCost:0,total:0,editable:true});
-
-  renderMaterials();
-  calcTotals();
-
-  // Switch to materials tab
+  renderMaterials(); calcTotals();
   showTab('materials', document.querySelectorAll('.tab-btn')[2]);
 }
 
-// RENDER MATERIALS
+// ── RENDER MATERIALS ───────────────────────────────────────────────────────────
+
 function renderMaterials() {
-  const container = document.getElementById('materialList');
-  if(state.lineItems.length === 0) {
-    container.innerHTML = `<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">🔧</div><div class="ai-empty-text">Add circuits first, then click Generate.</div></div>`;
-    return;
-  }
-
-  const sections = [...new Set(state.lineItems.map(i=>i.section))];
-
-  container.innerHTML = sections.map(section => {
-    const items = state.lineItems.filter(i=>i.section===section);
-    const secTotal = items.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
-    return `
-      <div class="card-tight mat-section mb12">
-        <div class="mat-section-header">
-          <div class="mat-section-title">${section}</div>
-          <div class="mat-section-total">$${secTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        </div>
-        <table class="tbl">
-          <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th></tr></thead>
-          <tbody>
-            ${items.map((item,i) => {
-              const globalIdx = state.lineItems.indexOf(item);
-              return `<tr>
-                <td>
-                  <input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${globalIdx},'desc',this.value)">
-                  ${item.note ? '<div class="fs11 text-yellow mt8">⚠️ '+item.note+'</div>' : ''}
-                </td>
-                <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${globalIdx},'qty',this.value)"></td>
-                <td class="text-dim">${item.unit}</td>
-                <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" placeholder="0.00" onchange="updateLineItem(${globalIdx},'unitCost',this.value)"></td>
-                <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-                <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${globalIdx})">×</button></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>`;
+  const container=document.getElementById('materialList');
+  if(state.lineItems.length===0){container.innerHTML=`<div class="ai-out empty" style="min-height:160px;"><div class="ai-empty-icon">🔧</div><div class="ai-empty-text">Add circuits first, then click Generate.</div></div>`;return;}
+  const sections=[...new Set(state.lineItems.map(i=>i.section))];
+  container.innerHTML=sections.map(section=>{
+    const items=state.lineItems.filter(i=>i.section===section);
+    const secTotal=items.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+    return `<div class="card-tight mat-section mb12">
+      <div class="mat-section-header"><div class="mat-section-title">${section}</div><div class="mat-section-total">$${secTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
+      <table class="tbl"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th><th></th></tr></thead>
+      <tbody>${items.map(item=>{const globalIdx=state.lineItems.indexOf(item);return `<tr>
+        <td><input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${globalIdx},'desc',this.value)">${item.note?`<div class="fs11 text-yellow mt8">⚠️ ${item.note}</div>`:''}</td>
+        <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${globalIdx},'qty',this.value)"></td>
+        <td class="text-dim">${item.unit}</td>
+        <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" placeholder="0.00" onchange="updateLineItem(${globalIdx},'unitCost',this.value)"></td>
+        <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+        <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${globalIdx})">×</button></td>
+      </tr>`;}).join('')}</tbody></table></div>`;
   }).join('');
 }
 
-function updateLineItem(idx, field, value) {
-  if(!state.lineItems[idx]) return;
-  state.lineItems[idx][field] = (field==='qty'||field==='unitCost') ? parseFloat(value)||0 : value;
-  if(field==='qty'||field==='unitCost') {
-    state.lineItems[idx].total = (state.lineItems[idx].qty||0) * (state.lineItems[idx].unitCost||0);
-  }
-  renderMaterials();
-  calcTotals();
+function updateLineItem(idx,field,value){
+  if(!state.lineItems[idx])return;
+  state.lineItems[idx][field]=(field==='qty'||field==='unitCost')?parseFloat(value)||0:value;
+  if(field==='qty'||field==='unitCost') state.lineItems[idx].total=(state.lineItems[idx].qty||0)*(state.lineItems[idx].unitCost||0);
+  renderMaterials(); calcTotals();
 }
+function removeLineItem(idx){state.lineItems.splice(idx,1);renderMaterials();calcTotals();}
+function addLineItem(){state.lineItems.push({section:'Custom',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});renderMaterials();renderEstimate();}
+function addMiscItem(){state.lineItems.push({section:'Misc',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});renderMaterials();}
 
-function removeLineItem(idx) {
-  state.lineItems.splice(idx,1);
-  renderMaterials();
-  calcTotals();
-}
-
-function addLineItem() {
-  state.lineItems.push({section:'Custom',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
-  renderMaterials();
-  renderEstimate();
-}
-
-function addMiscItem() {
-  state.lineItems.push({section:'Misc',desc:'',qty:0,unit:'ea',unitCost:0,total:0,editable:true});
-  renderMaterials();
-}
-
-function calcLabor() {
-  const crew = parseFloat(document.getElementById('crewSize')?.value)||0;
-  const rate = parseFloat(document.getElementById('laborRate')?.value)||0;
-  const hrs = parseFloat(document.getElementById('hoursPerWeek')?.value)||0;
-  const wks = parseFloat(document.getElementById('weeksOnJob')?.value)||0;
-  const burden = parseFloat(document.getElementById('burdenRate')?.value)||1;
-  const travel = parseFloat(document.getElementById('travelTime')?.value)||0;
-  const rooftop = parseFloat(document.getElementById('multRooftop')?.value)||1;
-  const retrofit = parseFloat(document.getElementById('multRetrofit')?.value)||1;
-  const nights = parseFloat(document.getElementById('multNights')?.value)||1;
-  const travelCost = crew * travel * rate * (wks*5) * burden;
-  state.laborTotal = crew * rate * hrs * wks * burden * rooftop * retrofit * nights + travelCost;
-  const el = document.getElementById('laborAmount');
-  const formula = document.getElementById('laborFormula');
-  if(el) el.textContent = '$'+Math.round(state.laborTotal).toLocaleString();
-  if(formula) formula.textContent = `${crew||'?'} × ${hrs||'?'}hrs × ${wks||'?'}wks × $${rate||'?'}/hr × ${burden}×`;
-  calcTotals();
-}
-
-function calcTotals() {
-  state.materialsTotal = state.lineItems.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
-  const total = state.materialsTotal + (state.laborTotal||0);
-  const fmt = v=>'$'+Math.round(v).toLocaleString();
-  ['estMat','ratesMat','propMat'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(state.materialsTotal);});
-  ['estLabor','propLabor'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(state.laborTotal||0);});
-  ['estTotal','ratesTotal','propTotal'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(total);});
-  const ec=document.getElementById('estCount'); if(ec) ec.textContent=state.lineItems.length;
-}
+// ── RENDER ESTIMATE ────────────────────────────────────────────────────────────
 
 function renderEstimate() {
-  const tbody = document.getElementById('estimateBody');
-  const table = document.getElementById('estimateTable');
-  const empty = document.getElementById('estimateEmpty');
-  if(!tbody) return;
+  const tbody=document.getElementById('estimateBody');
+  const table=document.getElementById('estimateTable');
+  const empty=document.getElementById('estimateEmpty');
+  if(!tbody)return;
   if(state.lineItems.length===0){table.classList.add('hidden');empty.style.display='block';return;}
   table.classList.remove('hidden');empty.style.display='none';
-  tbody.innerHTML = state.lineItems.map((item,idx)=>`
-    <tr>
-      <td><input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${idx},'desc',this.value)"></td>
-      <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${idx},'qty',this.value)"></td>
-      <td class="text-dim">${item.unit}</td>
-      <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" onchange="updateLineItem(${idx},'unitCost',this.value)"></td>
-      <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-      <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${idx});renderEstimate()">×</button></td>
-    </tr>`).join('');
+  tbody.innerHTML=state.lineItems.map((item,idx)=>`<tr>
+    <td><input class="tbl-input" value="${item.desc}" onchange="updateLineItem(${idx},'desc',this.value)"></td>
+    <td><input class="tbl-input mono" type="number" value="${item.qty||0}" style="width:60px" onchange="updateLineItem(${idx},'qty',this.value)"></td>
+    <td class="text-dim">${item.unit}</td>
+    <td><input class="tbl-input mono" type="number" value="${item.unitCost||0}" style="width:70px" onchange="updateLineItem(${idx},'unitCost',this.value)"></td>
+    <td class="mono fw700 text-green">$${(parseFloat(item.total)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+    <td><button class="btn btn-red btn-xs" onclick="removeLineItem(${idx});renderEstimate()">×</button></td>
+  </tr>`).join('');
   calcTotals();
 }
+
+// ── UPDATE PROPOSAL ────────────────────────────────────────────────────────────
 
 function updateProposal() {
   const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
@@ -1487,16 +1086,43 @@ function updateProposal() {
   set('propAddr',document.getElementById('projAddr')?.value||'');
   set('propGC',document.getElementById('projGC')?.value?'GC: '+document.getElementById('projGC').value:'');
   set('propCont',document.getElementById('projCont')?.value||'');
-  const mat=state.materialsTotal||0, labor=state.laborTotal||0, total=mat+labor;
+
+  const mat=state.materialsTotal||0;
+  const laborOnly=state.laborTotal-(state.ootTotal||0);
+  const oot=state.ootTotal||0;
+  const total=mat+state.laborTotal;
   const fmt=v=>'$'+Math.round(v).toLocaleString();
-  set('propMatLine',fmt(mat)); set('propLaborLine',fmt(labor)); set('propTotalLine',fmt(total));
-  set('propMat',fmt(mat)); set('propLabor',fmt(labor)); set('propTotal',fmt(total));
+
+  // Refrigerant line item subtotal
+  const refrigTotal=state.lineItems.filter(i=>i.desc.toLowerCase().includes('refrigerant')).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+
+  set('propMatLine',fmt(mat));
+  set('propRefrigLine',fmt(refrigTotal));
+  set('propLaborLine',fmt(laborOnly));
+  set('propOOTLine',fmt(oot));
+  set('propTotalLine',fmt(total));
+  set('propMat',fmt(mat)); set('propLabor',fmt(laborOnly)); set('propOOT',fmt(oot)); set('propTotal',fmt(total));
+
+  // Circuits on proposal
   const propCircuits=document.getElementById('propCircuitsList');
   const propCircSection=document.getElementById('propCircuitsSection');
   if(state.circuits.length>0&&propCircSection&&propCircuits){
     propCircSection.classList.remove('hidden');
     propCircuits.innerHTML=state.circuits.map(c=>`${c.id}: ${c.isRiserOnly?'Riser only — '+c.sucRiser:c.runLength+'ft — Suc: '+c.sucHoriz+' / Liq: '+c.liqHoriz} — ${c.application||''}`).join('<br>');
   }
+
+  // Crew on proposal
+  const propCrewSection=document.getElementById('propCrewSection');
+  const propCrewList=document.getElementById('propCrewList');
+  if(state.crew.length>0&&propCrewSection&&propCrewList){
+    propCrewSection.classList.remove('hidden');
+    propCrewList.innerHTML=state.crew.map(m=>`${m.role||'Worker'} — $${m.rate}/hr × ${m.hrsPerDay} hrs/day`).join('<br>');
+    const crewRate=getCrewHourlyRate();
+    const days=parseFloat(document.getElementById('daysOnJob')?.value)||0;
+    propCrewList.innerHTML+=`<br><strong>Crew rate: $${crewRate}/hr × ${days} days</strong>`;
+  }
+
+  // Flags
   const propFlags=document.getElementById('propFlagsSection');
   const propFlagsList=document.getElementById('propFlagsList');
   const critFlags=state.flags.filter(f=>f.type==='error'||f.type==='warn');
@@ -1504,65 +1130,72 @@ function updateProposal() {
     propFlags.classList.remove('hidden');
     propFlagsList.innerHTML=critFlags.map(f=>`<div class="flag flag-${f.type}"><span>${f.type==='error'?'❌':'⚠️'}</span><div>${f.text}</div></div>`).join('');
   }
+
+  // Line items table
   const propBody=document.getElementById('proposalBody');
-  if(propBody){
-    propBody.innerHTML=state.lineItems.map(item=>`
-      <tr><td>${item.desc}</td><td>${item.qty||0}</td><td class="text-dim">${item.unit}</td>
+  if(propBody) {
+    propBody.innerHTML=state.lineItems.map(item=>`<tr>
+      <td>${item.desc}</td><td>${item.qty||0}</td><td class="text-dim">${item.unit}</td>
       <td class="mono">$${(parseFloat(item.unitCost)||0).toFixed(2)}</td>
-      <td class="mono fw700">$${(parseFloat(item.total)||0).toLocaleString()}</td></tr>`).join('');
+      <td class="mono fw700">$${(parseFloat(item.total)||0).toLocaleString()}</td>
+    </tr>`).join('');
   }
 }
 
-// MECHBOT
-let mechbotOpen = false;
+// ── MISC ───────────────────────────────────────────────────────────────────────
 
-function toggleMechBot() {
-  mechbotOpen = !mechbotOpen;
-  const panel = document.getElementById('mechbotPanel');
-  if(panel) {
-    if(mechbotOpen) panel.classList.remove('hidden');
-    else panel.classList.add('hidden');
-  }
+function setMode(btn, mode) {
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); state.mode=mode;
+  document.getElementById('propScope').textContent='Scope: '+mode;
 }
 
-async function sendMechBot() {
-  const input = document.getElementById('mechbotInput');
-  const messagesEl = document.getElementById('mechbotMessages');
-  const text = input.value.trim();
-  if(!text) return;
-  input.value = '';
-  messagesEl.innerHTML += `<div class="msg msg-user">${text}</div>`;
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  const loadId = 'load-'+Date.now();
-  messagesEl.innerHTML += `<div class="msg msg-bot" id="${loadId}"><span class="spinner spinner-green"></span></div>`;
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+function showTab(name, btn) {
+  document.querySelectorAll('[id^="tab-"]').forEach(t=>t.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(name==='proposal') updateProposal();
+  if(name==='estimate') renderEstimate();
+}
+
+let mechbotOpen=false;
+function toggleMechBot(){
+  mechbotOpen=!mechbotOpen;
+  const panel=document.getElementById('mechbotPanel');
+  if(panel){if(mechbotOpen)panel.classList.remove('hidden');else panel.classList.add('hidden');}
+}
+
+async function sendMechBot(){
+  const input=document.getElementById('mechbotInput');
+  const messagesEl=document.getElementById('mechbotMessages');
+  const text=input.value.trim(); if(!text)return;
+  input.value='';
+  messagesEl.innerHTML+=`<div class="msg msg-user">${text}</div>`;
+  messagesEl.scrollTop=messagesEl.scrollHeight;
+  const loadId='load-'+Date.now();
+  messagesEl.innerHTML+=`<div class="msg msg-bot" id="${loadId}"><span class="spinner spinner-green"></span></div>`;
+  messagesEl.scrollTop=messagesEl.scrollHeight;
   try {
-    const projName = document.getElementById('projName')?.value||'Unknown';
-    const circuitSummary = state.circuits.length > 0
-      ? state.circuits.map(c=>`${c.id}: ${c.runLength}ft run, suc ${c.sucHoriz}, liq ${c.liqHoriz}, ${c.tempType} temp`).join('; ')
-      : 'No circuits loaded yet';
-    const contextPrompt = `You are MechBot, an expert commercial refrigeration and HVAC estimating assistant. Be helpful, accurate, and concise. Never fabricate data.
-
-Current job context:
-- Mode: ${state.mode}
-- Project: ${projName}
-- Circuits (new work): ${circuitSummary}
-- Line items: ${state.lineItems.length}, Materials total: $${Math.round(state.materialsTotal).toLocaleString()}, Labor: $${Math.round(state.laborTotal||0).toLocaleString()}
-- Flags: ${state.flags.length > 0 ? state.flags.map(f=>f.text).join('; ') : 'None'}
-
-User question: ${text}`;
-    const response = await callAI([{role:'user', content:contextPrompt}], 600);
-    const el = document.getElementById(loadId);
-    if(el) el.textContent = response || 'No response received.';
-  } catch(e) {
-    const el = document.getElementById(loadId);
-    if(el) el.textContent = '❌ ' + (e.message || 'Connection error. Check your internet and try again.');
-  }
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+    const crewSummary=state.crew.length>0?state.crew.map(m=>`${m.role} $${m.rate}/hr`).join(', '):'No crew set';
+    const circuitSummary=state.circuits.length>0?state.circuits.map(c=>`${c.id}: ${c.runLength}ft run, suc ${c.sucHoriz}, liq ${c.liqHoriz}`).join('; '):'No circuits loaded';
+    const contextPrompt=`You are MechBot, an expert commercial refrigeration estimating assistant. Be concise and accurate.
+Current job: ${document.getElementById('projName')?.value||'Unknown'} | Mode: ${state.mode}
+Crew: ${crewSummary} | Crew rate: $${getCrewHourlyRate()}/hr
+Circuits: ${circuitSummary}
+Materials: $${Math.round(state.materialsTotal).toLocaleString()} | Labor: $${Math.round(state.laborTotal).toLocaleString()}
+Flags: ${state.flags.length>0?state.flags.map(f=>f.text).join('; '):'None'}
+Question: ${text}`;
+    const response=await callAI([{role:'user',content:contextPrompt}],600);
+    const el=document.getElementById(loadId); if(el)el.textContent=response||'No response.';
+  } catch(e) { const el=document.getElementById(loadId); if(el)el.textContent='❌ '+(e.message||'Connection error'); }
+  messagesEl.scrollTop=messagesEl.scrollHeight;
 }
 
 document.getElementById('mechbotInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')sendMechBot();});
 
+// ── STARTUP ────────────────────────────────────────────────────────────────────
+renderCrew();
 calcLabor();
 calcTotals();
 </script>
