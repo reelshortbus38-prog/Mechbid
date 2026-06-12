@@ -169,13 +169,13 @@ function parseXLS(xlsBuffer, circuits, meta) {
       const row = data[r];
       for(let c = 0; c < row.length; c++) {
         const v = String(row[c]||'').toLowerCase();
-        if(v.includes('run') && (v.includes('len') || v.includes('length') || v === 'run')) { runCol = c; headerRow = r; }
-        if(v.includes('suct') && (v.includes('hor') || v.includes('horiz'))) sucHCol = c;
-        if(v.includes('suct') && v.includes('ris')) sucRCol = c;
-        if(v.includes('liq') && (v.includes('hor') || v.includes('horiz'))) liqCol = c;
-        if(v.includes('evap') || v === '° f' || v === 'evap °f') evapCol = c;
-        if(v.includes('applic') || v === 'application') appCol = c;
-        if(v.includes('exchr') || (v.includes('heat') && v.includes('exch'))) exChrCol = c;
+        if(v === 'run' || v === 'run length' || (v.includes('run') && v.includes('len')) || v === 'len.') { runCol = c; headerRow = r; }
+        if(v.includes('suct') && (v.includes('hor') || v.includes('horiz') || v === 'horiz')) sucHCol = c;
+        if((v.includes('suct') && v.includes('ris')) || (v === 'riser' && sucHCol >= 0)) sucRCol = c;
+        if(v.includes('liq') && (v.includes('hor') || v.includes('horiz') || v === 'horiz') && sucHCol >= 0) liqCol = c;
+        if(v.includes('evap') || v === '° f' || v === 'evap °f' || v === '°f') evapCol = c;
+        if(v === 'application' || v.includes('applic')) appCol = c;
+        if(v === 'exchr.' || v.includes('exchr') || (v.includes('heat') && v.includes('exch'))) exChrCol = c;
       }
       if(runCol >= 0) break;
     }
