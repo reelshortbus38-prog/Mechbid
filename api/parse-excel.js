@@ -93,12 +93,27 @@ function parseKysorWarren(wb, circuits, meta) {
   });
 }
 
-// Parse Williams & Rowe BPR format (.xlsx with "NEW" in column 4)
+// Parse Williams & Rowe BPR format (.xlsx with numeric circuit IDs, rows 13+)
+// Includes ALL circuits with run length + pipe sizes — NEW, EXISTING, and blank exchr.
+// colorType reflects the exchr value so the UI can flag new vs existing work.
 function parseBPR(wb, circuits, meta) {
   wb.eachSheet((ws, sheetId) => {
     const sName = ws.name;
     if(sName.includes('Module') || sName.includes('Chart')) return;
     if(!sName.match(/Remote\s*Hdr|Rack|RACK/i)) return;
+
+    // Pull store meta from header rows
+    for(let r = 1; r <= 10; r++) {
+      const row = ws.getRow(r);
+      row.eachCell((cell, col) => {
+        const v = String(cell.value||'');
+        if(v.match(/Food Lion/i) && !meta.storeName) meta.storeName = 'Food Lion';
+        if(v.match(/Store\s*#/i)) {
+          const next = ws.getRow(r).getCell(col+1);
+          if(next.value && !meta.storeNo) meta.storeNo = String(next.value).trim();
+        }
+      });
+    }
 
     const rack = sName.replace(/Remote\s*Hdr\s*/i,'Hdr').replace(/\s*\(\d+\)/,'')
       .replace(/^Rack\s*/i,'').replace(/^RACK\s*/i,'').trim();
@@ -108,12 +123,10 @@ function parseBPR(wb, circuits, meta) {
       const circIdRaw = String(row.getCell(1).value||'').trim();
       if(!circIdRaw || isNaN(parseFloat(circIdRaw))) continue;
 
-      const exchr = String(row.getCell(4).value||'').trim().toUpperCase();
-      if(exchr !== 'NEW') continue;
+      const app = String(row.getCell(7).value||'').trim();
+      if(!app || app.match(/SPARE/i)) continue;
 
-      const app = String(row.getCell(7).value||'');
-      if(!app || app.match(/SPARE|spare/)) continue;
-
+      // Require run length and at least suction horiz size — skip rows with no piping data
       const run = parseFloat(row.getCell(21).value)||0;
       const sh = sizeToFraction(row.getCell(22).value);
       if(!run || !sh) continue;
@@ -122,19 +135,26 @@ function parseBPR(wb, circuits, meta) {
       const lh = sizeToFraction(row.getCell(24).value);
       const evap = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
 
+      // Tag circuit as new/existing/unspecified for UI display
+      const exchr = String(row.getCell(4).value||'').trim().toUpperCase();
+      let colorType, notes;
+      if(exchr === 'NEW')      { colorType = 'new';      notes = 'NEW — BPR format'; }
+      else if(exchr === 'EXISTING') { colorType = 'existing'; notes = 'EXISTING — BPR format'; }
+      else                     { colorType = 'bpr';      notes = 'BPR format'; }
+
       circuits.push({
         circuitId: `${rack}-${circIdRaw}`, rack,
         runLength: run, riserLength: 20,
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly: false,
-        colorType: 'new', notes: 'NEW — BPR format'
+        colorType, notes
       });
     }
   });
 }
 
-// Parse any .xls format using SheetJS (no color detection, uses NEW keyword)
+// Parse any .xls format using SheetJS (no color detection)
 function parseXLS(xlsBuffer, circuits, meta) {
   const wb = XLSX.read(xlsBuffer, {type:'buffer', cellStyles: true});
 
@@ -148,7 +168,6 @@ function parseXLS(xlsBuffer, circuits, meta) {
     let rack = sName.replace(/Remote\s*Hdr\s*/i,'Hdr').replace(/\s*\(\d+\)/,'')
       .replace(/^Rack\s*/i,'').replace(/^RACK\s*/i,'').trim();
 
-    // For generic sheet names (Sheet1, Sheet2), try to find rack name from data content
     if(!rack || rack.match(/^Sheet\d+$/i)) {
       for(let r = 0; r < Math.min(data.length, 15); r++) {
         for(let c = 0; c < Math.min((data[r]||[]).length, 5); c++) {
@@ -161,11 +180,10 @@ function parseXLS(xlsBuffer, circuits, meta) {
       if(!rack || rack.match(/^Sheet\d+$/i)) rack = 'S'+(wb.SheetNames.indexOf(sName)+1);
     }
 
-    // Find header row
+    // Find header row — look for 'Run' and 'Suction' column headers
     let headerRow = -1;
     let runCol = -1, sucHCol = -1, sucRCol = -1, liqCol = -1, evapCol = -1, appCol = -1, exChrCol = -1;
 
-    // Search multiple rows for headers (BPR has 2-row headers)
     for(let r = 5; r < Math.min(data.length, 20); r++) {
       const row = data[r] || [];
       const nextRow = data[r+1] || [];
@@ -173,14 +191,13 @@ function parseXLS(xlsBuffer, circuits, meta) {
         const v = String(row[c]||'').toLowerCase().trim();
         const v2 = String(nextRow[c]||'').toLowerCase().trim();
         const combined = v + ' ' + v2;
-        if(v === 'run' || v === 'len.' || combined.includes('run len') || combined.includes('run horiz') && runCol < 0) { runCol = c; headerRow = r+1; }
+        if((v === 'run' || v === 'len.' || combined.includes('run len') || combined.includes('run horiz')) && runCol < 0) { runCol = c; headerRow = r+1; }
         if((v.includes('suct') || combined.includes('suct')) && (v2.includes('hor') || v2 === 'horiz') && sucHCol < 0) sucHCol = c;
         if((v.includes('suct') || combined.includes('suct')) && (v2.includes('ris') || v2 === 'riser') && sucRCol < 0) sucRCol = c;
         if((v.includes('liq') || combined.includes('liq')) && (v2.includes('hor') || v2 === 'horiz') && liqCol < 0) liqCol = c;
         if(v.includes('evap') || v === '° f' || v2 === '° f' || v2.includes('evap')) evapCol = c;
         if(v === 'application' || v.includes('applic')) appCol = c;
         if(v === 'exchr.' || v.includes('exchr')) exChrCol = c;
-        // Also check single row
         if(v === 'run' || v === 'len.' || (v.includes('run') && v.includes('len'))) { runCol = c; headerRow = r; }
         if(v.includes('suct') && (v.includes('hor') || v.includes('horiz'))) sucHCol = c;
         if(v.includes('suct') && v.includes('ris')) sucRCol = c;
@@ -191,7 +208,7 @@ function parseXLS(xlsBuffer, circuits, meta) {
 
     if(runCol < 0) continue;
 
-    // Check store info in first few rows
+    // Store meta
     for(let r = 0; r < Math.min(data.length, 10); r++) {
       for(let c = 0; c < data[r].length; c++) {
         const v = String(data[r][c]||'');
@@ -203,49 +220,37 @@ function parseXLS(xlsBuffer, circuits, meta) {
       }
     }
 
-    // Process circuit rows
     for(let r = headerRow+1; r < data.length; r++) {
       const row = data[r];
       const circIdRaw = String(row[0]||'').trim();
       if(!circIdRaw) continue;
 
-      // For BPR format: numeric circuit IDs, check exchr column for NEW
       const isNumeric = !isNaN(parseFloat(circIdRaw)) && parseFloat(circIdRaw) < 200;
-      // For Kysor format: letter+number circuit IDs
       const isLetter = circIdRaw.match(/^[A-Z]\d+$/i);
-
       if(!isNumeric && !isLetter) continue;
-
-      // Check if NEW
-      let isNew = false;
-      if(exChrCol >= 0) {
-        const exchr = String(row[exChrCol]||'').trim().toUpperCase();
-        if(exchr === 'NEW') isNew = true;
-        if(exchr === 'EXISTING') { isNew = false; }
-      }
-
-      // For Kysor format without color, include all rows with run length
-      if(isLetter && !isNew) {
-        // Include if it has run length and pipe sizes (assume new if in schedule)
-        isNew = true;
-      }
-
-      if(!isNew) continue;
 
       const run = parseFloat(String(row[runCol]||''))||0;
       if(!run) continue;
 
       const sh = sizeToFraction(sucHCol >= 0 ? row[sucHCol] : '');
+      if(!sh) continue;
+
+      const app = String(appCol >= 0 ? row[appCol]||'' : row[6]||'').trim();
+      if(app.match(/SPARE/i)) continue;
+
       const sr = sizeToFraction(sucRCol >= 0 ? row[sucRCol] : '');
       const lh = sizeToFraction(liqCol >= 0 ? row[liqCol] : '');
       const evap = parseFloat(String(evapCol >= 0 ? row[evapCol]||'' : '').replace('+',''))||0;
-      const app = String(appCol >= 0 ? row[appCol]||'' : row[6]||'');
 
-      if(!sh) continue;
-      if(app.match(/SPARE|spare/)) continue;
+      // Tag new vs existing vs unknown
+      let colorType = 'xls-parsed', notes = 'From .xls — verify manually';
+      if(exChrCol >= 0) {
+        const exchr = String(row[exChrCol]||'').trim().toUpperCase();
+        if(exchr === 'NEW')      { colorType = 'new';      notes = 'NEW — from .xls'; }
+        else if(exchr === 'EXISTING') { colorType = 'existing'; notes = 'EXISTING — from .xls'; }
+      }
 
       const circId = isNumeric ? `${rack}-${circIdRaw}` : circIdRaw;
-
       if(!circuits.find(c => c.circuitId === circId)) {
         circuits.push({
           circuitId: circId, rack,
@@ -253,8 +258,7 @@ function parseXLS(xlsBuffer, circuits, meta) {
           sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
           tempType: evap < 0 ? 'low' : 'medium',
           application: app, isRiserOnly: false,
-          colorType: 'xls-parsed',
-          notes: 'From .xls — verify highlighted circuits manually'
+          colorType, notes
         });
       }
     }
@@ -275,14 +279,12 @@ module.exports = async function handler(req, res) {
     let format = 'unknown';
 
     if(name.endsWith('.xlsx')) {
-      // Load with ExcelJS for color detection
       const wb = new ExcelJS.Workbook();
       await Promise.race([
         wb.xlsx.load(buffer),
         new Promise((_,rej) => setTimeout(() => rej(new Error('Timeout')), 15000))
       ]);
 
-      // Detect format
       let isBPR = false, isKysor = false;
       wb.eachSheet((ws) => {
         if(ws.name.match(/^Rack\s+[A-Za-z]/i)) isKysor = true;
@@ -302,7 +304,6 @@ module.exports = async function handler(req, res) {
         format = circuits.length ? 'auto-detected' : 'unknown';
       }
     } else if(name.endsWith('.xls')) {
-      // Use SheetJS for .xls — no color detection available
       try {
         parseXLS(buffer, circuits, meta);
         format = 'xls-no-colors';
