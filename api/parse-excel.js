@@ -165,19 +165,28 @@ function parseXLS(xlsBuffer, circuits, meta) {
     let headerRow = -1;
     let runCol = -1, sucHCol = -1, sucRCol = -1, liqCol = -1, evapCol = -1, appCol = -1, exChrCol = -1;
 
+    // Search multiple rows for headers (BPR has 2-row headers)
     for(let r = 5; r < Math.min(data.length, 20); r++) {
-      const row = data[r];
+      const row = data[r] || [];
+      const nextRow = data[r+1] || [];
       for(let c = 0; c < row.length; c++) {
-        const v = String(row[c]||'').toLowerCase();
-        if(v === 'run' || v === 'run length' || (v.includes('run') && v.includes('len')) || v === 'len.') { runCol = c; headerRow = r; }
-        if(v.includes('suct') && (v.includes('hor') || v.includes('horiz') || v === 'horiz')) sucHCol = c;
-        if((v.includes('suct') && v.includes('ris')) || (v === 'riser' && sucHCol >= 0)) sucRCol = c;
-        if(v.includes('liq') && (v.includes('hor') || v.includes('horiz') || v === 'horiz') && sucHCol >= 0) liqCol = c;
-        if(v.includes('evap') || v === '° f' || v === 'evap °f' || v === '°f') evapCol = c;
+        const v = String(row[c]||'').toLowerCase().trim();
+        const v2 = String(nextRow[c]||'').toLowerCase().trim();
+        const combined = v + ' ' + v2;
+        if(v === 'run' || v === 'len.' || combined.includes('run len') || combined.includes('run horiz') && runCol < 0) { runCol = c; headerRow = r+1; }
+        if((v.includes('suct') || combined.includes('suct')) && (v2.includes('hor') || v2 === 'horiz') && sucHCol < 0) sucHCol = c;
+        if((v.includes('suct') || combined.includes('suct')) && (v2.includes('ris') || v2 === 'riser') && sucRCol < 0) sucRCol = c;
+        if((v.includes('liq') || combined.includes('liq')) && (v2.includes('hor') || v2 === 'horiz') && liqCol < 0) liqCol = c;
+        if(v.includes('evap') || v === '° f' || v2 === '° f' || v2.includes('evap')) evapCol = c;
         if(v === 'application' || v.includes('applic')) appCol = c;
-        if(v === 'exchr.' || v.includes('exchr') || (v.includes('heat') && v.includes('exch'))) exChrCol = c;
+        if(v === 'exchr.' || v.includes('exchr')) exChrCol = c;
+        // Also check single row
+        if(v === 'run' || v === 'len.' || (v.includes('run') && v.includes('len'))) { runCol = c; headerRow = r; }
+        if(v.includes('suct') && (v.includes('hor') || v.includes('horiz'))) sucHCol = c;
+        if(v.includes('suct') && v.includes('ris')) sucRCol = c;
+        if(v.includes('liq') && (v.includes('hor') || v.includes('horiz')) && sucHCol >= 0) liqCol = c;
       }
-      if(runCol >= 0) break;
+      if(runCol >= 0 && sucHCol >= 0) break;
     }
 
     if(runCol < 0) continue;
@@ -294,14 +303,28 @@ module.exports = async function handler(req, res) {
       }
     } else if(name.endsWith('.xls')) {
       // Use SheetJS for .xls — no color detection available
-      parseXLS(buffer, circuits, meta);
-      format = 'xls-no-colors';
+      try {
+        parseXLS(buffer, circuits, meta);
+        format = 'xls-no-colors';
+      } catch(xlsErr) {
+        return res.status(200).json({
+          circuits: [], format: 'xls-error',
+          storeName: meta.storeName, storeNumber: meta.storeNo,
+          warning: `Could not parse ${fileName}. For best results, open this file in Excel and save as .xlsx format, then re-upload.`,
+          summary: `0 circuits — XLS parse error: ${xlsErr.message}`
+        });
+      }
     }
 
     const racks = [...new Set(circuits.map(c=>c.rack))];
-    const warning = format === 'xls-no-colors'
-      ? `${fileName} is an older .xls format — cell color highlighting cannot be detected. All circuits with run lengths are included. Please verify which are actually new work.`
-      : null;
+    let warning = null;
+    if(format === 'xls-no-colors') {
+      if(circuits.length === 0) {
+        warning = `${fileName} is an older .xls format and no circuits were found. Please open this file in Excel and save as .xlsx, then re-upload for full circuit extraction with color detection.`;
+      } else {
+        warning = `${fileName} is an older .xls format — cell color highlighting cannot be detected. ${circuits.length} circuit(s) included. Please verify which are actually new work.`;
+      }
+    }
 
     return res.status(200).json({
       circuits, format,
