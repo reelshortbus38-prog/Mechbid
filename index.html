@@ -886,35 +886,60 @@ function pushScopeTasksToMaterials() {
 
 // Auto-populate scope tasks from parsed scope doc
 function populateScopeTasksFromDoc(parsed) {
-  if(!parsed.rcNotes || !parsed.rcNotes.length) return;
-  // Keywords that map to known tasks
-  const keywordMap = [
-    {keywords:['ultra-tube','hose','replace.*hose'], taskId:'st4'},
-    {keywords:['oil filter','ofe-1','filter element'], taskId:'st3'},
-    {keywords:['epr','sorit','pilot line'], taskId:'st1'},
-    {keywords:['oil float','oil separator'], taskId:'st2'},
-    {keywords:['sensor','temp sensor','termina'], taskId:'st9'},
-    {keywords:['drip pan'], taskId:'st13'},
-    {keywords:['motor room','wash.*room','clean.*room'], taskId:'st17'},
-    {keywords:['hot gas','remove.*hot gas'], taskId:'st7'},
-    {keywords:['program','controller','rmcc','cpc'], taskId:'st10'},
-    {keywords:['insulation','repair.*insul'], taskId:'st11'},
-    {keywords:['top stub'], taskId:'st14'},
-    {keywords:['filter change','30.*day','60.*day','90.*day'], taskId:'st16'},
+  // Keywords that indicate RACK work vs FIELD work
+  const rackKeywords = [
+    'adjust suction','adjust setpoint','setpoint','suction pressure',
+    'epr','sorit','pilot line','oil float','oil separator',
+    'oil filter','ofe-1','filter element','filter change',
+    'ultra-tube','hose','replace.*hose','hot gas','remove.*hot gas',
+    'program','controller','rmcc','cpc','rack part','valve.*change',
+    'line size change','case.*valve','rack.*change','rack.*add',
+    'motor room','wash.*room','clean.*room'
+  ];
+  const fieldKeywords = [
+    'drip pan','sensor','temp sensor','terminat',
+    'insulation','repair.*insul','inverted trap','line chase',
+    'seal','penetrat','top stub','case move','night.*case',
+    'case trim','interior.*trim','relocat','new.*line','run.*line'
   ];
 
-  parsed.rcNotes.forEach(note => {
-    const text = (typeof note === 'object' ? note.text : note).toLowerCase();
-    keywordMap.forEach(({keywords, taskId}) => {
-      if(keywords.some(kw => new RegExp(kw).test(text))) {
-        const task = state.scopeTasks.find(t => t.id === taskId);
-        if(task && !task.include) {
-          task.include = true;
-        }
-      }
-    });
+  // Collect all note texts from all sources
+  const allNotes = [];
+  if(parsed.rcNotes?.length) parsed.rcNotes.forEach(n => allNotes.push(typeof n==='object' ? n.text : n));
+  if(parsed.rackNotes?.length) parsed.rackNotes.forEach(r => {
+    if(r.notes?.length) r.notes.forEach(n => allNotes.push(`Rack ${r.rack}: ${n}`));
   });
-  renderScopeTasks();
+  if(parsed.workSequence?.length) parsed.workSequence.forEach(w => {
+    if(typeof w==='object' && w.rcInvolved) allNotes.push(w.milestone + (w.details?' — '+w.details:''));
+  });
+
+  // Deduplicate tasks we've already added from this doc
+  const existingRack  = new Set(state.rackTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
+  const existingField = new Set(state.fieldTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
+
+  allNotes.forEach(note => {
+    if(!note) return;
+    const lower = note.toLowerCase();
+    const isRack  = rackKeywords.some(kw => new RegExp(kw).test(lower));
+    const isField = fieldKeywords.some(kw => new RegExp(kw).test(lower));
+    const key = note.toLowerCase().slice(0,40);
+
+    if(isRack && !existingRack.has(key)) {
+      state.rackTasks.push({
+        id: 'rt_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),
+        desc: note, men: 1, hrs: 0, notes: 'From scope — enter men & hrs'
+      });
+      existingRack.add(key);
+    } else if(isField && !isRack && !existingField.has(key)) {
+      state.fieldTasks.push({
+        id: 'ft_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),
+        desc: note, men: 1, hrs: 0, notes: 'From scope — enter hrs'
+      });
+      existingField.add(key);
+    }
+  });
+
+  renderScopeTab();
 }
 
 // ── LABOR CALC ─────────────────────────────────────────────────────────────────
@@ -1104,7 +1129,7 @@ async function analyzeAllDocs() {
     state.flags=flags;
     out.className='ai-out has-content';
     out.innerHTML=`<div class="ai-text">${results.join('\n\n')}${state.circuits.length>0?'\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.':''}</div>`;
-    renderFlags(); renderCircuits(); autoPopulateFieldTasks();
+    renderFlags(); renderCircuits(); renderScopeTab(); autoPopulateFieldTasks();
   } catch(e) {
     out.className='ai-out empty';
     out.innerHTML=`<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
@@ -1162,7 +1187,10 @@ async function processDocFile(fileObj, results, flags) {
   }
   if(docText) {
     const prompt = `You are an expert commercial refrigeration contractor. Analyze this scope of work document and extract all RC-relevant information. Return ONLY valid JSON:
-{"documentType":"scope_of_work","storeName":"","storeNumber":"","gcName":"","address":"","startDate":"","circuits":[],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"week":"","text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","workSequence":[{"week":"","milestone":"","rcInvolved":true,"details":""}],"rackNotes":[{"rack":"","notes":[]}],"flags":[],"summary":""}
+{"documentType":"scope_of_work","storeName":"","storeNumber":"","gcName":"","address":"","startDate":"","circuits":[],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"week":"","text":"","costImpact":false,"isRackWork":false,"isFieldWork":false}],"nightWorkRequired":false,"nightWorkDetails":"","workSequence":[{"week":"","milestone":"","rcInvolved":true,"details":""}],"rackNotes":[{"rack":"","notes":[]}],"rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"flags":[],"summary":""}
+
+Extract rackTasks for: setpoint adjustments, EPR/valve changes, oil floats, filter elements, ultra-tubes, controller programming, rack part changes, hot gas removal.
+Extract fieldTasks for: new line runs, drip pans, sensor terminations, insulation repairs, sealing penetrations, line chases, top stubs, case trim installation, night case moves.
 
 Document:
 ${docText.slice(0,8000)}`;
@@ -1197,6 +1225,29 @@ async function processAIResult(resultText, sourceName, results, flags) {
         }
       });
     }
+    // Direct rack/field task arrays from AI extraction
+    if(parsed.rackTasks?.length) {
+      const existingRack = new Set(state.rackTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
+      parsed.rackTasks.forEach(t => {
+        if(!t.desc) return;
+        const key = t.desc.toLowerCase().slice(0,40);
+        if(!existingRack.has(key)) {
+          state.rackTasks.push({id:'rt_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc:t.desc+(t.rack?' ('+t.rack+')':''), men:1, hrs:0, notes:t.notes||'From scope — enter men & hrs'});
+          existingRack.add(key);
+        }
+      });
+    }
+    if(parsed.fieldTasks?.length) {
+      const existingField = new Set(state.fieldTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
+      parsed.fieldTasks.forEach(t => {
+        if(!t.desc) return;
+        const key = t.desc.toLowerCase().slice(0,40);
+        if(!existingField.has(key)) {
+          state.fieldTasks.push({id:'ft_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc:t.desc, men:1, hrs:0, notes:t.notes||'From scope — enter hrs'});
+          existingField.add(key);
+        }
+      });
+    }
     if(parsed.parts?.length) {
       parsed.parts.forEach(p => state.lineItems.push({section:'Parts — From Scope',desc:(p.partId?p.partId+' — ':'')+p.description,qty:p.qty||1,unit:'ea',unitCost:0,total:0,editable:true,notes:'From scope — verify pricing'}));
       flags.push({type:'info',text:`${parsed.parts.length} part(s) from scope added to material list — prices need to be entered`,source:sourceName});
@@ -1205,7 +1256,8 @@ async function processAIResult(resultText, sourceName, results, flags) {
     if(parsed.rcNotes?.length) parsed.rcNotes.forEach(n => { const text=typeof n==='object'?(n.week?'Week '+n.week+': ':'')+n.text:n; flags.push({type:(typeof n==='object'&&n.costImpact)?'warn':'info',text,source:'RC — '+sourceName}); });
     if(parsed.nightWorkRequired) { flags.push({type:'warn',text:'NIGHT WORK REQUIRED: '+parsed.nightWorkDetails,source:sourceName}); flags.push({type:'info',text:'Set Night/Weekend multiplier in Rates & Labor tab',source:'Suggestion'}); }
     if(parsed.startDate) flags.push({type:'ok',text:'RC Start Date: '+parsed.startDate,source:sourceName});
-    if(parsed.rackNotes?.length) parsed.rackNotes.forEach(r => { if(r.notes?.length) r.notes.forEach(n => flags.push({type:'info',text:`Rack ${r.rack}: ${n}`,source:sourceName})); });
+    // rackNotes are handled by populateScopeTasksFromDoc — only flag if something is exceptional
+    if(parsed.rackNotes?.length) parsed.rackNotes.forEach(r => { if(r.notes?.length) r.notes.filter(n=>n.toLowerCase().includes('night')||n.toLowerCase().includes('critical')||n.toLowerCase().includes('warning')).forEach(n => flags.push({type:'warn',text:`Rack ${r.rack}: ${n}`,source:sourceName})); });
     if(parsed.workSequence?.length) parsed.workSequence.forEach(w => flags.push({type:'info',text:typeof w==='object'?(w.week?'Week '+w.week.replace(/^Week /i,'')+': ':'')+w.milestone:w,source:'Schedule'}));
     if(parsed.flags?.length) parsed.flags.forEach(f => flags.push({type:'warn',text:f,source:sourceName}));
     const docTypeLabel = {legend_sheet:'Legend Sheet',job_schedule:'Job Schedule',remodel_scope:'Remodel Scope',bid_email:'Bid Email',blueprint:'Blueprint',scope_of_work:'Scope of Work',equipment_schedule:'Equipment Schedule',unknown:'Document'}[parsed.documentType]||'Document';
