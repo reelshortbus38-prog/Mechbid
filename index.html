@@ -237,8 +237,12 @@ select.inp{cursor:pointer;}
     <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
     <button class="tab-btn" onclick="showTab('circuits',this)">⚡ Circuits</button>
     <button class="tab-btn" onclick="showTab('materials',this)">🔧 Materials</button>
+    <button class="tab-btn" onclick="showTab('rack',this)">🔩 Rack</button>
     <button class="tab-btn" onclick="showTab('scope',this)">📋 Scope of Work</button>
     <button class="tab-btn" onclick="showTab('rates',this)">💰 Rates & Labor</button>
+    <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
+    <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>
+  </div>Tab('rates',this)">💰 Rates & Labor</button>
     <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
     <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>
   </div>
@@ -282,6 +286,18 @@ select.inp{cursor:pointer;}
   <div id="extractionResults" class="ai-out empty" style="margin-bottom:16px">
     <div class="ai-empty-icon">🔍</div>
     <div class="ai-empty-text">Upload your documents and click Analyze — AI extracts circuits, parts, RC requirements, schedule info, and flags anything missing.</div>
+  </div>
+
+  <!-- Schedule Card -->
+  <div id="scheduleCard" class="hidden mb16">
+    <div class="slabel">📅 RC Schedule</div>
+    <div class="card" id="scheduleCardContent" style="line-height:2;font-size:12px;"></div>
+  </div>
+
+  <!-- Rack Summary Card -->
+  <div id="rackSummaryCard" class="hidden mb16">
+    <div class="slabel">🔩 Rack Work Summary</div>
+    <div class="card" id="rackSummaryContent" style="font-size:12px;"></div>
   </div>
 
   <div id="flagsSection" class="hidden">
@@ -362,6 +378,78 @@ select.inp{cursor:pointer;}
 
 
 <!-- SCOPE OF WORK TAB -->
+
+<!-- RACK TAB -->
+<div id="tab-rack" class="hidden">
+
+  <!-- Rack Parts -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Rack Parts</div>
+      <div class="fs12 text-dim">Toggle Store Supplied ($0) or Contractor Supplied (adds to bid)</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="addRackPart()">+ Add Part</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportRackPartsCSV()">📋 Export to Supply House</button>
+    </div>
+  </div>
+  <div class="card-tight mb16">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(232,93,20,0.06);">
+      <span style="font-size:13px;font-weight:700;color:#e85d14;flex-shrink:0;">🔍 URI</span>
+      <input id="uriSearchInputRack" class="inp" placeholder="Search URI by part # or description..."
+        style="flex:1;font-size:12px;padding:7px 12px;"
+        onkeydown="if(event.key==='Enter')searchURI(this.value)">
+      <button class="btn btn-sm" onclick="searchURI(document.getElementById('uriSearchInputRack').value)"
+        style="background:#e85d14;color:#fff;flex-shrink:0;">Open URI</button>
+    </div>
+    <div id="rackPartsListRack"></div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Contractor-Supplied Parts Total</span>
+      <span class="mono fw700 text-green" id="rackPartsTotalDisplayRack">$0</span>
+    </div>
+  </div>
+
+  <!-- Rack Work Tasks -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Rack Work</div>
+      <div class="fs12 text-dim">Contractor fills in — specify crew per task</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addRackTask()">+ Add Task</button>
+  </div>
+  <div class="card-tight mb16">
+    <table class="tbl" id="rackWorkTableNew">
+      <thead>
+        <tr>
+          <th style="width:30%">Task</th>
+          <th id="rackCrewHeader1" style="width:10%">Tech</th>
+          <th id="rackCrewHeader2" style="width:10%">Helper</th>
+          <th id="rackCrewHeader3" style="width:10%;display:none"></th>
+          <th style="width:10%">Hrs</th>
+          <th style="width:12%">Cost</th>
+          <th style="width:15%">Notes</th>
+          <th style="width:5%"></th>
+        </tr>
+      </thead>
+      <tbody id="rackWorkBodyNew">
+        <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
+          Add rack tasks — EPR valves, oil floats, filter changes, controller programming, etc.
+        </td></tr>
+      </tbody>
+    </table>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Rack Work Total</span>
+      <span class="mono fw700 text-green" id="rackWorkTotalNew">$0</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Parts (Contractor)</div><div class="stat-value text-green" id="rackStatParts">$0</div></div>
+    <div class="stat"><div class="stat-label">Rack Labor</div><div class="stat-value text-yellow" id="rackStatLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Total Rack</div><div class="stat-value" style="color:var(--orange)" id="rackStatTotal">$0</div></div>
+  </div>
+</div>
+
 <div id="tab-scope" class="hidden">
 
   <!-- FIELD WORK -->
@@ -578,6 +666,7 @@ select.inp{cursor:pointer;}
 
 <!-- ESTIMATE TAB -->
 <div id="tab-estimate" class="hidden">
+  <div id="scenariosCard" class="card mb16"></div>
   <div class="stats">
     <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="estMat">$0</div></div>
     <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="estLabor">$0</div></div>
@@ -1199,7 +1288,7 @@ function pushScopeTasksToMaterials() {
   const crewRate = getCrewHourlyRate();
   const selected = state.scopeTasks.filter(t => t.include && t.qty > 0);
   if(selected.length === 0) {
-    alert('Check at least one task and set a quantity before adding to materials.');
+    console.warn('No scope tasks selected'); return;
     return;
   }
   // Remove any previously pushed scope tasks
@@ -1283,6 +1372,76 @@ function populateScopeTasksFromDoc(parsed) {
   renderScopeTab();
 }
 
+
+// ── RACK WORK WITH PER-TASK CREW ──────────────────────────────────────────────
+function renderRackWorkNew() {
+  const tbody = document.getElementById('rackWorkBodyNew');
+  if(!tbody) return;
+  const fmt = v => '$'+Math.round(v).toLocaleString();
+  const roles = getCrewRoles();
+
+  // Rebuild headers with current crew roles
+  const thead = document.querySelector('#rackWorkTableNew thead tr');
+  if(thead) {
+    const crewThs = roles.map(r =>
+      `<th style="width:9%" title="${r.role} - $${r.rate}/hr">${r.role.substring(0,7)}</th>`
+    ).join('');
+    thead.innerHTML = `<th style="width:28%">Task</th>${crewThs}<th style="width:8%">Hrs</th><th style="width:11%">Cost</th><th style="width:12%">Notes</th><th style="width:5%"></th>`;
+  }
+
+  if(!state.rackTasks || state.rackTasks.length === 0) {
+    const colSpan = 5 + roles.length;
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
+      Add rack tasks — EPR valves, oil floats, filter changes, controller programming, etc.
+    </td></tr>`;
+    const el = document.getElementById('rackWorkTotalNew');
+    if(el) el.textContent = '$0';
+    return;
+  }
+
+  tbody.innerHTML = state.rackTasks.map(t => {
+    if(!t.crewAssignment) t.crewAssignment = {};
+    if(Object.keys(t.crewAssignment).length === 0 && roles.length > 0) {
+      t.crewAssignment[roles[0].id] = 1;
+    }
+    const cost = calcTaskCost(t);
+    const crewCells = roles.map(r =>
+      `<td style="text-align:center;padding:6px 4px;">
+        <input type="number" value="${t.crewAssignment[r.id]||0}" min="0"
+          style="width:42px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+          oninput="updateRackTaskCrew('${t.id}','${r.id}',this.value)">
+      </td>`
+    ).join('');
+    return `<tr>
+      <td><input class="tbl-input" value="${t.desc||''}" placeholder="Task"
+        onchange="updateRackTask('${t.id}','desc',this.value)" style="width:100%"></td>
+      ${crewCells}
+      <td><input class="tbl-input mono" type="number" value="${t.hrs||0}" min="0" step="0.5" style="width:52px;text-align:center"
+        onchange="updateRackTask('${t.id}','hrs',this.value)"></td>
+      <td class="mono fw700 text-green">${fmt(cost)}</td>
+      <td><input class="tbl-input" value="${t.notes||''}" placeholder="Notes"
+        onchange="updateRackTask('${t.id}','notes',this.value)"></td>
+      <td><button class="btn btn-red btn-xs" onclick="removeRackTask('${t.id}')">x</button></td>
+    </tr>`;
+  }).join('');
+
+  const rackLaborTotal = state.rackTasks.reduce((s,t) => s + calcTaskCost(t), 0);
+  state.rackWorkTotal = rackLaborTotal;
+  const el = document.getElementById('rackWorkTotalNew');
+  if(el) el.textContent = fmt(rackLaborTotal);
+  updateRackStats();
+  calcTotals();
+}
+
+function updateRackTaskCrew(taskId, roleId, value) {
+  const t = state.rackTasks.find(t => t.id === taskId);
+  if(!t) return;
+  if(!t.crewAssignment) t.crewAssignment = {};
+  t.crewAssignment[roleId] = parseInt(value) || 0;
+  renderRackWorkNew();
+  triggerAutoSave();
+}
+
 // ── LABOR CALC ─────────────────────────────────────────────────────────────────
 
 function calcLabor() {
@@ -1347,6 +1506,7 @@ function calcTotals() {
   ['estTotal','ratesTotal','propTotal'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(total); });
   const ec = document.getElementById('estCount'); if(ec) ec.textContent = state.lineItems.length;
   renderMarkupSummary();
+  try { renderScenarios(); } catch(e) {}
 }
 
 // ── FILE HANDLING ──────────────────────────────────────────────────────────────
@@ -1459,7 +1619,7 @@ async function callAI(messages, maxTokens=2000) {
 async function analyzeAllDocs() {
   const emailText = document.getElementById('emailText')?.value?.trim();
   const _modeFiles = state.uploadedFiles.filter(f => !f.mode || f.mode === state.mode);
-  if(_modeFiles.length===0 && !emailText) { alert('Please upload at least one file or paste email text first.'); return; }
+  if(_modeFiles.length===0 && !emailText) { const out=document.getElementById('extractionResults'); if(out){out.className='ai-out empty';out.innerHTML='<div class="ai-empty-icon">📁</div><div class="ai-empty-text">Please upload at least one file or paste email text first.</div>';} return; }
 
   const btn = document.getElementById('analyzeAllBtn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyzing...';
@@ -1488,7 +1648,7 @@ async function analyzeAllDocs() {
     state.flags=flags;
     out.className='ai-out has-content';
     out.innerHTML=`<div class="ai-text">${results.join('\n\n')}${state.circuits.length>0?'\n\n✅ '+state.circuits.length+' circuit(s) identified — go to Circuits tab to review.':''}</div>`;
-    renderFlags(); renderCircuits(); renderScopeTab(); autoPopulateFieldTasks();
+    renderFlags(); renderCircuits(); renderScopeTab(); renderRackWorkNew(); renderScheduleCard(); renderRackSummaryCard(); autoPopulateFieldTasks();
   } catch(e) {
     out.className='ai-out empty';
     out.innerHTML=`<div class="ai-empty-icon">❌</div><div class="ai-empty-text">${e.message}</div>`;
@@ -1651,6 +1811,93 @@ function fileToBase64(file) {
   });
 }
 
+
+// ── SCHEDULE & RACK SUMMARY CARDS ─────────────────────────────────────────────
+function renderScheduleCard() {
+  const card = document.getElementById('scheduleCard');
+  const content = document.getElementById('scheduleCardContent');
+  if(!card || !content) return;
+
+  const scheduleFlags = state.flags.filter(f =>
+    f.text.match(/week|day|date|start|night|filter|schedule|sequence|move|case|startup/i)
+  );
+  const nightFlags = state.flags.filter(f => f.text.match(/night/i));
+
+  if(scheduleFlags.length === 0 && !state.jobMemory.schedule?.startDate) {
+    card.classList.add('hidden'); return;
+  }
+  card.classList.remove('hidden');
+
+  let html = '';
+  if(state.jobMemory.schedule?.startDate) {
+    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span class="text-dim">Project Start</span><span class="fw700">${state.jobMemory.schedule.startDate}</span></div>`;
+  }
+  scheduleFlags.forEach(f => {
+    const isNight = f.text.match(/night/i);
+    html += `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);color:${isNight?'var(--yellow)':'var(--text)'};align-items:flex-start;">
+      <span>${isNight?'🌙':'📅'}</span><span>${f.text}</span></div>`;
+  });
+
+  // Calculate days on site for OOT
+  const nightWorkDays = nightFlags.length * 2; // estimate 2 days per night work flag
+  if(nightWorkDays > 0) {
+    html += `<div style="margin-top:8px;padding:8px;background:rgba(234,179,8,0.08);border-radius:6px;font-size:11px;color:var(--yellow);">
+      ⚠️ Night work required — remember to set Night Premium multiplier in Rates & Labor</div>`;
+  }
+
+  content.innerHTML = html || '<span class="text-muted">No schedule data extracted</span>';
+}
+
+function renderRackSummaryCard() {
+  const card = document.getElementById('rackSummaryCard');
+  const el = document.getElementById('rackSummaryContent');
+  if(!card || !el) return;
+
+  const hasParts = state.rackParts && state.rackParts.length > 0;
+  const hasTasks = state.rackTasks && state.rackTasks.length > 0;
+  const rackFlags = state.flags.filter(f =>
+    f.source && (f.source.match(/rack/i) || f.text.match(/rack|epr|oil float|filter|valve|setpoint|controller|program/i))
+  );
+
+  if(!hasParts && !hasTasks && rackFlags.length === 0) {
+    card.classList.add('hidden'); return;
+  }
+  card.classList.remove('hidden');
+
+  let html = '';
+
+  if(hasParts) {
+    const storeParts = state.rackParts.filter(p=>p.storeSupplied);
+    const contractorParts = state.rackParts.filter(p=>!p.storeSupplied);
+    html += `<div class="fw700 text-dim fs11 mb8" style="text-transform:uppercase;letter-spacing:0.08em;">Parts (${state.rackParts.length} total)</div>`;
+    html += `<div style="display:flex;gap:16px;margin-bottom:10px;">
+      <span class="text-green">✅ ${storeParts.length} store supplied</span>
+      <span class="text-yellow">🔧 ${contractorParts.length} contractor supplied</span>
+    </div>`;
+  }
+
+  if(hasTasks) {
+    html += `<div class="fw700 text-dim fs11 mb8" style="text-transform:uppercase;letter-spacing:0.08em;margin-top:8px;">Rack Tasks (${state.rackTasks.length})</div>`;
+    state.rackTasks.forEach(t => {
+      html += `<div style="padding:4px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+        <span>${t.desc||'Unnamed task'}</span>
+        <span class="text-muted fs11">${t.hrs>0?t.hrs+'hrs':''}</span>
+      </div>`;
+    });
+  }
+
+  if(rackFlags.length > 0) {
+    html += `<div class="fw700 text-dim fs11 mb8" style="text-transform:uppercase;letter-spacing:0.08em;margin-top:8px;">RC Notes</div>`;
+    rackFlags.forEach(f => {
+      html += `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-dim);">• ${f.text}</div>`;
+    });
+  }
+
+  html += `<div style="margin-top:10px;"><button class="btn btn-ghost btn-sm" onclick="showTab('rack',document.querySelector('[onclick*=showTab\'rack\']'))">→ Go to Rack Tab</button></div>`;
+  el.innerHTML = html;
+}
+
 // ── RENDER FLAGS ───────────────────────────────────────────────────────────────
 
 function renderFlags() {
@@ -1713,7 +1960,7 @@ function addCircuitManual(){state.circuits.push({id:'NEW-'+Date.now(),rack:'',ru
 // ── GENERATE MATERIALS ─────────────────────────────────────────────────────────
 
 function generateMaterials() {
-  if(state.circuits.length===0){alert('Add circuits first before generating materials.');return;}
+  if(state.circuits.length===0){const ml=document.getElementById('materialList');if(ml)ml.innerHTML='<div class="ai-out empty" style="min-height:100px"><div class="ai-empty-text">Add circuits first in the Circuits tab.</div></div>';return;}
   state.lineItems=[];
   const sizeToId={'0.25':'cu_025','1/4':'cu_025','0.375':'cu_038','3/8':'cu_038','0.5':'cu_050','1/2':'cu_050','0.625':'cu_058','5/8':'cu_058','0.875':'cu_078','7/8':'cu_078','1.125':'cu_118','1-1/8':'cu_118','1 1/8':'cu_118','1.375':'cu_138','1-3/8':'cu_138','1 3/8':'cu_138','1.625':'cu_158','1-5/8':'cu_158','1 5/8':'cu_158','2.125':'cu_218','2-1/8':'cu_218','2 1/8':'cu_218'};
   function getRate(sizeStr){if(!sizeStr)return 0;const key=Object.keys(sizeToId).find(k=>sizeStr.replace(/"/g,'').trim().includes(k.replace(/"/g,'')));if(!key)return 0;return parseFloat(document.getElementById(sizeToId[key])?.value)||0;}
@@ -1836,33 +2083,84 @@ function addFitting() {
   const sizes = ['1/4"','3/8"','1/2"','5/8"','7/8"','1-1/8"','1-3/8"','1-5/8"','2-1/8"','2-5/8"','3-1/8"','3-5/8"'];
   const types = ['Coupling','Elbow 90°','Elbow 45°','Tee','Reducer','Bushing','P-Trap','Wye','Cap','Union','Street Ell','Sweat Adapter'];
 
-  // Populate size picker
+  // Populate size picker — use data attributes for mobile tap compatibility
   const sizePicker = document.getElementById('fittingSizePicker');
   sizePicker.innerHTML = sizes.map(s => `
-    <button onclick="selectFittingSize(this,'${s}')"
-      style="padding:8px 4px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;transition:all 0.15s;">
+    <button data-size="${s}" type="button"
+      style="padding:8px 4px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;transition:all 0.15s;-webkit-tap-highlight-color:transparent;">
       ${s}
     </button>`).join('');
 
   // Populate type picker
   const typePicker = document.getElementById('fittingTypePicker');
   typePicker.innerHTML = types.map(t => `
-    <button onclick="selectFittingType(this,'${t}')"
-      style="padding:8px 4px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all 0.15s;">
+    <button data-type="${t}" type="button"
+      style="padding:8px 4px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all 0.15s;-webkit-tap-highlight-color:transparent;">
       ${t}
     </button>`).join('');
+
+  // Event delegation for mobile compatibility
+  sizePicker.onclick = (e) => {
+    const btn = e.target.closest('[data-size]');
+    if(!btn) return;
+    sizePicker.querySelectorAll('button').forEach(b => {
+      b.style.background='var(--surface)'; b.style.borderColor='var(--border)'; b.style.color='var(--text-dim)';
+    });
+    btn.style.background='var(--green)'; btn.style.borderColor='var(--green)'; btn.style.color='#000';
+    window._fittingSize = btn.dataset.size;
+    // Show second size for bushing/reducer
+    const type = window._fittingType || '';
+    const needsSecond = type.match(/Bushing|Reducer|Street/i);
+    const s2wrap = document.getElementById('fittingSize2Wrap');
+    if(s2wrap) s2wrap.style.display = needsSecond ? 'block' : 'none';
+  };
+
+  typePicker.onclick = (e) => {
+    const btn = e.target.closest('[data-type]');
+    if(!btn) return;
+    typePicker.querySelectorAll('button').forEach(b => {
+      b.style.background='var(--surface)'; b.style.borderColor='var(--border)'; b.style.color='var(--text-dim)';
+    });
+    btn.style.background='rgba(34,197,94,0.15)'; btn.style.borderColor='var(--green)'; btn.style.color='var(--green)';
+    window._fittingType = btn.dataset.type;
+    // Show/hide second size picker for bushing/reducer
+    const needsSecond = btn.dataset.type.match(/Bushing|Reducer|Street/i);
+    const s2wrap = document.getElementById('fittingSize2Wrap');
+    if(s2wrap) s2wrap.style.display = needsSecond ? 'block' : 'none';
+  };
 
   // Reset selections
   document.getElementById('fittingQty').value = '0';
   document.getElementById('fittingCost').value = '0';
   window._fittingSize = '';
+  window._fittingSize2 = '';
   window._fittingType = '';
+  document.getElementById('fittingSize2Wrap').style.display = 'none';
+
+  // Populate second size picker
+  const size2Picker = document.getElementById('fittingSize2Picker');
+  if(size2Picker) {
+    size2Picker.innerHTML = sizes.map(s => `
+      <button data-size2="${s}" type="button"
+        style="padding:8px 4px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;transition:all 0.15s;-webkit-tap-highlight-color:transparent;">
+        ${s}
+      </button>`).join('');
+    size2Picker.onclick = (e) => {
+      const btn = e.target.closest('[data-size2]');
+      if(!btn) return;
+      size2Picker.querySelectorAll('button').forEach(b => {
+        b.style.background='var(--surface)'; b.style.borderColor='var(--border)'; b.style.color='var(--text-dim)';
+      });
+      btn.style.background='var(--green)'; btn.style.borderColor='var(--green)'; btn.style.color='#000';
+      window._fittingSize2 = btn.dataset.size2;
+    };
+  }
 
   const modal = document.getElementById('fittingModal');
   modal.style.display = 'flex';
 }
 
-function selectFittingSize(btn, size) {
+function selectFittingSize(btn, size) { /* handled by delegation */ if(btn){btn.style.background='var(--green)';btn.style.color='#000';} window._fittingSize=size;
   document.querySelectorAll('#fittingSizePicker button').forEach(b => {
     b.style.background = 'var(--surface)';
     b.style.borderColor = 'var(--border)';
@@ -1892,22 +2190,26 @@ function closeFittingModal() {
 
 function confirmAddFitting() {
   const size = window._fittingSize;
+  const size2 = window._fittingSize2;
   const type = window._fittingType;
-  if(!size || !type) {
-    // Highlight unpicked
+  const needsSecond = type && type.match(/Bushing|Reducer|Street/i);
+  if(!size || !type || (needsSecond && !size2)) {
     if(!size) document.getElementById('fittingSizePicker').style.outline = '1px solid var(--red)';
     if(!type) document.getElementById('fittingTypePicker').style.outline = '1px solid var(--red)';
+    if(needsSecond && !size2) document.getElementById('fittingSize2Picker').style.outline = '1px solid var(--red)';
     return;
   }
   document.getElementById('fittingSizePicker').style.outline = '';
   document.getElementById('fittingTypePicker').style.outline = '';
+  if(document.getElementById('fittingSize2Picker')) document.getElementById('fittingSize2Picker').style.outline = '';
 
   const qty = parseFloat(document.getElementById('fittingQty').value) || 0;
   const cost = parseFloat(document.getElementById('fittingCost').value) || 0;
+  const desc = needsSecond ? `${size} × ${size2} ${type}` : `${size} ${type}`;
 
   state.lineItems.push({
     section: 'Fittings',
-    desc: `${size} ${type}`,
+    desc,
     qty, unit: 'ea',
     unitCost: cost,
     total: qty * cost,
@@ -2166,6 +2468,7 @@ function setMode(btn, mode) {
       <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
       <button class="tab-btn" onclick="showTab('circuits',this)">⚡ Circuits</button>
       <button class="tab-btn" onclick="showTab('materials',this)">🔧 Materials</button>
+      <button class="tab-btn" onclick="showTab('rack',this)">🔩 Rack</button>
       <button class="tab-btn" onclick="showTab('scope',this)">📋 Scope of Work</button>
       <button class="tab-btn" onclick="showTab('rates',this)">💰 Rates & Labor</button>
       <button class="tab-btn" onclick="showTab('estimate',this)">📊 Estimate</button>
@@ -2187,7 +2490,7 @@ function showTab(name, btn) {
   btn.classList.add('active');
   renderFilesList(); // refresh to show only current mode files
   if(name==='proposal') updateProposal();
-  if(name==='estimate') renderEstimate();
+  if(name==='estimate') { renderEstimate(); renderScenarios(); }
   if(name==='scope') {
     if(!state.fieldTasks) state.fieldTasks = [];
     if(!state.rackTasks) state.rackTasks = [];
@@ -2204,9 +2507,14 @@ function showTab(name, btn) {
   if(name==='hvac') { renderHvacEquipment(); renderHvacLabor(); }
   if(name==='materials') {
     const rs = document.getElementById('rackPartsSection');
-    if(rs) rs.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
+    if(rs) rs.style.display = 'none'; // rack parts now in rack tab
     const ce = document.getElementById('commRefrigExports');
     if(ce) ce.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
+  }
+  if(name==='rack') {
+    renderRackParts();
+    renderRackWorkNew();
+    updateRackStats();
   }
 }
 
@@ -2396,6 +2704,67 @@ function calcResMarkedUpTotal() {
   return markupBase + markupAmt + labor;
 }
 
+
+// ── PER-TASK CREW SYSTEM ──────────────────────────────────────────────────────
+// Get crew roles for the current mode
+function getCrewRoles() {
+  return state.crew.map(m => ({
+    id: m.id,
+    role: m.role || 'Worker',
+    rate: parseFloat(m.rate) || 0
+  }));
+}
+
+// Calculate cost for a task given its crew assignment
+function calcTaskCost(task) {
+  const roles = getCrewRoles();
+  if(!task.crewAssignment || Object.keys(task.crewAssignment).length === 0) {
+    // Default: use all crew members × hours
+    const crewRate = getCrewHourlyRate();
+    return (task.hrs || 0) * crewRate;
+  }
+  // Sum up: for each role ID in assignment, count × rate × hours
+  let cost = 0;
+  Object.entries(task.crewAssignment).forEach(([roleId, count]) => {
+    const member = state.crew.find(m => m.id === roleId);
+    if(member) cost += (count||0) * (parseFloat(member.rate)||0) * (task.hrs||0);
+  });
+  return cost;
+}
+
+// Render crew columns for a task row in a table
+function renderTaskCrewCells(task, updateFn) {
+  const roles = getCrewRoles();
+  if(!task.crewAssignment) task.crewAssignment = {};
+  return roles.map(r => `
+    <td style="text-align:center;">
+      <input type="number" value="${task.crewAssignment[r.id]||0}" min="0"
+        style="width:44px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+        oninput="${updateFn}('${task.id}','crew_${r.id}',this.value)">
+    </td>`).join('');
+}
+
+// Render crew headers for a table
+function renderCrewHeaders(tableId) {
+  const roles = getCrewRoles();
+  const header = document.querySelector(`#${tableId} thead tr`);
+  if(!header) return;
+  // Remove old crew header cells (between task and hrs)
+  const cells = header.querySelectorAll('[data-crew-header]');
+  cells.forEach(c => c.remove());
+  // Insert new ones after first th
+  const firstTh = header.querySelector('th');
+  const hrsTh = header.querySelector('th:last-child');
+  roles.forEach(r => {
+    const th = document.createElement('th');
+    th.setAttribute('data-crew-header', r.id);
+    th.style.width = '9%';
+    th.textContent = r.role.substring(0,6);
+    th.title = `${r.role} — $${r.rate}/hr`;
+    firstTh.after(th);
+  });
+}
+
 // ── SCOPE OF WORK ──────────────────────────────────────────────────────────────
 if(!state.fieldTasks) state.fieldTasks = [];
 if(!state.rackTasks)  state.rackTasks  = [];
@@ -2413,8 +2782,18 @@ function addFieldTask(desc='', men=1, hrs=0, notes='') {
 }
 
 function addRackTask(desc='', men=1, hrs=0, notes='') {
-  state.rackTasks.push({id:'rt_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc, men, hrs, notes});
+  state.rackTasks.push({id:'rt_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc, men, hrs, notes, crewAssignment:{}});
+  renderScopeTab(); renderRackWorkNew();
+}
+
+
+function updateFieldTaskCrew(taskId, roleId, value) {
+  const t = state.fieldTasks.find(t=>t.id===taskId);
+  if(!t) return;
+  if(!t.crewAssignment) t.crewAssignment = {};
+  t.crewAssignment[roleId] = parseInt(value)||0;
   renderScopeTab();
+  triggerAutoSave();
 }
 
 function updateFieldTask(id, field, value) {
@@ -2424,14 +2803,21 @@ function updateFieldTask(id, field, value) {
 
 function updateRackTask(id, field, value) {
   const t = state.rackTasks.find(t=>t.id===id);
-  if(t) { t[field] = (field==='men'||field==='hrs') ? parseFloat(value)||0 : value; renderScopeTab(); }
+  if(t) { t[field] = (field==='men'||field==='hrs') ? parseFloat(value)||0 : value; renderScopeTab(); renderRackWorkNew(); }
 }
 
 function removeFieldTask(id) { state.fieldTasks = state.fieldTasks.filter(t=>t.id!==id); renderScopeTab(); }
-function removeRackTask(id)  { state.rackTasks  = state.rackTasks.filter(t=>t.id!==id);  renderScopeTab(); }
+function removeRackTask(id)  { state.rackTasks  = state.rackTasks.filter(t=>t.id!==id);  renderScopeTab(); renderRackWorkNew(); }
 
 function scopeTaskCost(task) {
-  return task.men * task.hrs * (getCrewRateForMen(1)); // rate per person × men × hrs
+  // Use per-task crew assignment if available, fall back to men × avg rate
+  if(task.crewAssignment && Object.keys(task.crewAssignment).length > 0) {
+    return calcTaskCost(task);
+  }
+  const avgRate = state.crew.length > 0
+    ? state.crew.reduce((s,m)=>s+(parseFloat(m.rate)||0),0) / state.crew.length
+    : 100;
+  return (task.men||1) * (task.hrs||0) * avgRate;
 }
 
 function renderScopeTab() {
@@ -2447,13 +2833,25 @@ function renderScopeTab() {
   } else {
     fieldBody.innerHTML = state.fieldTasks.map(t => {
       const cost = scopeTaskCost(t);
+      if(!t.crewAssignment) t.crewAssignment = {};
+      const roles = getCrewRoles();
+      if(Object.keys(t.crewAssignment).length === 0 && roles.length > 0) {
+        // Default: all crew members × 1
+        roles.forEach(r => { t.crewAssignment[r.id] = 1; });
+      }
+      const crewCells = roles.map(r => `
+        <td style="text-align:center;padding:6px 4px;">
+          <div style="font-size:9px;color:var(--text-muted);margin-bottom:2px;">${r.role.substring(0,5)}</div>
+          <input type="number" value="${t.crewAssignment[r.id]||0}" min="0"
+            style="width:38px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:3px;font-size:11px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+            oninput="updateFieldTaskCrew('${t.id}','${r.id}',this.value)">
+        </td>`).join('');
       return `<tr>
         <td><input class="tbl-input" value="${t.desc}" placeholder="Task description"
           onchange="updateFieldTask('${t.id}','desc',this.value)" style="width:100%"></td>
-        <td><input class="tbl-input mono" type="number" value="${t.men}" min="1"
-          onchange="updateFieldTask('${t.id}','men',this.value)" style="width:50px;text-align:center"></td>
-        <td><input class="tbl-input mono" type="number" value="${t.hrs}" min="0" step="0.5"
-          onchange="updateFieldTask('${t.id}','hrs',this.value)" style="width:60px;text-align:center"></td>
+        ${crewCells}
+        <td><input class="tbl-input mono" type="number" value="${t.hrs||0}" min="0" step="0.5"
+          onchange="updateFieldTask('${t.id}','hrs',this.value)" style="width:52px;text-align:center"></td>
         <td class="mono fw700 text-green">${fmt(cost)}</td>
         <td><input class="tbl-input" value="${t.notes}" placeholder="Notes"
           onchange="updateFieldTask('${t.id}','notes',this.value)"></td>
@@ -2523,6 +2921,84 @@ function autoPopulateFieldTasks() {
 }
 
 
+
+// ── BID SCENARIOS ─────────────────────────────────────────────────────────────
+if(!state.scenarios) {
+  state.scenarios = {
+    active: 'mid',
+    low:  { markupPct: 15, label: 'Low',  desc: 'Tight margin, competitive bid' },
+    mid:  { markupPct: 20, label: 'Mid',  desc: 'Standard margin, your go-to bid' },
+    high: { markupPct: 28, label: 'High', desc: 'Full scope, premium or rush job' }
+  };
+}
+
+function calcScenarioTotal(markupPct) {
+  const mat = state.materialsTotal || 0;
+  const rackParts = (state.rackParts||[]).filter(p=>!p.storeSupplied).reduce((s,p)=>s+(p.total||0),0);
+  const markup = (mat + rackParts) * (markupPct/100);
+  const labor = state.laborTotal || 0;
+  const scope = (state.fieldWorkTotal||0) + (state.rackWorkTotal||0);
+  return mat + rackParts + markup + labor + scope;
+}
+
+function renderScenarios() {
+  const el = document.getElementById('scenariosCard');
+  if(!el) return;
+  const fmt = v => '$'+Math.round(v).toLocaleString();
+  const s = state.scenarios;
+
+  const scenarioData = [
+    { key:'low',  ...s.low,  total: calcScenarioTotal(s.low.markupPct)  },
+    { key:'mid',  ...s.mid,  total: calcScenarioTotal(s.mid.markupPct)  },
+    { key:'high', ...s.high, total: calcScenarioTotal(s.high.markupPct) }
+  ];
+
+  el.innerHTML = `
+    <div class="slabel mb12">Bid Scenarios</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+      ${scenarioData.map(sc => `
+        <div onclick="selectScenario('${sc.key}')" style="border-radius:10px;padding:14px;cursor:pointer;border:2px solid ${s.active===sc.key?'var(--green)':'var(--border)'};background:${s.active===sc.key?'rgba(34,197,94,0.08)':'var(--card2)'};transition:all 0.2s;">
+          <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:${s.active===sc.key?'var(--green)':'var(--text-muted)'};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">${sc.label}</div>
+          <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:${s.active===sc.key?'var(--green)':'var(--text)'};">${fmt(sc.total)}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">${sc.markupPct}% markup</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+            <input type="number" value="${sc.markupPct}" min="0" max="100"
+              style="width:48px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+              onclick="event.stopPropagation()"
+              oninput="updateScenarioMarkup('${sc.key}',this.value)">
+            <span style="font-size:10px;color:var(--text-muted);">% markup</span>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">${sc.desc}</div>
+          ${s.active===sc.key?'<div style="margin-top:8px;font-size:10px;font-weight:700;color:var(--green);">✅ SELECTED FOR PROPOSAL</div>':''}
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);padding:8px 0;">
+      Tap a scenario to select it for the customer proposal. Only the selected scenario appears on the bid.
+    </div>`;
+}
+
+function selectScenario(key) {
+  state.scenarios.active = key;
+  const pct = state.scenarios[key].markupPct;
+  const el = document.getElementById('markupPct');
+  if(el) { el.value = pct; }
+  renderScenarios();
+  renderMarkupSummary();
+  calcTotals();
+  triggerAutoSave();
+}
+
+function updateScenarioMarkup(key, value) {
+  state.scenarios[key].markupPct = parseFloat(value)||0;
+  renderScenarios();
+  if(state.scenarios.active === key) {
+    const el = document.getElementById('markupPct');
+    if(el) el.value = value;
+    renderMarkupSummary();
+    calcTotals();
+  }
+}
+
 // ── JOB SAVE / LOAD ────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mechbid_jobs';
 let currentJobId = null;
@@ -2553,6 +3029,7 @@ function saveJob() {
       resMisc: state.resMisc||[],
       resParts: state.resParts||[],
       preferredSupplier: state.preferredSupplier||'RE Michel',
+      scenarios: state.scenarios,
       hvacEquipment: state.hvacEquipment||[],
       hvacLabor: state.hvacLabor||[],
       crew: state.crew,
@@ -2619,6 +3096,7 @@ function loadJob(jobId) {
   state.resMisc = d.resMisc || [];
   state.resParts = d.resParts || [];
   state.preferredSupplier = d.preferredSupplier || 'RE Michel';
+  if(d.scenarios) state.scenarios = d.scenarios;
   state.hvacEquipment = d.hvacEquipment || [];
   state.hvacLabor = d.hvacLabor || [];
   state.crew = d.crew || [];
@@ -2680,7 +3158,7 @@ function closeSavedJobs() {
 }
 
 function newJob() {
-  if(!confirm('Start a new job? Unsaved changes will be lost.')) return;
+  // confirm replaced with non-blocking — just proceed with new job
   currentJobId = null;
   state.circuits = []; state.lineItems = []; state.rackParts = [];
   state.fieldTasks = []; state.rackTasks = []; state.crew = [];
@@ -2753,32 +3231,27 @@ function removeRackPart(id) {
 }
 
 function renderRackParts() {
-  const container = document.getElementById('rackPartsList');
-  if(!container) return;
-  const contractorParts = state.rackParts.filter(p=>!p.storeSupplied);
+  const contractorParts = (state.rackParts||[]).filter(p=>!p.storeSupplied);
   const rackPartsTotal = contractorParts.reduce((s,p)=>s+(p.total||0),0);
-  const el = document.getElementById('rackPartsTotalDisplay');
-  if(el) el.textContent = '$'+Math.round(rackPartsTotal).toLocaleString();
 
-  if(state.rackParts.length === 0) {
-    container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">
-      No rack parts — upload a parts list or add manually</div>`;
-    return;
-  }
-  container.innerHTML = `
-    <table class="tbl" style="width:100%">
+  // Update both total displays
+  ['rackPartsTotalDisplay','rackPartsTotalDisplayRack'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = '$'+Math.round(rackPartsTotal).toLocaleString();
+  });
+
+  const tableHtml = state.rackParts.length === 0
+    ? `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">No rack parts — upload a parts list or add manually</div>`
+    : `<table class="tbl" style="width:100%">
       <thead><tr>
         <th style="width:12%">Part #</th>
         <th style="width:30%">Description</th>
         <th style="width:8%">Qty</th>
-        <th style="width:12%">Part #</th>
-        <th style="width:28%">Description</th>
-        <th style="width:7%">Qty</th>
         <th style="width:7%">Unit</th>
         <th style="width:13%">Supplied By</th>
         <th style="width:9%">Unit Cost</th>
         <th style="width:9%">Total</th>
-        <th style="width:15%"></th>
+        <th style="width:12%"></th>
       </tr></thead>
       <tbody>${state.rackParts.map(p=>`
         <tr style="${p.storeSupplied?'opacity:0.6':''}">
@@ -2804,15 +3277,23 @@ function renderRackParts() {
           </td>
           <td style="white-space:nowrap;">
             <button class="btn btn-xs" onclick="searchURI('${p.partId||p.desc}')"
-              style="background:#e85d14;color:#fff;margin-right:4px;" title="Search on URI.com">URI</button>
+              style="background:#e85d14;color:#fff;margin-right:4px;" title="Search URI">URI</button>
             <button class="btn btn-red btn-xs" onclick="removeRackPart('${p.id}')">×</button>
           </td>
         </tr>`).join('')}
       </tbody>
     </table>`;
+
+  // Render into both containers
+  ['rackPartsList','rackPartsListRack'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = tableHtml;
+  });
+
+  updateRackStats();
 }
 
-// Export rack parts as CSV for supply house
+
 function searchURI(query) {
   if(!query || !query.trim()) return;
   const q = query.trim();
@@ -2824,7 +3305,7 @@ function searchURI(query) {
 
 function exportRackPartsCSV() {
   const contractor = state.rackParts.filter(p=>!p.storeSupplied);
-  if(contractor.length === 0) { alert('No contractor-supplied parts to export.'); return; }
+  if(contractor.length === 0) { console.warn('No contractor parts'); return; }
   const proj = document.getElementById('projName')?.value || 'Project';
   let csv = 'Part Number,Description,Qty,Unit,Unit Cost\n';
   contractor.forEach(p => { csv += `"${p.partId}","${p.desc}",${p.qty},"${p.unit}","${p.unitCost||''}"\n`; });
@@ -3110,7 +3591,7 @@ function renderResEquipment() {
     return;
   }
   el.innerHTML = `<table class="tbl" style="width:100%">
-    <thead><tr><th>Type</th><th>Tons/BTU</th><th>SEER</th><th>Brand</th><th>Model #</th><th>Cost</th><th></th></tr></thead>
+    <thead><tr><th>Type</th><th>Tons/BTU</th><th>SEER</th><th>Brand</th><th>Model #</th><th>Cost</th><th style='width:70px'></th></tr></thead>
     <tbody>${state.resEquipment.map(e=>`<tr>
       <td>
         <select onchange="updateResEquipment('${e.id}','type',this.value)"
@@ -3133,7 +3614,13 @@ function renderResEquipment() {
             onchange="updateResEquipment('${e.id}','cost',this.value)">
         </div>
       </td>
-      <td><button class="btn btn-red btn-xs" onclick="removeResEquipment('${e.id}')">×</button></td>
+      <td>
+        <div style="display:flex;gap:4px;justify-content:center;">
+          <button onclick="searchEquipment('${e.type}','${e.tons}','${e.brand}','${e.model}')"
+            style="background:var(--blue);border:none;color:#fff;font-size:10px;padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;" title="Search supplier">🔍</button>
+          <button class="btn btn-red btn-xs" onclick="removeResEquipment('${e.id}')">×</button>
+        </div>
+      </td>
     </tr>`).join('')}</tbody>
   </table>`;
   const total = state.resEquipment.reduce((s,e)=>s+(e.cost||0),0);
@@ -3417,6 +3904,17 @@ const SUPPLIERS = {
 
 if(!state.preferredSupplier) state.preferredSupplier = 'RE Michel';
 
+
+function searchEquipment(type, tons, brand, model) {
+  // Build search query from equipment details
+  const parts = [type, tons, brand, model].filter(p => p && p.trim() && p !== '');
+  const query = parts.join(' ').trim() || type;
+  navigator.clipboard?.writeText(query).catch(()=>{});
+  const supplier = SUPPLIERS[state.preferredSupplier] || SUPPLIERS['RE Michel'];
+  const url = supplier.url.replace('{q}', encodeURIComponent(query));
+  window.open(url, '_blank');
+}
+
 function searchSupplier(query) {
   if(!query || !query.trim()) return;
   const q = query.trim();
@@ -3662,19 +4160,33 @@ renderInsulRateTable();
 renderCustomInsulRows();
 renderScopeTab();
 renderRackParts();
+renderRackWorkNew();
 calcLabor();
 calcTotals();
 renderMarkupSummary();
+try { renderScenarios(); } catch(e) {}
 // Set default markup per mode
 const _mdata = getCurrentModeData();
 const _mkEl = document.getElementById('markupPct');
 if(_mkEl && !_mkEl.value) _mkEl.value = _mdata.markupPct || 20;
 
-// Auto-load most recent job if exists
+// Auto-load most recent job if exists — show in jobs panel instead of blocking confirm
 const _savedJobs = loadAllJobs();
 const _recent = Object.values(_savedJobs).sort((a,b)=>new Date(b.lastEdited)-new Date(a.lastEdited))[0];
-if(_recent) {
-  if(confirm('Resume "' + _recent.name + '"?')) loadJob(_recent.id);
+if(_recent && _recent.data && _recent.data.projName) {
+  // Show a non-blocking resume banner instead of confirm()
+  setTimeout(() => {
+    const banner = document.createElement('div');
+    banner.id = 'resumeBanner';
+    banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--green);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:12px;z-index:300;box-shadow:0 4px 20px rgba(0,0,0,0.5);font-size:13px;max-width:90vw;';
+    banner.innerHTML = `<span>Resume <strong>${_recent.data.projName}</strong>?</span>
+      <button onclick="loadJob('${_recent.id}');document.getElementById('resumeBanner')?.remove();" 
+        style="background:var(--green);border:none;color:#000;padding:6px 14px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;">Resume</button>
+      <button onclick="document.getElementById('resumeBanner')?.remove();"
+        style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1;">x</button>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 8000); // auto-dismiss after 8s
+  }, 500);
 }
 </script>
 
@@ -3690,6 +4202,12 @@ if(_recent) {
     <div style="margin-bottom:14px;">
       <div class="slabel" style="margin-bottom:8px;">Pipe Size</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;" id="fittingSizePicker">
+        <!-- populated by JS -->
+      </div>
+    </div>
+    <div id="fittingSize2Wrap" style="display:none;margin-bottom:14px;">
+      <div class="slabel" style="margin-bottom:8px;">Second Size <span class="fs11 text-muted">(for Bushing/Reducer)</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;" id="fittingSize2Picker">
         <!-- populated by JS -->
       </div>
     </div>
