@@ -423,6 +423,22 @@ select.inp{cursor:pointer;}
 
     <!-- LEFT: Copper rates -->
     <div>
+      <div class="slabel">Preferred Parts Supplier</div>
+      <div class="card-tight mb16">
+        <div class="rate-row">
+          <div class="rate-label">Parts supplier for search</div>
+          <select onchange="state.preferredSupplier=this.value;updateSupplierBtn();triggerAutoSave();"
+            id="supplierSelect"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;cursor:pointer;">
+            <option>RE Michel</option>
+            <option>Johnstone</option>
+            <option>Ferguson</option>
+            <option>Wesco</option>
+            <option>URI</option>
+          </select>
+        </div>
+      </div>
+
       <div class="slabel">Copper — Price per Linear Foot</div>
       <div class="card-tight mb16">
         <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1/4"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_025" type="number" placeholder="0.00" oninput="syncCopperRates()"><span class="rate-suffix">/ft</span></div></div>
@@ -1669,6 +1685,10 @@ function updateProposal() {
       state.resEquipment.forEach(e => {
         rows += `<tr><td>${e.type}${e.tons?' — '+e.tons:''}${e.brand?' — '+e.brand:''}${e.model?' '+e.model:''}</td><td>1</td><td>ea</td><td>${fmt(e.cost)}</td><td>${fmt(e.cost)}</td></tr>`;
       });
+      // Parts rows
+      state.resParts.forEach(p => {
+        rows += `<tr><td>${p.desc}</td><td>${p.qty}</td><td>ea</td><td>${fmt(p.unitCost)}</td><td>${fmt(p.total)}</td></tr>`;
+      });
       const lineLen = parseFloat(document.getElementById('resLineLength')?.value)||0;
       const sucSize = document.getElementById('resSucSize')?.value||'';
       const liqSize = document.getElementById('resLiqSize')?.value||'';
@@ -1814,7 +1834,7 @@ function showTab(name, btn) {
   if(name==='proposal') updateProposal();
   if(name==='estimate') renderEstimate();
   if(name==='scope') renderScopeTab();
-  if(name==='residential') { renderResEquipment(); renderResLabor(); renderResMisc(); calcResLineset(); }
+  if(name==='residential') { renderResCrew(); renderResEquipment(); renderResParts(); renderResLabor(); calcResLineset(); calcResTotals(); updateSupplierBtn(); }
   if(name==='hvac') { renderHvacEquipment(); renderHvacLabor(); }
 }
 
@@ -2094,6 +2114,8 @@ function saveJob() {
       resEquipment: state.resEquipment||[],
       resLabor: state.resLabor||[],
       resMisc: state.resMisc||[],
+      resParts: state.resParts||[],
+      preferredSupplier: state.preferredSupplier||'RE Michel',
       hvacEquipment: state.hvacEquipment||[],
       hvacLabor: state.hvacLabor||[],
       crew: state.crew,
@@ -2158,6 +2180,8 @@ function loadJob(jobId) {
   state.resEquipment = d.resEquipment || [];
   state.resLabor = d.resLabor || [];
   state.resMisc = d.resMisc || [];
+  state.resParts = d.resParts || [];
+  state.preferredSupplier = d.preferredSupplier || 'RE Michel';
   state.hvacEquipment = d.hvacEquipment || [];
   state.hvacLabor = d.hvacLabor || [];
   state.crew = d.crew || [];
@@ -2802,13 +2826,13 @@ function calcResTotals() {
   const equipTotal   = state.resEquipment.reduce((s,e)=>s+(e.cost||0),0);
   const linesetTotal = state.resLinesetTotal || 0;
   const laborTotal   = state.resLaborTotalVal || 0;
-  const miscTotal    = state.resMisc.reduce((s,m)=>s+(m.cost||0),0);
-  const bidTotal     = equipTotal + linesetTotal + laborTotal + miscTotal;
+  const partsTotal   = state.resPartsTotalVal || 0;
+  const bidTotal     = equipTotal + linesetTotal + laborTotal + partsTotal;
   const fmt = v => '$'+Math.round(v).toLocaleString();
   ['resTotalEquip'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(equipTotal);});
   ['resTotalLineset'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(linesetTotal);});
+  ['resTotalParts'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(partsTotal);});
   ['resTotalLabor'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(laborTotal);});
-  ['resTotalMisc'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(miscTotal);});
   ['resTotalBid'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(bidTotal);});
   state.resTotalBid = bidTotal;
 }
@@ -2935,6 +2959,128 @@ function calcHvacTotals() {
 }
 
 
+
+// ── SUPPLIER SEARCH ────────────────────────────────────────────────────────────
+// Default suppliers — configurable per account in future
+const SUPPLIERS = {
+  'RE Michel':   { url: 'https://www.remichel.com/search?keywords={q}', name: 'RE Michel' },
+  'Johnstone':   { url: 'https://www.johnstonesupply.com/search?query={q}', name: 'Johnstone' },
+  'Ferguson':    { url: 'https://www.ferguson.com/search#q={q}', name: 'Ferguson' },
+  'Wesco':       { url: 'https://www.wesco.com/search?q={q}', name: 'Wesco' },
+  'URI':         { url: 'https://www.uri.com/INTERSHOP/web/BOS/URI-URIUS-Site/en_US/-/USD/Search-SimpleSearch?SearchTerm={q}&submit=Search', name: 'URI' },
+};
+
+if(!state.preferredSupplier) state.preferredSupplier = 'RE Michel';
+
+function searchSupplier(query) {
+  if(!query || !query.trim()) return;
+  const q = query.trim();
+  navigator.clipboard?.writeText(q).catch(()=>{});
+  const supplier = SUPPLIERS[state.preferredSupplier] || SUPPLIERS['RE Michel'];
+  const url = supplier.url.replace('{q}', encodeURIComponent(q));
+  window.open(url, '_blank');
+}
+
+function updateSupplierBtn() {
+  const btn = document.getElementById('supplierSearchBtn');
+  if(btn) btn.textContent = state.preferredSupplier || 'Search';
+}
+
+// ── RESIDENTIAL PARTS ──────────────────────────────────────────────────────────
+if(!state.resParts) state.resParts = [];
+
+function addResPart(desc='', qty=1, unitCost=0) {
+  state.resParts.push({
+    id: 'rp_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),
+    desc, qty, unitCost, total: qty * unitCost
+  });
+  renderResParts();
+  calcResTotals();
+}
+
+function updateResPart(id, field, value) {
+  const p = state.resParts.find(p=>p.id===id);
+  if(!p) return;
+  p[field] = (field==='qty'||field==='unitCost') ? parseFloat(value)||0 : value;
+  p.total = (p.qty||0) * (p.unitCost||0);
+  renderResParts();
+  calcResTotals();
+  triggerAutoSave();
+}
+
+function removeResPart(id) {
+  state.resParts = state.resParts.filter(p=>p.id!==id);
+  renderResParts();
+  calcResTotals();
+}
+
+function renderResParts() {
+  const el = document.getElementById('resPartsList');
+  if(!el) return;
+  if(state.resParts.length === 0) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No parts added</div>';
+    const tot = document.getElementById('resPartsTotal');
+    if(tot) tot.textContent = '$0';
+    return;
+  }
+  el.innerHTML = `<table class="tbl" style="width:100%">
+    <thead><tr><th>Description</th><th style="width:60px">Qty</th><th style="width:90px">Unit Cost</th><th style="width:80px">Total</th><th style="width:60px">
+      <button onclick="searchSupplier(document.getElementById('resPartSearchInput')?.value||'')"
+        style="background:var(--blue);border:none;color:#fff;font-size:10px;padding:3px 7px;border-radius:5px;cursor:pointer;white-space:nowrap;"
+        title="Search supplier">${state.preferredSupplier||'Search'}</button>
+    </th></tr></thead>
+    <tbody>${state.resParts.map(p=>`<tr>
+      <td><input class="tbl-input" value="${p.desc}" placeholder="Description"
+        onchange="updateResPart('${p.id}','desc',this.value)" style="width:100%"></td>
+      <td><input class="tbl-input mono" type="number" value="${p.qty||1}" style="width:50px;text-align:center"
+        onchange="updateResPart('${p.id}','qty',this.value)"></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span class="text-dim fs12">$</span>
+          <input class="tbl-input mono" type="number" value="${p.unitCost||0}" style="width:70px"
+            placeholder="0.00" onchange="updateResPart('${p.id}','unitCost',this.value)">
+        </div>
+      </td>
+      <td class="mono fw700 text-green">$${Math.round(p.total||0).toLocaleString()}</td>
+      <td style="text-align:center;">
+        <div style="display:flex;gap:4px;justify-content:center;">
+          <button onclick="searchSupplier('${p.desc.replace(/'/g,'')}')"
+            style="background:var(--blue);border:none;color:#fff;font-size:10px;padding:3px 7px;border-radius:5px;cursor:pointer;">🔍</button>
+          <button class="btn btn-red btn-xs" onclick="removeResPart('${p.id}')">×</button>
+        </div>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+  const partsTotal = state.resParts.reduce((s,p)=>s+(p.total||0),0);
+  const tot = document.getElementById('resPartsTotal');
+  if(tot) tot.textContent = '$'+Math.round(partsTotal).toLocaleString();
+  state.resPartsTotalVal = partsTotal;
+}
+
+// Render residential crew (mirrors main crew but scoped to residential tab)
+function renderResCrew() {
+  const el = document.getElementById('resCrewBody');
+  if(!el) return;
+  if(state.crew.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:4px 0;">No crew — use buttons above to add workers</div>';
+  } else {
+    el.innerHTML = state.crew.map(m => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+        <input value="${m.role}" placeholder="Role" oninput="updateCrewMember('${m.id}','role',this.value)"
+          style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);outline:none;">
+        <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+          <span class="text-dim fs12">$</span>
+          <input type="number" value="${m.rate}" oninput="updateCrewMember('${m.id}','rate',this.value)"
+            style="width:60px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;">
+          <span class="fs11 text-muted">/hr</span>
+        </div>
+        <button class="btn btn-red btn-xs" onclick="removeCrewMember('${m.id}');renderResCrew();">Remove</button>
+      </div>`).join('');
+  }
+  const badge = document.getElementById('resCrewRateBadge');
+  if(badge) badge.textContent = '$'+getCrewHourlyRate().toLocaleString()+'/hr';
+}
+
 // ── STARTUP ────────────────────────────────────────────────────────────────────
 renderCrew();
 renderInsulRateTable();
@@ -2955,19 +3101,34 @@ if(_recent) {
 <!-- RESIDENTIAL HVAC TAB -->
 <div id="tab-residential" class="hidden">
 
-  <!-- Equipment Section -->
+  <!-- Quick Crew Builder -->
+  <div class="card mb16">
+    <div class="flex-between mb12">
+      <div class="slabel" style="margin-bottom:0">Crew</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-green btn-xs" onclick="addCrewMember('Technician',150,8)">+ Tech</button>
+        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('Helper',100,8)">+ Helper</button>
+        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('',0,8)">+ Custom</button>
+      </div>
+    </div>
+    <div id="resCrewBody" style="margin-bottom:10px;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);">
+      <span class="fs12 text-dim">Crew Rate</span>
+      <span class="crew-rate-badge" id="resCrewRateBadge" style="font-size:16px;padding:6px 14px;">$0/hr</span>
+    </div>
+  </div>
+
+  <!-- Equipment -->
   <div class="flex-between mb12">
     <div>
       <div class="slabel" style="margin-bottom:2px">Equipment</div>
-      <div class="fs12 text-dim">Add all equipment for this job</div>
+      <div class="fs12 text-dim">Systems, units, coils, furnaces</div>
     </div>
     <button class="btn btn-green btn-sm" onclick="addResEquipment()">+ Add Equipment</button>
   </div>
   <div class="card-tight mb16">
     <div id="resEquipmentList">
-      <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">
-        No equipment added yet — tap + Add Equipment
-      </div>
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No equipment added yet</div>
     </div>
     <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
       <span class="fs12 text-dim">Equipment Total</span>
@@ -2975,50 +3136,85 @@ if(_recent) {
     </div>
   </div>
 
-  <!-- Lineset Section -->
+  <!-- Lineset -->
   <div class="slabel mb12">Lineset</div>
   <div class="card mb16">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>
-        <div class="fs11 text-muted mb8">Suction Line Size</div>
+        <div class="fs11 text-muted mb8">Suction Size</div>
         <select id="resSucSize" class="inp" onchange="calcResLineset()">
-          <option value="">Select size</option>
+          <option value="">Select</option>
           <option>3/8"</option><option>1/2"</option><option>5/8"</option>
           <option>7/8"</option><option>1-1/8"</option><option>1-3/8"</option>
         </select>
       </div>
       <div>
-        <div class="fs11 text-muted mb8">Liquid Line Size</div>
+        <div class="fs11 text-muted mb8">Liquid Size</div>
         <select id="resLiqSize" class="inp" onchange="calcResLineset()">
-          <option value="">Select size</option>
+          <option value="">Select</option>
           <option>1/4"</option><option>3/8"</option><option>1/2"</option><option>5/8"</option>
         </select>
       </div>
       <div>
-        <div class="fs11 text-muted mb8">Total Length (ft)</div>
+        <div class="fs11 text-muted mb8">Length (ft)</div>
         <input type="number" id="resLineLength" class="inp" placeholder="0" oninput="calcResLineset()">
       </div>
       <div>
         <div class="fs11 text-muted mb8">Lineset Total</div>
-        <div class="mono fw700 text-green" id="resLinesetTotal" style="font-size:18px;padding-top:8px;">$0</div>
+        <div class="mono fw700 text-green" id="resLinesetTotal" style="font-size:20px;padding-top:6px;">$0</div>
       </div>
+    </div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">
+      ⚙️ Pricing from copper rates in Rates & Labor tab
     </div>
   </div>
 
-  <!-- Labor Section -->
+  <!-- Parts -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Parts</div>
+      <div class="fs12 text-dim">Capacitors, contactors, filters, refrigerant, disconnect, etc.</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addResPart()">+ Add Part</button>
+  </div>
+  <div class="card-tight mb16">
+    <!-- Supplier Search Bar -->
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(59,130,246,0.06);">
+      <span style="font-size:12px;font-weight:700;color:var(--blue);flex-shrink:0;">🔍</span>
+      <input id="resPartSearchInput" class="inp" placeholder="Search supplier — enter part # or description..."
+        style="flex:1;font-size:12px;padding:6px 10px;"
+        onkeydown="if(event.key==='Enter')searchSupplier(this.value)">
+      <button class="btn btn-sm" onclick="searchSupplier(document.getElementById('resPartSearchInput').value)"
+        style="background:var(--blue);color:#fff;flex-shrink:0;font-size:11px;" id="supplierSearchBtn">
+        Search
+      </button>
+    </div>
+    <div id="resPartsList">
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No parts added</div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Parts Total</span>
+      <span class="mono fw700 text-green" id="resPartsTotal">$0</span>
+    </div>
+  </div>
+
+  <!-- Labor -->
   <div class="flex-between mb12">
     <div>
       <div class="slabel" style="margin-bottom:2px">Labor</div>
-      <div class="fs12 text-dim">Men and hours per task — uses crew rates from Rates & Labor tab</div>
+      <div class="fs12 text-dim">Men and hours per task</div>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="addResLabor()">+ Add Task</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="addResDefaultTasks()">⚡ Standard Tasks</button>
+      <button class="btn btn-green btn-sm" onclick="addResLabor()">+ Add Task</button>
+    </div>
   </div>
   <div class="card-tight mb16">
-    <table class="tbl" id="resLaborTable">
+    <table class="tbl">
       <thead><tr><th style="width:45%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th></th></tr></thead>
       <tbody id="resLaborBody">
         <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">
-          No tasks added
+          Tap ⚡ Standard Tasks or + Add Task
         </td></tr>
       </tbody>
     </table>
@@ -3028,34 +3224,16 @@ if(_recent) {
     </div>
   </div>
 
-  <!-- Misc Section -->
-  <div class="flex-between mb12">
-    <div class="slabel" style="margin-bottom:0">Misc Items</div>
-    <button class="btn btn-ghost btn-sm" onclick="addResMisc()">+ Add Item</button>
-  </div>
-  <div class="card-tight mb16">
-    <div id="resMiscList">
-      <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">
-        Add disconnect, pad, permit, refrigerant, etc.
-      </div>
-    </div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Misc Total</span>
-      <span class="mono fw700 text-dim" id="resMiscTotal">$0</span>
-    </div>
-  </div>
-
   <!-- Totals -->
   <div class="stats">
     <div class="stat"><div class="stat-label">Equipment</div><div class="stat-value text-green" id="resTotalEquip">$0</div></div>
     <div class="stat"><div class="stat-label">Lineset</div><div class="stat-value text-green" id="resTotalLineset">$0</div></div>
+    <div class="stat"><div class="stat-label">Parts</div><div class="stat-value text-green" id="resTotalParts">$0</div></div>
     <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="resTotalLabor">$0</div></div>
-    <div class="stat"><div class="stat-label">Misc</div><div class="stat-value text-dim" id="resTotalMisc">$0</div></div>
     <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="resTotalBid">$0</div></div>
   </div>
 
   <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-    <button class="btn btn-green btn-sm" onclick="addResDefaultTasks()">⚡ Add Standard Tasks</button>
     <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Export Proposal</button>
   </div>
 </div>
