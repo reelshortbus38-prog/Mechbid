@@ -1085,7 +1085,7 @@ function addFile(file) {
   if(state.uploadedFiles.find(f => f.name===file.name && f.file.size===file.size)) return;
   const detected = detectFileType(file);
   const id = 'file_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  state.uploadedFiles.push({id, file, name:file.name, size:file.size, type:detected.type, icon:detected.icon, label:detected.label, status:'ready'});
+  state.uploadedFiles.push({id, file, name:file.name, size:file.size, type:detected.type, icon:detected.icon, label:detected.label, status:'ready', mode:state.mode});
   renderFilesList();
 }
 
@@ -1104,10 +1104,12 @@ function renderFilesList() {
   const grid = document.getElementById('filesGrid');
   const zone = document.getElementById('mainUploadZone');
   if(!list || !grid) return;
-  if(state.uploadedFiles.length === 0) { list.classList.add('hidden'); if(zone) zone.style.borderColor=''; return; }
+  // Only show files uploaded in the current mode
+  const modeFiles = state.uploadedFiles.filter(f => !f.mode || f.mode === state.mode);
+  if(modeFiles.length === 0) { list.classList.add('hidden'); if(zone) zone.style.borderColor=''; return; }
   list.classList.remove('hidden');
   if(zone) zone.style.borderColor = 'var(--green)';
-  grid.innerHTML = state.uploadedFiles.map(f => `
+  grid.innerHTML = modeFiles.map(f => `
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
       <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
         <span style="font-size:20px">${f.icon}</span>
@@ -1163,7 +1165,8 @@ async function callAI(messages, maxTokens=2000) {
 
 async function analyzeAllDocs() {
   const emailText = document.getElementById('emailText')?.value?.trim();
-  if(state.uploadedFiles.length===0 && !emailText) { alert('Please upload at least one file or paste email text first.'); return; }
+  const _modeFiles = state.uploadedFiles.filter(f => !f.mode || f.mode === state.mode);
+  if(_modeFiles.length===0 && !emailText) { alert('Please upload at least one file or paste email text first.'); return; }
 
   const btn = document.getElementById('analyzeAllBtn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyzing...';
@@ -1174,7 +1177,8 @@ async function analyzeAllDocs() {
   const results=[]; const flags=[];
 
   try {
-    for(const fileObj of state.uploadedFiles) {
+    const modeFiles = state.uploadedFiles.filter(f => !f.mode || f.mode === state.mode);
+    for(const fileObj of modeFiles) {
       fileObj.status='analyzing'; renderFilesList();
       try {
         if(fileObj.type==='excel')       await processExcelFile(fileObj, results, flags);
@@ -1823,6 +1827,7 @@ function setMode(btn, mode) {
       <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>`;
     showTab('docs', tabBar.querySelector('.tab-btn'));
   }
+  renderFilesList(); // refresh file list for new mode
   triggerAutoSave();
 }
 
@@ -1831,6 +1836,7 @@ function showTab(name, btn) {
   document.getElementById('tab-'+name).classList.remove('hidden');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  renderFilesList(); // refresh to show only current mode files
   if(name==='proposal') updateProposal();
   if(name==='estimate') renderEstimate();
   if(name==='scope') renderScopeTab();
