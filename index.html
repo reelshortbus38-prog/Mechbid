@@ -439,7 +439,7 @@ select.inp{cursor:pointer;}
         </div>
       </div>
 
-      <div class="slabel">Copper — Price per Linear Foot</div>
+      <div id="copperRatesSection"><div class="slabel">Copper — Price per Linear Foot</div>
       <div class="card-tight mb16">
         <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">1/4"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_025" type="number" placeholder="0.00" oninput="syncCopperRates()"><span class="rate-suffix">/ft</span></div></div>
         <div class="rate-row"><div class="rate-label"><div class="pipe-dot"></div><span class="pipe-code">3/8"</span></div><div class="rate-input-wrap"><span class="text-dim fs13">$</span><input class="rate-inp" id="cu_038" type="number" placeholder="0.00" oninput="syncCopperRates()"><span class="rate-suffix">/ft</span></div></div>
@@ -453,7 +453,8 @@ select.inp{cursor:pointer;}
       </div>
 
 
-      <div class="slabel mt16">Insulation — Price per Linear Foot</div>
+      </div><!-- end copperRatesSection -->
+      <div id="insulRatesSection"><div class="slabel mt16">Insulation — Price per Linear Foot</div>
       <div class="card-tight mb16">
         <div style="padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--border);">
           <div class="fs11 text-muted">Default rules: Med temp = 3/4" suction only · Low temp = 1" suction + 1/2" liquid · Specs override defaults</div>
@@ -485,6 +486,7 @@ select.inp{cursor:pointer;}
         </div>
       </div>
 
+      </div><!-- end insulRatesSection -->
       <div class="slabel">Fittings, Waste & Markup</div>
       <div class="card-tight">
         <div class="rate-row"><div class="rate-label">Fittings allowance on copper</div><div class="rate-input-wrap"><input class="rate-inp" id="fittingsMarkup" type="number" value="25" oninput="syncCopperRates()"><span class="rate-suffix">%</span></div></div>
@@ -790,8 +792,8 @@ function renderMarkupSummary() {
 
     // Update top stat labels and values for residential
     const s1=document.getElementById('propStat1Label'); if(s1) s1.textContent='Equipment';
-    const s2=document.getElementById('propStat2Label'); if(s2) s2.textContent='Lineset';
-    const s3=document.getElementById('propStat3Label'); if(s3) s3.textContent='Labor';
+    const s2=document.getElementById('propStat2Label'); if(s2) s2.textContent='Labor';
+    const s3=document.getElementById('propStat3Label'); if(s3) s3.textContent='Lineset & Parts';
     set('propMat',   fmt(equip));
     set('propLabor', fmt(labor));
     set('propOOT',   fmt(lineset));
@@ -1932,6 +1934,12 @@ function setMode(btn, mode) {
   // Show/hide comm refrig export button
   const commExp = document.getElementById('commRefrigExports');
   if(commExp) commExp.style.display = mode==='Commercial Refrigeration' ? '' : 'none';
+  // Show/hide copper & insulation rates for residential
+  const isRes = mode === 'Residential HVAC';
+  const cuSec = document.getElementById('copperRatesSection');
+  const inSec = document.getElementById('insulRatesSection');
+  if(cuSec) cuSec.style.display = isRes ? 'none' : '';
+  if(inSec) inSec.style.display = isRes ? 'none' : '';
   if(mode === 'Residential HVAC') {
     tabBar.innerHTML = `
       <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
@@ -1975,9 +1983,26 @@ function showTab(name, btn) {
   renderFilesList(); // refresh to show only current mode files
   if(name==='proposal') updateProposal();
   if(name==='estimate') renderEstimate();
-  if(name==='scope') renderScopeTab();
+  if(name==='scope') {
+    if(!state.fieldTasks) state.fieldTasks = [];
+    if(!state.rackTasks) state.rackTasks = [];
+    renderScopeTab();
+  }
   if(name==='residential') { renderResCrew(); renderResEquipment(); renderResParts(); renderResLabor(); calcResLineset(); calcResTotals(); updateSupplierBtn(); }
+  if(name==='rates') {
+    const isRes = state.mode === 'Residential HVAC';
+    const cuSec = document.getElementById('copperRatesSection');
+    const inSec = document.getElementById('insulRatesSection');
+    if(cuSec) cuSec.style.display = isRes ? 'none' : '';
+    if(inSec) inSec.style.display = isRes ? 'none' : '';
+  }
   if(name==='hvac') { renderHvacEquipment(); renderHvacLabor(); }
+  if(name==='materials') {
+    const rs = document.getElementById('rackPartsSection');
+    if(rs) rs.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
+    const ce = document.getElementById('commRefrigExports');
+    if(ce) ce.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
+  }
 }
 
 let mechbotOpen=false;
