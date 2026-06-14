@@ -214,6 +214,11 @@ select.inp{cursor:pointer;}
         <div class="logo-sub">Refrigeration & HVAC Estimating</div>
       </div>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="btn btn-ghost btn-sm" onclick="openSavedJobs()" style="font-size:11px;">💾 Jobs</button>
+      <button class="btn btn-green btn-sm" onclick="saveJob()" style="font-size:11px;">Save</button>
+      <span id="saveIndicator" style="font-size:11px;color:var(--green);opacity:0;transition:opacity 0.5s;"></span>
+    </div>
     <div class="mode-btns">
       <button class="mode-btn active" onclick="setMode(this,'Commercial Refrigeration')">Comm. Refrigeration</button>
       <button class="mode-btn" onclick="setMode(this,'Commercial HVAC')">Comm. HVAC</button>
@@ -304,11 +309,15 @@ select.inp{cursor:pointer;}
 
 <!-- MATERIALS TAB -->
 <div id="tab-materials" class="hidden">
-  <div class="flex-between mb16">
-    <div class="slabel" style="margin-bottom:0">Material List</div>
+  <!-- Field Supplies header -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Field Supplies</div>
+      <div class="fs12 text-dim">Copper, fittings, insulation, hangers, consumables — priced from your rate tables</div>
+    </div>
     <div class="flex gap8">
       <button class="btn btn-ghost btn-sm" onclick="addFitting()">+ Add Fitting</button>
-      <button class="btn btn-ghost btn-sm" onclick="addMiscItem()">+ Add Misc Item</button>
+      <button class="btn btn-ghost btn-sm" onclick="addMiscItem()">+ Add Item</button>
       <button class="btn btn-green btn-sm" onclick="generateMaterials()">⚙️ Generate from Circuits</button>
     </div>
   </div>
@@ -602,6 +611,33 @@ select.inp{cursor:pointer;}
     </div>
   </div>
 </div>
+
+  <!-- Rack Parts Section -->
+  <div class="mt20">
+    <div class="flex-between mb12">
+      <div>
+        <div class="slabel" style="margin-bottom:2px">Rack Parts</div>
+        <div class="fs12 text-dim">Toggle each part — Store Supplied ($0 on bid) or Contractor Supplied (adds to bid)</div>
+      </div>
+      <div class="flex gap8">
+        <button class="btn btn-ghost btn-sm" onclick="addRackPart()">+ Add Part</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportRackPartsCSV()" title="Export contractor-supplied parts to CSV for supply house">📋 Export to Supply House</button>
+      </div>
+    </div>
+    <div class="card-tight mb12">
+      <div id="rackPartsList"></div>
+      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <span class="fs12 text-dim">Contractor-Supplied Parts Total</span>
+        <span class="mono fw700 text-green" id="rackPartsTotalDisplay">$0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export buttons -->
+  <div class="flex gap8 mt16" style="flex-wrap:wrap;">
+    <button class="btn btn-ghost btn-sm" onclick="exportMaterialsCSV()">📥 Export Field Supplies CSV</button>
+    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Print / Export Proposal PDF</button>
+  </div>
 
 </div><!-- end content -->
 
@@ -987,7 +1023,8 @@ function calcTotals() {
   state.materialsTotal = state.lineItems.reduce((s,i) => s + (parseFloat(i.total)||0), 0);
   const laborOnly = state.laborTotal - state.ootTotal;
   const scopeTotal = (state.fieldWorkTotal||0) + (state.rackWorkTotal||0);
-  const total = state.materialsTotal + state.laborTotal + scopeTotal;
+  const rackPartsTotal = (state.rackParts||[]).filter(p=>!p.storeSupplied).reduce((s,p)=>s+(p.total||0),0);
+  const total = state.materialsTotal + state.laborTotal + scopeTotal + rackPartsTotal;
   const fmt = v => '$' + Math.round(v).toLocaleString();
 
   ['estMat','ratesMat','propMat'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt(state.materialsTotal); });
@@ -1059,7 +1096,10 @@ function renderFilesList() {
           </span></div>
         </div>
       </div>
-      <button onclick="removeFile('${f.id}')" style="background:transparent;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 4px;flex-shrink:0">×</button>
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+          <button onclick="viewFile('${f.id}')" style="background:var(--green);border:none;color:#000;font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer;">View</button>
+          <button onclick="removeFile('${f.id}')" style="background:transparent;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 4px;">×</button>
+        </div>
     </div>`).join('');
 }
 
@@ -1249,7 +1289,21 @@ async function processAIResult(resultText, sourceName, results, flags) {
       });
     }
     if(parsed.parts?.length) {
-      parsed.parts.forEach(p => state.lineItems.push({section:'Parts — From Scope',desc:(p.partId?p.partId+' — ':'')+p.description,qty:p.qty||1,unit:'ea',unitCost:0,total:0,editable:true,notes:'From scope — verify pricing'}));
+      parsed.parts.forEach(p => {
+        if(!p.description) return;
+        // Parts from upload go to rack parts section
+        const exists = state.rackParts.find(r => r.partId === p.partId && r.desc === p.description);
+        if(!exists) {
+          state.rackParts.push({
+            id:'rp_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),
+            partId: p.partId||'', desc: p.description, qty: p.qty||0,
+            unit:'ea', storeSupplied:true, unitCost:0, total:0
+          });
+        }
+      });
+      renderRackParts();
+    }
+    if(false && parsed.parts?.length) { parsed.parts.forEach(p => state.lineItems.push({section:'Parts — From Scope',desc:(p.partId?p.partId+' — ':'')+p.description,qty:p.qty||1,unit:'ea',unitCost:0,total:0,editable:true,notes:'From scope — verify pricing'}));
       flags.push({type:'info',text:`${parsed.parts.length} part(s) from scope added to material list — prices need to be entered`,source:sourceName});
     }
     populateScopeTasksFromDoc(parsed);
@@ -1411,8 +1465,16 @@ function generateMaterials() {
   });
   state.circuits.forEach(c=>{
     const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
-    if(runFt>0&&!c.isRiserOnly) state.lineItems.push({section:'Hardware',desc:`${c.id} — Hangers @ 6ft spacing`,qty:Math.ceil(runFt/6),unit:'ea',unitCost:0,total:0,editable:true});
+
   });
+  // Single hanger line item — longest run ÷ spacing ÷ circuits per hanger
+  const longestRun = state.circuits.filter(c=>!c.isRiserOnly).reduce((max,c) => Math.max(max, parseFloat(c.runLength)||0), 0);
+  const hangerSpacing = parseFloat(document.getElementById('hangerSpacing')?.value) || 6;
+  const circuitsPerHanger = parseFloat(document.getElementById('hangerCircuits')?.value) || 1;
+  const hangerQty = longestRun > 0 ? Math.ceil(longestRun / hangerSpacing / circuitsPerHanger) : 0;
+  state.lineItems.push({section:'Hardware', desc:`Pipe Hangers @ ${hangerSpacing}ft spacing`, qty:hangerQty, unit:'ea', unitCost:0, total:0, editable:true, isHangerItem:true});
+  autoSetHangers();
+
   state.lineItems.push({section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0,editable:true,note:'Verify qty'});
   state.lineItems.push({section:'Consumables',desc:'Brazing Rod (15% Silver)',qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify qty'});
   state.lineItems.push({section:'Consumables',desc:'Refrigerant — '+(state.jobMemory.schedule?.refrigerant||'verify type'),qty:0,unit:'lb',unitCost:0,total:0,editable:true,note:'Verify qty'});
@@ -1420,7 +1482,7 @@ function generateMaterials() {
   state.lineItems.push({section:'Misc',desc:'Silicone Sealant',qty:0,unit:'tube',unitCost:0,total:0,editable:true});
   state.lineItems.push({section:'Misc',desc:'Rubatex Glue',qty:0,unit:'can',unitCost:0,total:0,editable:true});
   state.lineItems.push({section:'Misc',desc:'Tape — Insulation / Vapor',qty:0,unit:'roll',unitCost:0,total:0,editable:true});
-  renderMaterials(); calcTotals();
+  renderMaterials(); calcTotals(); triggerAutoSave();
   showTab('materials', document.querySelectorAll('.tab-btn')[2]);
 }
 
@@ -1895,12 +1957,532 @@ function autoPopulateFieldTasks() {
   renderScopeTab();
 }
 
+
+// ── JOB SAVE / LOAD ────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'mechbid_jobs';
+let currentJobId = null;
+
+function saveJob() {
+  if(!currentJobId) currentJobId = 'job_' + Date.now();
+  const jobs = loadAllJobs();
+  const projName = document.getElementById('projName')?.value || 'Untitled Job';
+  jobs[currentJobId] = {
+    id: currentJobId,
+    name: projName,
+    lastEdited: new Date().toISOString(),
+    total: state.materialsTotal + state.laborTotal + (state.fieldWorkTotal||0) + (state.rackWorkTotal||0),
+    data: {
+      projName, 
+      projAddr: document.getElementById('projAddr')?.value || '',
+      projGC: document.getElementById('projGC')?.value || '',
+      projCont: document.getElementById('projCont')?.value || '',
+      projBidDate: document.getElementById('projBidDate')?.value || '',
+      mode: state.mode,
+      circuits: state.circuits,
+      lineItems: state.lineItems,
+      rackParts: state.rackParts || [],
+      fieldTasks: state.fieldTasks,
+      rackTasks: state.rackTasks,
+      crew: state.crew,
+      flags: state.flags,
+      fieldWorkTotal: state.fieldWorkTotal || 0,
+      rackWorkTotal: state.rackWorkTotal || 0,
+      laborTotal: state.laborTotal,
+      ootTotal: state.ootTotal,
+      // Save rate inputs
+      rates: getRateSnapshot()
+    }
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+    showSaveIndicator();
+  } catch(e) { console.warn('Save failed:', e); }
+}
+
+function getRateSnapshot() {
+  const rates = {};
+  ['cu_025','cu_038','cu_050','cu_058','cu_078','cu_118','cu_138','cu_158','cu_218',
+   'fittingsMarkup','insulMarkup','wasteFactor','daysOnJob','otMult','nightMult','ootExpenses',
+   'hangerSpacing','hangerCircuits','hangerUnitCost'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) rates[id] = el.value;
+  });
+  // Save insulation rates
+  const PIPE_SIZES_S = ['14','38','12','58','78','118','138','158','218','258','318','358'];
+  PIPE_SIZES_S.forEach(s => ['050','075','100'].forEach(w => {
+    const el = document.getElementById(`ins_${s}_${w}`);
+    if(el) rates[`ins_${s}_${w}`] = el.value;
+  }));
+  return rates;
+}
+
+function loadAllJobs() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+
+function loadJob(jobId) {
+  const jobs = loadAllJobs();
+  const job = jobs[jobId];
+  if(!job || !job.data) return;
+  currentJobId = jobId;
+  const d = job.data;
+
+  // Restore project fields
+  if(document.getElementById('projName')) document.getElementById('projName').value = d.projName || '';
+  if(document.getElementById('projAddr')) document.getElementById('projAddr').value = d.projAddr || '';
+  if(document.getElementById('projGC'))   document.getElementById('projGC').value   = d.projGC   || '';
+  if(document.getElementById('projCont')) document.getElementById('projCont').value = d.projCont || '';
+  if(document.getElementById('projBidDate')) document.getElementById('projBidDate').value = d.projBidDate || '';
+
+  // Restore state
+  state.mode = d.mode || 'Commercial Refrigeration';
+  state.circuits = d.circuits || [];
+  state.lineItems = d.lineItems || [];
+  state.rackParts = d.rackParts || [];
+  state.fieldTasks = d.fieldTasks || [];
+  state.rackTasks = d.rackTasks || [];
+  state.crew = d.crew || [];
+  state.flags = d.flags || [];
+  state.fieldWorkTotal = d.fieldWorkTotal || 0;
+  state.rackWorkTotal = d.rackWorkTotal || 0;
+  state.laborTotal = d.laborTotal || 0;
+  state.ootTotal = d.ootTotal || 0;
+
+  // Restore rates
+  if(d.rates) {
+    Object.entries(d.rates).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if(el) el.value = val;
+    });
+  }
+
+  renderCrew();
+  renderInsulRateTable();
+  renderCircuits();
+  renderMaterials();
+  renderRackParts();
+  renderScopeTab();
+  renderFlags();
+  calcLabor();
+  calcTotals();
+  closeSavedJobs();
+}
+
+function deleteJob(jobId) {
+  const jobs = loadAllJobs();
+  delete jobs[jobId];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  renderSavedJobsList();
+}
+
+function showSaveIndicator() {
+  const el = document.getElementById('saveIndicator');
+  if(!el) return;
+  el.textContent = '✅ Saved';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+// Auto-save on any state change
+let autoSaveTimer = null;
+function triggerAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveJob, 1500);
+}
+
+function openSavedJobs() {
+  renderSavedJobsList();
+  document.getElementById('savedJobsModal').style.display = 'flex';
+}
+
+function closeSavedJobs() {
+  document.getElementById('savedJobsModal').style.display = 'none';
+}
+
+function newJob() {
+  if(!confirm('Start a new job? Unsaved changes will be lost.')) return;
+  currentJobId = null;
+  state.circuits = []; state.lineItems = []; state.rackParts = [];
+  state.fieldTasks = []; state.rackTasks = []; state.crew = [];
+  state.flags = []; state.fieldWorkTotal = 0; state.rackWorkTotal = 0;
+  state.laborTotal = 0; state.ootTotal = 0; state.uploadedFiles = [];
+  ['projName','projAddr','projGC','projCont','projBidDate'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  renderCrew(); renderCircuits(); renderMaterials(); renderRackParts();
+  renderScopeTab(); renderFlags(); calcTotals();
+  closeSavedJobs();
+}
+
+function renderSavedJobsList() {
+  const container = document.getElementById('savedJobsList');
+  if(!container) return;
+  const jobs = loadAllJobs();
+  const list = Object.values(jobs).sort((a,b) => new Date(b.lastEdited) - new Date(a.lastEdited));
+  if(list.length === 0) {
+    container.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px;">No saved jobs yet</div>';
+    return;
+  }
+  container.innerHTML = list.map(job => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);gap:12px;">
+      <div style="flex:1;min-width:0;cursor:pointer;" onclick="loadJob('${job.id}')">
+        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">
+          Last edited: ${new Date(job.lastEdited).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+          · Total: $${Math.round(job.total||0).toLocaleString()}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-green btn-sm" onclick="loadJob('${job.id}')">Open</button>
+        <button class="btn btn-red btn-sm" onclick="deleteJob('${job.id}')">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+
+// ── RACK PARTS ─────────────────────────────────────────────────────────────────
+if(!state.rackParts) state.rackParts = [];
+
+function addRackPart(partId='', desc='', qty=0, unit='ea', storeSupplied=true) {
+  state.rackParts.push({
+    id: 'rp_'+Date.now()+'_'+Math.random().toString(36).substr(2,4),
+    partId, desc, qty, unit,
+    storeSupplied,
+    unitCost: 0, total: 0
+  });
+  renderRackParts();
+  triggerAutoSave();
+}
+
+function updateRackPart(id, field, value) {
+  const p = state.rackParts.find(p=>p.id===id);
+  if(!p) return;
+  if(field === 'storeSupplied') p.storeSupplied = value;
+  else if(field === 'qty' || field === 'unitCost') p[field] = parseFloat(value)||0;
+  else p[field] = value;
+  p.total = p.storeSupplied ? 0 : (p.qty * p.unitCost);
+  renderRackParts();
+  calcTotals();
+  triggerAutoSave();
+}
+
+function removeRackPart(id) {
+  state.rackParts = state.rackParts.filter(p=>p.id!==id);
+  renderRackParts();
+  calcTotals();
+}
+
+function renderRackParts() {
+  const container = document.getElementById('rackPartsList');
+  if(!container) return;
+  const contractorParts = state.rackParts.filter(p=>!p.storeSupplied);
+  const rackPartsTotal = contractorParts.reduce((s,p)=>s+(p.total||0),0);
+  const el = document.getElementById('rackPartsTotalDisplay');
+  if(el) el.textContent = '$'+Math.round(rackPartsTotal).toLocaleString();
+
+  if(state.rackParts.length === 0) {
+    container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">
+      No rack parts — upload a parts list or add manually</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <table class="tbl" style="width:100%">
+      <thead><tr>
+        <th style="width:12%">Part #</th>
+        <th style="width:30%">Description</th>
+        <th style="width:8%">Qty</th>
+        <th style="width:8%">Unit</th>
+        <th style="width:14%">Supplied By</th>
+        <th style="width:10%">Unit Cost</th>
+        <th style="width:10%">Total</th>
+        <th style="width:8%"></th>
+      </tr></thead>
+      <tbody>${state.rackParts.map(p=>`
+        <tr style="${p.storeSupplied?'opacity:0.6':''}">
+          <td><input class="tbl-input mono" value="${p.partId}" placeholder="Part #"
+            onchange="updateRackPart('${p.id}','partId',this.value)"></td>
+          <td><input class="tbl-input" value="${p.desc}" placeholder="Description"
+            onchange="updateRackPart('${p.id}','desc',this.value)"></td>
+          <td><input class="tbl-input mono" type="number" value="${p.qty}" style="width:50px"
+            onchange="updateRackPart('${p.id}','qty',this.value)"></td>
+          <td class="text-dim">${p.unit}</td>
+          <td>
+            <select onchange="updateRackPart('${p.id}','storeSupplied',this.value==='store')"
+              style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);width:100%;outline:none;cursor:pointer;">
+              <option value="store" ${p.storeSupplied?'selected':''}>🏪 Store</option>
+              <option value="contractor" ${!p.storeSupplied?'selected':''}>🔧 Contractor</option>
+            </select>
+          </td>
+          <td><input class="tbl-input mono" type="number" value="${p.unitCost||0}" style="width:70px"
+            ${p.storeSupplied?'disabled':''}
+            placeholder="0.00" onchange="updateRackPart('${p.id}','unitCost',this.value)"></td>
+          <td class="mono fw700 ${p.storeSupplied?'text-muted':'text-green'}">
+            ${p.storeSupplied?'Store':'$'+Math.round(p.total||0).toLocaleString()}
+          </td>
+          <td><button class="btn btn-red btn-xs" onclick="removeRackPart('${p.id}')">×</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// Export rack parts as CSV for supply house
+function exportRackPartsCSV() {
+  const contractor = state.rackParts.filter(p=>!p.storeSupplied);
+  if(contractor.length === 0) { alert('No contractor-supplied parts to export.'); return; }
+  const proj = document.getElementById('projName')?.value || 'Project';
+  let csv = 'Part Number,Description,Qty,Unit,Unit Cost\n';
+  contractor.forEach(p => { csv += `"${p.partId}","${p.desc}",${p.qty},"${p.unit}","${p.unitCost||''}"\n`; });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = proj.replace(/[^a-z0-9]/gi,'_')+'_parts_order.csv';
+  a.click();
+}
+
+// ── FILE VIEWER ────────────────────────────────────────────────────────────────
+async function viewFile(fileId) {
+  const fileObj = state.uploadedFiles.find(f=>f.id===fileId);
+  if(!fileObj) return;
+
+  const modal = document.getElementById('fileViewerModal');
+  const title = document.getElementById('fileViewerTitle');
+  const body  = document.getElementById('fileViewerBody');
+  if(!modal||!title||!body) return;
+
+  title.textContent = fileObj.name;
+  body.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner spinner-green" style="width:32px;height:32px;border-width:3px"></span><div class="mt12 text-dim">Loading file...</div></div>';
+  modal.style.display = 'flex';
+
+  try {
+    if(fileObj.type === 'image') {
+      const url = URL.createObjectURL(fileObj.file);
+      body.innerHTML = `<img src="${url}" style="max-width:100%;height:auto;border-radius:8px;" onload="URL.revokeObjectURL(this.src)">`;
+    } else if(fileObj.file.name.match(/\.pdf$/i)) {
+      const url = URL.createObjectURL(fileObj.file);
+      body.innerHTML = `<iframe src="${url}" style="width:100%;height:70vh;border:none;border-radius:8px;background:#fff;"></iframe>`;
+    } else if(fileObj.type === 'excel') {
+      await viewExcelFile(fileObj, body);
+    } else if(fileObj.type === 'scope') {
+      await viewWordFile(fileObj, body);
+    } else {
+      body.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:13px;">Preview not available for this file type.</div>';
+    }
+  } catch(e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--red);font-size:13px;">Could not load file: ${e.message}</div>`;
+  }
+}
+
+async function viewExcelFile(fileObj, body) {
+  // Use SheetJS via CDN to read and render Excel
+  if(!window.XLSX) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  }
+  const buf = await fileObj.file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+
+  // Build sheet tabs + table
+  let tabsHtml = wb.SheetNames.map((name,i) =>
+    `<button onclick="showExcelSheet(${i})" id="exTab_${i}"
+      style="padding:7px 14px;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:'DM Sans',sans-serif;
+      background:${i===0?'var(--green)':'var(--surface)'};color:${i===0?'#000':'var(--text-dim)'};
+      border-radius:6px 6px 0 0;transition:all 0.15s;">${name}</button>`
+  ).join('');
+
+  window._excelSheets = wb.SheetNames.map(name => {
+    const ws = wb.Sheets[name];
+    return XLSX.utils.sheet_to_html(ws, {editable:false});
+  });
+
+  body.innerHTML = `
+    <div style="display:flex;gap:4px;margin-bottom:0;flex-wrap:wrap;" id="excelTabs">${tabsHtml}</div>
+    <div id="excelTableWrap" style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:0 8px 8px 8px;background:#fff;">
+      <div id="excelContent" style="color:#000;font-size:11px;"></div>
+    </div>`;
+
+  showExcelSheet(0);
+}
+
+function showExcelSheet(idx) {
+  const content = document.getElementById('excelContent');
+  if(content && window._excelSheets) {
+    content.innerHTML = window._excelSheets[idx];
+    // Style the table
+    content.querySelectorAll('table').forEach(t => {
+      t.style.cssText = 'border-collapse:collapse;width:100%;font-size:11px;font-family:Arial,sans-serif;';
+    });
+    content.querySelectorAll('td,th').forEach(c => {
+      c.style.cssText = 'border:1px solid #ddd;padding:4px 8px;white-space:nowrap;';
+    });
+  }
+  document.querySelectorAll('[id^="exTab_"]').forEach((btn,i) => {
+    btn.style.background = i===idx ? 'var(--green)' : 'var(--surface)';
+    btn.style.color = i===idx ? '#000' : 'var(--text-dim)';
+  });
+}
+
+async function viewWordFile(fileObj, body) {
+  const base64 = await fileToBase64(fileObj.file);
+  try {
+    const res = await fetch('/api/parse-doc', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fileData:base64,fileName:fileObj.name})});
+    const data = await res.json();
+    const text = data.text || 'Could not extract text from this document.';
+    body.innerHTML = `<div style="padding:20px;font-size:13px;line-height:1.8;color:#1a1a1a;background:#fff;border-radius:8px;max-height:70vh;overflow-y:auto;white-space:pre-wrap;font-family:'DM Sans',sans-serif;">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  } catch(e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--red);">Could not load document: ${e.message}</div>`;
+  }
+}
+
+function closeFileViewer() {
+  document.getElementById('fileViewerModal').style.display = 'none';
+}
+
+function loadScript(src) {
+  return new Promise((res,rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ── EXPORT ─────────────────────────────────────────────────────────────────────
+function exportMaterialsCSV() {
+  const proj = document.getElementById('projName')?.value || 'Project';
+  let csv = 'Section,Description,Qty,Unit,Unit Cost,Total\n';
+  state.lineItems.forEach(i => {
+    csv += `"${i.section}","${i.desc}",${i.qty||0},"${i.unit}","${(i.unitCost||0).toFixed(2)}","${(i.total||0).toFixed(2)}"\n`;
+  });
+  downloadFile(proj+'_materials.csv', csv, 'text/csv');
+}
+
+function exportProposalPDF() {
+  const proj = document.getElementById('projName')?.value || 'Project';
+  const addr = document.getElementById('projAddr')?.value || '';
+  const gc   = document.getElementById('projGC')?.value   || '';
+  const cont = document.getElementById('projCont')?.value || '';
+  const mat  = state.materialsTotal || 0;
+  const labor = (state.laborTotal||0) - (state.ootTotal||0);
+  const oot  = state.ootTotal || 0;
+  const scope = (state.fieldWorkTotal||0) + (state.rackWorkTotal||0);
+  const refrig = state.lineItems.filter(i=>i.desc.toLowerCase().includes('refrigerant')).reduce((s,i)=>s+(i.total||0),0);
+  const total = mat + state.laborTotal + scope;
+  const fmt = v => '$'+Math.round(v).toLocaleString();
+
+  const circuitRows = state.circuits.map(c =>
+    `<tr><td>${c.id}</td><td>${c.application||''}</td><td>${c.isRiserOnly?'Riser only':c.runLength+'ft'}</td><td>${c.sucHoriz||'—'}</td><td>${c.liqHoriz||'—'}</td></tr>`
+  ).join('');
+
+  const matRows = state.lineItems.map(i =>
+    `<tr><td>${i.desc}</td><td>${i.qty||0}</td><td>${i.unit}</td><td>$${(i.unitCost||0).toFixed(2)}</td><td>$${(i.total||0).toLocaleString()}</td></tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Bid Proposal — ${proj}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:32px;}
+    h1{font-size:22px;margin:0 0 4px;} h2{font-size:14px;margin:16px 0 8px;color:#1F4E79;}
+    .header{display:flex;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #22c55e;}
+    .logo{font-size:24px;font-weight:900;letter-spacing:-0.02em;} .logo span{color:#22c55e;}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+    th{background:#1F4E79;color:#fff;padding:8px 10px;text-align:left;font-size:11px;}
+    td{padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;}
+    tr:nth-child(even) td{background:#f9fafb;}
+    .total-row{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb;font-size:12px;}
+    .grand-total{display:flex;justify-content:space-between;padding:14px 0;border-top:3px solid #22c55e;margin-top:8px;font-size:18px;font-weight:700;}
+    .flag{background:#fef9c3;border-left:3px solid #eab308;padding:6px 10px;margin:4px 0;font-size:11px;}
+    @media print{body{padding:16px;}}
+  </style></head><body>
+  <div class="header">
+    <div><div class="logo">MECH<span>BID</span></div><div style="font-size:10px;color:#6b7280;margin-top:2px;">Refrigeration & HVAC Estimating</div></div>
+    <div style="text-align:right;">
+      <div style="font-size:18px;font-weight:700;">${proj}</div>
+      ${addr?`<div style="color:#6b7280">${addr}</div>`:''}
+      ${gc?`<div style="color:#6b7280">GC: ${gc}</div>`:''}
+      ${cont?`<div style="color:#6b7280">${cont}</div>`:''}
+      <div style="color:#6b7280;font-size:10px;">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+    </div>
+  </div>
+
+  ${state.circuits.length > 0 ? `
+  <h2>Circuits — New Work</h2>
+  <table><thead><tr><th>Circuit</th><th>Application</th><th>Run</th><th>Suction</th><th>Liquid</th></tr></thead>
+  <tbody>${circuitRows}</tbody></table>` : ''}
+
+  <h2>Material List</h2>
+  <table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr></thead>
+  <tbody>${matRows}</tbody></table>
+
+  ${state.flags.filter(f=>f.type==='warn'||f.type==='error').length > 0 ? `
+  <h2>Notes & Assumptions</h2>
+  ${state.flags.filter(f=>f.type==='warn'||f.type==='error').map(f=>`<div class="flag">⚠️ ${f.text}</div>`).join('')}` : ''}
+
+  <h2>Bid Summary</h2>
+  <div class="total-row"><span>Materials</span><span>${fmt(mat)}</span></div>
+  <div class="total-row"><span>Refrigerant</span><span>${fmt(refrig)}</span></div>
+  <div class="total-row"><span>Labor</span><span>${fmt(labor)}</span></div>
+  <div class="total-row"><span>Field Work</span><span>${fmt(state.fieldWorkTotal||0)}</span></div>
+  <div class="total-row"><span>Rack Work</span><span>${fmt(state.rackWorkTotal||0)}</span></div>
+  <div class="total-row"><span>Out of Town</span><span>${fmt(oot)}</span></div>
+  <div class="grand-total"><span>TOTAL BID PRICE</span><span style="color:#22c55e">${fmt(total)}</span></div>
+  <div style="margin-top:32px;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;">
+    Generated by MechBid · ${new Date().toLocaleDateString()} · Prices subject to change
+  </div>
+  
+<!-- SAVED JOBS MODAL -->
+<div id="savedJobsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeSavedJobs()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--green);">💾 Saved Jobs</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-green btn-sm" onclick="newJob()">+ New Job</button>
+        <button onclick="closeSavedJobs()" style="background:transparent;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;">×</button>
+      </div>
+    </div>
+    <div id="savedJobsList" style="flex:1;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- FILE VIEWER MODAL -->
+<div id="fileViewerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:500;align-items:center;justify-content:center;padding:12px;" onclick="if(event.target===this)closeFileViewer()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:900px;max-height:92vh;display:flex;flex-direction:column;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="fileViewerTitle">File</div>
+      <button onclick="closeFileViewer()" style="background:transparent;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;flex-shrink:0;margin-left:10px;">×</button>
+    </div>
+    <div id="fileViewerBody" style="flex:1;overflow:auto;padding:16px;"></div>
+  </div>
+</div>
+
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if(win) { win.document.write(html); win.document.close(); win.print(); }
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], {type});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // ── STARTUP ────────────────────────────────────────────────────────────────────
 renderCrew();
 renderInsulRateTable();
 renderScopeTab();
+renderRackParts();
 calcLabor();
 calcTotals();
+
+// Auto-load most recent job if exists
+const _savedJobs = loadAllJobs();
+const _recent = Object.values(_savedJobs).sort((a,b)=>new Date(b.lastEdited)-new Date(a.lastEdited))[0];
+if(_recent) {
+  if(confirm('Resume "' + _recent.name + '"?')) loadJob(_recent.id);
+}
 </script>
 
 <!-- FITTING PICKER MODAL -->
@@ -1941,6 +2523,32 @@ calcTotals();
     <button onclick="confirmAddFitting()" class="btn btn-green btn-full" style="font-size:13px;">
       + Add to Materials
     </button>
+  </div>
+</div>
+
+
+<!-- SAVED JOBS MODAL -->
+<div id="savedJobsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeSavedJobs()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--green);">💾 Saved Jobs</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-green btn-sm" onclick="newJob()">+ New Job</button>
+        <button onclick="closeSavedJobs()" style="background:transparent;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;">×</button>
+      </div>
+    </div>
+    <div id="savedJobsList" style="flex:1;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- FILE VIEWER MODAL -->
+<div id="fileViewerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:500;align-items:center;justify-content:center;padding:12px;" onclick="if(event.target===this)closeFileViewer()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:900px;max-height:92vh;display:flex;flex-direction:column;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="fileViewerTitle">File</div>
+      <button onclick="closeFileViewer()" style="background:transparent;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;flex-shrink:0;margin-left:10px;">×</button>
+    </div>
+    <div id="fileViewerBody" style="flex:1;overflow:auto;padding:16px;"></div>
   </div>
 </div>
 
