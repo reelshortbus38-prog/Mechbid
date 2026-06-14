@@ -660,44 +660,8 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-  <!-- Rack Parts Section — Commercial Refrigeration only -->
-  <div class="mt20" id="rackPartsSection">
-    <div class="flex-between mb12">
-      <div>
-        <div class="slabel" style="margin-bottom:2px">Rack Parts</div>
-        <div class="fs12 text-dim">Toggle each part — Store Supplied ($0 on bid) or Contractor Supplied (adds to bid)</div>
-      </div>
-      <div class="flex gap8">
-        <button class="btn btn-ghost btn-sm" onclick="addRackPart()">+ Add Part</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportRackPartsCSV()" title="Export contractor-supplied parts to CSV for supply house">📋 Export to Supply House</button>
-      </div>
-    </div>
-    <div class="card-tight mb12">
-      <!-- URI Search Bar -->
-      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(232,93,20,0.06);">
-        <span style="font-size:13px;font-weight:700;color:#e85d14;flex-shrink:0;">🔍 URI</span>
-        <input id="uriSearchInput" class="inp" placeholder="Enter part # or description — copies to clipboard & opens URI..."
-          style="flex:1;font-size:12px;padding:7px 12px;"
-          onkeydown="if(event.key==='Enter')searchURI(this.value)">
-        <button class="btn btn-sm" onclick="searchURI(document.getElementById('uriSearchInput').value)"
-          style="background:#e85d14;color:#fff;flex-shrink:0;">Open URI</button>
-      </div>
-      <div id="rackPartsList"></div>
-      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <span class="fs12 text-dim">Contractor-Supplied Parts Total</span>
-        <span class="mono fw700 text-green" id="rackPartsTotalDisplay">$0</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Export buttons -->
-  <div class="flex gap8 mt16" style="flex-wrap:wrap;">
-    <button class="btn btn-ghost btn-sm" onclick="exportMaterialsCSV()">📥 Export Field Supplies CSV</button>
-    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Print / Export Proposal PDF</button>
-  </div>
 
 </div><!-- end content -->
-
 <button class="mechbot-btn" onclick="toggleMechBot()" id="mechbotBtn" title="MechBot AI Assistant">🤖</button>
 
 <div class="mechbot-panel hidden" id="mechbotPanel">
@@ -1962,6 +1926,12 @@ function setMode(btn, mode) {
 
   // Switch tab bar FIRST so tabs exist before loadModeRates renders into them
   const tabBar = document.querySelector('.tabs');
+  // Show/hide rack parts based on mode
+  const rackSec = document.getElementById('rackPartsSection');
+  if(rackSec) rackSec.style.display = mode==='Commercial Refrigeration' ? '' : 'none';
+  // Show/hide comm refrig export button
+  const commExp = document.getElementById('commRefrigExports');
+  if(commExp) commExp.style.display = mode==='Commercial Refrigeration' ? '' : 'none';
   if(mode === 'Residential HVAC') {
     tabBar.innerHTML = `
       <button class="tab-btn active" onclick="showTab('docs',this)">📁 Documents</button>
@@ -3450,10 +3420,10 @@ function loadModeRates() {
   }
 
   // Markup
-  renderMarkupSummary();
-  calcLabor();
-  syncCopperRates();
-  renderInsulRateTable();
+  try { renderMarkupSummary(); } catch(e) {}
+  try { calcLabor(); } catch(e) {}
+  try { syncCopperRates(); } catch(e) {}
+  try { renderInsulRateTable(); } catch(e) {}
 }
 
 // ── STARTUP ────────────────────────────────────────────────────────────────────
