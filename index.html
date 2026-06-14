@@ -601,10 +601,7 @@ select.inp{cursor:pointer;}
     </table>
 
     <div class="divider"></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Materials</span><span class="mono fw700" id="propMatLine">$0</span></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Refrigerant</span><span class="mono fw700 text-cyan" id="propRefrigLine">$0</span></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow" id="propLaborLine">$0</span></div>
-    <div class="flex-between mb8"><span class="fs13 text-dim">Out of Town Expenses</span><span class="mono fw700" style="color:var(--cyan)" id="propOOTLine">$0</span></div>
+    <div id="propSummaryLines"></div>
     <div class="proposal-total-row">
       <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">TOTAL BID PRICE</div>
       <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);" id="propTotalLine">$0</div>
@@ -612,8 +609,8 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-  <!-- Rack Parts Section -->
-  <div class="mt20">
+  <!-- Rack Parts Section — Commercial Refrigeration only -->
+  <div class="mt20" id="rackPartsSection">
     <div class="flex-between mb12">
       <div>
         <div class="slabel" style="margin-bottom:2px">Rack Parts</div>
@@ -1640,27 +1637,94 @@ function renderEstimate() {
 
 function updateProposal() {
   const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  const fmt=v=>'$'+Math.round(v).toLocaleString();
+
   set('propProjName',document.getElementById('projName')?.value||'Project Name');
   set('propAddr',document.getElementById('projAddr')?.value||'');
   set('propGC',document.getElementById('projGC')?.value?'GC: '+document.getElementById('projGC').value:'');
   set('propCont',document.getElementById('projCont')?.value||'');
 
-  const mat=state.materialsTotal||0;
-  const laborOnly=state.laborTotal-(state.ootTotal||0);
-  const oot=state.ootTotal||0;
-  const scopeT=(state.fieldWorkTotal||0)+(state.rackWorkTotal||0);
-  const total=mat+state.laborTotal+scopeT;
-  const fmt=v=>'$'+Math.round(v).toLocaleString();
+  // Hide/show rack parts section based on mode
+  const rackSection = document.getElementById('rackPartsSection');
+  if(rackSection) rackSection.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
 
-  // Refrigerant line item subtotal
-  const refrigTotal=state.lineItems.filter(i=>i.desc.toLowerCase().includes('refrigerant')).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+  const summaryEl = document.getElementById('propSummaryLines');
+  let total = 0;
 
-  set('propMatLine',fmt(mat));
-  set('propRefrigLine',fmt(refrigTotal));
-  set('propLaborLine',fmt(laborOnly));
-  set('propOOTLine',fmt(oot));
-  set('propTotalLine',fmt(total));
-  set('propMat',fmt(mat)); set('propLabor',fmt(laborOnly)); set('propOOT',fmt(oot)); set('propTotal',fmt(total));
+  if(state.mode === 'Residential HVAC') {
+    const equip   = state.resEquipment.reduce((s,e)=>s+(e.cost||0),0);
+    const lineset = state.resLinesetTotal||0;
+    const labor   = state.resLaborTotalVal||0;
+    const misc    = state.resMisc.reduce((s,m)=>s+(m.cost||0),0);
+    total = equip + lineset + labor + misc;
+    if(summaryEl) summaryEl.innerHTML = `
+      <div class="flex-between mb8"><span class="fs13 text-dim">Equipment</span><span class="mono fw700 text-green">${fmt(equip)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Lineset</span><span class="mono fw700 text-green">${fmt(lineset)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow">${fmt(labor)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Misc</span><span class="mono fw700">${fmt(misc)}</span></div>`;
+    // Populate proposal body with residential items
+    const propBody = document.getElementById('proposalBody');
+    if(propBody) {
+      let rows = '';
+      state.resEquipment.forEach(e => {
+        rows += `<tr><td>${e.type}${e.tons?' — '+e.tons:''}${e.brand?' — '+e.brand:''}${e.model?' '+e.model:''}</td><td>1</td><td>ea</td><td>${fmt(e.cost)}</td><td>${fmt(e.cost)}</td></tr>`;
+      });
+      const lineLen = parseFloat(document.getElementById('resLineLength')?.value)||0;
+      const sucSize = document.getElementById('resSucSize')?.value||'';
+      const liqSize = document.getElementById('resLiqSize')?.value||'';
+      if(lineLen>0) rows += `<tr><td>Lineset — ${sucSize} suction / ${liqSize} liquid</td><td>${lineLen}</td><td>ft</td><td>—</td><td>${fmt(lineset)}</td></tr>`;
+      state.resLabor.forEach(t => {
+        const crewRate = getCrewHourlyRate();
+        const cost = t.men * t.hrs * (crewRate/Math.max(state.crew.length,1));
+        rows += `<tr><td>${t.desc}</td><td>${t.men} men × ${t.hrs} hrs</td><td></td><td></td><td>${fmt(cost)}</td></tr>`;
+      });
+      state.resMisc.forEach(m => {
+        rows += `<tr><td>${m.desc}</td><td>1</td><td>ea</td><td>${fmt(m.cost)}</td><td>${fmt(m.cost)}</td></tr>`;
+      });
+      propBody.innerHTML = rows;
+    }
+
+  } else if(state.mode === 'Commercial HVAC') {
+    const equip = state.hvacEquipment.reduce((s,e)=>s+(e.cost||0),0);
+    const labor = state.hvacLaborTotal||0;
+    total = equip + labor;
+    if(summaryEl) summaryEl.innerHTML = `
+      <div class="flex-between mb8"><span class="fs13 text-dim">Equipment</span><span class="mono fw700 text-green">${fmt(equip)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow">${fmt(labor)}</span></div>`;
+    const propBody = document.getElementById('proposalBody');
+    if(propBody) {
+      let rows = '';
+      state.hvacEquipment.forEach(e => {
+        rows += `<tr><td>${e.type}${e.tag?' — '+e.tag:''}${e.tons?' '+e.tons:''}${e.brand?' — '+e.brand:''}${e.model?' '+e.model:''}</td><td>1</td><td>ea</td><td>${fmt(e.cost)}</td><td>${fmt(e.cost)}</td></tr>`;
+      });
+      state.hvacLabor.forEach(t => {
+        const crewRate = getCrewHourlyRate();
+        const cost = t.men * t.hrs * (crewRate/Math.max(state.crew.length,1));
+        rows += `<tr><td>${t.desc}</td><td>${t.men} men × ${t.hrs} hrs</td><td></td><td></td><td>${fmt(cost)}</td></tr>`;
+      });
+      propBody.innerHTML = rows;
+    }
+
+  } else {
+    // Commercial Refrigeration
+    const mat=state.materialsTotal||0;
+    const laborOnly=state.laborTotal-(state.ootTotal||0);
+    const oot=state.ootTotal||0;
+    const scopeT=(state.fieldWorkTotal||0)+(state.rackWorkTotal||0);
+    const rackPartsTotal=(state.rackParts||[]).filter(p=>!p.storeSupplied).reduce((s,p)=>s+(p.total||0),0);
+    const refrigTotal=state.lineItems.filter(i=>i.desc.toLowerCase().includes('refrigerant')).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+    total=mat+state.laborTotal+scopeT+rackPartsTotal;
+    if(summaryEl) summaryEl.innerHTML = `
+      <div class="flex-between mb8"><span class="fs13 text-dim">Materials</span><span class="mono fw700">${fmt(mat)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Refrigerant</span><span class="mono fw700 text-cyan">${fmt(refrigTotal)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Field Labor</span><span class="mono fw700 text-yellow">${fmt(laborOnly)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Field Work</span><span class="mono fw700 text-yellow">${fmt(state.fieldWorkTotal||0)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Rack Work</span><span class="mono fw700 text-yellow">${fmt(state.rackWorkTotal||0)}</span></div>
+      <div class="flex-between mb8"><span class="fs13 text-dim">Out of Town</span><span class="mono fw700">${fmt(oot)}</span></div>`;
+    set('propMat',fmt(mat)); set('propLabor',fmt(laborOnly)); set('propOOT',fmt(oot)); set('propTotal',fmt(total));
+  }
+
+  set('propTotalLine', fmt(total));
 
   // Circuits on proposal
   const propCircuits=document.getElementById('propCircuitsList');
