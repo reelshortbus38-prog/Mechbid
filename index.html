@@ -628,11 +628,11 @@ select.inp{cursor:pointer;}
       <!-- URI Search Bar -->
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(232,93,20,0.06);">
         <span style="font-size:13px;font-weight:700;color:#e85d14;flex-shrink:0;">🔍 URI</span>
-        <input id="uriSearchInput" class="inp" placeholder="Search URI.com by part # or description..."
+        <input id="uriSearchInput" class="inp" placeholder="Search URI.com — enter part # or description..."
           style="flex:1;font-size:12px;padding:7px 12px;"
           onkeydown="if(event.key==='Enter')searchURI(this.value)">
         <button class="btn btn-sm" onclick="searchURI(document.getElementById('uriSearchInput').value)"
-          style="background:#e85d14;color:#fff;flex-shrink:0;">Search URI</button>
+          style="background:#e85d14;color:#fff;flex-shrink:0;">Search</button>
       </div>
       <div id="rackPartsList"></div>
       <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
@@ -2245,7 +2245,8 @@ function renderRackParts() {
 // Export rack parts as CSV for supply house
 function searchURI(query) {
   if(!query || !query.trim()) return;
-  const url = 'https://www.uri.com/search?q=' + encodeURIComponent(query.trim());
+  // URI's own search requires JS rendering — use Google site search instead
+  const url = 'https://www.google.com/search?q=site:uri.com+' + encodeURIComponent(query.trim());
   window.open(url, '_blank');
 }
 
