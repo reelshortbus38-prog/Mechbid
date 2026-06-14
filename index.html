@@ -568,10 +568,10 @@ select.inp{cursor:pointer;}
 
 <!-- PROPOSAL TAB -->
 <div id="tab-proposal" class="hidden">
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Materials</div><div class="stat-value text-green" id="propMat">$0</div></div>
-    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="propLabor">$0</div></div>
-    <div class="stat"><div class="stat-label">Out of Town</div><div class="stat-value" style="color:var(--cyan)" id="propOOT">$0</div></div>
+  <div class="stats" id="propStatsRow">
+    <div class="stat"><div class="stat-label" id="propStat1Label">Materials</div><div class="stat-value text-green" id="propMat">$0</div></div>
+    <div class="stat"><div class="stat-label" id="propStat2Label">Labor</div><div class="stat-value text-yellow" id="propLabor">$0</div></div>
+    <div class="stat"><div class="stat-label" id="propStat3Label">Out of Town</div><div class="stat-value" style="color:var(--cyan)" id="propOOT">$0</div></div>
     <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="propTotal">$0</div></div>
   </div>
 
@@ -1712,6 +1712,11 @@ function updateProposal() {
     const equip = state.hvacEquipment.reduce((s,e)=>s+(e.cost||0),0);
     const labor = state.hvacLaborTotal||0;
     total = equip + labor;
+    // Update top stats for HVAC
+    const hs1=document.getElementById('propStat1Label'); if(hs1) hs1.textContent='Equipment';
+    const hs2=document.getElementById('propStat2Label'); if(hs2) hs2.textContent='Labor';
+    const hs3=document.getElementById('propStat3Label'); if(hs3) hs3.textContent='';
+    set('propMat',fmt(equip)); set('propLabor',fmt(labor)); set('propOOT','');
     if(summaryEl) summaryEl.innerHTML = `
       <div class="flex-between mb8"><span class="fs13 text-dim">Equipment</span><span class="mono fw700 text-green">${fmt(equip)}</span></div>
       <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow">${fmt(labor)}</span></div>`;
@@ -1738,6 +1743,10 @@ function updateProposal() {
     const rackPartsTotal=(state.rackParts||[]).filter(p=>!p.storeSupplied).reduce((s,p)=>s+(p.total||0),0);
     const refrigTotal=state.lineItems.filter(i=>i.desc.toLowerCase().includes('refrigerant')).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
     total=mat+state.laborTotal+scopeT+rackPartsTotal;
+    // Restore stat labels for Commercial Refrigeration
+    const cs1=document.getElementById('propStat1Label'); if(cs1) cs1.textContent='Materials';
+    const cs2=document.getElementById('propStat2Label'); if(cs2) cs2.textContent='Labor';
+    const cs3=document.getElementById('propStat3Label'); if(cs3) cs3.textContent='Out of Town';
     if(summaryEl) summaryEl.innerHTML = `
       <div class="flex-between mb8"><span class="fs13 text-dim">Materials</span><span class="mono fw700">${fmt(mat)}</span></div>
       <div class="flex-between mb8"><span class="fs13 text-dim">Refrigerant</span><span class="mono fw700 text-cyan">${fmt(refrigTotal)}</span></div>
@@ -1749,13 +1758,21 @@ function updateProposal() {
   }
 
   set('propTotalLine', fmt(total));
+  set('propTotal', fmt(total));
+  // Show/hide commercial-only export buttons
+  const commExports = document.getElementById('commRefrigExports');
+  if(commExports) commExports.style.display = state.mode==='Commercial Refrigeration' ? '' : 'none';
 
-  // Circuits on proposal
+  // Circuits on proposal — only for Commercial Refrigeration
   const propCircuits=document.getElementById('propCircuitsList');
   const propCircSection=document.getElementById('propCircuitsSection');
-  if(state.circuits.length>0&&propCircSection&&propCircuits){
-    propCircSection.classList.remove('hidden');
-    propCircuits.innerHTML=state.circuits.map(c=>`${c.id}: ${c.isRiserOnly?'Riser only — '+c.sucRiser:c.runLength+'ft — Suc: '+c.sucHoriz+' / Liq: '+c.liqHoriz} — ${c.application||''}`).join('<br>');
+  if(propCircSection) {
+    if(state.mode==='Commercial Refrigeration' && state.circuits.length>0 && propCircuits){
+      propCircSection.classList.remove('hidden');
+      propCircuits.innerHTML=state.circuits.map(c=>`${c.id}: ${c.isRiserOnly?'Riser only — '+c.sucRiser:c.runLength+'ft — Suc: '+c.sucHoriz+' / Liq: '+c.liqHoriz} — ${c.application||''}`).join('<br>');
+    } else {
+      propCircSection.classList.add('hidden');
+    }
   }
 
   // Crew on proposal
