@@ -628,11 +628,11 @@ select.inp{cursor:pointer;}
       <!-- URI Search Bar -->
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(232,93,20,0.06);">
         <span style="font-size:13px;font-weight:700;color:#e85d14;flex-shrink:0;">🔍 URI</span>
-        <input id="uriSearchInput" class="inp" placeholder="Search URI.com — enter part # or description..."
+        <input id="uriSearchInput" class="inp" placeholder="Enter part # or description — copies to clipboard & opens URI..."
           style="flex:1;font-size:12px;padding:7px 12px;"
           onkeydown="if(event.key==='Enter')searchURI(this.value)">
         <button class="btn btn-sm" onclick="searchURI(document.getElementById('uriSearchInput').value)"
-          style="background:#e85d14;color:#fff;flex-shrink:0;">Search</button>
+          style="background:#e85d14;color:#fff;flex-shrink:0;">Open URI</button>
       </div>
       <div id="rackPartsList"></div>
       <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
@@ -2245,8 +2245,11 @@ function renderRackParts() {
 // Export rack parts as CSV for supply house
 function searchURI(query) {
   if(!query || !query.trim()) return;
-  // URI's own search requires JS rendering — use Google site search instead
-  const url = 'https://www.google.com/search?q=site:uri.com+' + encodeURIComponent(query.trim());
+  // Open URI's search page — their catalog requires login so we send to their search directly
+  // The user can paste the part # into URI's search box once it opens
+  const q = encodeURIComponent(query.trim());
+  // Try their INTERSHOP search URL format
+  const url = `https://www.uri.com/INTERSHOP/web/BOS/URI-URIUS-Site/en_US/-/USD/Search-SimpleSearch?SearchTerm=${q}&submit=Search`;
   window.open(url, '_blank');
 }
 
