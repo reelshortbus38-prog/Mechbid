@@ -625,6 +625,15 @@ select.inp{cursor:pointer;}
       </div>
     </div>
     <div class="card-tight mb12">
+      <!-- URI Search Bar -->
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(232,93,20,0.06);">
+        <span style="font-size:13px;font-weight:700;color:#e85d14;flex-shrink:0;">🔍 URI</span>
+        <input id="uriSearchInput" class="inp" placeholder="Search URI.com by part # or description..."
+          style="flex:1;font-size:12px;padding:7px 12px;"
+          onkeydown="if(event.key==='Enter')searchURI(this.value)">
+        <button class="btn btn-sm" onclick="searchURI(document.getElementById('uriSearchInput').value)"
+          style="background:#e85d14;color:#fff;flex-shrink:0;">Search URI</button>
+      </div>
       <div id="rackPartsList"></div>
       <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
         <span class="fs12 text-dim">Contractor-Supplied Parts Total</span>
@@ -2192,11 +2201,14 @@ function renderRackParts() {
         <th style="width:12%">Part #</th>
         <th style="width:30%">Description</th>
         <th style="width:8%">Qty</th>
-        <th style="width:8%">Unit</th>
-        <th style="width:14%">Supplied By</th>
-        <th style="width:10%">Unit Cost</th>
-        <th style="width:10%">Total</th>
-        <th style="width:8%"></th>
+        <th style="width:12%">Part #</th>
+        <th style="width:28%">Description</th>
+        <th style="width:7%">Qty</th>
+        <th style="width:7%">Unit</th>
+        <th style="width:13%">Supplied By</th>
+        <th style="width:9%">Unit Cost</th>
+        <th style="width:9%">Total</th>
+        <th style="width:15%"></th>
       </tr></thead>
       <tbody>${state.rackParts.map(p=>`
         <tr style="${p.storeSupplied?'opacity:0.6':''}">
@@ -2220,13 +2232,23 @@ function renderRackParts() {
           <td class="mono fw700 ${p.storeSupplied?'text-muted':'text-green'}">
             ${p.storeSupplied?'Store':'$'+Math.round(p.total||0).toLocaleString()}
           </td>
-          <td><button class="btn btn-red btn-xs" onclick="removeRackPart('${p.id}')">×</button></td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-xs" onclick="searchURI('${p.partId||p.desc}')"
+              style="background:#e85d14;color:#fff;margin-right:4px;" title="Search on URI.com">URI</button>
+            <button class="btn btn-red btn-xs" onclick="removeRackPart('${p.id}')">×</button>
+          </td>
         </tr>`).join('')}
       </tbody>
     </table>`;
 }
 
 // Export rack parts as CSV for supply house
+function searchURI(query) {
+  if(!query || !query.trim()) return;
+  const url = 'https://www.uri.com/search?q=' + encodeURIComponent(query.trim());
+  window.open(url, '_blank');
+}
+
 function exportRackPartsCSV() {
   const contractor = state.rackParts.filter(p=>!p.storeSupplied);
   if(contractor.length === 0) { alert('No contractor-supplied parts to export.'); return; }
