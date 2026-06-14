@@ -647,7 +647,7 @@ select.inp{cursor:pointer;}
     </div>
 
     <table class="tbl" id="proposalTable">
-      <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Total</th></tr></thead>
+      <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th></th><th>Total</th></tr></thead>
       <tbody id="proposalBody"></tbody>
     </table>
 
@@ -822,16 +822,48 @@ function renderMarkupSummary() {
     const markupBase = equip + parts + lineset;
     const markupAmt  = markupBase * (markupPct/100);
     const total = markupBase + markupAmt + labor;
-
-    const set = (id,v) => {const el=document.getElementById(id);if(el)el.textContent=v;};
-    set('markupBaseCost', fmt(markupBase));
-    set('markupPctLabel', `Markup (${markupPct}%)`);
-    set('markupAmount',   fmt(markupAmt));
-    set('markupMatsTotal',fmt(markupBase + markupAmt));
-    set('markupLaborLine',fmt(labor));
-    set('markupScopeLine','$0');
-    set('markupTotalBid', fmt(total));
     state.resTotalBidMarkedUp = total;
+
+    // Update top stat labels and values for residential
+    const s1=document.getElementById('propStat1Label'); if(s1) s1.textContent='Equipment';
+    const s2=document.getElementById('propStat2Label'); if(s2) s2.textContent='Lineset';
+    const s3=document.getElementById('propStat3Label'); if(s3) s3.textContent='Labor';
+    set('propMat',   fmt(equip));
+    set('propLabor', fmt(labor));
+    set('propOOT',   fmt(lineset));
+    set('propTotal', fmt(total));
+
+    // Summary lines
+    if(summaryEl) summaryEl.innerHTML =
+      `<div class="flex-between mb8"><span class="fs13 text-dim">Equipment</span><span class="mono fw700 text-green">${fmt(equip)}</span></div>
+       <div class="flex-between mb8"><span class="fs13 text-dim">Lineset</span><span class="mono fw700 text-green">${fmt(lineset)}</span></div>
+       <div class="flex-between mb8"><span class="fs13 text-dim">Parts</span><span class="mono fw700 text-green">${fmt(parts)}</span></div>
+       ${markupPct>0?`<div class="flex-between mb8"><span class="fs13 text-dim">Markup (${markupPct}%)</span><span class="mono fw700 text-green">${fmt(markupAmt)}</span></div>`:''}
+       <div class="flex-between mb8"><span class="fs13 text-dim">Labor</span><span class="mono fw700 text-yellow">${fmt(labor)}</span></div>`;
+
+    // Proposal line items — no unit costs shown
+    const propBody = document.getElementById('proposalBody');
+    if(propBody) {
+      let rows = '';
+      state.resEquipment.forEach(e => {
+        const desc = [e.type, e.tons, e.brand, e.model].filter(Boolean).join(' — ');
+        rows += `<tr><td>${desc}</td><td>1</td><td>ea</td><td></td><td>${fmt(e.cost)}</td></tr>`;
+      });
+      state.resParts.forEach(p => {
+        rows += `<tr><td>${p.desc}</td><td>${p.qty}</td><td>ea</td><td></td><td>${fmt(p.total)}</td></tr>`;
+      });
+      const lineLen = parseFloat(document.getElementById('resLineLength')?.value)||0;
+      const sucSize = document.getElementById('resSucSize')?.value||'';
+      const liqSize = document.getElementById('resLiqSize')?.value||'';
+      if(lineLen>0) rows += `<tr><td>Lineset — ${sucSize} suction / ${liqSize} liquid${state.resLinesetType==='preinsulated'?' (pre-insulated)':' (roll copper)'}</td><td>${lineLen}</td><td>ft</td><td></td><td>${fmt(lineset)}</td></tr>`;
+      if(markupPct>0) rows += `<tr><td>Materials &amp; Equipment Markup (${markupPct}%)</td><td></td><td></td><td></td><td>${fmt(markupAmt)}</td></tr>`;
+      state.resLabor.forEach(t => {
+        const crewRate = getCrewHourlyRate();
+        const cost = t.men * t.hrs * (crewRate/Math.max(state.crew.length,1));
+        if(t.desc) rows += `<tr><td>${t.desc}</td><td>${t.men} men × ${t.hrs} hrs</td><td></td><td></td><td>${fmt(cost)}</td></tr>`;
+      });
+      propBody.innerHTML = rows;
+    }
 
   } else {
     const matsBase   = state.materialsTotal||0;
@@ -1771,24 +1803,30 @@ function updateProposal() {
     const propBody = document.getElementById('proposalBody');
     if(propBody) {
       let rows = '';
+      // Equipment
       state.resEquipment.forEach(e => {
-        rows += `<tr><td>${e.type}${e.tons?' — '+e.tons:''}${e.brand?' — '+e.brand:''}${e.model?' '+e.model:''}</td><td>1</td><td>ea</td><td>${fmt(e.cost)}</td><td>${fmt(e.cost)}</td></tr>`;
+        const desc = [e.type, e.tons, e.brand, e.model].filter(Boolean).join(' — ');
+        rows += `<tr><td>${desc}</td><td>1</td><td>ea</td><td></td><td>${fmt(e.cost)}</td></tr>`;
       });
-      // Parts rows
+      // Parts
       state.resParts.forEach(p => {
-        rows += `<tr><td>${p.desc}</td><td>${p.qty}</td><td>ea</td><td>${fmt(p.unitCost)}</td><td>${fmt(p.total)}</td></tr>`;
+        rows += `<tr><td>${p.desc}</td><td>${p.qty}</td><td>ea</td><td></td><td>${fmt(p.total)}</td></tr>`;
       });
+      // Lineset
       const lineLen = parseFloat(document.getElementById('resLineLength')?.value)||0;
       const sucSize = document.getElementById('resSucSize')?.value||'';
       const liqSize = document.getElementById('resLiqSize')?.value||'';
-      if(lineLen>0) rows += `<tr><td>Lineset — ${sucSize} suction / ${liqSize} liquid</td><td>${lineLen}</td><td>ft</td><td>—</td><td>${fmt(lineset)}</td></tr>`;
+      const linesetAmt = state.resLinesetTotal||0;
+      if(lineLen>0) rows += `<tr><td>Lineset — ${sucSize} suction / ${liqSize} liquid${state.resLinesetType==='preinsulated'?' (pre-insulated)':' (roll copper)'}</td><td>${lineLen}</td><td>ft</td><td></td><td>${fmt(linesetAmt)}</td></tr>`;
+      // Markup line (hidden from customer on PDF — shown here for reference)
+      const mkPct = parseFloat(document.getElementById('markupPct')?.value)||0;
+      const mkBase = equip + linesetAmt + (state.resPartsTotalVal||0);
+      if(mkPct > 0) rows += `<tr style="color:var(--text-muted)"><td>Materials & Equipment Markup (${mkPct}%)</td><td></td><td></td><td></td><td>${fmt(mkBase * mkPct/100)}</td></tr>`;
+      // Labor
       state.resLabor.forEach(t => {
         const crewRate = getCrewHourlyRate();
         const cost = t.men * t.hrs * (crewRate/Math.max(state.crew.length,1));
-        rows += `<tr><td>${t.desc}</td><td>${t.men} men × ${t.hrs} hrs</td><td></td><td></td><td>${fmt(cost)}</td></tr>`;
-      });
-      state.resMisc.forEach(m => {
-        rows += `<tr><td>${m.desc}</td><td>1</td><td>ea</td><td>${fmt(m.cost)}</td><td>${fmt(m.cost)}</td></tr>`;
+        if(cost > 0 || t.desc) rows += `<tr><td>${t.desc}</td><td>${t.men} men × ${t.hrs} hrs</td><td></td><td></td><td>${fmt(cost)}</td></tr>`;
       });
       propBody.innerHTML = rows;
     }
