@@ -1954,16 +1954,13 @@ function setMode(btn, mode) {
   btn.classList.add('active');
 
   // Save current mode rates before switching
-  saveModeRates();
+  try { saveModeRates(); } catch(e) { console.warn('saveModeRates error:', e); }
 
   state.mode = mode;
   const propScope = document.getElementById('propScope');
   if(propScope) propScope.textContent = 'Scope: ' + mode;
 
-  // Load rates for new mode
-  loadModeRates();
-
-  // Switch tab bar based on mode
+  // Switch tab bar FIRST so tabs exist before loadModeRates renders into them
   const tabBar = document.querySelector('.tabs');
   if(mode === 'Residential HVAC') {
     tabBar.innerHTML = `
@@ -1992,6 +1989,10 @@ function setMode(btn, mode) {
       <button class="tab-btn" onclick="showTab('proposal',this)">📄 Bid Proposal</button>`;
     showTab('docs', tabBar.querySelector('.tab-btn'));
   }
+
+  // Load rates for new mode AFTER tabs are set
+  try { loadModeRates(); } catch(e) { console.warn('loadModeRates error:', e); }
+
   renderFilesList(); // refresh file list for new mode
   triggerAutoSave();
 }
