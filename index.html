@@ -663,6 +663,211 @@ select.inp{cursor:pointer;}
 </div>
 
 
+
+<!-- RESIDENTIAL HVAC TAB -->
+<div id="tab-residential" class="hidden">
+
+  <!-- Quick Crew Builder -->
+  <div class="card mb16">
+    <div class="flex-between mb12">
+      <div class="slabel" style="margin-bottom:0">Crew</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-green btn-xs" onclick="addCrewMember('Technician',150,8)">+ Tech</button>
+        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('Helper',100,8)">+ Helper</button>
+        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('',0,8)">+ Custom</button>
+      </div>
+    </div>
+    <div id="resCrewBody" style="margin-bottom:10px;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);">
+      <span class="fs12 text-dim">Crew Rate</span>
+      <span class="crew-rate-badge" id="resCrewRateBadge" style="font-size:16px;padding:6px 14px;">$0/hr</span>
+    </div>
+  </div>
+
+  <!-- Equipment -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Equipment</div>
+      <div class="fs12 text-dim">Systems, units, coils, furnaces</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addResEquipment()">+ Add Equipment</button>
+  </div>
+  <div class="card-tight mb16">
+    <div id="resEquipmentList">
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No equipment added yet</div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Equipment Total</span>
+      <span class="mono fw700 text-green" id="resEquipTotal">$0</span>
+    </div>
+  </div>
+
+  <!-- Lineset -->
+  <div class="slabel mb12">Lineset</div>
+  <div class="card mb16">
+    <!-- Pre-insulated vs Roll copper toggle -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button id="linesetTogglePreins" onclick="setLinesetType('preinsulated')"
+        class="btn btn-green btn-sm" style="flex:1;">✅ Pre-Insulated</button>
+      <button id="linesetToggleRoll" onclick="setLinesetType('roll')"
+        class="btn btn-ghost btn-sm" style="flex:1;">🔧 Roll Copper</button>
+    </div>
+    <div id="linesetTypeNote" class="fs11 text-dim mb12"
+      style="padding:8px 10px;background:rgba(34,197,94,0.06);border-radius:6px;border:1px solid var(--border);">
+      Pre-insulated lineset — priced as complete assembly from supply house. No separate insulation needed.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <div class="fs11 text-muted mb8">Suction Size</div>
+        <select id="resSucSize" class="inp" onchange="calcResLineset()">
+          <option value="">Select</option>
+          <option>3/8"</option><option>1/2"</option><option>5/8"</option>
+          <option>7/8"</option><option>1-1/8"</option><option>1-3/8"</option>
+        </select>
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Liquid Size</div>
+        <select id="resLiqSize" class="inp" onchange="calcResLineset()">
+          <option value="">Select</option>
+          <option>1/4"</option><option>3/8"</option><option>1/2"</option><option>5/8"</option>
+        </select>
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Length (ft)</div>
+        <input type="number" id="resLineLength" class="inp" placeholder="0" oninput="calcResLineset()">
+      </div>
+      <div>
+        <div class="fs11 text-muted mb8">Lineset Total</div>
+        <div class="mono fw700 text-green" id="resLinesetTotal" style="font-size:20px;padding-top:6px;">$0</div>
+      </div>
+    </div>
+    <div id="rollCopperInsulNote" class="hidden mt12" style="padding:8px 10px;background:rgba(234,179,8,0.08);border-radius:6px;border:1px solid rgba(234,179,8,0.3);font-size:11px;color:var(--yellow);">
+      ⚠️ Roll copper — add insulation to Parts list and flag for supply house order
+    </div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">
+      ⚙️ Copper pricing from Rates & Labor tab
+    </div>
+  </div>
+
+  <!-- Parts -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Parts</div>
+      <div class="fs12 text-dim">Capacitors, contactors, filters, refrigerant, disconnect, etc.</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addResPart()">+ Add Part</button>
+  </div>
+  <div class="card-tight mb16">
+    <!-- Supplier Search Bar -->
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(59,130,246,0.06);">
+      <span style="font-size:12px;font-weight:700;color:var(--blue);flex-shrink:0;">🔍</span>
+      <input id="resPartSearchInput" class="inp" placeholder="Search supplier — enter part # or description..."
+        style="flex:1;font-size:12px;padding:6px 10px;"
+        onkeydown="if(event.key==='Enter')searchSupplier(this.value)">
+      <button class="btn btn-sm" onclick="searchSupplier(document.getElementById('resPartSearchInput').value)"
+        style="background:var(--blue);color:#fff;flex-shrink:0;font-size:11px;" id="supplierSearchBtn">
+        Search
+      </button>
+    </div>
+    <div id="resPartsList">
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No parts added</div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Parts Total</span>
+      <span class="mono fw700 text-green" id="resPartsTotal">$0</span>
+    </div>
+  </div>
+
+  <!-- Labor -->
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Labor</div>
+      <div class="fs12 text-dim">Men and hours per task</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="addResDefaultTasks()">⚡ Standard Tasks</button>
+      <button class="btn btn-green btn-sm" onclick="addResLabor()">+ Add Task</button>
+    </div>
+  </div>
+  <div class="card-tight mb16">
+    <table class="tbl">
+      <thead><tr><th style="width:45%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th></th></tr></thead>
+      <tbody id="resLaborBody">
+        <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">
+          Tap ⚡ Standard Tasks or + Add Task
+        </td></tr>
+      </tbody>
+    </table>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Labor Total</span>
+      <span class="mono fw700 text-yellow" id="resLaborTotal">$0</span>
+    </div>
+  </div>
+
+  <!-- Totals -->
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Equipment</div><div class="stat-value text-green" id="resTotalEquip">$0</div></div>
+    <div class="stat"><div class="stat-label">Lineset</div><div class="stat-value text-green" id="resTotalLineset">$0</div></div>
+    <div class="stat"><div class="stat-label">Parts</div><div class="stat-value text-green" id="resTotalParts">$0</div></div>
+    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="resTotalLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="resTotalBid">$0</div></div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Export Proposal</button>
+  </div>
+</div>
+
+<!-- COMMERCIAL HVAC TAB -->
+<div id="tab-hvac" class="hidden">
+  <div class="flex-between mb12">
+    <div>
+      <div class="slabel" style="margin-bottom:2px">Equipment Schedule</div>
+      <div class="fs12 text-dim">RTUs, AHUs, VAVs, split systems</div>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addHvacEquipment()">+ Add Equipment</button>
+  </div>
+  <div class="card-tight mb16">
+    <div id="hvacEquipmentList">
+      <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">
+        No equipment added — upload an equipment schedule or add manually
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Equipment Total</span>
+      <span class="mono fw700 text-green" id="hvacEquipTotal">$0</span>
+    </div>
+  </div>
+
+  <div class="flex-between mb12">
+    <div class="slabel" style="margin-bottom:0">Labor & Scope</div>
+    <button class="btn btn-ghost btn-sm" onclick="addHvacTask()">+ Add Task</button>
+  </div>
+  <div class="card-tight mb16">
+    <table class="tbl">
+      <thead><tr><th style="width:45%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th></th></tr></thead>
+      <tbody id="hvacLaborBody">
+        <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">No tasks added</td></tr>
+      </tbody>
+    </table>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+      <span class="fs12 text-dim">Labor Total</span>
+      <span class="mono fw700 text-yellow" id="hvacLaborTotal">$0</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Equipment</div><div class="stat-value text-green" id="hvacTotalEquip">$0</div></div>
+    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="hvacTotalLabor">$0</div></div>
+    <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="hvacTotalBid">$0</div></div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Export Proposal</button>
+  </div>
+</div>
+
+
 </div><!-- end content -->
 <button class="mechbot-btn" onclick="toggleMechBot()" id="mechbotBtn" title="MechBot AI Assistant">🤖</button>
 
@@ -3473,209 +3678,6 @@ if(_recent) {
 }
 </script>
 
-
-<!-- RESIDENTIAL HVAC TAB -->
-<div id="tab-residential" class="hidden">
-
-  <!-- Quick Crew Builder -->
-  <div class="card mb16">
-    <div class="flex-between mb12">
-      <div class="slabel" style="margin-bottom:0">Crew</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn btn-green btn-xs" onclick="addCrewMember('Technician',150,8)">+ Tech</button>
-        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('Helper',100,8)">+ Helper</button>
-        <button class="btn btn-ghost btn-xs" onclick="addCrewMember('',0,8)">+ Custom</button>
-      </div>
-    </div>
-    <div id="resCrewBody" style="margin-bottom:10px;"></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);">
-      <span class="fs12 text-dim">Crew Rate</span>
-      <span class="crew-rate-badge" id="resCrewRateBadge" style="font-size:16px;padding:6px 14px;">$0/hr</span>
-    </div>
-  </div>
-
-  <!-- Equipment -->
-  <div class="flex-between mb12">
-    <div>
-      <div class="slabel" style="margin-bottom:2px">Equipment</div>
-      <div class="fs12 text-dim">Systems, units, coils, furnaces</div>
-    </div>
-    <button class="btn btn-green btn-sm" onclick="addResEquipment()">+ Add Equipment</button>
-  </div>
-  <div class="card-tight mb16">
-    <div id="resEquipmentList">
-      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No equipment added yet</div>
-    </div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Equipment Total</span>
-      <span class="mono fw700 text-green" id="resEquipTotal">$0</span>
-    </div>
-  </div>
-
-  <!-- Lineset -->
-  <div class="slabel mb12">Lineset</div>
-  <div class="card mb16">
-    <!-- Pre-insulated vs Roll copper toggle -->
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button id="linesetTogglePreins" onclick="setLinesetType('preinsulated')"
-        class="btn btn-green btn-sm" style="flex:1;">✅ Pre-Insulated</button>
-      <button id="linesetToggleRoll" onclick="setLinesetType('roll')"
-        class="btn btn-ghost btn-sm" style="flex:1;">🔧 Roll Copper</button>
-    </div>
-    <div id="linesetTypeNote" class="fs11 text-dim mb12"
-      style="padding:8px 10px;background:rgba(34,197,94,0.06);border-radius:6px;border:1px solid var(--border);">
-      Pre-insulated lineset — priced as complete assembly from supply house. No separate insulation needed.
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div>
-        <div class="fs11 text-muted mb8">Suction Size</div>
-        <select id="resSucSize" class="inp" onchange="calcResLineset()">
-          <option value="">Select</option>
-          <option>3/8"</option><option>1/2"</option><option>5/8"</option>
-          <option>7/8"</option><option>1-1/8"</option><option>1-3/8"</option>
-        </select>
-      </div>
-      <div>
-        <div class="fs11 text-muted mb8">Liquid Size</div>
-        <select id="resLiqSize" class="inp" onchange="calcResLineset()">
-          <option value="">Select</option>
-          <option>1/4"</option><option>3/8"</option><option>1/2"</option><option>5/8"</option>
-        </select>
-      </div>
-      <div>
-        <div class="fs11 text-muted mb8">Length (ft)</div>
-        <input type="number" id="resLineLength" class="inp" placeholder="0" oninput="calcResLineset()">
-      </div>
-      <div>
-        <div class="fs11 text-muted mb8">Lineset Total</div>
-        <div class="mono fw700 text-green" id="resLinesetTotal" style="font-size:20px;padding-top:6px;">$0</div>
-      </div>
-    </div>
-    <div id="rollCopperInsulNote" class="hidden mt12" style="padding:8px 10px;background:rgba(234,179,8,0.08);border-radius:6px;border:1px solid rgba(234,179,8,0.3);font-size:11px;color:var(--yellow);">
-      ⚠️ Roll copper — add insulation to Parts list and flag for supply house order
-    </div>
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">
-      ⚙️ Copper pricing from Rates & Labor tab
-    </div>
-  </div>
-
-  <!-- Parts -->
-  <div class="flex-between mb12">
-    <div>
-      <div class="slabel" style="margin-bottom:2px">Parts</div>
-      <div class="fs12 text-dim">Capacitors, contactors, filters, refrigerant, disconnect, etc.</div>
-    </div>
-    <button class="btn btn-green btn-sm" onclick="addResPart()">+ Add Part</button>
-  </div>
-  <div class="card-tight mb16">
-    <!-- Supplier Search Bar -->
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:rgba(59,130,246,0.06);">
-      <span style="font-size:12px;font-weight:700;color:var(--blue);flex-shrink:0;">🔍</span>
-      <input id="resPartSearchInput" class="inp" placeholder="Search supplier — enter part # or description..."
-        style="flex:1;font-size:12px;padding:6px 10px;"
-        onkeydown="if(event.key==='Enter')searchSupplier(this.value)">
-      <button class="btn btn-sm" onclick="searchSupplier(document.getElementById('resPartSearchInput').value)"
-        style="background:var(--blue);color:#fff;flex-shrink:0;font-size:11px;" id="supplierSearchBtn">
-        Search
-      </button>
-    </div>
-    <div id="resPartsList">
-      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">No parts added</div>
-    </div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Parts Total</span>
-      <span class="mono fw700 text-green" id="resPartsTotal">$0</span>
-    </div>
-  </div>
-
-  <!-- Labor -->
-  <div class="flex-between mb12">
-    <div>
-      <div class="slabel" style="margin-bottom:2px">Labor</div>
-      <div class="fs12 text-dim">Men and hours per task</div>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="addResDefaultTasks()">⚡ Standard Tasks</button>
-      <button class="btn btn-green btn-sm" onclick="addResLabor()">+ Add Task</button>
-    </div>
-  </div>
-  <div class="card-tight mb16">
-    <table class="tbl">
-      <thead><tr><th style="width:45%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th></th></tr></thead>
-      <tbody id="resLaborBody">
-        <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">
-          Tap ⚡ Standard Tasks or + Add Task
-        </td></tr>
-      </tbody>
-    </table>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Labor Total</span>
-      <span class="mono fw700 text-yellow" id="resLaborTotal">$0</span>
-    </div>
-  </div>
-
-  <!-- Totals -->
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Equipment</div><div class="stat-value text-green" id="resTotalEquip">$0</div></div>
-    <div class="stat"><div class="stat-label">Lineset</div><div class="stat-value text-green" id="resTotalLineset">$0</div></div>
-    <div class="stat"><div class="stat-label">Parts</div><div class="stat-value text-green" id="resTotalParts">$0</div></div>
-    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="resTotalLabor">$0</div></div>
-    <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="resTotalBid">$0</div></div>
-  </div>
-
-  <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Export Proposal</button>
-  </div>
-</div>
-
-<!-- COMMERCIAL HVAC TAB -->
-<div id="tab-hvac" class="hidden">
-  <div class="flex-between mb12">
-    <div>
-      <div class="slabel" style="margin-bottom:2px">Equipment Schedule</div>
-      <div class="fs12 text-dim">RTUs, AHUs, VAVs, split systems</div>
-    </div>
-    <button class="btn btn-green btn-sm" onclick="addHvacEquipment()">+ Add Equipment</button>
-  </div>
-  <div class="card-tight mb16">
-    <div id="hvacEquipmentList">
-      <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px;">
-        No equipment added — upload an equipment schedule or add manually
-      </div>
-    </div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Equipment Total</span>
-      <span class="mono fw700 text-green" id="hvacEquipTotal">$0</span>
-    </div>
-  </div>
-
-  <div class="flex-between mb12">
-    <div class="slabel" style="margin-bottom:0">Labor & Scope</div>
-    <button class="btn btn-ghost btn-sm" onclick="addHvacTask()">+ Add Task</button>
-  </div>
-  <div class="card-tight mb16">
-    <table class="tbl">
-      <thead><tr><th style="width:45%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th></th></tr></thead>
-      <tbody id="hvacLaborBody">
-        <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">No tasks added</td></tr>
-      </tbody>
-    </table>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
-      <span class="fs12 text-dim">Labor Total</span>
-      <span class="mono fw700 text-yellow" id="hvacLaborTotal">$0</span>
-    </div>
-  </div>
-
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Equipment</div><div class="stat-value text-green" id="hvacTotalEquip">$0</div></div>
-    <div class="stat"><div class="stat-label">Labor</div><div class="stat-value text-yellow" id="hvacTotalLabor">$0</div></div>
-    <div class="stat"><div class="stat-label">Total Bid</div><div class="stat-value" style="color:var(--orange)" id="hvacTotalBid">$0</div></div>
-  </div>
-
-  <div style="margin-top:16px;">
-    <button class="btn btn-blue btn-sm" onclick="exportProposalPDF()">🖨️ Export Proposal</button>
-  </div>
-</div>
 
 <!-- FITTING PICKER MODAL -->
 <div id="fittingModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeFittingModal()">
