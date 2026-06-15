@@ -1622,12 +1622,17 @@ If this is a BLUEPRINT, FLOOR PLAN, or REDLINE DRAWING:
 - Circuit IDs: A1-A9, B1-B9, C1-C9, N1-N99, D1-D99
 - Line sizes: 1/4", 3/8", 1/2", 5/8", 7/8", 1-1/8", 1-3/8", 1-5/8"
 - Read title block: store name, store number, address, drawing number, date
+- IMPORTANT: Use the EXACT text from each callout box, with the actual circuit IDs, case numbers, and locations
+- DO NOT use placeholder text like "circuit", "location", "size" - always use real values from the drawing
+- If you cannot read a value clearly, describe what you can see
 
 If this is a BPR or EQUIPMENT SCHEDULE:
 - Extract ALL circuits with run lengths, suction sizes, liquid sizes
 
 Return ONLY valid JSON with no markdown:
-{"documentType":"blueprint|fixture_plan|bpr|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","address":"","drawingNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"isNew":true,"notes":""}],"fieldTasks":[{"desc":"","circuit":"","location":"","lineSize":"","notes":""}],"rackTasks":[{"desc":"","rack":"","notes":""}],"caseChanges":[{"circuitId":"","type":"new|relocated|removed","location":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":""}`;
+{"documentType":"blueprint|fixture_plan|bpr|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","address":"","drawingNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"isNew":true,"notes":""}],"fieldTasks":[{"desc":"ACTUAL callout text here - e.g. Drop new A3 in meat prep","circuit":"A3","location":"meat prep","lineSize":"","notes":""}],"rackTasks":[{"desc":"ACTUAL rack task text","rack":"","notes":""}],"caseChanges":[{"circuitId":"A3","type":"new","location":"meat prep","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":"BRIEF description of what this drawing shows"}
+
+CRITICAL: Replace ALL placeholder text with ACTUAL content read from the image. Never return "circuit", "location", "size" as literal values - always use the real values from the drawing.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
