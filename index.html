@@ -459,7 +459,7 @@ select.inp{cursor:pointer;}
   </div>
   <div class="card-tight mb20">
     <table class="tbl" id="fieldWorkTable">
-      <thead><tr><th style="width:40%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th style="width:45%">Task</th><th style="width:7%">Men</th><th style="width:7%">Hrs</th><th style="width:10%">Cost</th><th>Notes</th><th style="width:5%"></th></tr></thead>
       <tbody id="fieldWorkBody">
         <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
           Upload a scope doc or add circuits to auto-populate field tasks
@@ -482,7 +482,7 @@ select.inp{cursor:pointer;}
   </div>
   <div class="card-tight mb16">
     <table class="tbl" id="rackWorkTable">
-      <thead><tr><th style="width:40%">Task</th><th>Men</th><th>Hrs</th><th>Cost</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th style="width:45%">Task</th><th style="width:7%">Men</th><th style="width:7%">Hrs</th><th style="width:10%">Cost</th><th>Notes</th><th style="width:5%"></th></tr></thead>
       <tbody id="rackWorkBody">
         <tr id="rackWorkEmpty"><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
           Add rack tasks manually — EPR valves, oil floats, filter changes, controller programming, etc.
@@ -1695,6 +1695,7 @@ If this is a BLUEPRINT, FLOOR PLAN, or REDLINE DRAWING:
 - Read ALL text callouts, annotations, speech bubbles, and notes in the image
 - Orange/red/colored boxes or callouts indicate field changes — extract EACH ONE as a fieldTask or rackTask
 - Look for keywords: DROP, CONNECT, RELOCATE, ADD, REMOVE, NEW, EXISTING, EXTEND, DISCONNECT, FEED
+- Only extract tasks that are REFRIGERATION CONTRACTOR scope — exclude plumbing, electrical, GC, painting, drywall, HVAC ductwork
 - Extract circuit labels (A1, B3, C-5, N75 etc.), line sizes mentioned, distances
 - Read the title block for store name, store number, drawing date
 - Look for symbol legends and scope of work tables
@@ -1760,7 +1761,12 @@ async function processAIResult(resultText, sourceName, results, flags) {
       clean = clean.slice(firstBrace, lastBrace + 1);
     }
     const parsed = JSON.parse(clean);
-    if(parsed.storeName && !document.getElementById('projName').value) document.getElementById('projName').value = parsed.storeName+(parsed.storeNumber?' #'+parsed.storeNumber:'');
+    if(parsed.storeName && !document.getElementById('projName').value) {
+      // Clean up store name - remove artifacts
+      let sName = parsed.storeName.replace(/NON\s*/i,'').replace(/\s+/g,' ').trim();
+      if(!sName.match(/food lion|publix|kroger|harris|winn/i) && parsed.storeNumber) sName = 'Food Lion';
+      document.getElementById('projName').value = sName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
+    }
     if(parsed.gcName && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gcName;
     if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
     if(parsed.contractor && !document.getElementById('projCont').value) document.getElementById('projCont').value = parsed.contractor;
@@ -1785,9 +1791,15 @@ async function processAIResult(resultText, sourceName, results, flags) {
     }
     if(parsed.fieldTasks?.length) {
       const existingField = new Set(state.fieldTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
+      // Filter to RC-relevant tasks only
+      const rcKeywords = /refriger|circuit|line set|lineset|line size|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|inverted trap|reducing tee|seal|penetrat|rodent|EPR|evap|compres|rack|coil|valve|filter|oil|defrost|night.*case|relocat.*case|disconnect.*case|connect.*case/i;
+      const nonRCKeywords = /mop sink|water supply|floor drain|electrical wiring|GFI|receptacle|lighting|ductwork|duct hanger|plumb|HVAC unit|RTU|AHU|paint|drywall|tile|concrete|GC to|general contractor/i;
       parsed.fieldTasks.forEach(t => {
         if(!t.desc) return;
-        const key = t.desc.toLowerCase().slice(0,40);
+        const desc = t.desc.toLowerCase();
+        // Skip clearly non-RC tasks
+        if(nonRCKeywords.test(t.desc) && !rcKeywords.test(t.desc)) return;
+        const key = desc.slice(0,40);
         if(!existingField.has(key)) {
           state.fieldTasks.push({id:'ft_'+Date.now()+'_'+Math.random().toString(36).substr(2,4), desc:t.desc, men:1, hrs:0, notes:t.notes||'From scope — enter hrs'});
           existingField.add(key);
