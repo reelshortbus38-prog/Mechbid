@@ -1380,16 +1380,17 @@ function renderRackWorkNew() {
   // Rebuild headers with current crew roles
   const thead = document.querySelector('#rackWorkTableNew thead tr');
   if(thead) {
-    const crewThs = roles.map(r =>
-      `<th style="width:9%" title="${r.role} - $${r.rate}/hr">${r.role.substring(0,7)}</th>`
-    ).join('');
+    const crewThs = roles.length > 0
+      ? roles.map(r => `<th style="width:9%" title="${r.role} - $${r.rate}/hr">${r.role.substring(0,7)}</th>`).join('')
+      : '<th style="width:9%">Men</th>';
     thead.innerHTML = `<th style="width:28%">Task</th>${crewThs}<th style="width:8%">Hrs</th><th style="width:11%">Cost</th><th style="width:12%">Notes</th><th style="width:5%"></th>`;
   }
 
   if(!state.rackTasks || state.rackTasks.length === 0) {
-    const colSpan = 5 + roles.length;
+    const colSpan = 5 + Math.max(roles.length, 1);
     tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
-      Add rack tasks — EPR valves, oil floats, filter changes, controller programming, etc.
+      Add rack tasks — or upload a scope doc to auto-populate.<br>
+      <span style="font-size:11px;">${roles.length===0?'Add crew in Rates &amp; Labor to enable per-task crew selection.':''}</span>
     </td></tr>`;
     const el = document.getElementById('rackWorkTotalNew');
     if(el) el.textContent = '$0';
@@ -1402,13 +1403,19 @@ function renderRackWorkNew() {
       t.crewAssignment[roles[0].id] = 1;
     }
     const cost = calcTaskCost(t);
-    const crewCells = roles.map(r =>
-      `<td style="text-align:center;padding:6px 4px;">
-        <input type="number" value="${t.crewAssignment[r.id]||0}" min="0"
-          style="width:42px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
-          oninput="updateRackTaskCrew('${t.id}','${r.id}',this.value)">
-      </td>`
-    ).join('');
+    const crewCells = roles.length > 0
+      ? roles.map(r =>
+          `<td style="text-align:center;padding:6px 4px;">
+            <input type="number" value="${t.crewAssignment[r.id]||0}" min="0"
+              style="width:42px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+              oninput="updateRackTaskCrew('${t.id}','${r.id}',this.value)">
+          </td>`
+        ).join('')
+      : `<td style="text-align:center;padding:6px 4px;">
+          <input type="number" value="${t.men||1}" min="1"
+            style="width:42px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px;font-size:12px;color:var(--text);font-family:'DM Mono',monospace;outline:none;"
+            oninput="updateRackTask('${t.id}','men',this.value)">
+        </td>`;
     return `<tr>
       <td><input class="tbl-input" value="${t.desc||''}" placeholder="Task"
         onchange="updateRackTask('${t.id}','desc',this.value)" style="width:100%"></td>
@@ -1705,8 +1712,9 @@ async function processDocFile(fileObj, results, flags) {
     const prompt = `You are an expert commercial refrigeration contractor. Analyze this scope of work document and extract all RC-relevant information. Return ONLY valid JSON:
 {"documentType":"scope_of_work","storeName":"","storeNumber":"","gcName":"","address":"","startDate":"","circuits":[],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"week":"","text":"","costImpact":false,"isRackWork":false,"isFieldWork":false}],"nightWorkRequired":false,"nightWorkDetails":"","workSequence":[{"week":"","milestone":"","rcInvolved":true,"details":""}],"rackNotes":[{"rack":"","notes":[]}],"rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"flags":[],"summary":""}
 
-Extract rackTasks for: setpoint adjustments, EPR/valve changes, oil floats, filter elements, ultra-tubes, controller programming, rack part changes, hot gas removal.
-Extract fieldTasks for: new line runs, drip pans, sensor terminations, insulation repairs, sealing penetrations, line chases, top stubs, case trim installation, night case moves.
+Extract rackTasks for ALL rack work including: setpoint adjustments, EPR/valve/solenoid changes, oil floats/separators, filter elements (30/60/90 day), ultra-tube hose replacements, controller/EPR programming, rack part changes, hot gas defrost removal, split header tie-ins, oil separator check valves, suction filter installs, discharge header work, compressor work.
+Extract fieldTasks for ALL field work including: new/relocated line sets (specify which circuits), drip pan installation, sensor/shielded cable terminations, insulation repairs and replacement (specify rack and location), sealing penetrations/pans, line chase sealing, top stub cases, case drain installation, rodent proofing, day tech follow-up after each case move night, reinsulate line sets on case tops, reinsulate rack suction lines, saddle and strut installation, inverted trap installation, reducing tee connections.
+Also extract: nightWorkRequired (true/false), nightWorkDetails, startDate, rcSchedule (array of week/milestone pairs), filterChangeDates (30/60/90 day schedule), minimumCrew (e.g. "6 people for frozen food week"), dayTechRequired (true/false).
 
 Document:
 ${docText.slice(0,8000)}`;
@@ -3245,7 +3253,7 @@ function renderRackParts() {
         <th style="width:30%">Description</th>
         <th style="width:8%">Qty</th>
         <th style="width:7%">Unit</th>
-        <th style="width:13%">Supplied By</th>
+        <th style="width:16%">Supplied By</th>
         <th style="width:9%">Unit Cost</th>
         <th style="width:9%">Total</th>
         <th style="width:12%"></th>
