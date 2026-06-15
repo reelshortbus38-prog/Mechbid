@@ -1689,8 +1689,21 @@ async function processExcelFile(fileObj, results, flags) {
 
 async function processImageFile(fileObj, results, flags) {
   const base64 = await imgToJpeg(fileObj.file);
-  const prompt = `You are an expert commercial refrigeration estimator. Analyze this image and extract all relevant information. Return ONLY valid JSON:
-{"documentType":"legend_sheet|job_schedule|remodel_scope|bid_email|blueprint|equipment_schedule|unknown","storeName":"","storeNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":20,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"notes":""}],"parts":[{"partId":"","qty":0,"description":""}],"rcNotes":[{"text":"","week":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","startDate":"","workSequence":[],"rackNotes":[{"rack":"","notes":[]}],"flags":[],"summary":""}`;
+  const prompt = `You are an expert commercial refrigeration estimating system. Analyze this image carefully.
+
+If this is a BLUEPRINT, FLOOR PLAN, or REDLINE DRAWING:
+- Read ALL text callouts, annotations, speech bubbles, and notes in the image
+- Orange/red/colored boxes or callouts indicate field changes — extract EACH ONE as a fieldTask or rackTask
+- Look for keywords: DROP, CONNECT, RELOCATE, ADD, REMOVE, NEW, EXISTING, EXTEND, DISCONNECT, FEED
+- Extract circuit labels (A1, B3, C-5, N75 etc.), line sizes mentioned, distances
+- Read the title block for store name, store number, drawing date
+- Look for symbol legends and scope of work tables
+
+If this is a LEGEND SHEET or EQUIPMENT SCHEDULE:
+- Extract all circuit data with run lengths and pipe sizes
+
+Return ONLY valid JSON with no markdown formatting:
+{"documentType":"blueprint|legend_sheet|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":""}`;
   const result = await callAI([{role:'user',content:[{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+base64}},{type:'text',text:prompt}]}], 2000);
   await processAIResult(result, fileObj.name, results, flags);
 }
@@ -1736,7 +1749,16 @@ Email: ${text}`;
 
 async function processAIResult(resultText, sourceName, results, flags) {
   try {
-    const clean = resultText.replace(/```json|```/g,'').trim();
+    // More robust JSON extraction - find first { and last }
+    let clean = resultText;
+    // Remove markdown code blocks
+    clean = clean.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+    // Find the JSON object boundaries
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if(firstBrace >= 0 && lastBrace > firstBrace) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
+    }
     const parsed = JSON.parse(clean);
     if(parsed.storeName && !document.getElementById('projName').value) document.getElementById('projName').value = parsed.storeName+(parsed.storeNumber?' #'+parsed.storeNumber:'');
     if(parsed.gcName && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gcName;
@@ -1801,7 +1823,18 @@ async function processAIResult(resultText, sourceName, results, flags) {
     const docTypeLabel = {legend_sheet:'Legend Sheet',job_schedule:'Job Schedule',remodel_scope:'Remodel Scope',bid_email:'Bid Email',blueprint:'Blueprint',scope_of_work:'Scope of Work',equipment_schedule:'Equipment Schedule',unknown:'Document'}[parsed.documentType]||'Document';
     results.push(`📄 ${sourceName} (${docTypeLabel}): ${parsed.summary||'Analyzed'}`);
   } catch(e) {
-    results.push(`📄 ${sourceName}: Analyzed — ${resultText.slice(0,150)}`);
+    // JSON parse failed - show clean message, log error for debugging
+    console.warn('processAIResult parse error:', e.message, 'Source:', sourceName);
+    // Try to extract any useful info from the raw text
+    const storeMatch = resultText.match(/"storeName"\s*:\s*"([^"]+)"/);
+    const storeNum = resultText.match(/"storeNumber"\s*:\s*"([^"]+)"/);
+    if(storeMatch?.[1] && !document.getElementById('projName').value) {
+      document.getElementById('projName').value = storeMatch[1] + (storeNum?.[1] ? ' #'+storeNum[1] : '');
+    }
+    const docType = resultText.match(/"documentType"\s*:\s*"([^"]+)"/)?.[1] || 'document';
+    const typeLabel = {blueprint:'Blueprint',scope_of_work:'Scope of Work',bid_email:'Bid Email',equipment_schedule:'Equipment Schedule'}[docType] || 'Document';
+    results.push(`📄 ${sourceName} (${typeLabel}): Analyzed — review Documents tab for extracted data`);
+    flags.push({type:'info', text:`${sourceName}: AI analyzed successfully. Check Circuits and Rack tabs for extracted data.`, source:'AI'});
   }
 }
 
