@@ -459,7 +459,7 @@ select.inp{cursor:pointer;}
   </div>
   <div class="card-tight mb20">
     <table class="tbl" id="fieldWorkTable">
-      <thead><tr><th style="width:45%">Task</th><th style="width:7%">Men</th><th style="width:7%">Hrs</th><th style="width:10%">Cost</th><th>Notes</th><th style="width:5%"></th></tr></thead>
+      <thead><tr><th style="width:42%">Task</th><th style="width:7%">Men</th><th style="width:7%">Hrs</th><th style="width:10%">Cost</th><th style="width:24%">Notes</th><th style="width:5%"></th></tr></thead>
       <tbody id="fieldWorkBody">
         <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">
           Upload a scope doc or add circuits to auto-populate field tasks
@@ -1692,13 +1692,17 @@ async function processImageFile(fileObj, results, flags) {
   const prompt = `You are an expert commercial refrigeration estimating system. Analyze this image carefully.
 
 If this is a BLUEPRINT, FLOOR PLAN, or REDLINE DRAWING:
-- Read ALL text callouts, annotations, speech bubbles, and notes in the image
-- Orange/red/colored boxes or callouts indicate field changes — extract EACH ONE as a fieldTask or rackTask
-- Look for keywords: DROP, CONNECT, RELOCATE, ADD, REMOVE, NEW, EXISTING, EXTEND, DISCONNECT, FEED
-- Only extract tasks that are REFRIGERATION CONTRACTOR scope — exclude plumbing, electrical, GC, painting, drywall, HVAC ductwork
-- Extract circuit labels (A1, B3, C-5, N75 etc.), line sizes mentioned, distances
-- Read the title block for store name, store number, drawing date
-- Look for symbol legends and scope of work tables
+- The drawing may be rotated or upside down — read ALL text regardless of orientation
+- Read EVERY orange, red, or colored callout box in the image — these are the most important items
+- Each callout box contains a specific field task for the refrigeration contractor
+- Extract EACH callout box as a separate fieldTask with the FULL text of the callout
+- Common callout patterns: "DROP NEW [circuit] IN [location]", "CONNECT EXISTING [circuit] TO [location]", "DISCONNECT [circuit] AT CASE #[number]", "FEED [size] THRU WALL TO [location]"
+- Note: "GC TO COVER" means the GC does that part — only extract the RC portion
+- Circuit IDs are like A1, A2, A3, B1, C3, N75, N78 etc.
+- Line sizes are like 1/2", 3/4", 1-3/8" etc.
+- Read title block for store name, store number, address, drawing number, date
+- If this is a fixture plan (FP), extract case layout info — new, relocated, removed cases by circuit
+- Look for symbol legends and scope of work color coding on the right side
 
 If this is a LEGEND SHEET or EQUIPMENT SCHEDULE:
 - Extract all circuit data with run lengths and pipe sizes
@@ -1762,10 +1766,18 @@ async function processAIResult(resultText, sourceName, results, flags) {
     }
     const parsed = JSON.parse(clean);
     if(parsed.storeName && !document.getElementById('projName').value) {
-      // Clean up store name - remove artifacts
-      let sName = parsed.storeName.replace(/NON\s*/i,'').replace(/\s+/g,' ').trim();
-      if(!sName.match(/food lion|publix|kroger|harris|winn/i) && parsed.storeNumber) sName = 'Food Lion';
-      document.getElementById('projName').value = sName + (parsed.storeNumber?' #'+parsed.storeNumber:'');
+      // Clean up store name artifacts
+      let sName = parsed.storeName
+        .replace(/NON\s*/gi,'')
+        .replace(/\s*9+0*(\d{4})\s*/g,' #$1') // fix "90047" -> "#0047"
+        .replace(/\s+/g,' ').trim();
+      // If store name looks garbled, use known chain names
+      const chainMatch = sName.match(/food\s*lion|publix|kroger|harris\s*teeter|winn.?dixie|aldi|walmart|target/i);
+      if(chainMatch) sName = chainMatch[0].replace(/\s+/g,' ').trim();
+      else if(parsed.storeNumber) sName = 'Food Lion'; // default for unknown
+      const storeNum = parsed.storeNumber ? parsed.storeNumber.replace(/^0+/,'') : '';
+      const displayNum = storeNum ? ' #' + storeNum.padStart(4,'0') : '';
+      document.getElementById('projName').value = sName + displayNum;
     }
     if(parsed.gcName && !document.getElementById('projGC').value) document.getElementById('projGC').value = parsed.gcName;
     if(parsed.address && !document.getElementById('projAddr').value) document.getElementById('projAddr').value = parsed.address;
@@ -1792,8 +1804,8 @@ async function processAIResult(resultText, sourceName, results, flags) {
     if(parsed.fieldTasks?.length) {
       const existingField = new Set(state.fieldTasks.map(t=>t.desc.toLowerCase().slice(0,40)));
       // Filter to RC-relevant tasks only
-      const rcKeywords = /refriger|circuit|line set|lineset|line size|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|inverted trap|reducing tee|seal|penetrat|rodent|EPR|evap|compres|rack|coil|valve|filter|oil|defrost|night.*case|relocat.*case|disconnect.*case|connect.*case/i;
-      const nonRCKeywords = /mop sink|water supply|floor drain|electrical wiring|GFI|receptacle|lighting|ductwork|duct hanger|plumb|HVAC unit|RTU|AHU|paint|drywall|tile|concrete|GC to|general contractor/i;
+      const rcKeywords = /refriger|circuit|line set|lineset|line size|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|inverted trap|reducing tee|seal.*penetrat|rodent|EPR|evap|compres|rack|coil|refrig.*valve|filter.*refrig|oil.*sep|defrost|night.*case|relocat.*case|disconnect.*refrig|connect.*refrig|condenser.*unit|ice.*machine.*refrig/i;
+      const nonRCKeywords = /mop sink|water supply|floor drain|electrical feed|electrical wiring|GFI|receptacle|lighting|ductwork|duct hanger|plumb|HVAC unit|RTU|AHU|paint|drywall|tile|concrete|GC to|general contractor|electrical.*bin|power.*feed/i;
       parsed.fieldTasks.forEach(t => {
         if(!t.desc) return;
         const desc = t.desc.toLowerCase();
