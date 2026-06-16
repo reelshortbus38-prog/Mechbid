@@ -1,11 +1,18 @@
 {
-  "dependencies": {
-    "exceljs": "^4.4.0",
-    "mammoth": "^1.7.0",
-    "xlsx": "^0.18.5"
+  "name": "mechbid",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "functions": {
-    "api/parse-excel.js": {"maxDuration": 30},
-    "api/parse-doc.js": {"maxDuration": 30}
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8"
   }
 }
