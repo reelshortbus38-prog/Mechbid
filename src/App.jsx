@@ -1,5 +1,10 @@
-import Dashboard from './pages/Dashboard'
+import { StateProvider } from './state/store.js';
+import Wizard from './components/Wizard.jsx';
 
 export default function App() {
-  return <Dashboard />
+  return (
+    <StateProvider>
+      <Wizard />
+    </StateProvider>
+  );
 }
