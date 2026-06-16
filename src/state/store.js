@@ -1,75 +1,37 @@
 import { createContext, useContext, useReducer } from 'react';
 
 // ── INITIAL STATE ──────────────────────────────────────────────────────────────
-const initialState = {
-  // Project info
-  mode: 'Commercial Refrigeration', // 'Commercial Refrigeration' | 'Commercial HVAC' | 'Residential HVAC'
-  projName: '',
-  projAddr: '',
-  projGC: '',
-  projCont: '',
-  projBidDate: '',
-
-  // Documents
-  uploadedFiles: [],
-  extractionResults: [],
-  flags: [],
-
-  // Circuits
+export const initialState = {
+  mode: 'Commercial Refrigeration',
+  projName: '', projAddr: '', projGC: '', projCont: '', projBidDate: '',
+  uploadedFiles: [], extractionResults: [], flags: [],
   circuits: [],
-
-  // Rack
-  rackParts: [],
-  rackTasks: [],
-
-  // Materials
+  rackParts: [], rackTasks: [],
   lineItems: [],
-  rackPartsTotal: 0,
-
-  // Supply House
   supplyItems: [],
-
-  // Copper & insulation rates
+  fieldTasks: [],
   rates: {
-    cu: { '1/4': 0, '3/8': 0, '1/2': 0, '5/8': 0, '7/8': 0, '1-1/8': 0, '1-3/8': 0, '1-5/8': 0, '2-1/8': 0 },
-    insul: { medSuction: 0, lowSuction: 0, lowLiquid: 0 },
+    cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+    insul: { medSuction:0, lowSuction:0, lowLiquid:0 },
     fittingsMarkupPct: 25,
     wasteFactor: 10,
   },
-
-  // Labor periods
   laborPeriods: [],
-  // e.g. { id, name, crew: [{id, role, rate}], days, isNight, otMult, ootPerDay, notes }
-
-  // Scenarios
   markupPct: 20,
   scenarios: {
     active: 'mid',
-    low:  { label: 'Low',  markupPct: 15, desc: 'Tight margin, competitive' },
-    mid:  { label: 'Mid',  markupPct: 20, desc: 'Standard margin' },
-    high: { label: 'High', markupPct: 28, desc: 'Full scope, premium' },
+    low:  { label:'Low',  markupPct:15, desc:'Tight margin, competitive' },
+    mid:  { label:'Mid',  markupPct:20, desc:'Standard margin' },
+    high: { label:'High', markupPct:28, desc:'Full scope, premium' },
   },
-
-  // Residential specific
-  resEquipment: [],
-  resParts: [],
-  resLinesetType: 'preinsulated',
-  resLinesetTotal: 0,
-  resLaborPeriods: [],
-
-  // HVAC specific
+  resEquipment: [], resParts: [], resLinesetType:'preinsulated', resLinesetTotal:0,
   hvacEquipment: [],
-  hvacLaborPeriods: [],
-
-  // Preferred supplier
   preferredSupplier: 'RE Michel',
-
-  // Job memory from AI extraction
   jobMemory: {},
 };
 
 // ── REDUCER ────────────────────────────────────────────────────────────────────
-function reducer(state, action) {
+export function reducer(state, action) {
   switch (action.type) {
     case 'SET': return { ...state, [action.key]: action.value };
     case 'MERGE': return { ...state, ...action.payload };
@@ -100,12 +62,7 @@ function reducer(state, action) {
 }
 
 // ── CONTEXT ────────────────────────────────────────────────────────────────────
-const StateContext = createContext(null);
-
-export function StateProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  return <StateContext.Provider value={{ state, dispatch }}>{children}</StateContext.Provider>;
-}
+export const StateContext = createContext(null);
 
 export function useStore() {
   const ctx = useContext(StateContext);
@@ -121,39 +78,25 @@ export function uid() {
 export function normalizePipeSize(s) {
   if (!s) return '';
   s = String(s).replace(/"/g, '').trim();
-  const dec = { '0.25': '1/4', '0.375': '3/8', '0.5': '1/2', '0.625': '5/8', '0.875': '7/8', '1.125': '1-1/8', '1.375': '1-3/8', '1.625': '1-5/8', '2.125': '2-1/8' };
+  const dec = {'0.25':'1/4','0.375':'3/8','0.5':'1/2','0.625':'5/8','0.875':'7/8','1.125':'1-1/8','1.375':'1-3/8','1.625':'1-5/8','2.125':'2-1/8'};
   if (dec[s]) return dec[s];
   return s.replace(/\s+/g, '-');
 }
 
-export function fmt(n) {
-  return '$' + Math.round(n || 0).toLocaleString();
-}
+export function fmt(n) { return '$' + Math.round(n || 0).toLocaleString(); }
+export function fmtDec(n) { return '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
 
-export function fmtDec(n) {
-  return '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ── LOCAL STORAGE SAVE/LOAD ────────────────────────────────────────────────────
+// ── LOCAL STORAGE ──────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mechbid_jobs_v2';
 
 export function saveJob(state) {
   try {
     const jobs = loadAllJobs();
     const id = state.jobId || uid();
-    jobs[id] = {
-      id,
-      name: state.projName || 'Untitled',
-      mode: state.mode,
-      lastEdited: new Date().toISOString(),
-      data: { ...state, jobId: id },
-    };
+    jobs[id] = { id, name: state.projName || 'Untitled', mode: state.mode, lastEdited: new Date().toISOString(), data: { ...state, jobId: id } };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
     return id;
-  } catch (e) {
-    console.warn('Save failed:', e);
-    return null;
-  }
+  } catch(e) { console.warn('Save failed:', e); return null; }
 }
 
 export function loadAllJobs() {
@@ -170,33 +113,18 @@ export function deleteJob(id) {
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period) {
   const crewRate = (period.crew || []).reduce((s, m) => s + (parseFloat(m.rate) || 0), 0);
-  const hrsPerDay = period.isNight ? 8 : 8;
   const otMult = parseFloat(period.otMult) || 1;
   const nightMult = period.isNight ? (parseFloat(period.nightMult) || 1.5) : 1;
   const days = parseFloat(period.days) || 0;
   const oot = (parseFloat(period.ootPerDay) || 0) * days;
-  const labor = crewRate * hrsPerDay * days * otMult * nightMult;
+  const labor = crewRate * 8 * days * otMult * nightMult;
   return { labor, oot, total: labor + oot };
 }
 
 export function calcTotalLabor(laborPeriods) {
-  return laborPeriods.reduce((s, p) => {
-    const { total } = calcLaborPeriodCost(p);
-    return s + total;
-  }, 0);
+  return laborPeriods.reduce((s, p) => { const { total } = calcLaborPeriodCost(p); return s + total; }, 0);
 }
 
-// ── MATERIALS CALCULATIONS ─────────────────────────────────────────────────────
 export function calcMaterialsTotal(lineItems) {
   return lineItems.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-}
-
-export function calcBidTotal(state) {
-  const matsTotal = calcMaterialsTotal(state.lineItems);
-  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
-  const markupBase = matsTotal + rackPartsContractor;
-  const markup = markupBase * (state.markupPct / 100);
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const rackLaborTotal = (state.rackTasks || []).reduce((s, t) => s + (t.laborCost || 0), 0);
-  return markupBase + markup + laborTotal + rackLaborTotal;
 }
