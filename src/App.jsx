@@ -1,4 +1,4 @@
-import { StateProvider } from './state/store.js';
+import { StateProvider } from './state/StateProvider.jsx';
 import Wizard from './components/Wizard.jsx';
 
 export default function App() {
