@@ -1,17 +1,26 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
+// All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 
 export async function callClaude(messages, system = '') {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system, messages }),
+    body: JSON.stringify({
+      system,
+      messages,
+    }),
   });
-  if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Claude API error ${res.status}: ${text.slice(0, 200)}`);
+  }
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message || 'AI error');
-  return data.content?.map(b => b.text || '').join('') || '';
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  // Handle both OpenRouter and Anthropic response formats
+  return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
 }
 
+// Vision call - uses /api/claude with image support
 export async function callClaudeVision(base64Image, fileName) {
   try {
     const prompt = `You are an expert commercial refrigeration estimating system analyzing construction documents.
@@ -20,30 +29,26 @@ Analyze this image carefully. It may be rotated or upside down — read ALL text
 
 If this is a BLUEPRINT, FLOOR PLAN, or REDLINE DRAWING:
 - Read EVERY orange, red, or colored callout box — these contain RC field tasks
-- Extract each callout as a separate fieldTask with the COMPLETE text
-- Common patterns: "DROP NEW [circuit]", "CONNECT EXISTING [circuit] TO [location]", "DISCONNECT AT CASE #[N]", "FEED [size] THRU WALL"
+- Extract each callout as a separate fieldTask with the COMPLETE actual text
+- Common patterns: "DROP NEW [circuit]", "CONNECT EXISTING [circuit] TO [location]"
 - Skip "GC TO..." portions — only extract RC refrigeration work
 - Read title block: store name, store number, address, drawing number, date
-- IMPORTANT: Use EXACT text from callouts, never placeholder text like "circuit" or "location"
+- CRITICAL: Use EXACT text from callouts, never placeholder words like "circuit" or "location"
 
 If this is a BPR or EQUIPMENT SCHEDULE:
 - Extract ALL circuits with run lengths, suction sizes, liquid sizes
 
 Return ONLY valid JSON, no markdown:
-{"documentType":"blueprint|fixture_plan|bpr|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","address":"","drawingNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"isNew":true,"notes":""}],"fieldTasks":[{"desc":"actual text from drawing","circuit":"","location":"","lineSize":"","notes":""}],"rackTasks":[{"desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":""}
+{"documentType":"blueprint|fixture_plan|bpr|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","address":"","drawingNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"isNew":true,"notes":""}],"fieldTasks":[{"desc":"actual callout text","circuit":"","location":"","lineSize":"","notes":""}],"rackTasks":[{"desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":""}`;
 
-CRITICAL: Replace ALL placeholder text with ACTUAL content from the image.`;
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
             { type: 'text', text: prompt }
           ]
         }]
@@ -52,7 +57,7 @@ CRITICAL: Replace ALL placeholder text with ACTUAL content from the image.`;
 
     if (!res.ok) return null;
     const data = await res.json();
-    return data.content?.[0]?.text || null;
+    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
   } catch (e) {
     console.warn('Vision error:', e.message);
     return null;
@@ -77,7 +82,10 @@ export async function parseDocFile(base64, fileName) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileData: base64, fileName }),
   });
-  if (!res.ok) throw new Error(`parse-doc error: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`parse-doc error ${res.status}: ${text.slice(0, 100)}`);
+  }
   return res.json();
 }
 
@@ -87,7 +95,10 @@ export async function parseExcelFile(base64, fileName) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileData: base64, fileName }),
   });
-  if (!res.ok) throw new Error(`parse-excel error: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`parse-excel error ${res.status}: ${text.slice(0, 100)}`);
+  }
   return res.json();
 }
 
@@ -158,23 +169,10 @@ export function isRCTask(desc) {
 export async function analyzeScopeDoc(text, fileName) {
   const prompt = `You are an expert commercial refrigeration estimating system. Extract all relevant information from this scope of work document.
 
-Extract rackTasks (rack-specific: setpoint adjustments, EPR/valve changes, oil floats, filter elements, ultra-tubes, controller programming, rack part changes) and fieldTasks (field work: new line runs, drip pans, sensor terminations, insulation repairs, top stubs, case moves, sealing, night work).
+Extract rackTasks (rack work: setpoint adjustments, EPR/valve changes, oil floats, filter elements, ultra-tubes, controller programming, rack part changes) and fieldTasks (field work: new line runs, drip pans, sensor terminations, insulation repairs, top stubs, case moves, sealing, night work).
 
 Return ONLY valid JSON:
-{
-  "storeName": "",
-  "storeNumber": "",
-  "startDate": "",
-  "rackTasks": [{"desc": "", "rack": "", "notes": ""}],
-  "fieldTasks": [{"desc": "", "notes": ""}],
-  "parts": [{"partId": "", "description": "", "qty": 0}],
-  "rcSchedule": [{"week": "", "milestone": "", "rcInvolved": true, "nightWork": false, "notes": ""}],
-  "nightWorkRequired": false,
-  "nightWorkDetails": "",
-  "minimumCrew": "",
-  "flags": [{"type": "info|warn|error", "text": ""}],
-  "summary": ""
-}`;
+{"storeName":"","storeNumber":"","startDate":"","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcSchedule":[{"week":"","milestone":"","rcInvolved":true,"nightWork":false,"notes":""}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":""}`;
 
   const resultText = await callClaude(
     [{ role: 'user', content: `File: ${fileName}\n\nDocument text:\n${text.slice(0, 8000)}\n\n${prompt}` }],
