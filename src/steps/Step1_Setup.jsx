@@ -88,7 +88,9 @@ export default function Step1_Setup({ onNext }) {
           continue;
 
         } else if (fileObj.type === 'scope') {
-          const b64 = await fileToBase64(fileObj.file);
+          let b64;
+          try { b64 = await fileToBase64(fileObj.file); }
+          catch(fe) { throw new Error(`Cannot read file: ${fe.message}`); }
           const docRes = await parseDocFile(b64, fileObj.name);
           if (docRes.text) {
             parsed = await analyzeScopeDoc(docRes.text, fileObj.name);
@@ -151,7 +153,10 @@ export default function Step1_Setup({ onNext }) {
         dispatch({ type: 'SET', key: 'uploadedFiles', value: state.uploadedFiles.map(f => f.id === fileObj.id ? { ...f, status: 'done' } : f) });
 
       } catch (err) {
-        results.push(`❌ ${fileObj.name}: ${err.message}`);
+        console.error('File processing error:', fileObj.name, err);
+        const errMsg = err.message || 'Unknown error';
+        results.push(`❌ ${fileObj.name}: ${errMsg}`);
+        flags.push({ type: 'error', text: `Could not process ${fileObj.name}: ${errMsg}`, source: 'System' });
         dispatch({ type: 'SET', key: 'uploadedFiles', value: state.uploadedFiles.map(f => f.id === fileObj.id ? { ...f, status: 'error' } : f) });
       }
     }
