@@ -9,21 +9,61 @@ import Step4_Materials from '../steps/Step4_Materials.jsx';
 import Step5_Labor from '../steps/Step5_Labor.jsx';
 import Step6_Proposal from '../steps/Step6_Proposal.jsx';
 
-const STEPS = [
-  { id: 1, label: 'Setup', icon: '📋', desc: 'Job info & documents' },
-  { id: 2, label: 'Circuits', icon: '⚡', desc: 'New line runs' },
-  { id: 3, label: 'Rack', icon: '🔩', desc: 'Parts & tasks' },
-  { id: 4, label: 'Materials', icon: '🔧', desc: 'Bid list & supply house' },
-  { id: 5, label: 'Labor', icon: '👷', desc: 'Crew & periods' },
-  { id: 6, label: 'Proposal', icon: '📄', desc: 'Estimate & bid' },
-];
+// ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
+const STEPS_BY_MODE = {
+  'Commercial Refrigeration': [
+    { id: 'setup',     label: 'Setup',     icon: '📋', desc: 'Job info & documents' },
+    { id: 'circuits',  label: 'Circuits',  icon: '⚡', desc: 'New line runs' },
+    { id: 'rack',      label: 'Rack',      icon: '🔩', desc: 'Parts & tasks' },
+    { id: 'materials', label: 'Materials', icon: '🔧', desc: 'Bid list & supply house' },
+    { id: 'labor',     label: 'Labor',     icon: '👷', desc: 'Crew & periods' },
+    { id: 'proposal',  label: 'Proposal',  icon: '📄', desc: 'Estimate & bid' },
+  ],
+  'Commercial HVAC': [
+    { id: 'setup',    label: 'Setup',    icon: '📋', desc: 'Job info & documents' },
+    { id: 'rack',     label: 'Equipment',icon: '🌀', desc: 'Equipment schedule' },
+    { id: 'labor',    label: 'Labor',    icon: '👷', desc: 'Crew & scope' },
+    { id: 'proposal', label: 'Proposal', icon: '📄', desc: 'Estimate & bid' },
+  ],
+  'Residential HVAC': [
+    { id: 'setup',     label: 'Setup',     icon: '📋', desc: 'Job info & documents' },
+    { id: 'materials', label: 'Equipment', icon: '🏠', desc: 'Equipment, lineset & parts' },
+    { id: 'proposal',  label: 'Proposal',  icon: '📄', desc: 'Estimate & bid' },
+  ],
+};
+
+// ── STEP COMPONENTS ────────────────────────────────────────────────────────────
+function getStepComponent(stepId, mode, onNext, onBack) {
+  switch (stepId) {
+    case 'setup':     return <Step1_Setup onNext={onNext} />;
+    case 'circuits':  return <Step2_Circuits onNext={onNext} onBack={onBack} />;
+    case 'rack':      return <Step3_Rack onNext={onNext} onBack={onBack} />;
+    case 'materials': return <Step4_Materials onNext={onNext} onBack={onBack} />;
+    case 'labor':     return <Step5_Labor onNext={onNext} onBack={onBack} />;
+    case 'proposal':  return <Step6_Proposal onBack={onBack} />;
+    default:          return <Step1_Setup onNext={onNext} />;
+  }
+}
 
 export default function Wizard() {
   const { state, dispatch } = useStore();
-  const [step, setStep] = useState(1);
+  const [stepIndex, setStepIndex] = useState(0);
   const [showJobs, setShowJobs] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
   const [jobs, setJobs] = useState({});
+
+  const steps = STEPS_BY_MODE[state.mode] || STEPS_BY_MODE['Commercial Refrigeration'];
+  const currentStep = steps[stepIndex] || steps[0];
+
+  // Reset to first step when mode changes
+  useEffect(() => {
+    setStepIndex(0);
+  }, [state.mode]);
+
+  // Clamp stepIndex if steps array shrinks
+  useEffect(() => {
+    if (stepIndex >= steps.length) setStepIndex(steps.length - 1);
+  }, [steps.length]);
 
   useEffect(() => {
     setJobs(loadAllJobs());
@@ -41,23 +81,22 @@ export default function Wizard() {
   function handleLoadJob(job) {
     dispatch({ type: 'LOAD_JOB', data: job.data });
     setShowJobs(false);
-    setStep(1);
+    setStepIndex(0);
   }
 
   function handleNewJob() {
     dispatch({ type: 'RESET' });
     setShowJobs(false);
-    setStep(1);
+    setStepIndex(0);
   }
 
-  const stepComponent = {
-    1: <Step1_Setup onNext={() => setStep(2)} />,
-    2: <Step2_Circuits onNext={() => setStep(3)} onBack={() => setStep(1)} />,
-    3: <Step3_Rack onNext={() => setStep(4)} onBack={() => setStep(2)} />,
-    4: <Step4_Materials onNext={() => setStep(5)} onBack={() => setStep(3)} />,
-    5: <Step5_Labor onNext={() => setStep(6)} onBack={() => setStep(4)} />,
-    6: <Step6_Proposal onBack={() => setStep(5)} />,
-  };
+  function goNext() {
+    if (stepIndex < steps.length - 1) setStepIndex(stepIndex + 1);
+  }
+
+  function goBack() {
+    if (stepIndex > 0) setStepIndex(stepIndex - 1);
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: colors.bg, color: colors.text, fontFamily: "'DM Sans', sans-serif" }}>
@@ -85,7 +124,7 @@ export default function Wizard() {
 
           {/* Actions */}
           <Row style={{ gap: 8, flexShrink: 0 }}>
-            <Btn variant="surface" size="sm" onClick={() => setShowJobs(true)}>💾 Jobs</Btn>
+            <Btn variant="surface" size="sm" onClick={() => { setJobs(loadAllJobs()); setShowJobs(true); }}>💾 Jobs</Btn>
             <Btn variant="green" size="sm" onClick={handleSave}>Save</Btn>
             {saveIndicator && <span style={{ fontSize: 11, color: colors.green }}>{saveIndicator}</span>}
           </Row>
@@ -95,25 +134,26 @@ export default function Wizard() {
       {/* Progress bar */}
       <div style={{ background: colors.surface, borderBottom: `1px solid ${colors.border}`, overflowX: 'auto' }}>
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', padding: '0 8px' }}>
-          {STEPS.map((s, i) => {
-            const isActive = step === s.id;
-            const isDone = step > s.id;
+          {steps.map((s, i) => {
+            const isActive = i === stepIndex;
+            const isDone = i < stepIndex;
             return (
               <button
                 key={s.id}
-                onClick={() => setStep(s.id)}
+                onClick={() => setStepIndex(i)}
                 style={{
                   flex: 1, padding: '12px 8px', border: 'none', background: 'transparent', cursor: 'pointer',
-                  borderBottom: `3px solid ${isActive ? colors.green : isDone ? colors.green + '40' : 'transparent'}`,
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, transition: 'all 0.15s',
-                  minWidth: 70,
+                  borderBottom: `3px solid ${isActive ? colors.green : isDone ? colors.green + '50' : 'transparent'}`,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  transition: 'all 0.15s', minWidth: 60,
                 }}
               >
                 <div style={{ fontSize: 18, opacity: isActive ? 1 : isDone ? 0.7 : 0.35 }}>{s.icon}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? colors.green : isDone ? colors.text : colors.textDim, fontFamily: "'Syne', sans-serif" }}>
-                  {s.label}
-                </div>
-                <div style={{ fontSize: 9, color: colors.textDim, display: 'none' }}>{s.desc}</div>
+                <div style={{
+                  fontSize: 11, fontWeight: 700,
+                  color: isActive ? colors.green : isDone ? colors.text : colors.textDim,
+                  fontFamily: "'Syne', sans-serif",
+                }}>{s.label}</div>
               </button>
             );
           })}
@@ -121,14 +161,14 @@ export default function Wizard() {
       </div>
 
       {/* Step content */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px 40px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px 60px' }}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: colors.text, marginBottom: 4 }}>
-            {STEPS[step - 1].icon} {STEPS[step - 1].label}
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, marginBottom: 4 }}>
+            {currentStep.icon} {currentStep.label}
           </div>
-          <div style={{ fontSize: 12, color: colors.textDim }}>{STEPS[step - 1].desc}</div>
+          <div style={{ fontSize: 12, color: colors.textDim }}>{currentStep.desc}</div>
         </div>
-        {stepComponent[step]}
+        {getStepComponent(currentStep.id, state.mode, goNext, goBack)}
       </div>
 
       {/* Jobs modal */}
@@ -152,21 +192,23 @@ export default function Wizard() {
               {Object.values(jobs).length === 0 ? (
                 <div style={{ padding: 30, textAlign: 'center', color: colors.textDim, fontSize: 13 }}>No saved jobs yet</div>
               ) : (
-                Object.values(jobs).sort((a, b) => new Date(b.lastEdited) - new Date(a.lastEdited)).map(job => (
-                  <div key={job.id} style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderBottom: `1px solid ${colors.border}`, gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => handleLoadJob(job)}>
-                      <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.name}</div>
-                      <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3 }}>
-                        {new Date(job.lastEdited).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {job.data?.mode ? ` · ${job.data.mode}` : ''}
+                Object.values(jobs)
+                  .sort((a, b) => new Date(b.lastEdited) - new Date(a.lastEdited))
+                  .map(job => (
+                    <div key={job.id} style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderBottom: `1px solid ${colors.border}`, gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => handleLoadJob(job)}>
+                        <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.name}</div>
+                        <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3 }}>
+                          {new Date(job.lastEdited).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {job.data?.mode ? ` · ${job.data.mode}` : ''}
+                        </div>
                       </div>
+                      <Row style={{ gap: 8, flexShrink: 0 }}>
+                        <Btn variant="green" size="sm" onClick={() => handleLoadJob(job)}>Open</Btn>
+                        <Btn variant="red" size="sm" onClick={() => { deleteJob(job.id); setJobs(loadAllJobs()); }}>Delete</Btn>
+                      </Row>
                     </div>
-                    <Row style={{ gap: 8, flexShrink: 0 }}>
-                      <Btn variant="green" size="sm" onClick={() => handleLoadJob(job)}>Open</Btn>
-                      <Btn variant="red" size="sm" onClick={() => { deleteJob(job.id); setJobs(loadAllJobs()); }}>Delete</Btn>
-                    </Row>
-                  </div>
-                ))
+                  ))
               )}
             </div>
           </div>
