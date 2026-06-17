@@ -4,7 +4,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
   callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
-  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask
+  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -109,6 +109,17 @@ export default function Step1_Setup({ onNext }) {
           if (raw) parsed = parseAIJson(raw);
           newResults.push(`🖼️ ${fileMeta.name}: Analyzed (AI read photo — review carefully)`);
 
+        } else if (fileMeta.type === 'pdf') {
+          // PDFs with no text-extractable schedule (redlines, blueprints, scanned
+          // plans) are rendered page-by-page to images and read via vision, the
+          // same approach as a photo upload. The redline-specific prompt avoids
+          // inventing circuit lengths/sizes that aren't actually on the page —
+          // these documents are field tasks/scope, not priced circuit data.
+          sourceType = 'vision';
+          parsed = await analyzeRedlinePdf(file, fileMeta.name);
+          const taskCount = parsed?.fieldTasks?.length || 0;
+          newResults.push(`📐 ${fileMeta.name}: Analyzed as redline/plan — ${taskCount} field task(s) found (AI read scanned pages — review carefully)`);
+
         } else if (fileMeta.type === 'excel' || fileMeta.type === 'xls') {
           sourceType = 'excel';
           const b64 = await fileToBase64(file);
@@ -150,10 +161,19 @@ export default function Step1_Setup({ onNext }) {
             if (c.circuitId) pushPending('circuit', sourceType, fileMeta.name, c);
           });
 
-          // Field tasks (RC filtered)
+          // Field tasks (RC filtered). Redline extractions may include extra
+          // context (circuit reference, location, stated size) that the plain
+          // fieldTask shape doesn't have its own field for — fold it into notes
+          // so it's still visible to the user during review.
           (parsed.fieldTasks || []).forEach(t => {
             if (t.desc && isRCTask(t.desc)) {
-              pushPending('fieldTask', sourceType, fileMeta.name, { desc: t.desc, men: 1, hrs: 0, notes: t.notes || '', crewAssignment: {} });
+              const extraContext = [
+                t.circuitRef ? `Circuit: ${t.circuitRef}` : '',
+                t.location ? `Location: ${t.location}` : '',
+                t.statedSize ? `Size: ${t.statedSize}` : '',
+              ].filter(Boolean).join(' · ');
+              const combinedNotes = [extraContext, t.notes].filter(Boolean).join(' — ');
+              pushPending('fieldTask', sourceType, fileMeta.name, { desc: t.desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {} });
             }
           });
 
