@@ -1,20 +1,9 @@
-import { useStore, fmt, calcTotalLabor, calcBidTotal } from '../state/store.js';
+import { useStore, fmt, calcTotalLabor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Row, Divider } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Row } from '../components/UI.jsx';
 
-function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarkup }) {
-  const { state } = useStore();
-
-  // Calculate total for this scenario's markup
-  const matsTotal = state.lineItems.reduce((s, i) => s + (i.total || 0), 0);
-  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
-  const markupBase = matsTotal + rackPartsContractor;
-  const markup = markupBase * (scenario.markupPct / 100);
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const fieldWork = (state.fieldTasks || []).reduce((s, t) => s + (t.cost || 0), 0);
-  const rackLabor = (state.rackTasks || []).reduce((s, t) => s + (t.laborCost || 0), 0);
-  const total = markupBase + markup + laborTotal + fieldWork + rackLabor;
-
+// ── SCENARIO CARD ──────────────────────────────────────────────────────────────
+function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarkup, total }) {
   return (
     <div
       onClick={onSelect}
@@ -48,41 +37,96 @@ function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarku
   );
 }
 
+// ── HELPERS: compute totals per mode ──────────────────────────────────────────
+function useBidTotals(state, markupPct) {
+  const mode = state.mode;
+  const laborTotal = calcTotalLabor(state.laborPeriods || []);
+
+  if (mode === 'Residential HVAC') {
+    const equipTotal = (state.resEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
+    const partsTotal = (state.resParts || []).reduce((s, p) => s + (p.total || 0), 0);
+    const linesetTotal = parseFloat(state.resLinesetTotal) || 0;
+    const markupBase = equipTotal + partsTotal + linesetTotal;
+    const markupAmt = markupBase * (markupPct / 100);
+    return { markupBase, markupAmt, laborTotal, total: markupBase + markupAmt + laborTotal, equipTotal, partsTotal, linesetTotal };
+  }
+
+  if (mode === 'Commercial HVAC') {
+    const equipTotal = (state.hvacEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
+    const partsTotal = (state.hvacParts || []).reduce((s, p) => s + (p.total || 0), 0);
+    const markupBase = equipTotal + partsTotal;
+    const markupAmt = markupBase * (markupPct / 100);
+    return { markupBase, markupAmt, laborTotal, total: markupBase + markupAmt + laborTotal, equipTotal, partsTotal };
+  }
+
+  // Commercial Refrigeration
+  const matsTotal = (state.lineItems || []).reduce((s, i) => s + (i.total || 0), 0);
+  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
+  const rackLaborTotal = (state.rackTasks || []).reduce((s, t) => s + (t.laborCost || 0), 0);
+  const markupBase = matsTotal + rackPartsContractor;
+  const markupAmt = markupBase * (markupPct / 100);
+  return { markupBase, markupAmt, laborTotal, rackLaborTotal, total: markupBase + markupAmt + laborTotal + rackLaborTotal, matsTotal, rackPartsContractor };
+}
+
+// ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
 function ProposalView() {
   const { state } = useStore();
-
+  const mode = state.mode;
   const scenario = state.scenarios[state.scenarios.active];
-  const matsTotal = state.lineItems.reduce((s, i) => s + (i.total || 0), 0);
-  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
-  const markupBase = matsTotal + rackPartsContractor;
-  const markupAmt = markupBase * (scenario.markupPct / 100);
-  const markedUpMats = markupBase + markupAmt;
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const rackLaborTotal = state.rackTasks.reduce((s, t) => s + (t.laborCost || 0), 0);
-  const total = markedUpMats + laborTotal + rackLaborTotal;
-
-  const circuits = state.circuits;
+  const totals = useBidTotals(state, scenario.markupPct);
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   function printProposal() {
-    const sections = [...new Set(state.lineItems.map(i => i.section))];
-    const matRows = sections.map(s => {
-      const items = state.lineItems.filter(i => i.section === s);
-      const sTotal = items.reduce((sum, i) => sum + (i.total || 0), 0);
-      return `<tr style="background:#f3f4f6"><td colspan="4" style="padding:6px 10px;font-weight:700;color:#1f4e79;font-size:11px;text-transform:uppercase">${s} — ${fmt(sTotal)}</td></tr>` +
-        items.map(i => `<tr><td style="padding:5px 10px">${i.desc}</td><td style="padding:5px 10px;text-align:center">${i.qty}</td><td style="padding:5px 10px">${i.unit}</td><td style="padding:5px 10px;text-align:right">${fmt(i.total)}</td></tr>`).join('');
-    }).join('');
+    let scopeRows = '';
+
+    if (mode === 'Residential HVAC') {
+      const equip = state.resEquipment || [];
+      if (equip.length > 0) {
+        scopeRows += `<h2>Equipment</h2><table><thead><tr><th>Type</th><th>Brand/Model</th><th>Tonnage</th><th>Cost</th></tr></thead><tbody>`;
+        equip.forEach(e => { scopeRows += `<tr><td>${e.type}</td><td>${[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td><td>${e.tons || '—'}</td><td>${fmt(e.cost)}</td></tr>`; });
+        scopeRows += `</tbody></table>`;
+      }
+    } else if (mode === 'Commercial HVAC') {
+      const equip = state.hvacEquipment || [];
+      if (equip.length > 0) {
+        scopeRows += `<h2>Equipment Schedule</h2><table><thead><tr><th>Tag</th><th>Type</th><th>Brand/Model</th><th>Capacity</th><th>Task</th><th>Cost</th></tr></thead><tbody>`;
+        equip.forEach(e => { scopeRows += `<tr><td>${e.tag || '—'}</td><td>${e.type}</td><td>${[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td><td>${e.tons || '—'}</td><td>${e.task || '—'}</td><td>${fmt(e.cost)}</td></tr>`; });
+        scopeRows += `</tbody></table>`;
+      }
+    } else {
+      // Commercial Refrigeration
+      const circuits = state.circuits || [];
+      if (circuits.length > 0) {
+        scopeRows += `<h2>Circuits — New Work</h2><table><thead><tr><th>Circuit</th><th>Application</th><th>Run</th><th>Suction</th><th>Liquid</th></tr></thead><tbody>`;
+        circuits.forEach(c => { scopeRows += `<tr><td>${c.circuitId}</td><td>${c.application || ''}</td><td>${c.isRiserOnly ? 'Riser only' : c.runLength + 'ft'}</td><td>${c.sucHoriz || '—'}</td><td>${c.liqHoriz || '—'}</td></tr>`; });
+        scopeRows += `</tbody></table>`;
+      }
+      const sections = [...new Set((state.lineItems || []).map(i => i.section))];
+      if (sections.length > 0) {
+        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>`;
+        sections.forEach(s => {
+          const items = state.lineItems.filter(i => i.section === s);
+          const sTotal = items.reduce((sum, i) => sum + (i.total || 0), 0);
+          scopeRows += `<tr style="background:#f3f4f6"><td colspan="4" style="padding:6px 10px;font-weight:700;color:#1f4e79;font-size:11px;text-transform:uppercase">${s} — ${fmt(sTotal)}</td></tr>`;
+          items.forEach(i => { scopeRows += `<tr><td>${i.desc}</td><td style="text-align:center">${i.qty}</td><td>${i.unit}</td><td style="text-align:right">${fmt(i.total)}</td></tr>`; });
+        });
+        scopeRows += `</tbody></table>`;
+      }
+    }
+
+    const { markupBase, markupAmt, laborTotal, rackLaborTotal = 0, total } = totals;
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bid — ${state.projName}</title>
     <style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:28px}
     .logo{font-size:22px;font-weight:900;letter-spacing:-0.02em}.logo span{color:#22c55e}
-    table{width:100%;border-collapse:collapse}th{background:#1f4e79;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}th{background:#1f4e79;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
     td{padding:5px 10px;border-bottom:1px solid #e5e7eb}tr:nth-child(even) td{background:#f9fafb}
-    .total{font-size:20px;font-weight:800;color:#22c55e}.header{display:flex;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #22c55e}
+    .total{font-size:20px;font-weight:800;color:#22c55e}
+    .header{display:flex;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #22c55e}
     h2{font-size:13px;color:#1f4e79;margin:16px 0 8px}
     @media print{body{padding:16px}}</style></head><body>
     <div class="header">
-      <div><div class="logo">MECH<span>BID</span></div><div style="font-size:10px;color:#6b7280">Refrigeration & HVAC Estimating</div></div>
+      <div><div class="logo">MECH<span>BID</span></div><div style="font-size:10px;color:#6b7280">${mode}</div></div>
       <div style="text-align:right">
         <div style="font-size:16px;font-weight:700">${state.projName || 'Project'}</div>
         ${state.projAddr ? `<div style="color:#6b7280">${state.projAddr}</div>` : ''}
@@ -90,14 +134,9 @@ function ProposalView() {
         <div style="color:#6b7280;font-size:10px">${date}</div>
       </div>
     </div>
-    ${circuits.length > 0 ? `<h2>Circuits — New Work</h2>
-    <table><thead><tr><th>Circuit</th><th>Application</th><th>Run</th><th>Suction</th><th>Liquid</th></tr></thead><tbody>
-    ${circuits.map(c => `<tr><td>${c.circuitId}</td><td>${c.application||''}</td><td>${c.isRiserOnly?'Riser only':c.runLength+'ft'}</td><td>${c.sucHoriz||'—'}</td><td>${c.liqHoriz||'—'}</td></tr>`).join('')}
-    </tbody></table>` : ''}
-    <h2>Materials</h2>
-    <table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>${matRows}</tbody></table>
+    ${scopeRows}
     <h2>Bid Summary</h2>
-    <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Materials & Equipment (marked up ${scenario.markupPct}%)</span><span>${fmt(markedUpMats)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Materials & Equipment (marked up ${scenario.markupPct}%)</span><span>${fmt(markupBase + markupAmt)}</span></div>
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Labor</span><span>${fmt(laborTotal)}</span></div>
     ${rackLaborTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rack Work</span><span>${fmt(rackLaborTotal)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:14px 0;border-top:3px solid #22c55e;margin-top:8px"><span style="font-size:18px;font-weight:700">TOTAL BID PRICE</span><span class="total">${fmt(total)}</span></div>
@@ -108,6 +147,9 @@ function ProposalView() {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
+  const { markupBase, markupAmt, laborTotal, rackLaborTotal = 0, total } = totals;
+  const markedUpMats = markupBase + markupAmt;
+
   return (
     <Card style={{ background: colors.surface }}>
       {/* Header */}
@@ -116,7 +158,7 @@ function ProposalView() {
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em' }}>
             MECH<span style={{ color: colors.green }}>BID</span>
           </div>
-          <div style={{ fontSize: 10, color: colors.textDim }}>Commercial Refrigeration & HVAC Estimating</div>
+          <div style={{ fontSize: 10, color: colors.textDim }}>{mode}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{state.projName || 'Project Name'}</div>
@@ -126,13 +168,36 @@ function ProposalView() {
         </div>
       </div>
 
-      {/* Circuits summary */}
-      {circuits.length > 0 && (
+      {/* Scope summary — mode-specific */}
+      {mode === 'Commercial Refrigeration' && (state.circuits || []).length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Circuit Summary — New Work</div>
-          {circuits.map(c => (
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Circuit Summary</div>
+          {state.circuits.map(c => (
             <div key={c.id} style={{ fontSize: 11, color: colors.textDim, padding: '3px 0', borderBottom: `1px solid ${colors.border}40` }}>
               <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.text }}>{c.circuitId}</span>: {c.isRiserOnly ? `Riser only — ${c.sucRiser}` : `${c.runLength}ft — Suc: ${c.sucHoriz} / Liq: ${c.liqHoriz}`} — {c.application}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mode === 'Commercial HVAC' && (state.hvacEquipment || []).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Equipment Schedule</div>
+          {state.hvacEquipment.map(e => (
+            <div key={e.id} style={{ fontSize: 11, color: colors.textDim, padding: '3px 0', borderBottom: `1px solid ${colors.border}40` }}>
+              {e.tag && <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.text }}>[{e.tag}] </span>}
+              {e.type}{e.tons ? ` — ${e.tons}` : ''}{e.brand ? ` · ${e.brand}` : ''}{e.task ? ` · ${e.task}` : ''} — <span style={{ color: colors.green }}>{fmt(e.cost)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mode === 'Residential HVAC' && (state.resEquipment || []).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Equipment</div>
+          {state.resEquipment.map(e => (
+            <div key={e.id} style={{ fontSize: 11, color: colors.textDim, padding: '3px 0', borderBottom: `1px solid ${colors.border}40` }}>
+              {e.type}{e.tons ? ` — ${e.tons}` : ''}{e.brand ? ` · ${e.brand}` : ''}{e.model ? ` ${e.model}` : ''} — <span style={{ color: colors.green }}>{fmt(e.cost)}</span>
             </div>
           ))}
         </div>
@@ -164,7 +229,7 @@ function ProposalView() {
       <Row style={{ marginTop: 16, gap: 10 }}>
         <Btn variant="green" onClick={printProposal} style={{ flex: 1, justifyContent: 'center' }}>🖨️ Print / Export PDF</Btn>
         <Btn variant="ghost" onClick={() => {
-          const csv = `${state.projName || 'Project'},${date}\n` +
+          const csv = `${state.projName || 'Project'},${date}\nMode,${mode}\n` +
             `Total Bid,${fmt(total)}\nMaterials (marked up),${fmt(markedUpMats)}\nLabor,${fmt(laborTotal)}`;
           const blob = new Blob([csv], { type: 'text/csv' });
           const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -175,15 +240,11 @@ function ProposalView() {
   );
 }
 
+// ── MAIN STEP 6 ────────────────────────────────────────────────────────────────
 export default function Step6_Proposal({ onBack }) {
   const { state, dispatch } = useStore();
-
-  const matsTotal = state.lineItems.reduce((s, i) => s + (i.total || 0), 0);
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
   const activeScenario = state.scenarios[state.scenarios.active];
-  const markupBase = matsTotal + rackPartsContractor;
-  const total = markupBase * (1 + activeScenario.markupPct / 100) + laborTotal;
+  const totals = useBidTotals(state, activeScenario.markupPct);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -191,18 +252,23 @@ export default function Step6_Proposal({ onBack }) {
       {/* Scenarios */}
       <div>
         <SLabel>Bid Scenarios</SLabel>
-        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>Select a scenario to present to the customer — they only see the final number</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>Select a scenario to present — customer only sees the final number</div>
         <div style={{ display: 'flex', gap: 10 }}>
-          {['low', 'mid', 'high'].map(key => (
-            <ScenarioCard
-              key={key}
-              scenarioKey={key}
-              scenario={state.scenarios[key]}
-              isActive={state.scenarios.active === key}
-              onSelect={() => dispatch({ type: 'SELECT_SCENARIO', key })}
-              onUpdateMarkup={pct => dispatch({ type: 'SET_SCENARIO_MARKUP', key, value: pct })}
-            />
-          ))}
+          {['low', 'mid', 'high'].map(key => {
+            const scenario = state.scenarios[key];
+            const scenarioTotals = useBidTotals(state, scenario.markupPct);
+            return (
+              <ScenarioCard
+                key={key}
+                scenarioKey={key}
+                scenario={scenario}
+                isActive={state.scenarios.active === key}
+                total={scenarioTotals.total}
+                onSelect={() => dispatch({ type: 'SELECT_SCENARIO', key })}
+                onUpdateMarkup={pct => dispatch({ type: 'SET_SCENARIO_MARKUP', key, value: pct })}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -211,11 +277,11 @@ export default function Step6_Proposal({ onBack }) {
         <SLabel>Internal Breakdown (not shown to customer)</SLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 10 }}>
           {[
-            { label: 'Materials Cost', value: fmt(matsTotal), color: colors.text },
-            { label: `Markup (${activeScenario.markupPct}%)`, value: fmt(markupBase * activeScenario.markupPct / 100), color: colors.green },
-            { label: 'Rack Parts (Contractor)', value: fmt(rackPartsContractor), color: colors.text },
-            { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
-          ].map(s => (
+            { label: 'Materials & Equipment', value: fmt(totals.markupBase), color: colors.text },
+            { label: `Markup (${activeScenario.markupPct}%)`, value: fmt(totals.markupAmt), color: colors.green },
+            { label: 'Labor', value: fmt(totals.laborTotal), color: colors.yellow },
+            totals.rackLaborTotal > 0 && { label: 'Rack Work Labor', value: fmt(totals.rackLaborTotal), color: colors.yellow },
+          ].filter(Boolean).map(s => (
             <div key={s.label} style={{ padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 4 }}>{s.label}</div>
               <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -224,7 +290,7 @@ export default function Step6_Proposal({ onBack }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0', borderTop: `2px solid ${colors.green}`, marginTop: 10 }}>
           <span style={{ fontWeight: 700 }}>Total Bid Price</span>
-          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(total)}</span>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(totals.total)}</span>
         </div>
       </Card>
 
@@ -234,7 +300,6 @@ export default function Step6_Proposal({ onBack }) {
         <ProposalView />
       </div>
 
-      {/* Nav */}
       <Row style={{ justifyContent: 'flex-start', marginTop: 10 }}>
         <Btn variant="ghost" onClick={onBack}>← Back</Btn>
       </Row>
