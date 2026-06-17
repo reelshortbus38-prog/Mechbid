@@ -9,6 +9,7 @@ import Step4_Materials from '../steps/Step4_Materials.jsx';
 import Step5_Labor from '../steps/Step5_Labor.jsx';
 import Step6_Proposal from '../steps/Step6_Proposal.jsx';
 import StepHVACEquipment from '../steps/StepHVACEquipment.jsx';
+import PriceBookModal from './PriceBook.jsx';
 
 // ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
 const STEPS_BY_MODE = {
@@ -51,6 +52,7 @@ export default function Wizard() {
   const { state, dispatch } = useStore();
   const [stepIndex, setStepIndex] = useState(0);
   const [showJobs, setShowJobs] = useState(false);
+  const [showPriceBook, setShowPriceBook] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
   const [jobs, setJobs] = useState({});
 
@@ -126,6 +128,7 @@ export default function Wizard() {
 
           {/* Actions */}
           <Row style={{ gap: 8, flexShrink: 0 }}>
+            <Btn variant="surface" size="sm" onClick={() => setShowPriceBook(true)}>📖 Prices</Btn>
             <Btn variant="surface" size="sm" onClick={() => { setJobs(loadAllJobs()); setShowJobs(true); }}>💾 Jobs</Btn>
             <Btn variant="green" size="sm" onClick={handleSave}>Save</Btn>
             {saveIndicator && <span style={{ fontSize: 11, color: colors.green }}>{saveIndicator}</span>}
@@ -172,6 +175,9 @@ export default function Wizard() {
         </div>
         {getStepComponent(currentStep.id, state.mode, goNext, goBack)}
       </div>
+
+      {/* Price Book modal */}
+      {showPriceBook && <PriceBookModal onClose={() => setShowPriceBook(false)} />}
 
       {/* Jobs modal */}
       {showJobs && (
