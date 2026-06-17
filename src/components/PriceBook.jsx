@@ -3,6 +3,28 @@ import { uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
 
+// ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
+const SUPPLIER_DEFAULT_KEY = 'mechbid_default_supplier_v1';
+export const SUPPLIERS = ['RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco'];
+
+export function loadDefaultSupplier() {
+  try {
+    return localStorage.getItem(SUPPLIER_DEFAULT_KEY) || 'RE Michel';
+  } catch {
+    return 'RE Michel';
+  }
+}
+
+export function saveDefaultSupplier(supplier) {
+  try {
+    localStorage.setItem(SUPPLIER_DEFAULT_KEY, supplier);
+    return true;
+  } catch (e) {
+    console.warn('Default supplier save failed:', e);
+    return false;
+  }
+}
+
 // ── STORAGE ────────────────────────────────────────────────────────────────────
 // Separate localStorage key from jobs — this is shared across ALL jobs and must
 // survive "New Job" / job switching untouched.
@@ -59,7 +81,72 @@ export function findPriceMatch(entries, { desc = '', partId = '' }) {
   return null;
 }
 
-// ── TAP-TO-FILL CHIP ───────────────────────────────────────────────────────────
+// ── SUPPLIER SWITCHER ──────────────────────────────────────────────────────────
+// Drop this wherever the job's supplier matters. Shows the current per-job supplier
+// (state.preferredSupplier, falling back to the global default), lets the user pick
+// any supplier for THIS job, and optionally save that choice as the new global default.
+export function SupplierSwitcher({ value, onChange, compact = false }) {
+  const globalDefault = loadDefaultSupplier();
+  const current = value || globalDefault;
+  const isGlobalDefault = current === globalDefault;
+
+  function handleSelect(supplier) {
+    onChange(supplier);
+  }
+
+  function makeDefault() {
+    saveDefaultSupplier(current);
+  }
+
+  if (compact) {
+    return (
+      <select
+        value={current}
+        onChange={e => handleSelect(e.target.value)}
+        style={{
+          background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text,
+          borderRadius: 6, padding: '5px 8px', fontSize: 11, cursor: 'pointer', outline: 'none',
+        }}
+      >
+        {SUPPLIERS.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <Card>
+      <Row style={{ justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <SLabel>Preferred Supplier</SLabel>
+        {!isGlobalDefault && (
+          <button onClick={makeDefault} style={{ background: 'transparent', border: `1px solid ${colors.green}`, color: colors.green, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+            ⭐ Set as Default for All Jobs
+          </button>
+        )}
+      </Row>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+        {SUPPLIERS.map(s => (
+          <button
+            key={s}
+            onClick={() => handleSelect(s)}
+            style={{
+              padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+              border: `2px solid ${current === s ? colors.green : colors.border}`,
+              background: current === s ? colors.greenFaint : colors.card2,
+              color: current === s ? colors.green : colors.textDim,
+            }}
+          >
+            {s}{s === globalDefault ? ' ⭐' : ''}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10 }}>
+        ⭐ marks your global default. Picking a different supplier here only changes it for this job.
+      </div>
+    </Card>
+  );
+}
+
+
 // Drop this next to any description/part# input. Pass the current desc/partId and
 // a callback that receives the matched price. Renders nothing if there's no match.
 export function PriceMatchChip({ desc, partId, onFill }) {
