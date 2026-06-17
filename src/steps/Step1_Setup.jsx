@@ -6,6 +6,7 @@ import {
   callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask
 } from '../api/ai.js';
+import ReviewExtraction from '../components/ReviewExtraction.jsx';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -22,6 +23,7 @@ export default function Step1_Setup({ onNext }) {
   const [emailText, setEmailText] = useState('');
   const [fileStatuses, setFileStatuses] = useState({}); // id -> 'ready'|'analyzing'|'done'|'error'
   const [results, setResults] = useState([]);
+  const [pendingReview, setPendingReview] = useState(null); // null = no review screen showing; array = items to review
   const fileRef = useRef();
 
   // Store actual File objects in a ref (not React state) to prevent serialization issues
@@ -63,6 +65,8 @@ export default function Step1_Setup({ onNext }) {
     setFileStatuses(prev => { const s = { ...prev }; delete s[id]; return s; });
   }
 
+  // ── ANALYZE: builds a list of pending items for human review.
+  // NOTHING here touches circuits/rackTasks/fieldTasks/rackParts/projName directly anymore.
   async function analyzeAll() {
     const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode && fileStatuses[f.id] !== 'done');
     if (modeFiles.length === 0 && !emailText.trim()) return;
@@ -70,12 +74,13 @@ export default function Step1_Setup({ onNext }) {
     setAnalyzing(true);
     const newResults = [];
     const flags = [];
-    const newCircuits = [];
-    const newRackTasks = [];
-    const newFieldTasks = [];
-    const newRackParts = [];
+    const pending = []; // { id, kind, sourceType, fileName, data, status }
     let projName = '';
     let projAddr = '';
+
+    function pushPending(kind, sourceType, fileName, data) {
+      pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
+    }
 
     for (const fileMeta of modeFiles) {
       setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'analyzing' }));
@@ -90,29 +95,33 @@ export default function Step1_Setup({ onNext }) {
 
       try {
         let parsed = null;
+        // sourceType tracks HOW the data was obtained, so the review screen can show
+        // appropriate confidence: 'vision' (photo, least reliable), 'doctext' (AI read
+        // extracted document text, medium reliability), 'excel' (parsed cells directly,
+        // most reliable — these auto-accept but are still visible for review).
+        let sourceType = 'doctext';
 
         if (fileMeta.type === 'image') {
+          sourceType = 'vision';
           const b64 = await imageToJpeg(file);
           const raw = await callClaudeVision(b64, fileMeta.name);
           if (raw) parsed = parseAIJson(raw);
-          newResults.push(`🖼️ ${fileMeta.name}: Analyzed`);
+          newResults.push(`🖼️ ${fileMeta.name}: Analyzed (AI read photo — review carefully)`);
 
         } else if (fileMeta.type === 'excel' || fileMeta.type === 'xls') {
+          sourceType = 'excel';
           const b64 = await fileToBase64(file);
           const res = await parseExcelFile(b64, fileMeta.name);
-          if (res.circuits?.length) {
-            res.circuits.forEach(c => {
-              if (c.circuitId && !newCircuits.find(x => x.circuitId === c.circuitId)) {
-                newCircuits.push({ id: uid(), ...c });
-              }
-            });
-          }
+          (res.circuits || []).forEach(c => {
+            if (c.circuitId) pushPending('circuit', 'excel', fileMeta.name, c);
+          });
           if (res.storeName && !projName) projName = res.storeName;
           newResults.push(`📊 ${fileMeta.name}: ${res.circuits?.length || 0} circuit(s) found [${res.format || 'excel'}]`);
           if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
           if (res.summary) newResults.push(`   → ${res.summary}`);
 
         } else if (fileMeta.type === 'scope') {
+          sourceType = 'doctext';
           const b64 = await fileToBase64(file);
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
@@ -121,45 +130,47 @@ export default function Step1_Setup({ onNext }) {
         }
 
         if (parsed) {
-          // Store name
-          if (parsed.storeName && !projName) {
-            let sName = parsed.storeName.replace(/NON\s*/gi, '').trim();
+          // Project info — staged too, since AI can misread store names/addresses
+          if (parsed.storeName || parsed.address) {
+            let sName = (parsed.storeName || '').replace(/NON\s*/gi, '').trim();
             const chainMatch = sName.match(/food\s*lion|publix|kroger|harris\s*teeter|winn.?dixie|aldi|walmart/i);
             if (chainMatch) sName = chainMatch[0];
             const num = parsed.storeNumber?.padStart(4, '0') || '';
-            projName = sName + (num ? ' #' + num : '');
+            const candidateName = sName ? sName + (num ? ' #' + num : '') : '';
+            if (candidateName || parsed.address) {
+              pushPending('projectInfo', sourceType, fileMeta.name, {
+                projName: candidateName, projAddr: parsed.address || '',
+              });
+            }
           }
-          if (parsed.address && !projAddr) projAddr = parsed.address;
 
           // Circuits
           (parsed.circuits || []).forEach(c => {
-            if (c.circuitId && !newCircuits.find(x => x.circuitId === c.circuitId)) {
-              newCircuits.push({ id: uid(), ...c });
-            }
+            if (c.circuitId) pushPending('circuit', sourceType, fileMeta.name, c);
           });
 
           // Field tasks (RC filtered)
           (parsed.fieldTasks || []).forEach(t => {
-            if (t.desc && isRCTask(t.desc) && !newFieldTasks.find(x => x.desc === t.desc)) {
-              newFieldTasks.push({ id: uid(), desc: t.desc, men: 1, hrs: 0, notes: t.notes || '', crewAssignment: {} });
+            if (t.desc && isRCTask(t.desc)) {
+              pushPending('fieldTask', sourceType, fileMeta.name, { desc: t.desc, men: 1, hrs: 0, notes: t.notes || '', crewAssignment: {} });
             }
           });
 
           // Rack tasks
           (parsed.rackTasks || []).forEach(t => {
-            if (t.desc && !newRackTasks.find(x => x.desc === t.desc)) {
-              newRackTasks.push({ id: uid(), desc: t.desc, hrs: 0, notes: t.notes || '', crewAssignment: {} });
-            }
+            if (t.desc) pushPending('rackTask', sourceType, fileMeta.name, { desc: t.desc, hrs: 0, notes: t.notes || '', crewAssignment: {} });
           });
 
           // Parts → rack parts
           (parsed.parts || []).forEach(p => {
-            if (p.description && !newRackParts.find(x => x.partId === p.partId)) {
-              newRackParts.push({ id: uid(), partId: p.partId || '', desc: p.description, qty: p.qty || 0, unit: 'ea', storeSupplied: true, unitCost: 0, total: 0 });
+            if (p.description) {
+              pushPending('part', sourceType, fileMeta.name, {
+                partId: p.partId || '', desc: p.description, qty: p.qty || 0, unit: 'ea', storeSupplied: true, unitCost: 0, total: 0,
+              });
             }
           });
 
-          // Flags
+          // Flags — these are informational, not bid data, so they pass through directly
           (parsed.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
           if (parsed.nightWorkRequired) {
             flags.push({ type: 'warn', text: `NIGHT WORK REQUIRED: ${parsed.nightWorkDetails || 'See scope doc'}`, source: fileMeta.name });
@@ -177,20 +188,78 @@ export default function Step1_Setup({ onNext }) {
       }
     }
 
-    // Update state with all extracted data
+    // Flags are low-risk (informational) — merge immediately.
+    // Everything else waits in pendingReview until the user confirms it.
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
-      circuits: [...state.circuits, ...newCircuits.filter(c => !state.circuits.find(x => x.circuitId === c.circuitId))],
-      rackTasks: [...state.rackTasks, ...newRackTasks.filter(t => !state.rackTasks.find(x => x.desc === t.desc))],
-      fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks.filter(t => !(state.fieldTasks||[]).find(x => x.desc === t.desc))],
-      rackParts: [...state.rackParts, ...newRackParts.filter(p => !state.rackParts.find(x => x.partId === p.partId))],
-      ...(projName && !state.projName ? { projName } : {}),
-      ...(projAddr && !state.projAddr ? { projAddr } : {}),
     }});
 
     setResults(newResults);
     setAnalyzing(false);
+
+    if (pending.length > 0) {
+      setPendingReview(pending);
+    }
+  }
+
+  // Called when the user finishes the review screen with their accepted items.
+  function handleResolveReview(acceptedItems) {
+    const newCircuits = [];
+    const newRackTasks = [];
+    const newFieldTasks = [];
+    const newRackParts = [];
+    let projName = '';
+    let projAddr = '';
+
+    acceptedItems.forEach(item => {
+      if (item.kind === 'circuit' && item.data.circuitId) {
+        if (!newCircuits.find(x => x.circuitId === item.data.circuitId) && !state.circuits.find(x => x.circuitId === item.data.circuitId)) {
+          newCircuits.push({ id: uid(), ...item.data });
+        }
+      } else if (item.kind === 'fieldTask') {
+        if (!newFieldTasks.find(x => x.desc === item.data.desc) && !(state.fieldTasks || []).find(x => x.desc === item.data.desc)) {
+          newFieldTasks.push({ id: uid(), ...item.data });
+        }
+      } else if (item.kind === 'rackTask') {
+        if (!newRackTasks.find(x => x.desc === item.data.desc) && !state.rackTasks.find(x => x.desc === item.data.desc)) {
+          newRackTasks.push({ id: uid(), ...item.data });
+        }
+      } else if (item.kind === 'part') {
+        if (!newRackParts.find(x => x.partId === item.data.partId) && !state.rackParts.find(x => x.partId === item.data.partId)) {
+          newRackParts.push({ id: uid(), ...item.data });
+        }
+      } else if (item.kind === 'projectInfo') {
+        if (item.data.projName && !projName) projName = item.data.projName;
+        if (item.data.projAddr && !projAddr) projAddr = item.data.projAddr;
+      }
+    });
+
+    dispatch({ type: 'MERGE', payload: {
+      circuits: [...state.circuits, ...newCircuits],
+      rackTasks: [...state.rackTasks, ...newRackTasks],
+      fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
+      rackParts: [...state.rackParts, ...newRackParts],
+      ...(projName && !state.projName ? { projName } : {}),
+      ...(projAddr && !state.projAddr ? { projAddr } : {}),
+    }});
+
+    setPendingReview(null);
+  }
+
+  function handleCancelReview() {
+    setPendingReview(null);
+  }
+
+  // ── If there's a pending review, show that instead of the normal Setup screen ──
+  if (pendingReview) {
+    return (
+      <ReviewExtraction
+        pendingItems={pendingReview}
+        onResolve={handleResolveReview}
+        onCancel={handleCancelReview}
+      />
+    );
   }
 
   const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode);
