@@ -319,14 +319,16 @@ For EVERY RC task you extract, capture the date/week it's tied to (e.g. "Monday,
 
 Also capture any circuit ID or case number mentioned in parentheses or inline (e.g. "(B6)", "(A7)", "#N74", "Case #23") — these tie directly to refrigeration circuits and should not be dropped.
 
+Also read any store address mentioned anywhere in the document (often near the top, in a header, or near the store name/number) — capture it exactly as written.
+
 Return ONLY valid JSON, no markdown:
-{"storeName":"","storeNumber":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. B6 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
+{"storeName":"","storeNumber":"","address":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. B6 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
 
 If this chunk of the document contains no RC-relevant content at all, return the same JSON shape with empty arrays — don't skip the response.`;
 
   const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
   const merged = {
-    storeName: '', storeNumber: '', startDate: '',
+    storeName: '', storeNumber: '', address: '', startDate: '',
     fieldTasks: [], rackTasks: [], parts: [], flags: [],
     nightWorkRequired: false, nightWorkDetails: '', minimumCrew: '',
     chunkSummaries: [],
@@ -346,6 +348,7 @@ If this chunk of the document contains no RC-relevant content at all, return the
 
     if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
     if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
+    if (parsed.address && !merged.address) merged.address = parsed.address;
     if (parsed.startDate && !merged.startDate) merged.startDate = parsed.startDate;
     if (parsed.minimumCrew && !merged.minimumCrew) merged.minimumCrew = parsed.minimumCrew;
     if (parsed.nightWorkRequired) merged.nightWorkRequired = true;
