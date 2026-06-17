@@ -276,17 +276,88 @@ export function isRCTask(desc) {
   return true;
 }
 
+// Scope/schedule documents (like a multi-week construction remodel schedule)
+// can run well beyond 8,000 characters — a Food Lion remodel schedule, for
+// example, is commonly 20,000-30,000+ characters covering 15-25 weeks. The old
+// version of this function silently truncated to the first 8,000 characters,
+// which meant only the FIRST week or two of a long schedule ever reached the
+// model — everything after that (often where most of the case relocations and
+// circuit-tagged RC work actually live) was never read at all. This version
+// chunks the document and processes every chunk, then merges the results.
+const SCOPE_CHUNK_SIZE = 9000;
+// Overlap between chunks so a task description that happens to fall right at
+// a chunk boundary doesn't get cut in half and lost or duplicated oddly.
+const SCOPE_CHUNK_OVERLAP = 500;
+
+function chunkText(text, size, overlap) {
+  if (text.length <= size) return [text];
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    const end = Math.min(start + size, text.length);
+    chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
+    start = end - overlap;
+  }
+  return chunks;
+}
+
 export async function analyzeScopeDoc(text, fileName) {
-  const prompt = `You are an expert commercial refrigeration estimating system. Extract all relevant information from this scope of work document.
+  // This prompt assumes the document may be a long, DATED schedule (like a
+  // multi-week construction remodel schedule) where RC tasks are interleaved
+  // among General Contractor, Electrical, and Plumbing tasks under day/week
+  // headers — not a flat list. Date/week context is preserved on every task
+  // because RC's obligations in these documents are usually tied to specific
+  // night-work windows and case-set sequencing, not just "do this eventually."
+  const prompt = `You are an expert commercial refrigeration estimating system reading a construction remodel schedule. This document is organized by week and date, with bullet points under each date describing work for different trades (General Contractor, Electrical Contractor, Plumbing Contractor, Refrigeration Contractor, etc.) — often in the same paragraph block.
 
-Extract rackTasks (rack work: setpoint adjustments, EPR/valve changes, oil floats, filter elements, ultra-tubes, controller programming, rack part changes) and fieldTasks (field work: new line runs, drip pans, sensor terminations, insulation repairs, top stubs, case moves, sealing, night work).
+Your job: find every bullet point that is Refrigeration Contractor (RC) scope, and ONLY those. A line is RC scope if it explicitly says "Refrigeration Contractor" or "RC", OR if it describes case removal/relocation/installation, refrigeration line/circuit work, sensor termination (the RC terminates sensor cable ends — note: the Electrical Contractor PULLS the cable, but RC TERMINATES it, so termination lines belong to RC), case labeling for refrigeration purposes, or refrigeration piping.
 
-Return ONLY valid JSON:
-{"storeName":"","storeNumber":"","startDate":"","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcSchedule":[{"week":"","milestone":"","rcInvolved":true,"nightWork":false,"notes":""}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":""}`;
+Do NOT extract lines that are purely General Contractor, Electrical Contractor (other than sensor termination), Plumbing, Decor, or other trades' responsibility, even if they're in the same date block as RC work.
 
-  const resultText = await callClaude(
-    [{ role: 'user', content: `File: ${fileName}\n\nDocument text:\n${text.slice(0, 8000)}\n\n${prompt}` }],
-    'You are an expert commercial refrigeration estimator. Return only valid JSON.'
-  );
-  return parseAIJson(resultText);
+For EVERY RC task you extract, capture the date/week it's tied to (e.g. "Monday, September 28th (Night) w15") exactly as written in the nearest preceding date header — this matters because RC's work in these schedules is usually tied to a specific night-work window or case-set date, not just "eventually."
+
+Also capture any circuit ID or case number mentioned in parentheses or inline (e.g. "(B6)", "(A7)", "#N74", "Case #23") — these tie directly to refrigeration circuits and should not be dropped.
+
+Return ONLY valid JSON, no markdown:
+{"storeName":"","storeNumber":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. B6 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
+
+If this chunk of the document contains no RC-relevant content at all, return the same JSON shape with empty arrays — don't skip the response.`;
+
+  const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
+  const merged = {
+    storeName: '', storeNumber: '', startDate: '',
+    fieldTasks: [], rackTasks: [], parts: [], flags: [],
+    nightWorkRequired: false, nightWorkDetails: '', minimumCrew: '',
+    chunkSummaries: [],
+  };
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
+    const resultText = await callClaude(
+      [{ role: 'user', content: `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunks[i]}\n\n${prompt}` }],
+      'You are an expert commercial refrigeration estimator. Return only valid JSON.'
+    );
+    const parsed = parseAIJson(resultText);
+    if (!parsed) {
+      merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName });
+      continue;
+    }
+
+    if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
+    if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
+    if (parsed.startDate && !merged.startDate) merged.startDate = parsed.startDate;
+    if (parsed.minimumCrew && !merged.minimumCrew) merged.minimumCrew = parsed.minimumCrew;
+    if (parsed.nightWorkRequired) merged.nightWorkRequired = true;
+    if (parsed.nightWorkDetails && !merged.nightWorkDetails) merged.nightWorkDetails = parsed.nightWorkDetails;
+
+    (parsed.fieldTasks || []).forEach(t => merged.fieldTasks.push(t));
+    (parsed.rackTasks || []).forEach(t => merged.rackTasks.push(t));
+    (parsed.parts || []).forEach(p => merged.parts.push(p));
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.chunkSummaries.push(parsed.summary);
+  }
+
+  merged.summary = merged.chunkSummaries.join(' ');
+  return merged;
 }
