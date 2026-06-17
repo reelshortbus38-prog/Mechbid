@@ -8,6 +8,7 @@ import {
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
+import JobInfo from '../components/JobInfo.jsx';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -153,7 +154,7 @@ export default function Step1_Setup({ onNext }) {
             const candidateName = sName ? sName + (num ? ' #' + num : '') : '';
             if (candidateName || parsed.address) {
               pushPending('projectInfo', sourceType, fileMeta.name, {
-                projName: candidateName, projAddr: parsed.address || '',
+                projName: candidateName, projAddr: parsed.address || '', storeNumber: parsed.storeNumber || '',
               });
             }
           }
@@ -169,7 +170,9 @@ export default function Step1_Setup({ onNext }) {
           // present into notes so nothing is lost during review. Date is also
           // prefixed onto the description itself, since for a dated schedule
           // (night work windows, case-set sequencing) the timing is often as
-          // important as the task text itself.
+          // important as the task text itself. date/circuitRef are ALSO kept
+          // as their own fields (not just baked into desc) so that accepted
+          // items can populate the dedicated RC Schedule view cleanly.
           (parsed.fieldTasks || []).forEach(t => {
             if (t.desc && isRCTask(t.desc)) {
               const extraContext = [
@@ -179,7 +182,10 @@ export default function Step1_Setup({ onNext }) {
               ].filter(Boolean).join(' · ');
               const combinedNotes = [extraContext, t.notes].filter(Boolean).join(' — ');
               const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
-              pushPending('fieldTask', sourceType, fileMeta.name, { desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {} });
+              pushPending('fieldTask', sourceType, fileMeta.name, {
+                desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {},
+                date: t.date || '', circuitRef: t.circuitRef || '', rawDesc: t.desc,
+              });
             }
           });
 
@@ -187,7 +193,10 @@ export default function Step1_Setup({ onNext }) {
           (parsed.rackTasks || []).forEach(t => {
             if (t.desc) {
               const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
-              pushPending('rackTask', sourceType, fileMeta.name, { desc, hrs: 0, notes: t.notes || '', crewAssignment: {} });
+              pushPending('rackTask', sourceType, fileMeta.name, {
+                desc, hrs: 0, notes: t.notes || '', crewAssignment: {},
+                date: t.date || '', rawDesc: t.desc,
+              });
             }
           });
 
@@ -239,8 +248,10 @@ export default function Step1_Setup({ onNext }) {
     const newRackTasks = [];
     const newFieldTasks = [];
     const newRackParts = [];
+    const newScheduleItems = [];
     let projName = '';
     let projAddr = '';
+    let storeNumber = '';
 
     acceptedItems.forEach(item => {
       if (item.kind === 'circuit' && item.data.circuitId) {
@@ -251,9 +262,30 @@ export default function Step1_Setup({ onNext }) {
         if (!newFieldTasks.find(x => x.desc === item.data.desc) && !(state.fieldTasks || []).find(x => x.desc === item.data.desc)) {
           newFieldTasks.push({ id: uid(), ...item.data });
         }
+        // Any accepted field task that carries a date goes into the RC
+        // Schedule view too — that's the whole point of preserving date as
+        // its own field above, rather than only inside the bracketed desc.
+        if (item.data.date) {
+          newScheduleItems.push({
+            id: uid(),
+            date: item.data.date,
+            desc: item.data.rawDesc || item.data.desc,
+            circuitRef: item.data.circuitRef || '',
+            notes: item.data.notes || '',
+          });
+        }
       } else if (item.kind === 'rackTask') {
         if (!newRackTasks.find(x => x.desc === item.data.desc) && !state.rackTasks.find(x => x.desc === item.data.desc)) {
           newRackTasks.push({ id: uid(), ...item.data });
+        }
+        if (item.data.date) {
+          newScheduleItems.push({
+            id: uid(),
+            date: item.data.date,
+            desc: item.data.rawDesc || item.data.desc,
+            circuitRef: '',
+            notes: item.data.notes || '',
+          });
         }
       } else if (item.kind === 'part') {
         if (!newRackParts.find(x => x.partId === item.data.partId) && !state.rackParts.find(x => x.partId === item.data.partId)) {
@@ -262,6 +294,7 @@ export default function Step1_Setup({ onNext }) {
       } else if (item.kind === 'projectInfo') {
         if (item.data.projName && !projName) projName = item.data.projName;
         if (item.data.projAddr && !projAddr) projAddr = item.data.projAddr;
+        if (item.data.storeNumber && !storeNumber) storeNumber = item.data.storeNumber;
       }
     });
 
@@ -270,8 +303,10 @@ export default function Step1_Setup({ onNext }) {
       rackTasks: [...state.rackTasks, ...newRackTasks],
       fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
       rackParts: [...state.rackParts, ...newRackParts],
+      rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),
+      ...(storeNumber && !state.storeNumber ? { storeNumber } : {}),
     }});
 
     setPendingReview(null);
@@ -425,6 +460,11 @@ export default function Step1_Setup({ onNext }) {
           {state.flags.map((f, i) => <Flag key={i} flag={f} />)}
         </div>
       )}
+
+      {/* RC Schedule — dated tasks accepted from schedule documents land here,
+          separate from the quick Project Info fields above (which already
+          cover name/address/store number) */}
+      {(state.rcSchedule || []).length > 0 && <JobInfo showStoreFields={false} />}
 
       {/* Next */}
       <Btn variant="green" onClick={onNext} style={{ width: '100%', justifyContent: 'center', padding: '16px', fontSize: 15 }}>
