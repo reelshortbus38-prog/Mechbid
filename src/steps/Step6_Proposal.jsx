@@ -1,6 +1,7 @@
 import { useStore, fmt, calcTotalLabor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row } from '../components/UI.jsx';
+import JobInfo from '../components/JobInfo.jsx';
 
 // ── SCENARIO CARD ──────────────────────────────────────────────────────────────
 function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarkup, total }) {
@@ -248,6 +249,8 @@ export default function Step6_Proposal({ onBack }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      <JobInfo />
 
       {/* Scenarios */}
       <div>
