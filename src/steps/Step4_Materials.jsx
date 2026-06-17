@@ -3,6 +3,7 @@ import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, cal
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
+import { PriceMatchChip } from '../components/PriceBook.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
@@ -250,6 +251,12 @@ function ResidentialEquipment({ onNext, onBack }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ color: colors.textDim }}>$</span>
                     <Input type="number" value={e.cost||''} onChange={ev => updateEquipment(e.id, 'cost', ev.target.value)} placeholder="0.00" />
+                    {!e.cost && (
+                      <PriceMatchChip
+                        desc={[e.type, e.brand, e.model].filter(Boolean).join(' ')}
+                        onFill={price => updateEquipment(e.id, 'cost', price)}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -327,6 +334,7 @@ function ResidentialEquipment({ onNext, onBack }) {
             {parts.map((p, i) => (
               <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, background: i%2===0?'transparent':colors.surface+'30' }}>
                 <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
+                {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
                 <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
                 <TblInput type="number" value={p.unitCost||''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
                 <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
@@ -632,6 +640,7 @@ function SupplyHouseList() {
               <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:`1px solid ${colors.border+'60'}` }}>
                 <TblInput value={item.partId} onChange={e=>updateItem(item.id,'partId',e.target.value)} placeholder="Part #" style={{ width:80, fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
                 <TblInput value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} placeholder="Description" style={{ flex:1 }} />
+                {!item.unitCost && <PriceMatchChip desc={item.desc} partId={item.partId} onFill={price => updateItem(item.id, 'unitCost', price)} />}
                 <TblInput type="number" value={item.qty} onChange={e=>updateItem(item.id,'qty',e.target.value)} placeholder="Qty" style={{ width:50, textAlign:'center', fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
                 <TblInput type="number" value={item.unitCost||''} onChange={e=>updateItem(item.id,'unitCost',e.target.value)} placeholder="$" style={{ width:70, textAlign:'right', fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
                 <span style={{ fontFamily:"'DM Mono',monospace", fontSize:12, fontWeight:700, color:colors.green, minWidth:60, textAlign:'right', flexShrink:0 }}>{item.total>0?fmt(item.total):'—'}</span>
