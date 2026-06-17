@@ -6,13 +6,18 @@ import { createContext, useContext, useReducer } from 'react';
 // the real global default on RESET/new job — see applyDefaultSupplier() usage there.
 export const initialState = {
   mode: 'Commercial Refrigeration',
-  projName: '', projAddr: '', projGC: '', projCont: '', projBidDate: '',
+  projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
   uploadedFiles: [], extractionResults: [], flags: [],
   circuits: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
   supplyItems: [],
   fieldTasks: [],
+  // Dated RC schedule items — separate from fieldTasks (which is the labor-hours
+  // input table). This is a read-only-ish reference list of "here's what RC has
+  // to do and when" pulled from schedule documents, for the Job Info view.
+  // Shape: { id, date, desc, circuitRef, notes }
+  rcSchedule: [],
   rates: {
     cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
     // Insulation rates are per pipe size, per temp/line category — mirrors the copper rate shape.
@@ -123,6 +128,16 @@ export function reducer(state, action) {
       return { ...state, supplyItems: state.supplyItems.map(i => i.id === action.id ? { ...i, ...action.updates } : i) };
     case 'REMOVE_SUPPLY_ITEM':
       return { ...state, supplyItems: state.supplyItems.filter(i => i.id !== action.id) };
+
+    // RC Schedule (dated tasks, for the Job Info view — separate from fieldTasks)
+    case 'ADD_RC_SCHEDULE_ITEM':
+      return { ...state, rcSchedule: [...(state.rcSchedule || []), action.item] };
+    case 'ADD_RC_SCHEDULE_ITEMS':
+      return { ...state, rcSchedule: [...(state.rcSchedule || []), ...action.items] };
+    case 'UPDATE_RC_SCHEDULE_ITEM':
+      return { ...state, rcSchedule: (state.rcSchedule || []).map(i => i.id === action.id ? { ...i, ...action.updates } : i) };
+    case 'REMOVE_RC_SCHEDULE_ITEM':
+      return { ...state, rcSchedule: (state.rcSchedule || []).filter(i => i.id !== action.id) };
 
     // Scenarios
     case 'SET_SCENARIO_MARKUP':
