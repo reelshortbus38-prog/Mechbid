@@ -3,7 +3,7 @@ import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, cal
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
-import { PriceMatchChip } from '../components/PriceBook.jsx';
+import { PriceMatchChip, SupplierSwitcher } from '../components/PriceBook.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
@@ -199,7 +199,10 @@ function ResidentialEquipment({ onNext, onBack }) {
 
       {/* Supplier search */}
       <Card>
-        <SLabel>🔍 Equipment Lookup — {supplier}</SLabel>
+        <Row style={{ justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+          <SLabel style={{ margin: 0 }}>🔍 Equipment Lookup</SLabel>
+          <SupplierSwitcher compact value={supplier} onChange={s => dispatch({ type: 'SET', key: 'preferredSupplier', value: s })} />
+        </Row>
         <Row style={{ gap: 8 }}>
           <Input
             value={supplierSearch}
