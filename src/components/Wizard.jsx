@@ -9,7 +9,7 @@ import Step4_Materials from '../steps/Step4_Materials.jsx';
 import Step5_Labor from '../steps/Step5_Labor.jsx';
 import Step6_Proposal from '../steps/Step6_Proposal.jsx';
 import StepHVACEquipment from '../steps/StepHVACEquipment.jsx';
-import PriceBookModal from './PriceBook.jsx';
+import PriceBookModal, { loadDefaultSupplier } from './PriceBook.jsx';
 
 // ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
 const STEPS_BY_MODE = {
@@ -73,6 +73,16 @@ export default function Wizard() {
     setJobs(loadAllJobs());
   }, [showJobs]);
 
+  // Apply the global default supplier once on first mount, if this is a fresh
+  // session that hasn't had a supplier explicitly set yet (covers the very first
+  // load before any job/save has happened).
+  useEffect(() => {
+    if (!state.jobId && !state.preferredSupplier) {
+      dispatch({ type: 'SET', key: 'preferredSupplier', value: loadDefaultSupplier() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleSave() {
     const id = saveJob(state);
     if (id) {
@@ -90,6 +100,9 @@ export default function Wizard() {
 
   function handleNewJob() {
     dispatch({ type: 'RESET' });
+    // New jobs start from the current global default supplier, not whatever
+    // the previous job happened to be using.
+    dispatch({ type: 'SET', key: 'preferredSupplier', value: loadDefaultSupplier() });
     setShowJobs(false);
     setStepIndex(0);
   }
