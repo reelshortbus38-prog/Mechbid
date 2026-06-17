@@ -138,7 +138,9 @@ export default function Step1_Setup({ onNext }) {
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
           parsed = await analyzeScopeDoc(docRes.text, fileMeta.name);
-          newResults.push(`📝 ${fileMeta.name}: Scope of work analyzed`);
+          const fieldCount = parsed?.fieldTasks?.length || 0;
+          const rackCount = parsed?.rackTasks?.length || 0;
+          newResults.push(`📝 ${fileMeta.name}: Scope/schedule analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s) found`);
         }
 
         if (parsed) {
@@ -162,9 +164,12 @@ export default function Step1_Setup({ onNext }) {
           });
 
           // Field tasks (RC filtered). Redline extractions may include extra
-          // context (circuit reference, location, stated size) that the plain
-          // fieldTask shape doesn't have its own field for — fold it into notes
-          // so it's still visible to the user during review.
+          // context (circuit reference, location, stated size); schedule-doc
+          // extractions carry a date/week instead — fold whichever fields are
+          // present into notes so nothing is lost during review. Date is also
+          // prefixed onto the description itself, since for a dated schedule
+          // (night work windows, case-set sequencing) the timing is often as
+          // important as the task text itself.
           (parsed.fieldTasks || []).forEach(t => {
             if (t.desc && isRCTask(t.desc)) {
               const extraContext = [
@@ -173,13 +178,17 @@ export default function Step1_Setup({ onNext }) {
                 t.statedSize ? `Size: ${t.statedSize}` : '',
               ].filter(Boolean).join(' · ');
               const combinedNotes = [extraContext, t.notes].filter(Boolean).join(' — ');
-              pushPending('fieldTask', sourceType, fileMeta.name, { desc: t.desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {} });
+              const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
+              pushPending('fieldTask', sourceType, fileMeta.name, { desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {} });
             }
           });
 
           // Rack tasks
           (parsed.rackTasks || []).forEach(t => {
-            if (t.desc) pushPending('rackTask', sourceType, fileMeta.name, { desc: t.desc, hrs: 0, notes: t.notes || '', crewAssignment: {} });
+            if (t.desc) {
+              const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
+              pushPending('rackTask', sourceType, fileMeta.name, { desc, hrs: 0, notes: t.notes || '', crewAssignment: {} });
+            }
           });
 
           // Parts → rack parts
