@@ -79,24 +79,31 @@ export async function callClaudeVisionRedline(base64Image, fileName, pageNum, to
     const pageContext = totalPages > 1 ? ` This is page ${pageNum} of ${totalPages} in a multi-sheet drawing set.` : '';
     const prompt = `You are an expert commercial refrigeration estimator reading a redlined floor plan or piping plan.${pageContext}
 
-This type of drawing typically has colored callout boxes (orange, red, or similar) with leader lines pointing to specific locations on the floor plan. Each callout is an instruction for the refrigeration contractor (RC) — what to drop, move, connect, or rework, and where.
+This drawing has colored callout boxes (usually orange) with leader lines pointing to specific locations on the floor plan. Each callout box is a SEPARATE, SELF-CONTAINED instruction. Callout boxes are often positioned close together or stacked near the same area of the floor plan — this is the single biggest source of error, so follow this rule strictly:
 
-IMPORTANT — only extract what is actually written. Do NOT invent or estimate:
-- Circuit run lengths (these are almost never given on a redline — leave them out entirely, don't guess)
-- Pipe sizes, UNLESS a size is explicitly written in the callout text (e.g. "1 1/8, 1/2" written directly in the callout)
+NEVER combine, blend, or borrow words from one callout box into another. Each callout's text must come ONLY from inside that specific box's border. Before writing out a callout, visually trace its leader line back to confirm which box it belongs to. If two callouts are near each other, re-read each one individually and check that no phrase from box A has leaked into your transcription of box B. A common error is mixing up circuit IDs (e.g. writing "B16" when the box actually says "B6", or "A2" when it says "A8, C8") — read each alphanumeric ID character by character.
+
+ACCURACY OVER COMPLETENESS — this is critical:
+- If any word, number, or circuit ID in a callout is blurry, small, cut off, or ambiguous, do NOT guess a plausible-looking replacement. Instead write the parts you ARE sure of and mark the uncertain part with [unclear] in the text, e.g. "DROP NEW [unclear] IN MEAT PREP".
+- Do not invent connector words or phrases to make a sentence read smoothly. If the box doesn't clearly say "RECONNECT TO DRAINER AT CASE LINE", don't write that — write only what's actually legible, even if it ends abruptly.
+- For the title block (store name, store number, address): if any part is rotated, low-resolution, or you are not highly confident in the exact characters, leave that field as an empty string rather than producing a plausible-sounding guess. A wrong address is worse than a missing one. Only fill a field if you would bet money it's character-for-character correct.
+
+Do NOT invent or estimate, under any circumstance:
+- Circuit run lengths (these are almost never given on a redline — omit entirely, never guess a number)
+- Pipe sizes, UNLESS a size is explicitly and legibly written inside that specific callout box
 - Quantities not stated in the text
 
-Read every callout box on the page, in whatever orientation it's drawn (the page may be rotated). For each callout:
-- Capture the COMPLETE actual instruction text, not a paraphrase or a generic label
-- Note the circuit ID(s) referenced if stated (e.g. "B11", "A2", "C7")
-- Note the location/area if stated (e.g. "Meat Prep", "Deli Closet", "To-Go Room")
-- Skip instructions that are purely for the General Contractor (lines starting with or referring to "GC TO...") — only extract RC refrigeration scope. If a callout has both GC and RC portions, extract only the RC portion.
-- If a callout mentions night work, trench work, demo, or other notable conditions, include that in notes.
+For each callout box found, in whatever orientation it's drawn (the page may be rotated):
+- Transcribe the COMPLETE text from that box only, verbatim
+- Note the circuit ID(s) if stated, reading each character carefully
+- Note the location/area if stated (e.g. "Meat Prep", "Deli Closet")
+- Skip "GC TO..." portions — extract only RC refrigeration scope. If a box has both GC and RC text, extract only the RC sentence(s).
+- Note night work, trench work, demo, or other notable conditions in notes
 
-Also read the title block (usually a box in a corner, may be upside down or rotated): store name, store number, address, drawing/sheet number, date, drawing title.
+Read the title block per the accuracy rule above: store name, store number, address, drawing/sheet number, date, drawing title.
 
 Return ONLY valid JSON, no markdown, no commentary:
-{"documentType":"redline_callout","storeName":"","storeNumber":"","address":"","drawingNumber":"","sheetTitle":"","fieldTasks":[{"desc":"complete actual callout text","circuitRef":"","location":"","statedSize":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
+{"documentType":"redline_callout","storeName":"","storeNumber":"","address":"","drawingNumber":"","sheetTitle":"","fieldTasks":[{"desc":"complete verbatim text from ONE callout box only, [unclear] for ambiguous parts","circuitRef":"","location":"","statedSize":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
 
     const res = await fetch('/api/claude', {
       method: 'POST',
