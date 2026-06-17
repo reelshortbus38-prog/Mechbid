@@ -8,6 +8,7 @@ import Step3_Rack from '../steps/Step3_Rack.jsx';
 import Step4_Materials from '../steps/Step4_Materials.jsx';
 import Step5_Labor from '../steps/Step5_Labor.jsx';
 import Step6_Proposal from '../steps/Step6_Proposal.jsx';
+import StepHVACEquipment from '../steps/StepHVACEquipment.jsx';
 
 // ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
 const STEPS_BY_MODE = {
@@ -20,14 +21,14 @@ const STEPS_BY_MODE = {
     { id: 'proposal',  label: 'Proposal',  icon: '📄', desc: 'Estimate & bid' },
   ],
   'Commercial HVAC': [
-    { id: 'setup',    label: 'Setup',    icon: '📋', desc: 'Job info & documents' },
-    { id: 'rack',     label: 'Equipment',icon: '🌀', desc: 'Equipment schedule' },
-    { id: 'labor',    label: 'Labor',    icon: '👷', desc: 'Crew & scope' },
-    { id: 'proposal', label: 'Proposal', icon: '📄', desc: 'Estimate & bid' },
+    { id: 'setup',     label: 'Setup',     icon: '📋', desc: 'Job info & documents' },
+    { id: 'hvac_equip',label: 'Equipment', icon: '🌀', desc: 'Equipment schedule' },
+    { id: 'labor',     label: 'Labor',     icon: '👷', desc: 'Crew & scope' },
+    { id: 'proposal',  label: 'Proposal',  icon: '📄', desc: 'Estimate & bid' },
   ],
   'Residential HVAC': [
     { id: 'setup',     label: 'Setup',     icon: '📋', desc: 'Job info & documents' },
-    { id: 'materials', label: 'Equipment', icon: '🏠', desc: 'Equipment, lineset & parts' },
+    { id: 'materials', label: 'Equipment', icon: '🏠', desc: 'Equipment, lineset & labor' },
     { id: 'proposal',  label: 'Proposal',  icon: '📄', desc: 'Estimate & bid' },
   ],
 };
@@ -35,13 +36,14 @@ const STEPS_BY_MODE = {
 // ── STEP COMPONENTS ────────────────────────────────────────────────────────────
 function getStepComponent(stepId, mode, onNext, onBack) {
   switch (stepId) {
-    case 'setup':     return <Step1_Setup onNext={onNext} />;
-    case 'circuits':  return <Step2_Circuits onNext={onNext} onBack={onBack} />;
-    case 'rack':      return <Step3_Rack onNext={onNext} onBack={onBack} />;
-    case 'materials': return <Step4_Materials onNext={onNext} onBack={onBack} />;
-    case 'labor':     return <Step5_Labor onNext={onNext} onBack={onBack} />;
-    case 'proposal':  return <Step6_Proposal onBack={onBack} />;
-    default:          return <Step1_Setup onNext={onNext} />;
+    case 'setup':      return <Step1_Setup onNext={onNext} />;
+    case 'circuits':   return <Step2_Circuits onNext={onNext} onBack={onBack} />;
+    case 'rack':       return <Step3_Rack onNext={onNext} onBack={onBack} />;
+    case 'hvac_equip': return <StepHVACEquipment onNext={onNext} onBack={onBack} />;
+    case 'materials':  return <Step4_Materials onNext={onNext} onBack={onBack} />;
+    case 'labor':      return <Step5_Labor onNext={onNext} onBack={onBack} />;
+    case 'proposal':   return <Step6_Proposal onBack={onBack} />;
+    default:           return <Step1_Setup onNext={onNext} />;
   }
 }
 
