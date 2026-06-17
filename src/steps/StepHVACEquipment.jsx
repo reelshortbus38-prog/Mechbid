@@ -3,6 +3,7 @@ import { useStore, uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
+import { PriceMatchChip } from '../components/PriceBook.jsx';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -160,6 +161,12 @@ function EquipmentCard({ equip, onUpdate, onRemove, supplier }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: colors.textDim }}>$</span>
                 <Input type="number" value={equip.cost || ''} onChange={e => onUpdate('cost', parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                {!equip.cost && (
+                  <PriceMatchChip
+                    desc={[equip.type, equip.brand, equip.model].filter(Boolean).join(' ')}
+                    onFill={price => onUpdate('cost', price)}
+                  />
+                )}
               </div>
             </div>
             <div>
@@ -223,6 +230,7 @@ function MiscParts() {
           {parts.map((p, i) => (
             <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, background: i % 2 === 0 ? 'transparent' : colors.surface + '30' }}>
               <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
+              {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
               <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
               <TblInput type="number" value={p.unitCost || ''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
