@@ -3,7 +3,7 @@ import { useStore, uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
-import { PriceMatchChip } from '../components/PriceBook.jsx';
+import { PriceMatchChip, SupplierSwitcher } from '../components/PriceBook.jsx';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -313,7 +313,10 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
       {/* Supplier search */}
       <Card>
-        <SLabel>🔍 Equipment Lookup — {supplier}</SLabel>
+        <Row style={{ justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+          <SLabel style={{ margin: 0 }}>🔍 Equipment Lookup</SLabel>
+          <SupplierSwitcher compact value={supplier} onChange={s => dispatch({ type: 'SET', key: 'preferredSupplier', value: s })} />
+        </Row>
         <Row style={{ gap: 8 }}>
           <Input
             value={supplierSearch}
