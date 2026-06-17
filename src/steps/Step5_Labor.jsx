@@ -9,8 +9,18 @@ const DEFAULT_PERIOD_NAMES = [
   'Dairy Cases', 'Case Startup', 'Punch List / Day Tech',
 ];
 
-function LaborPeriodCard({ period, onUpdate, onRemove }) {
-  const [expanded, setExpanded] = useState(true);
+// A period counts as "already set up" once it has a name, any crew, or days
+// entered — used to decide whether a card should default open or collapsed.
+// A brand new blank period still opens automatically so you can fill it in
+// right away; once it has real data, later visits to this screen default it
+// to collapsed so a page with several periods doesn't open as a wall of
+// expanded cards every time.
+function periodHasData(period) {
+  return !!(period.name || (period.crew && period.crew.length > 0) || (parseFloat(period.days) || 0) > 0);
+}
+
+function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { labor, oot, total } = calcLaborPeriodCost(period);
 
   return (
@@ -259,23 +269,6 @@ export default function Step5_Labor({ onNext, onBack }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Summary stats */}
-      {state.laborPeriods.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          {[
-            { label: 'Labor Periods', value: state.laborPeriods.length, color: colors.text },
-            { label: 'Total Days', value: totalDays, color: colors.text },
-            { label: 'Max Crew', value: totalPeople, color: colors.text },
-            { label: 'Total Labor', value: fmt(totalLabor), color: colors.orange },
-          ].map(s => (
-            <div key={s.label} style={{ background: colors.card2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Quick add */}
       <div>
         <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
@@ -304,6 +297,12 @@ export default function Step5_Labor({ onNext, onBack }) {
               period={period}
               onUpdate={(field, value) => updatePeriod(period.id, field, value)}
               onRemove={() => dispatch({ type: 'REMOVE_LABOR_PERIOD', id: period.id })}
+              // A period that already has a name/crew/days starts collapsed — only
+              // a freshly-added blank period opens automatically, so the page
+              // doesn't default to a wall of expanded cards once you've got
+              // several periods set up. Each card can still be tapped open/closed
+              // freely after that; this only controls the INITIAL state.
+              defaultExpanded={!periodHasData(period)}
             />
           ))
         )}
@@ -313,6 +312,24 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Field tasks */}
       <FieldTasksSection />
+
+      {/* Summary stats — moved down here next to the total, so the top of the
+          page isn't cluttered with tiles before you've even looked at a period */}
+      {state.laborPeriods.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          {[
+            { label: 'Labor Periods', value: state.laborPeriods.length, color: colors.text },
+            { label: 'Total Days', value: totalDays, color: colors.text },
+            { label: 'Max Crew', value: totalPeople, color: colors.text },
+            { label: 'Total Labor', value: fmt(totalLabor), color: colors.orange },
+          ].map(s => (
+            <div key={s.label} style={{ background: colors.card2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Total */}
       {totalLabor > 0 && (
