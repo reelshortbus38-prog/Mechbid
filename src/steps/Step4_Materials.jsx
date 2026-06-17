@@ -1,12 +1,125 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
+import CrewBuilder from '../components/CrewBuilder.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
 const FITTING_TYPES = ['Coupling','Elbow 90°','Elbow 45°','Tee','Bushing','Reducer','P-Trap','Wye','Cap','Union','Street Ell','Sweat Adapter'];
 const RES_EQUIP_TYPES = ['Heat Pump','Mini Split','Package Unit','Split System AC','Air Handler','Condenser','Gas Furnace','Heat Strip','ERV/HRV'];
+
+const RES_LABOR_PERIOD_NAMES = ['Installation Day','Startup & Commissioning','Service Call','Warranty Return'];
+
+// ── RESIDENTIAL LABOR ─────────────────────────────────────────────────────────
+function ResLaborPeriodCard({ period, onUpdate, onRemove }) {
+  const [expanded, setExpanded] = useState(true);
+  const { labor, oot, total } = calcLaborPeriodCost(period);
+
+  return (
+    <Card style={{ marginBottom: 12 }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>{period.isNight ? '🌙' : '☀️'}</span>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700 }}>{period.name || 'Labor Period'}</div>
+            {period.otMult > 1 && (
+              <span style={{ fontSize: 10, background: 'rgba(249,115,22,0.15)', color: colors.orange, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>OT</span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+            {period.crew.length > 0 ? `${period.crew.length} tech${period.crew.length > 1 ? 's' : ''} · ${period.days || 0} day${period.days !== 1 ? 's' : ''}` : 'No crew set'}
+            {total > 0 ? ` · ${fmt(total)}` : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.orange }}>{fmt(total)}</span>
+          <span style={{ color: colors.textDim }}>{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <>
+          <div style={{ height: 1, background: colors.border, margin: '14px 0' }} />
+
+          {/* Quick name buttons */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Period Name</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              {RES_LABOR_PERIOD_NAMES.map(name => (
+                <button key={name} onClick={() => onUpdate('name', name)} style={{
+                  padding: '5px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                  border: `1px solid ${period.name === name ? colors.green : colors.border}`,
+                  background: period.name === name ? colors.greenFaint : colors.surface,
+                  color: period.name === name ? colors.green : colors.textDim,
+                }}>{name}</button>
+              ))}
+            </div>
+            <Input value={period.name} onChange={e => onUpdate('name', e.target.value)} placeholder="Custom name..." />
+          </div>
+
+          {/* Toggles */}
+          <Row style={{ gap: 20, marginBottom: 14, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={period.otMult > 1} onChange={e => onUpdate('otMult', e.target.checked ? 1.5 : 1)} style={{ accentColor: colors.orange, width: 16, height: 16 }} />
+              ⏰ Overtime
+            </label>
+          </Row>
+
+          {/* Days & multipliers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Days on Site</div>
+              <Input type="number" value={period.days || ''} onChange={e => onUpdate('days', parseFloat(e.target.value) || 0)} placeholder="1" />
+            </div>
+            {period.otMult > 1 && (
+              <div>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT Multiplier (×)</div>
+                <Input type="number" value={period.otMult} onChange={e => onUpdate('otMult', parseFloat(e.target.value) || 1)} step="0.1" placeholder="1.5" />
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
+              <Input type="number" value={period.ootPerDay || ''} onChange={e => onUpdate('ootPerDay', parseFloat(e.target.value) || 0)} placeholder="0" />
+            </div>
+          </div>
+
+          {/* Crew */}
+          <div style={{ marginBottom: 14 }}>
+            <SLabel>Technicians</SLabel>
+            <CrewBuilder crew={period.crew} onChange={crew => onUpdate('crew', crew)} />
+          </div>
+
+          {/* Cost breakdown */}
+          {total > 0 && (
+            <>
+              <div style={{ height: 1, background: colors.border, margin: '14px 0' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                {[
+                  { label: 'Labor', value: fmt(labor), color: colors.yellow },
+                  { label: 'Out of Town', value: fmt(oot), color: colors.blue },
+                  { label: 'Period Total', value: fmt(total), color: colors.orange },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <Row style={{ justifyContent: 'flex-end', marginTop: 14 }}>
+            <Btn variant="red" size="sm" onClick={onRemove}>Remove Period</Btn>
+          </Row>
+        </>
+      )}
+    </Card>
+  );
+}
 
 // ── RESIDENTIAL EQUIPMENT PAGE ────────────────────────────────────────────────
 function ResidentialEquipment({ onNext, onBack }) {
@@ -58,13 +171,18 @@ function ResidentialEquipment({ onNext, onBack }) {
   const lineLength = parseFloat(state.resLineLength)||0;
   const linesetTotal = parseFloat(state.resLinesetTotal)||0;
 
-  function calcLineset(suc, liq, len, type) {
-    // Simple estimate from copper rates if available
-    const sucRate = state.rates?.cu?.[normalizePipeSize(suc)] || 0;
-    const liqRate = state.rates?.cu?.[normalizePipeSize(liq)] || 0;
-    const waste = 1 + ((state.rates?.wasteFactor||10)/100);
-    if (type === 'preinsulated') return 0; // price manually
-    return Math.ceil(len * waste) * (sucRate + liqRate);
+  // Labor
+  const laborPeriods = state.laborPeriods || [];
+
+  function addLaborPeriod(name = '') {
+    dispatch({
+      type: 'ADD_LABOR_PERIOD',
+      period: { id: uid(), name: name || '', crew: [], days: 1, isNight: false, otMult: 1, nightMult: 1.5, ootPerDay: 0, notes: '' }
+    });
+  }
+
+  function updateLaborPeriod(id, field, value) {
+    dispatch({ type: 'UPDATE_LABOR_PERIOD', id, updates: { [field]: value } });
   }
 
   const equipTotal = equipment.reduce((s,e) => s+(e.cost||0), 0);
@@ -72,10 +190,7 @@ function ResidentialEquipment({ onNext, onBack }) {
   const markupPct = state.markupPct || 20;
   const markupBase = equipTotal + partsTotal + linesetTotal;
   const markupAmt = markupBase * (markupPct/100);
-  const laborTotal = (state.laborPeriods||[]).reduce((s,p) => {
-    const rate = (p.crew||[]).reduce((r,m) => r+(parseFloat(m.rate)||0), 0);
-    return s + rate * 8 * (parseFloat(p.days)||0) * (parseFloat(p.otMult)||1) * (p.isNight ? (parseFloat(p.nightMult)||1.5) : 1);
-  }, 0);
+  const laborTotal = calcTotalLabor(laborPeriods);
   const bidTotal = markupBase + markupAmt + laborTotal;
 
   return (
@@ -92,13 +207,8 @@ function ResidentialEquipment({ onNext, onBack }) {
             placeholder={`Search ${supplier} for equipment, part #, model...`}
             style={{ flex: 1 }}
           />
-          <Btn variant="green" size="sm" onClick={() => searchSupplier(supplierSearch, supplier)}>
-            Search
-          </Btn>
+          <Btn variant="green" size="sm" onClick={() => searchSupplier(supplierSearch, supplier)}>Search</Btn>
         </Row>
-        <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8 }}>
-          Each equipment row also has a 🔍 button to search by type, tonnage, brand, or model number
-        </div>
       </Card>
 
       {/* Equipment */}
@@ -107,7 +217,6 @@ function ResidentialEquipment({ onNext, onBack }) {
           <SLabel>Equipment</SLabel>
           <Btn variant="green" size="sm" onClick={addEquipment}>+ Add Equipment</Btn>
         </Row>
-
         {equipment.length === 0 ? (
           <Card><EmptyState icon="❄️" title="No equipment yet" subtitle="Add the units being installed — heat pumps, split systems, package units" /></Card>
         ) : (
@@ -145,9 +254,7 @@ function ResidentialEquipment({ onNext, onBack }) {
                 </div>
               </div>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Btn variant="blue" size="sm" onClick={() => searchEquipment(e)}>
-                  🔍 Search {supplier}
-                </Btn>
+                <Btn variant="blue" size="sm" onClick={() => searchEquipment(e)}>🔍 Search {supplier}</Btn>
                 <Row style={{ gap: 8 }}>
                   <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>{fmt(e.cost)}</span>
                   <Btn variant="red" size="sm" onClick={() => removeEquipment(e.id)}>Remove</Btn>
@@ -162,21 +269,16 @@ function ResidentialEquipment({ onNext, onBack }) {
       <div>
         <SLabel>Lineset</SLabel>
         <Card>
-          {/* Type toggle */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <button onClick={() => dispatch({ type: 'SET', key: 'resLinesetType', value: 'preinsulated' })}
-              style={{ flex: 1, padding: '10px', borderRadius: 8, border: `2px solid ${linesetType==='preinsulated'?colors.green:colors.border}`, background: linesetType==='preinsulated'?colors.greenFaint:colors.card2, color: linesetType==='preinsulated'?colors.green:colors.textDim, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-              ✅ Pre-Insulated
-            </button>
-            <button onClick={() => dispatch({ type: 'SET', key: 'resLinesetType', value: 'roll' })}
-              style={{ flex: 1, padding: '10px', borderRadius: 8, border: `2px solid ${linesetType==='roll'?colors.green:colors.border}`, background: linesetType==='roll'?colors.greenFaint:colors.card2, color: linesetType==='roll'?colors.green:colors.textDim, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-              🔧 Roll Copper
-            </button>
+            {['preinsulated','roll'].map(type => (
+              <button key={type} onClick={() => dispatch({ type: 'SET', key: 'resLinesetType', value: type })}
+                style={{ flex: 1, padding: '10px', borderRadius: 8, border: `2px solid ${linesetType===type?colors.green:colors.border}`, background: linesetType===type?colors.greenFaint:colors.card2, color: linesetType===type?colors.green:colors.textDim, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                {type === 'preinsulated' ? '✅ Pre-Insulated' : '🔧 Roll Copper'}
+              </button>
+            ))}
           </div>
           <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px', background: colors.surface, borderRadius: 6 }}>
-            {linesetType === 'preinsulated'
-              ? 'Pre-insulated lineset — enter total cost from supplier quote'
-              : 'Roll copper — price from copper rates, add insulation to parts'}
+            {linesetType === 'preinsulated' ? 'Pre-insulated lineset — enter total cost from supplier quote' : 'Roll copper — price from copper rates, add insulation to parts'}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
@@ -240,11 +342,44 @@ function ResidentialEquipment({ onNext, onBack }) {
         )}
       </div>
 
+      {/* ── LABOR ─────────────────────────────────────────────────────────── */}
+      <div>
+        <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+          <div>
+            <SLabel>Labor</SLabel>
+            <div style={{ fontSize: 12, color: colors.textDim }}>Add technician time for installation & startup</div>
+          </div>
+          <Btn variant="green" size="sm" onClick={() => addLaborPeriod()}>+ Add Period</Btn>
+        </Row>
+
+        {/* Quick-add buttons when empty */}
+        {laborPeriods.length === 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {RES_LABOR_PERIOD_NAMES.map(name => (
+              <Btn key={name} variant="surface" size="sm" onClick={() => addLaborPeriod(name)}>+ {name}</Btn>
+            ))}
+          </div>
+        )}
+
+        {laborPeriods.length === 0 ? (
+          <Card><EmptyState icon="👷" title="No labor added yet" subtitle="Add installation time, startup, or service calls" /></Card>
+        ) : (
+          laborPeriods.map(period => (
+            <ResLaborPeriodCard
+              key={period.id}
+              period={period}
+              onUpdate={(field, value) => updateLaborPeriod(period.id, field, value)}
+              onRemove={() => dispatch({ type: 'REMOVE_LABOR_PERIOD', id: period.id })}
+            />
+          ))
+        )}
+      </div>
+
       {/* Markup & totals */}
       <Card style={{ background: colors.greenFaint, border: `1px solid ${colors.green}40` }}>
         <SLabel>Markup & Bid Summary</SLabel>
-        <Row style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 120 }}>
+        <Row style={{ gap: 10, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Materials Markup %</div>
             <Input type="number" value={markupPct} onChange={e => dispatch({ type: 'SET', key: 'markupPct', value: parseFloat(e.target.value)||20 })} style={{ fontFamily: "'DM Mono', monospace" }} />
           </div>
@@ -522,7 +657,7 @@ export default function Step4_Materials({ onNext, onBack }) {
   const { state, dispatch } = useStore();
   const [activeTab, setActiveTab] = useState('bid');
 
-  // Residential gets its own page
+  // Residential gets its own full page
   if (state.mode === 'Residential HVAC') {
     return <ResidentialEquipment onNext={onNext} onBack={onBack} />;
   }
