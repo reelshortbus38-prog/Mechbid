@@ -81,8 +81,17 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // NOTE: previously this truncated to text.slice(0, 12000) "to avoid token
+    // overflow" — but that cut long documents (multi-week construction
+    // schedules routinely run 30,000-60,000+ characters) down to roughly their
+    // first 2-3 weeks before the text ever left this endpoint. The client-side
+    // analyzeScopeDoc function already chunks long text into ~9,000-character
+    // pieces and makes one AI call per chunk specifically to manage token
+    // limits per-call — so truncating here was redundant AND actively
+    // discarding most of the document before that logic ever got to run.
+    // Send the FULL extracted text; let the caller decide how to chunk it.
     return res.status(200).json({
-      text: text.slice(0, 12000), // Limit to avoid token overflow
+      text: text,
       length: text.length
     });
 
