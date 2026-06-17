@@ -3,6 +3,7 @@ import { useStore, uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
+import { PriceMatchChip } from '../components/PriceBook.jsx';
 
 export default function Step3_Rack({ onNext, onBack }) {
   const { state, dispatch } = useStore();
@@ -115,7 +116,18 @@ export default function Step3_Rack({ onNext, onBack }) {
                         </select>
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        {!p.storeSupplied && <TblInput type="number" value={p.unitCost || 0} onChange={e => updateRackPart(p.id, 'unitCost', e.target.value)} style={{ width: 70, fontFamily: "'DM Mono', monospace" }} />}
+                        {!p.storeSupplied && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <TblInput type="number" value={p.unitCost || 0} onChange={e => updateRackPart(p.id, 'unitCost', e.target.value)} style={{ width: 70, fontFamily: "'DM Mono', monospace" }} />
+                            {!p.unitCost && (
+                              <PriceMatchChip
+                                desc={p.desc}
+                                partId={p.partId}
+                                onFill={price => updateRackPart(p.id, 'unitCost', price)}
+                              />
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: p.storeSupplied ? colors.textDim : colors.green }}>
                         {p.storeSupplied ? 'Store' : fmt(p.total)}
