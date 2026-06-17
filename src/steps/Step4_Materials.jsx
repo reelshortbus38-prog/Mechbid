@@ -668,6 +668,10 @@ function SupplyHouseList() {
 export default function Step4_Materials({ onNext, onBack }) {
   const { state, dispatch } = useStore();
   const [activeTab, setActiveTab] = useState('bid');
+  // Rates panel starts collapsed — this is setup you visit once per job, not
+  // something that needs to dominate the screen every time you're just adding
+  // a line item. See RatesPanel below.
+  const [ratesOpen, setRatesOpen] = useState(false);
 
   // Residential gets its own full page
   if (state.mode === 'Residential HVAC') {
@@ -766,112 +770,29 @@ export default function Step4_Materials({ onNext, onBack }) {
     dispatch({ type:'SET', key:'lineItems', value:items });
   }
 
-  const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8'];
   const fittingsMode = state.rates?.fittingsMode || 'percentage';
 
   function updateInsulRate(category, size, value) {
     dispatch({ type: 'SET_INSUL_RATE', category, size: normalizePipeSize(size), value: parseFloat(value) || 0 });
   }
 
+  // One-line summary shown when the rates panel is collapsed, so the settings
+  // are still visible at a glance without taking over the screen.
+  const ratesSummary = `${fittingsMode === 'percentage' ? `${state.rates?.fittingsMarkupPct||25}% fittings` : 'Itemized fittings'} · ${state.rates?.wasteFactor||10}% waste · ${state.markupPct||20}% markup`;
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-      <Card>
-        <SLabel>Copper Rates ($/ft)</SLabel>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:18 }}>
-          {PIPE_SIZE_LIST.map(size=>(
-            <div key={size}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>{size}"</div>
-              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                <span style={{ color:colors.textDim, fontSize:12 }}>$</span>
-                <Input type="number" value={state.rates?.cu?.[size]||''} onChange={e=>updateCopperRate(size,e.target.value)} placeholder="0.00" style={{ padding:'7px 8px', fontSize:12, fontFamily:"'DM Mono',monospace" }} />
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {/* Insulation rates — now per pipe size, per category */}
-        <SLabel>Insulation Rates ($/ft by pipe size)</SLabel>
-        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 12, lineHeight: 1.5 }}>
-          Insulation cost varies by pipe diameter — set a rate for each size you commonly run. Sizes left at $0 won't add cost but will still show on the materials list with the correct size for ordering.
-        </div>
-        {[
-          { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
-          { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },
-          { key: 'lowLiquid', label: 'Low Temp Liquid (1/2" wall)' },
-        ].map(cat => (
-          <div key={cat.key} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: colors.text, marginBottom: 8 }}>{cat.label}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-              {PIPE_SIZE_LIST.map(size => (
-                <div key={size}>
-                  <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{size}"</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ color: colors.textDim, fontSize: 12 }}>$</span>
-                    <Input
-                      type="number"
-                      value={state.rates?.insul?.[cat.key]?.[size] || ''}
-                      onChange={e => updateInsulRate(cat.key, size, e.target.value)}
-                      placeholder="0.00"
-                      style={{ padding: '7px 8px', fontSize: 12, fontFamily: "'DM Mono',monospace" }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        {/* Fittings mode toggle */}
-        <SLabel>Fittings</SLabel>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <button
-            onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'percentage' })}
-            style={{
-              flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
-              border: `2px solid ${fittingsMode === 'percentage' ? colors.green : colors.border}`,
-              background: fittingsMode === 'percentage' ? colors.greenFaint : colors.card2,
-              color: fittingsMode === 'percentage' ? colors.green : colors.textDim,
-              fontWeight: 700, fontSize: 12,
-            }}
-          >
-            % Allowance
-          </button>
-          <button
-            onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'manual' })}
-            style={{
-              flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
-              border: `2px solid ${fittingsMode === 'manual' ? colors.green : colors.border}`,
-              background: fittingsMode === 'manual' ? colors.greenFaint : colors.card2,
-              color: fittingsMode === 'manual' ? colors.green : colors.textDim,
-              fontWeight: 700, fontSize: 12,
-            }}
-          >
-            Itemized — Add Manually
-          </button>
-        </div>
-        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px', background: colors.surface, borderRadius: 6 }}>
-          {fittingsMode === 'percentage'
-            ? 'Generate from Circuits will add one allowance line based on a % of copper cost. Use this for a quick estimate.'
-            : 'Generate from Circuits will NOT add a fittings line. Use the + Add Fitting button in Bid Materials to build an itemized list — only one method goes into the bid at a time.'}
-        </div>
-
-        <Row style={{ gap:20, flexWrap:'wrap' }}>
-          {fittingsMode === 'percentage' && (
-            <div style={{ flex:1, minWidth:120 }}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Fittings Allowance (%)</div>
-              <Input type="number" value={state.rates?.fittingsMarkupPct||25} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:parseFloat(e.target.value)||25})} style={{ fontFamily:"'DM Mono',monospace" }} />
-            </div>
-          )}
-          <div style={{ flex:1, minWidth:120 }}>
-            <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Waste Factor (%)</div>
-            <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
-          </div>
-          <div style={{ flex:1, minWidth:120 }}>
-            <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Materials Markup (%)</div>
-            <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
-          </div>
-        </Row>
-      </Card>
+      <RatesPanel
+        open={ratesOpen}
+        onToggle={() => setRatesOpen(o => !o)}
+        summary={ratesSummary}
+        state={state}
+        dispatch={dispatch}
+        fittingsMode={fittingsMode}
+        updateCopperRate={updateCopperRate}
+        updateInsulRate={updateInsulRate}
+      />
 
       <div style={{ display:'flex', gap:4, background:colors.surface, padding:4, borderRadius:10, border:`1px solid ${colors.border}` }}>
         {[{key:'bid',label:'📋 Bid Materials'},{key:'supply',label:'🚚 Supply House List'}].map(t=>(
@@ -887,5 +808,151 @@ export default function Step4_Materials({ onNext, onBack }) {
         <Btn variant="green" onClick={onNext}>Next: Labor →</Btn>
       </Row>
     </div>
+  );
+}
+
+// ── RATES PANEL (collapsible) ───────────────────────────────────────────────
+// Collapsed by default. This is rate setup you do once per job and rarely
+// revisit — it shouldn't compete with the materials list for screen space
+// every time you land on this step. Insulation categories are independently
+// collapsible inside here too, since the per-size rate grid (9 sizes × 3
+// categories = 27 inputs) is the single biggest source of clutter on this page.
+const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8'];
+const INSUL_CATEGORIES = [
+  { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
+  { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },
+  { key: 'lowLiquid', label: 'Low Temp Liquid (1/2" wall)' },
+];
+
+function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, updateCopperRate, updateInsulRate }) {
+  const [openInsulCat, setOpenInsulCat] = useState(null);
+
+  return (
+    <Card style={{ padding: open ? undefined : '14px 18px' }}>
+      <div
+        onClick={onToggle}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700 }}>⚙️ Rates & Markup</div>
+          {!open && <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3 }}>{summary}</div>}
+        </div>
+        <span style={{ color: colors.textDim, fontSize: 14 }}>{open ? '▲ Collapse' : '▼ Edit'}</span>
+      </div>
+
+      {open && (
+        <>
+          <div style={{ height: 1, background: colors.border, margin: '14px 0' }} />
+
+          <SLabel>Copper Rates ($/ft)</SLabel>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:18 }}>
+            {PIPE_SIZE_LIST.map(size=>(
+              <div key={size}>
+                <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>{size}"</div>
+                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style={{ color:colors.textDim, fontSize:12 }}>$</span>
+                  <Input type="number" value={state.rates?.cu?.[size]||''} onChange={e=>updateCopperRate(size,e.target.value)} placeholder="0.00" style={{ padding:'7px 8px', fontSize:12, fontFamily:"'DM Mono',monospace" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Insulation rates — independently collapsible per category */}
+          <SLabel>Insulation Rates ($/ft by pipe size)</SLabel>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 12, lineHeight: 1.5 }}>
+            Tap a category to set rates for that line type. Sizes left at $0 won't add cost but still show on the materials list for ordering.
+          </div>
+          {INSUL_CATEGORIES.map(cat => {
+            const catOpen = openInsulCat === cat.key;
+            const setCount = PIPE_SIZE_LIST.filter(s => (state.rates?.insul?.[cat.key]?.[s] || 0) > 0).length;
+            return (
+              <div key={cat.key} style={{ marginBottom: 10, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                <div
+                  onClick={() => setOpenInsulCat(catOpen ? null : cat.key)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer', background: colors.surface, userSelect: 'none' }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{cat.label}</span>
+                  <span style={{ fontSize: 11, color: colors.textDim }}>{setCount > 0 ? `${setCount} size${setCount !== 1 ? 's' : ''} set` : 'not set'} {catOpen ? '▲' : '▼'}</span>
+                </div>
+                {catOpen && (
+                  <div style={{ padding: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                      {PIPE_SIZE_LIST.map(size => (
+                        <div key={size}>
+                          <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{size}"</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ color: colors.textDim, fontSize: 12 }}>$</span>
+                            <Input
+                              type="number"
+                              value={state.rates?.insul?.[cat.key]?.[size] || ''}
+                              onChange={e => updateInsulRate(cat.key, size, e.target.value)}
+                              placeholder="0.00"
+                              style={{ padding: '7px 8px', fontSize: 12, fontFamily: "'DM Mono',monospace" }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{ height: 1, background: colors.border, margin: '18px 0 14px' }} />
+
+          {/* Fittings mode toggle */}
+          <SLabel>Fittings</SLabel>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button
+              onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'percentage' })}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
+                border: `2px solid ${fittingsMode === 'percentage' ? colors.green : colors.border}`,
+                background: fittingsMode === 'percentage' ? colors.greenFaint : colors.card2,
+                color: fittingsMode === 'percentage' ? colors.green : colors.textDim,
+                fontWeight: 700, fontSize: 12,
+              }}
+            >
+              % Allowance
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'manual' })}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
+                border: `2px solid ${fittingsMode === 'manual' ? colors.green : colors.border}`,
+                background: fittingsMode === 'manual' ? colors.greenFaint : colors.card2,
+                color: fittingsMode === 'manual' ? colors.green : colors.textDim,
+                fontWeight: 700, fontSize: 12,
+              }}
+            >
+              Itemized — Add Manually
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px', background: colors.surface, borderRadius: 6 }}>
+            {fittingsMode === 'percentage'
+              ? 'Generate from Circuits will add one allowance line based on a % of copper cost. Use this for a quick estimate.'
+              : 'Generate from Circuits will NOT add a fittings line. Use the + Add Fitting button in Bid Materials to build an itemized list — only one method goes into the bid at a time.'}
+          </div>
+
+          <Row style={{ gap:20, flexWrap:'wrap' }}>
+            {fittingsMode === 'percentage' && (
+              <div style={{ flex:1, minWidth:120 }}>
+                <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Fittings Allowance (%)</div>
+                <Input type="number" value={state.rates?.fittingsMarkupPct||25} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:parseFloat(e.target.value)||25})} style={{ fontFamily:"'DM Mono',monospace" }} />
+              </div>
+            )}
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Waste Factor (%)</div>
+              <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Materials Markup (%)</div>
+              <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+          </Row>
+        </>
+      )}
+    </Card>
   );
 }
