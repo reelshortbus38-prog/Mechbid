@@ -680,6 +680,8 @@ export default function Step4_Materials({ onNext, onBack }) {
     const items = [];
     const rates = state.rates || {};
     const wasteFactor = 1+((rates.wasteFactor||10)/100);
+
+    // ── Copper, bucketed by size ──────────────────────────────────────────
     const copperBySize = {};
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
@@ -696,33 +698,83 @@ export default function Step4_Materials({ onNext, onBack }) {
       items.push({id:uid(),section:'Copper',desc:`${size}" ACR Copper`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage});
     });
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
-    const fittingsPct=rates.fittingsMarkupPct||25;
-    const fittingsAmt=Math.round(copperTotal*fittingsPct/100);
-    items.push({id:uid(),section:'Fittings',desc:`Fittings Allowance (${fittingsPct}% of copper)`,qty:1,unit:'lot',unitCost:fittingsAmt,total:fittingsAmt,isFittingsAllowance:true});
-    let medSucFt=0,lowSucFt=0,lowLiqFt=0;
+
+    // ── Fittings — either a flat % allowance, or nothing (manual entry via picker) ──
+    const fittingsMode = rates.fittingsMode || 'percentage';
+    if (fittingsMode === 'percentage') {
+      const fittingsPct=rates.fittingsMarkupPct||25;
+      const fittingsAmt=Math.round(copperTotal*fittingsPct/100);
+      items.push({id:uid(),section:'Fittings',desc:`Fittings Allowance (${fittingsPct}% of copper)`,qty:1,unit:'lot',unitCost:fittingsAmt,total:fittingsAmt,isFittingsAllowance:true});
+    }
+    // 'manual' mode: no line generated here — itemized fittings stay as the user added them
+    // via the fitting picker, and generateMaterials doesn't touch the Fittings section at all
+    // in that case (handled by preserving them below).
+
+    // ── Insulation, bucketed by SIZE within each temp/line category ──────
+    // sucBySize[size] / liqBySize[size] track footage per pipe size, split med vs low temp.
+    const medSucBySize = {};
+    const lowSucBySize = {};
+    const lowLiqBySize = {};
     state.circuits.forEach(c=>{
       if(c.isRiserOnly) return;
       const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
-      if(c.tempType==='low'){lowSucFt+=runFt;lowLiqFt+=runFt;}else{medSucFt+=runFt;}
+      if (runFt <= 0) return;
+      const isLow = c.tempType === 'low';
+      if (c.sucHoriz) {
+        const k = normalizePipeSize(c.sucHoriz);
+        if (isLow) lowSucBySize[k] = (lowSucBySize[k]||0) + runFt;
+        else medSucBySize[k] = (medSucBySize[k]||0) + runFt;
+      }
+      if (isLow && c.liqHoriz) {
+        const k = normalizePipeSize(c.liqHoriz);
+        lowLiqBySize[k] = (lowLiqBySize[k]||0) + runFt;
+      }
     });
-    if(medSucFt>0){const r=rates?.insul?.medSuction||0;const q=Math.ceil(medSucFt*wasteFactor);items.push({id:uid(),section:'Insulation',desc:'Suction Insulation — Med Temp (3/4" wall)',qty:q,unit:'ft',unitCost:r,total:q*r});}
-    if(lowSucFt>0){const r=rates?.insul?.lowSuction||0;const q=Math.ceil(lowSucFt*wasteFactor);items.push({id:uid(),section:'Insulation',desc:'Suction Insulation — Low Temp (1" wall)',qty:q,unit:'ft',unitCost:r,total:q*r});}
-    if(lowLiqFt>0){const r=rates?.insul?.lowLiquid||0;const q=Math.ceil(lowLiqFt*wasteFactor);items.push({id:uid(),section:'Insulation',desc:'Liquid Insulation — Low Temp (1/2" wall)',qty:q,unit:'ft',unitCost:r,total:q*r});}
+
+    function pushInsulLines(bySize, category, label) {
+      Object.entries(bySize).forEach(([size, footage]) => {
+        if (footage <= 0) return;
+        const r = rates?.insul?.[category]?.[size] || 0;
+        const q = Math.ceil(footage * wasteFactor);
+        items.push({ id: uid(), section: 'Insulation', desc: `${size}" ${label}`, qty: q, unit: 'ft', unitCost: r, total: q * r, pipeSize: size, insulCategory: category });
+      });
+    }
+    pushInsulLines(medSucBySize, 'medSuction', 'Suction Insulation — Med Temp (3/4" wall)');
+    pushInsulLines(lowSucBySize, 'lowSuction', 'Suction Insulation — Low Temp (1" wall)');
+    pushInsulLines(lowLiqBySize, 'lowLiquid', 'Liquid Insulation — Low Temp (1/2" wall)');
+
+    // ── Hardware & consumables (unchanged) ────────────────────────────────
     const longestRun=Math.max(...state.circuits.filter(c=>!c.isRiserOnly).map(c=>parseFloat(c.runLength)||0),0);
     if(longestRun>0) items.push({id:uid(),section:'Hardware',desc:'Pipe Hangers @ 6ft spacing',qty:Math.ceil(longestRun/6),unit:'ea',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Brazing Rod (15% silver)',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Foam & Insulation Adhesive',qty:0,unit:'can',unitCost:0,total:0});
+
+    // ── Preserve manually-added fittings when in manual mode ──────────────
+    // "Generate from Circuits" rebuilds Copper/Insulation/Hardware/Consumables from scratch,
+    // but itemized fittings the user built by hand should survive a regenerate.
+    // In percentage mode, any old itemized fittings are dropped in favor of the allowance line
+    // (and vice versa) so the bid never double-counts fittings two ways at once.
+    if (fittingsMode === 'manual') {
+      const existingManualFittings = state.lineItems.filter(i => i.section === 'Fittings' && !i.isFittingsAllowance);
+      items.push(...existingManualFittings);
+    }
+
     dispatch({ type:'SET', key:'lineItems', value:items });
   }
 
   const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8'];
+  const fittingsMode = state.rates?.fittingsMode || 'percentage';
+
+  function updateInsulRate(category, size, value) {
+    dispatch({ type: 'SET_INSUL_RATE', category, size: normalizePipeSize(size), value: parseFloat(value) || 0 });
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
       <Card>
         <SLabel>Copper Rates ($/ft)</SLabel>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:18 }}>
           {PIPE_SIZE_LIST.map(size=>(
             <div key={size}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>{size}"</div>
@@ -733,25 +785,84 @@ export default function Step4_Materials({ onNext, onBack }) {
             </div>
           ))}
         </div>
-        <SLabel>Insulation ($/ft)</SLabel>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:14 }}>
-          {[{key:'medSuction',label:'Med Temp Suction (3/4" wall)'},{key:'lowSuction',label:'Low Temp Suction (1" wall)'},{key:'lowLiquid',label:'Low Temp Liquid (1/2" wall)'}].map(r=>(
-            <div key={r.key}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>{r.label}</div>
-              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                <span style={{ color:colors.textDim, fontSize:12 }}>$</span>
-                <Input type="number" value={state.rates?.insul?.[r.key]||''} onChange={e=>dispatch({type:'SET_INSUL_RATE',key:r.key,value:parseFloat(e.target.value)||0})} placeholder="0.00" style={{ padding:'7px 8px', fontSize:12, fontFamily:"'DM Mono',monospace" }} />
-              </div>
-            </div>
-          ))}
+
+        {/* Insulation rates — now per pipe size, per category */}
+        <SLabel>Insulation Rates ($/ft by pipe size)</SLabel>
+        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 12, lineHeight: 1.5 }}>
+          Insulation cost varies by pipe diameter — set a rate for each size you commonly run. Sizes left at $0 won't add cost but will still show on the materials list with the correct size for ordering.
         </div>
-        <Row style={{ gap:20, flexWrap:'wrap' }}>
-          {[{key:'fittingsMarkupPct',label:'Fittings Allowance (%)',default:25},{key:'wasteFactor',label:'Waste Factor (%)',default:10}].map(r=>(
-            <div key={r.key} style={{ flex:1, minWidth:120 }}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>{r.label}</div>
-              <Input type="number" value={state.rates?.[r.key]||r.default} onChange={e=>dispatch({type:'SET_RATES_MISC',key:r.key,value:parseFloat(e.target.value)||r.default})} style={{ fontFamily:"'DM Mono',monospace" }} />
+        {[
+          { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
+          { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },
+          { key: 'lowLiquid', label: 'Low Temp Liquid (1/2" wall)' },
+        ].map(cat => (
+          <div key={cat.key} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: colors.text, marginBottom: 8 }}>{cat.label}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {PIPE_SIZE_LIST.map(size => (
+                <div key={size}>
+                  <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{size}"</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ color: colors.textDim, fontSize: 12 }}>$</span>
+                    <Input
+                      type="number"
+                      value={state.rates?.insul?.[cat.key]?.[size] || ''}
+                      onChange={e => updateInsulRate(cat.key, size, e.target.value)}
+                      placeholder="0.00"
+                      style={{ padding: '7px 8px', fontSize: 12, fontFamily: "'DM Mono',monospace" }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+        ))}
+
+        {/* Fittings mode toggle */}
+        <SLabel>Fittings</SLabel>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <button
+            onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'percentage' })}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
+              border: `2px solid ${fittingsMode === 'percentage' ? colors.green : colors.border}`,
+              background: fittingsMode === 'percentage' ? colors.greenFaint : colors.card2,
+              color: fittingsMode === 'percentage' ? colors.green : colors.textDim,
+              fontWeight: 700, fontSize: 12,
+            }}
+          >
+            % Allowance
+          </button>
+          <button
+            onClick={() => dispatch({ type: 'SET_RATES_MISC', key: 'fittingsMode', value: 'manual' })}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer',
+              border: `2px solid ${fittingsMode === 'manual' ? colors.green : colors.border}`,
+              background: fittingsMode === 'manual' ? colors.greenFaint : colors.card2,
+              color: fittingsMode === 'manual' ? colors.green : colors.textDim,
+              fontWeight: 700, fontSize: 12,
+            }}
+          >
+            Itemized — Add Manually
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px', background: colors.surface, borderRadius: 6 }}>
+          {fittingsMode === 'percentage'
+            ? 'Generate from Circuits will add one allowance line based on a % of copper cost. Use this for a quick estimate.'
+            : 'Generate from Circuits will NOT add a fittings line. Use the + Add Fitting button in Bid Materials to build an itemized list — only one method goes into the bid at a time.'}
+        </div>
+
+        <Row style={{ gap:20, flexWrap:'wrap' }}>
+          {fittingsMode === 'percentage' && (
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Fittings Allowance (%)</div>
+              <Input type="number" value={state.rates?.fittingsMarkupPct||25} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:parseFloat(e.target.value)||25})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+          )}
+          <div style={{ flex:1, minWidth:120 }}>
+            <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Waste Factor (%)</div>
+            <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
+          </div>
           <div style={{ flex:1, minWidth:120 }}>
             <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Materials Markup (%)</div>
             <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
@@ -766,6 +877,7 @@ export default function Step4_Materials({ onNext, onBack }) {
       </div>
 
       {activeTab==='bid' ? <BidMaterials onGenerate={generateMaterials} /> : <SupplyHouseList />}
+
 
       <Row style={{ justifyContent:'space-between', marginTop:10 }}>
         <Btn variant="ghost" onClick={onBack}>← Back</Btn>
