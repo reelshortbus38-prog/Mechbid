@@ -87,6 +87,11 @@ function ReviewRow({ item, onChange, onToggle }) {
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Task Description</div>
             <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            {(item.data.desc || '').includes('[unclear]') && (
+              <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ⚠️ The AI couldn't read part of this clearly — check the source document and fill in the [unclear] part before accepting.
+              </div>
+            )}
           </div>
         )}
 
@@ -94,6 +99,11 @@ function ReviewRow({ item, onChange, onToggle }) {
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rack Task Description</div>
             <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            {(item.data.desc || '').includes('[unclear]') && (
+              <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700 }}>
+                ⚠️ The AI couldn't read part of this clearly — check the source document and fill in the [unclear] part before accepting.
+              </div>
+            )}
           </div>
         )}
 
@@ -148,7 +158,14 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
   }
 
   function acceptAllVisible() {
-    setItems(prev => prev.map(i => i.status === 'rejected' ? i : { ...i, status: 'accepted' }));
+    setItems(prev => prev.map(i => {
+      if (i.status === 'rejected') return i;
+      // Never bulk-accept an item the AI flagged as unclear — that always needs
+      // an individual look against the source document, not a sweep-through.
+      const hasUnclear = typeof i.data?.desc === 'string' && i.data.desc.includes('[unclear]');
+      if (hasUnclear) return i;
+      return { ...i, status: 'accepted' };
+    }));
   }
 
   const grouped = {
