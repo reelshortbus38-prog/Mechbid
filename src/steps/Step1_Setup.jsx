@@ -7,6 +7,7 @@ import {
   fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
+import { SupplierSwitcher } from '../components/PriceBook.jsx';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -297,6 +298,12 @@ export default function Step1_Setup({ onNext }) {
           <Input type="date" value={state.projBidDate} onChange={e => setField('projBidDate', e.target.value)} />
         </div>
       </div>
+
+      {/* Supplier */}
+      <SupplierSwitcher
+        value={state.preferredSupplier}
+        onChange={supplier => setField('preferredSupplier', supplier)}
+      />
 
       {/* Upload zone */}
       <div>
