@@ -1,6 +1,9 @@
 import { createContext, useContext, useReducer } from 'react';
 
 // ── INITIAL STATE ──────────────────────────────────────────────────────────────
+// preferredSupplier starts as 'RE Michel' here for safety (this module can't import
+// from components/PriceBook.jsx without a circular import risk). Wizard.jsx applies
+// the real global default on RESET/new job — see applyDefaultSupplier() usage there.
 export const initialState = {
   mode: 'Commercial Refrigeration',
   projName: '', projAddr: '', projGC: '', projCont: '', projBidDate: '',
@@ -12,8 +15,17 @@ export const initialState = {
   fieldTasks: [],
   rates: {
     cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
-    insul: { medSuction:0, lowSuction:0, lowLiquid:0 },
+    // Insulation rates are per pipe size, per temp/line category — mirrors the copper rate shape.
+    // e.g. rates.insul.medSuction['3/8'] = 2.10
+    insul: {
+      medSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+      lowSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+      lowLiquid:  { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+    },
     fittingsMarkupPct: 25,
+    // 'percentage' = auto allowance line based on % of copper cost.
+    // 'manual' = no allowance line; fittings are added one-by-one via the fitting picker.
+    fittingsMode: 'percentage',
     wasteFactor: 10,
   },
   laborPeriods: [],
@@ -53,7 +65,21 @@ export function reducer(state, action) {
       return { ...state, rates: { ...state.rates, cu: { ...state.rates.cu, [action.size]: action.value } } };
 
     case 'SET_INSUL_RATE':
-      return { ...state, rates: { ...state.rates, insul: { ...state.rates.insul, [action.key]: action.value } } };
+      // action.category: 'medSuction' | 'lowSuction' | 'lowLiquid'
+      // action.size: pipe size key, e.g. '3/8'
+      return {
+        ...state,
+        rates: {
+          ...state.rates,
+          insul: {
+            ...state.rates.insul,
+            [action.category]: {
+              ...(state.rates.insul?.[action.category] || {}),
+              [action.size]: action.value,
+            },
+          },
+        },
+      };
 
     case 'SET_RATES_MISC':
       return { ...state, rates: { ...state.rates, [action.key]: action.value } };
