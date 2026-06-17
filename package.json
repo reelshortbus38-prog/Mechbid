@@ -13,7 +13,8 @@
     "exceljs": "^4.4.0",
     "xlsx": "^0.18.5",
     "mammoth": "^1.8.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "pdfjs-dist": "^4.0.379"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
