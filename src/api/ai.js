@@ -364,3 +364,54 @@ If this chunk of the document contains no RC-relevant content at all, return the
   merged.summary = merged.chunkSummaries.join(' ');
   return merged;
 }
+
+// ── BID INVITATION / RFQ LETTER DETECTION & ANALYSIS ───────────────────────────
+// A bid invitation letter is a different document type from a dated
+// construction schedule, even though both commonly arrive as .doc/.docx files
+// and would otherwise both route through analyzeScopeDoc. A schedule describes
+// WHAT WORK happens WHEN; a bid letter describes HOW TO STRUCTURE YOUR PRICE —
+// required cost categories (Materials/Refrigerant/Labor/etc.), who to contact,
+// and standing notes about what's supplied by the GC/store vs the contractor
+// (e.g. "Food Lion will supply Gas and drums for new A rack"). Forcing this
+// through the dated-schedule prompt would mostly return empty arrays, since
+// there's no date/week structure here to find — technically correct, but it
+// reads as a failed extraction rather than "right tool, wrong document."
+//
+// Detection is content-based, not filename-based, since both document types
+// commonly share the same .doc/.docx extension.
+export function looksLikeBidLetter(text) {
+  if (!text) return false;
+  const signals = [
+    /materials?\s*:\s*\$/i,
+    /labor\s*:\s*\$/i,
+    /total\s+bid\s+price/i,
+    /rules?\s+of\s+engagement/i,
+    /invited\s+to\s+bid/i,
+    /bidding\s+contractor/i,
+  ];
+  const hits = signals.filter(re => re.test(text)).length;
+  return hits >= 2;
+}
+
+export async function analyzeBidLetter(text, fileName) {
+  const prompt = `You are an expert commercial refrigeration estimator reading a bid invitation letter or RFQ cover document. This is NOT a construction schedule and NOT a technical scope of work — it's the document that tells a contractor what to include in their bid and who to contact, typically sent by a purchasing or maintenance department.
+
+Extract:
+- Required bid breakdown categories (e.g. "Materials, Refrigerant, Labor, Out of Town Expenses, Total Bid Price") — list exactly what categories the bid must be broken into, if stated
+- Contacts: every named person mentioned with their role/title and any phone or email given
+- Supply/exclusion notes: anything stating what the STORE/GC supplies versus what the CONTRACTOR must supply or include (e.g. "Food Lion will supply Gas and drums", "refrigeration contractor will be responsible for providing the necessary refrigerant"). These matter because they can change what should or shouldn't be a line item in the bid — flag them, don't decide for the user.
+- Any standing rule about responsibility split between trades (e.g. who pulls vs. terminates sensor cable) — flag this the same way
+- Store number and any location mentioned
+- Due date or urgency language if stated (e.g. "due ASAP")
+
+Do NOT invent circuits, run lengths, dated tasks, or technical scope — if none of that is in this document (it usually isn't), leave those arrays empty.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"bid_letter","storeNumber":"","address":"","bidCategories":[],"contacts":[{"name":"","role":"","phone":"","email":""}],"dueInfo":"","flags":[{"type":"info|warn","text":"the supply/exclusion or responsibility-split note, stated plainly"}],"summary":"one sentence describing what this letter is asking for"}`;
+
+  const resultText = await callClaude(
+    [{ role: 'user', content: `File: ${fileName}\n\nDocument text:\n${text}\n\n${prompt}` }],
+    'You are an expert commercial refrigeration estimator. Return only valid JSON.'
+  );
+  return parseAIJson(resultText);
+}
