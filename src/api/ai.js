@@ -241,17 +241,26 @@ export function fileToBase64(file) {
   });
 }
 
-export function imageToJpeg(file, maxSize = 2400) {
+// maxSize raised from 2400 (and a separate 1600 cap for files under 500KB,
+// now removed) to 3200. Dense architectural sheets — a full redline drawing
+// with small callout text — need every available pixel for that text to stay
+// legible; a small compressed file size doesn't mean low detail, it can just
+// mean efficient JPEG compression on a still-dense image. The old file-size
+// split was sending SMALLER images for files that happened to compress well,
+// which is backwards — file size and required resolution aren't correlated.
+// 3200 is still comfortably below where Claude's vision pipeline begins
+// downscaling on its own end, so this is real, usable extra detail, not
+// wasted upload bandwidth.
+export function imageToJpeg(file, maxSize = 3200) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       let { width: w, height: h } = img;
-      const MAX = file.size > 500000 ? maxSize : 1600;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else { w = Math.round(w * MAX / h); h = MAX; }
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
       }
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
@@ -259,7 +268,11 @@ export function imageToJpeg(file, maxSize = 2400) {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-      resolve(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
+      // Quality bumped from 0.92 to 0.95 — at this file's size, JPEG artifacting
+      // around small text edges (which already pushed legibility to the edge
+      // here) is worth the modest extra upload size to avoid compounding the
+      // resolution problem with compression noise on top of it.
+      resolve(c.toDataURL('image/jpeg', 0.95).split(',')[1]);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
     img.src = url;
