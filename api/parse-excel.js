@@ -64,7 +64,29 @@ function looksLikeRunLength(val) {
   return !isNaN(n) && n > 5 && n < 2000;
 }
 
-// ── FORMAT DETECTION ───────────────────────────────────────────────────────────
+// ── FORMAT DETECTION ──────────────────────────────────────────────────────────
+// Detects a PARTS ORDER FORM (e.g. Kysor Warren "Parts Order Form" templates for
+// case ends, rack parts, etc.) — a fundamentally different document shape from a
+// circuit schedule. These have Part Number / Qty / Description / Where Used
+// columns, not circuit IDs / run lengths / pipe sizes, and commonly carry a large
+// irrelevant reference table (sales rep lookup by state) baked into the same
+// sheet that would otherwise confuse a circuit-schedule parser. Detected
+// separately and BEFORE the BPR/Kysor circuit-schedule checks, since a parts
+// order form should never be run through that logic.
+function detectPartsOrderForm(wb) {
+  let isPartsOrder = false;
+  wb.eachSheet(ws => {
+    for(let r = 1; r <= 12; r++) {
+      const row = ws.getRow(r);
+      let rowText = '';
+      row.eachCell(cell => { rowText += ' ' + String(cell.value||'').toLowerCase(); });
+      if(rowText.match(/parts\s*order\s*form/i)) isPartsOrder = true;
+      if(rowText.match(/part\s*number/i) && rowText.match(/where\s*used/i)) isPartsOrder = true;
+    }
+  });
+  return isPartsOrder;
+}
+
 function detectFormat(wb) {
   let isBPR = false, isKysor = false, isHVAC = false, isGeneric = false;
 
@@ -99,7 +121,7 @@ function detectFormat(wb) {
   return 'unknown';
 }
 
-// ── SHEET TO TEXT (for AI) ─────────────────────────────────────────────────────
+// ── SHEET TO TEXT (for AI) ───────────────────────────────────────────────────
 function sheetToText(ws, maxRows = 80, maxCols = 30) {
   const rows = [];
   let rowCount = 0;
@@ -131,6 +153,13 @@ function sheetToText(ws, maxRows = 80, maxCols = 30) {
 }
 
 // ── AI EXTRACTION ──────────────────────────────────────────────────────────────
+// Routed through /api/claude (OpenRouter) — same path every other AI call in
+// this app uses. This previously called api.anthropic.com directly with its own
+// model string, which silently fails whenever the direct Anthropic key has no
+// usable billing/credits, with no visible error to the user (caught by the
+// try/catch below and just treated as "AI found nothing"). That mismatch is
+// likely why non-standard sheets (e.g. parts order forms) returned empty
+// results even when content was clearly present.
 async function extractWithAI(sheetsText, fileName, format) {
   const isRefrig = format !== 'hvac';
 
@@ -138,8 +167,7 @@ async function extractWithAI(sheetsText, fileName, format) {
     ? `You are an expert commercial refrigeration estimating system. Extract refrigeration circuit data from equipment schedules, BPR sheets, legend sheets, or any format. Return ONLY valid JSON.`
     : `You are an expert commercial HVAC estimating system. Extract equipment schedule data from HVAC schedules. Return ONLY valid JSON.`;
 
-  const extractionTarget = isRefrig ? `
-Extract all refrigeration circuits that have new pipe runs. Look for:
+  const extractionTarget = isRefrig ? ` Extract all refrigeration circuits that have new pipe runs. Look for:
 - Circuit IDs (numbers, letters+numbers, or descriptive names)
 - Run lengths / line lengths in feet
 - Suction line sizes (horizontal and riser)
@@ -173,8 +201,7 @@ Return JSON:
   ],
   "parts": [{"partId":"","description":"","qty":0}],
   "flags": []
-}` : `
-Extract all HVAC equipment from the schedule. Look for:
+}` : ` Extract all HVAC equipment from the schedule. Look for:
 - Equipment tags (RTU-1, AHU-2, etc.)
 - Equipment types (RTU, AHU, VAV, Fan Coil, Split System, etc.)
 - Tonnage or capacity (tons, BTU, CFM)
@@ -204,12 +231,10 @@ Return JSON:
   const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : ''}/api/claude`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
       })
@@ -221,7 +246,7 @@ Return JSON:
     }
 
     const data = await res.json();
-    const text = data.content?.[0]?.text || '';
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
     const clean = text.replace(/```json|```/g,'').trim();
     return JSON.parse(clean);
   } catch(e) {
@@ -230,7 +255,53 @@ Return JSON:
   }
 }
 
-// ── HIGHLIGHT SCANNER ──────────────────────────────────────────────────────────
+// ── PARTS ORDER FORM EXTRACTION ────────────────────────────────────────────────
+// Different prompt shape entirely — this is NOT hunting for circuits. Parts
+// order forms list discrete items (part number, qty, description, case/location
+// they go on) and are commonly used when the store/GC supplies parts directly
+// (case ends, rack parts) rather than the refrigeration contractor pricing them.
+// The goal here is reference visibility — "what work does this imply" — not a
+// priced line-item list, since these parts typically aren't on the RC's bid.
+async function extractPartsOrderForm(sheetsText, fileName) {
+  const systemPrompt = `You are an expert commercial refrigeration estimator reading a parts order form (e.g. a Kysor Warren or case-manufacturer parts order template). Return ONLY valid JSON.`;
+
+  const extractionTarget = `This is a PARTS ORDER FORM, not a circuit schedule — do not look for circuit IDs, run lengths, or pipe sizes. Extract only the actual order line items: Part Number, Qty, Description, and Where Used (case number or location), ignoring any unrelated reference tables that may be embedded in the same sheet (e.g. sales rep or state lookup lists — these are template boilerplate, not order data).
+
+These parts are often supplied by the store/GC rather than priced by the refrigeration contractor — the goal is to know what work is implied (e.g. "5 case ends on cases 7, 19, 23, 33/22, 68" tells you which cases are being relocated/modified), not to price the parts themselves.
+
+Return JSON:
+{
+  "storeNumber": "",
+  "formType": "case ends|rack parts|other",
+  "items": [
+    {"partNumber":"","qty":0,"description":"","whereUsed":""}
+  ],
+  "summary": "one sentence describing what work this parts list implies"
+}`;
+
+  const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
+
+  try {
+    const res = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : ''}/api/claude`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+    const clean = text.replace(/```json|```/g,'').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('Parts order extraction failed:', e.message);
+    return null;
+  }
+}
+
+// ── HIGHLIGHT SCANNER ────────────────────────────────────────────────────────
 // Scans all sheets for highlighted cells — works across any format
 function scanHighlights(wb) {
   const highlighted = {}; // rowKey -> {cells}
@@ -466,7 +537,7 @@ function parseXLS(xlsBuffer, circuits, meta) {
   }
 }
 
-// ── MERGE AI RESULTS INTO CIRCUITS ────────────────────────────────────────────
+// ── MERGE AI RESULTS INTO CIRCUITS ──────────────────────────────────────────
 function mergeAICircuits(aiResult, circuits) {
   if(!aiResult?.circuits?.length) return;
   for(const c of aiResult.circuits) {
@@ -490,6 +561,31 @@ function mergeAICircuits(aiResult, circuits) {
   }
 }
 
+// ── PARTS-ORDER-FORM TEXT BUILDER (shared by .xls and .xlsx paths) ───────────
+function sheetsToTextGeneric(wb, isXlsx) {
+  let allText = '';
+  if(isXlsx) {
+    let sheetCount = 0;
+    wb.eachSheet((ws) => {
+      if(sheetCount >= 5) return;
+      if(ws.name.match(/Chart|Image|Cover/i)) return;
+      const text = sheetToText(ws, 80, 30);
+      if(text.trim().length > 50) {
+        allText += `\n\n=== Sheet: ${ws.name} ===\n${text}`;
+        sheetCount++;
+      }
+    });
+  } else {
+    for(const sName of wb.SheetNames.slice(0,4)) {
+      const ws = wb.Sheets[sName];
+      const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      allText += `\n\n=== Sheet: ${sName} ===\n`;
+      allText += data.slice(0,80).map((r,i) => `R${i+1}: ${r.filter(c=>c!=='').join(' | ')}`).join('\n');
+    }
+  }
+  return allText;
+}
+
 // ── MAIN HANDLER ──────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   if(req.method !== 'POST') return res.status(405).json({error:'Method not allowed'});
@@ -506,8 +602,38 @@ module.exports = async function handler(req, res) {
     let aiUsed   = false;
     let warning  = null;
 
-    // ── .XLS PATH ──────────────────────────────────────────────────────────────
+    // ── .XLS PATH ────────────────────────────────────────────────────────────
     if(name.endsWith('.xls')) {
+      // Check for parts-order-form shape FIRST, via SheetJS (works for legacy
+      // .xls without needing ExcelJS's xlsx-only loader).
+      try {
+        const xlsWbCheck = XLSX.read(buffer, {type:'buffer'});
+        let isPartsOrderXls = false;
+        for(const sName of xlsWbCheck.SheetNames.slice(0,3)) {
+          const ws = xlsWbCheck.Sheets[sName];
+          const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+          const topText = data.slice(0,12).map(r=>r.join(' ')).join(' ').toLowerCase();
+          if(topText.includes('parts order form') || (topText.includes('part number') && topText.includes('where used'))) {
+            isPartsOrderXls = true;
+          }
+        }
+
+        if(isPartsOrderXls) {
+          const allText = sheetsToTextGeneric(xlsWbCheck, false);
+          const partsResult = await extractPartsOrderForm(allText, fileName);
+          if(partsResult) {
+            return res.status(200).json({
+              circuits: [],
+              partsOrderForm: partsResult,
+              format: 'parts-order-form',
+              storeNumber: partsResult.storeNumber || '',
+              aiUsed: true,
+              summary: `${partsResult.items?.length || 0} part(s) found [parts order form] — ${partsResult.summary || fileName}`
+            });
+          }
+        }
+      } catch(e) { /* fall through to normal circuit parsing below */ }
+
       try {
         parseXLS(buffer, circuits, meta);
         format = 'xls';
@@ -522,13 +648,7 @@ module.exports = async function handler(req, res) {
       if(circuits.length === 0) {
         try {
           const xlsWb = XLSX.read(buffer, {type:'buffer'});
-          let allText = '';
-          for(const sName of xlsWb.SheetNames.slice(0,4)) {
-            const ws = xlsWb.Sheets[sName];
-            const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-            allText += `\n\n=== Sheet: ${sName} ===\n`;
-            allText += data.slice(0,60).map((r,i) => `R${i+1}: ${r.filter(c=>c!=='').join(' | ')}`).join('\n');
-          }
+          const allText = sheetsToTextGeneric(xlsWb, false);
           const aiResult = await extractWithAI(allText, fileName, 'refrigeration');
           if(aiResult?.circuits?.length) {
             mergeAICircuits(aiResult, circuits);
@@ -539,7 +659,7 @@ module.exports = async function handler(req, res) {
         } catch(e) { /* AI extraction failed silently */ }
       }
 
-    // ── .XLSX PATH ─────────────────────────────────────────────────────────────
+    // ── .XLSX PATH ───────────────────────────────────────────────────────────
     } else if(name.endsWith('.xlsx')) {
       const wb = new ExcelJS.Workbook();
       await Promise.race([
@@ -547,30 +667,36 @@ module.exports = async function handler(req, res) {
         new Promise((_,rej) => setTimeout(() => rej(new Error('Timeout loading xlsx')), 20000))
       ]);
 
-      // 1. Detect format
+      // 1. Check for parts-order-form shape FIRST — this should never be run
+      // through the circuit-schedule parsers below.
+      if(detectPartsOrderForm(wb)) {
+        const allText = sheetsToTextGeneric(wb, true);
+        const partsResult = await extractPartsOrderForm(allText, fileName);
+        if(partsResult) {
+          return res.status(200).json({
+            circuits: [],
+            partsOrderForm: partsResult,
+            format: 'parts-order-form',
+            storeNumber: partsResult.storeNumber || '',
+            aiUsed: true,
+            summary: `${partsResult.items?.length || 0} part(s) found [parts order form] — ${partsResult.summary || fileName}`
+          });
+        }
+      }
+
+      // 2. Detect format
       format = detectFormat(wb);
 
-      // 2. Run known parsers first (fast, free, accurate for known formats)
+      // 3. Run known parsers first (fast, free, accurate for known formats)
       if(format === 'bpr') {
         parseBPR(wb, circuits, meta);
       } else if(format === 'kysor') {
         parseKysorWarren(wb, circuits, meta);
       }
 
-      // 3. If known parser found circuits, done. If not, use AI.
+      // 4. If known parser found circuits, done. If not, use AI.
       if(circuits.length === 0 || format === 'unknown') {
-        // Convert sheets to text for AI
-        let allSheetsText = '';
-        let sheetCount = 0;
-        wb.eachSheet((ws) => {
-          if(sheetCount >= 5) return; // Cap at 5 sheets to avoid token limits
-          if(ws.name.match(/Chart|Image|Cover/i)) return;
-          const text = sheetToText(ws, 80, 30);
-          if(text.trim().length > 50) {
-            allSheetsText += `\n\n=== Sheet: ${ws.name} ===\n${text}`;
-            sheetCount++;
-          }
-        });
+        const allSheetsText = sheetsToTextGeneric(wb, true);
 
         if(allSheetsText.trim().length > 100) {
           const aiResult = await extractWithAI(allSheetsText, fileName, format);
@@ -599,7 +725,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // 4. Always run highlight scanner as supplemental check
+      // 5. Always run highlight scanner as supplemental check
       if(format === 'unknown' || circuits.length === 0) {
         const highlights = scanHighlights(wb);
         const highlightCount = Object.keys(highlights).length;
