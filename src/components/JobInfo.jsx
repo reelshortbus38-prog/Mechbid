@@ -32,6 +32,27 @@ function tryParseDate(label) {
   return new Date(2000, monthIdx, day).getTime();
 }
 
+function isNightDate(label) {
+  if (!label) return false;
+  return /\bnight\b/i.test(label);
+}
+
+function extractWeekNum(label) {
+  if (!label) return null;
+  // Matches "w15", "wk15", "week 15" in whatever form the date header used.
+  const match = label.match(/\bw(?:eek)?\.?\s*(\d{1,2})\b/i);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function formatSpan(startMs, endMs) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtOne = ms => {
+    const d = new Date(ms);
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  };
+  return `${fmtOne(startMs)} – ${fmtOne(endMs)}`;
+}
+
 export default function JobInfo({ compact = false, showStoreFields = true }) {
   const { state, dispatch } = useStore();
   const schedule = state.rcSchedule || [];
@@ -45,6 +66,20 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
   });
 
   const uniqueDates = new Set(schedule.map(s => s.date).filter(Boolean)).size;
+
+  // Derived span/week/night-work numbers — all computed directly from the
+  // dates already attached to accepted schedule items, nothing fabricated.
+  // If dates don't parse (no month name found in any label), these stay null
+  // and the summary row simply doesn't show that stat rather than guessing.
+  const parsedDates = schedule.map(s => tryParseDate(s.date)).filter(d => d != null);
+  const minDate = parsedDates.length ? Math.min(...parsedDates) : null;
+  const maxDate = parsedDates.length ? Math.max(...parsedDates) : null;
+
+  const weekNums = schedule.map(s => extractWeekNum(s.date)).filter(w => w != null);
+  const minWeek = weekNums.length ? Math.min(...weekNums) : null;
+  const maxWeek = weekNums.length ? Math.max(...weekNums) : null;
+
+  const nightDates = new Set(schedule.filter(s => isNightDate(s.date)).map(s => s.date)).size;
 
   function removeItem(id) {
     dispatch({ type: 'REMOVE_RC_SCHEDULE_ITEM', id });
@@ -83,6 +118,39 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
           <div style={{ height: 1, background: colors.border, margin: '4px 0 14px' }} />
         </>
       )}
+      {/* Derived schedule summary — span, week range, RC day count, night-work
+          count. Only shows numbers actually derivable from dated tasks already
+          accepted into the schedule below; nothing here is estimated or
+          fabricated, it's pure counting/min-max over real data. */}
+      {schedule.length > 0 && (minDate != null || minWeek != null) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 16 }}>
+          {minDate != null && (
+            <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Project Span</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800 }}>{formatSpan(minDate, maxDate)}</div>
+            </div>
+          )}
+          {minWeek != null && (
+            <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Week Range</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800 }}>
+                {minWeek === maxWeek ? `Week ${minWeek}` : `Weeks ${minWeek}–${maxWeek}`}
+              </div>
+            </div>
+          )}
+          <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>RC On-Site Days</div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800, color: colors.green }}>{uniqueDates} distinct day{uniqueDates !== 1 ? 's' : ''}</div>
+          </div>
+          {nightDates > 0 && (
+            <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Night Work</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800, color: colors.yellow }}>🌙 {nightDates} night{nightDates !== 1 ? 's' : ''}</div>
+            </div>
+          )}
+        </div>
+      )}
+
       <Row style={{ justifyContent: 'space-between', marginBottom: 10 }}>
         <SLabel>RC Schedule</SLabel>
         {schedule.length > 0 && (
@@ -101,8 +169,13 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
               <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   {item.date && (
-                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.green, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      {item.date}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {item.date}
+                      </span>
+                      {isNightDate(item.date) && (
+                        <span style={{ fontSize: 9, background: 'rgba(234,179,8,0.15)', color: colors.yellow, padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>🌙 NIGHT</span>
+                      )}
                     </div>
                   )}
                   <Input
