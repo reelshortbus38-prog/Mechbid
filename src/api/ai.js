@@ -105,14 +105,21 @@ Read the title block per the accuracy rule above: store name, store number, addr
 Return ONLY valid JSON, no markdown, no commentary:
 {"documentType":"redline_callout","storeName":"","storeNumber":"","address":"","drawingNumber":"","sheetTitle":"","fieldTasks":[{"desc":"complete verbatim text from ONE callout box only, [unclear] for ambiguous parts","circuitRef":"","location":"","statedSize":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
 
-    const res = await fetch('/api/claude', {
+    // Routed through Anthropic directly (api/claude-direct.js) rather than
+    // OpenRouter — this is the call site where hallucination already caused
+    // real problems (fabricated address, blended circuit IDs), and Claude's
+    // lower hallucination rate on financially-consequential extraction is the
+    // most relevant property here. Note the Anthropic-specific image content
+    // block shape: {type:"image", source:{type:"base64", media_type, data}},
+    // not OpenRouter's {type:"image_url", image_url:{url:"data:..."}}.
+    const res = await fetch('/api/claude-direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
             { type: 'text', text: prompt }
           ]
         }]
