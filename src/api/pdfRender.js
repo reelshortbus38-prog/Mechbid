@@ -22,7 +22,14 @@ async function loadPdfJs() {
 // maxPages caps how many pages get rendered — redline sets can be long, and
 // vision calls are not free, so this is a safety valve, not a hard product limit.
 // Returns: [{ pageNum, base64 }]
-export async function renderPdfPagesToImages(file, { maxPages = 12, scale = 2 } = {}) {
+// scale raised from 2 to 3 — same reasoning as the imageToJpeg cap increase
+// in ai.js: a full architectural sheet rendered at scale 2 leaves small
+// callout text under-resolved, which is what let the model guess at
+// illegible text instead of reading it (or correctly flagging it [unclear]).
+// Scale 3 roughly triples linear pixel density per page versus the PDF's
+// native point size, which is still well under where Claude's vision
+// pipeline would downscale the image again on its own end.
+export async function renderPdfPagesToImages(file, { maxPages = 12, scale = 3 } = {}) {
   const lib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
@@ -47,7 +54,10 @@ export async function renderPdfPagesToImages(file, { maxPages = 12, scale = 2 } 
 
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    // Quality bumped from 0.88 — at scale 3, compression artifacting around
+    // small text edges would otherwise undercut the resolution gain from the
+    // higher scale.
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     results.push({ pageNum, base64: dataUrl.split(',')[1] });
   }
 
