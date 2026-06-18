@@ -41,14 +41,20 @@ If this is a BPR or EQUIPMENT SCHEDULE:
 Return ONLY valid JSON, no markdown:
 {"documentType":"blueprint|fixture_plan|bpr|equipment_schedule|scope_of_work|unknown","storeName":"","storeNumber":"","address":"","drawingNumber":"","circuits":[{"circuitId":"","rack":"","runLength":0,"riserLength":0,"sucHoriz":"","sucRiser":"","liqHoriz":"","tempType":"medium","application":"","isRiserOnly":false,"isNew":true,"notes":""}],"fieldTasks":[{"desc":"actual callout text","circuit":"","location":"","lineSize":"","notes":""}],"rackTasks":[{"desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"rcNotes":[{"text":"","costImpact":false}],"nightWorkRequired":false,"nightWorkDetails":"","flags":[],"summary":""}`;
 
-    const res = await fetch('/api/claude', {
+    // Routed through Anthropic directly (api/claude-direct.js), same as
+    // callClaudeVisionRedline — testing whether Claude's lower hallucination
+    // rate helps here too (equipment schedule photos, BPR sheets) the way it
+    // clearly did for redline extraction. If results aren't meaningfully
+    // different from GPT-4o on this document type, switching back to
+    // OpenRouter ('/api/claude') is a one-line change.
+    const res = await fetch('/api/claude-direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
             { type: 'text', text: prompt }
           ]
         }]
