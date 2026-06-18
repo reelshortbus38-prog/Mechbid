@@ -415,3 +415,79 @@ Return ONLY valid JSON, no markdown:
   );
   return parseAIJson(resultText);
 }
+
+// ── FLAT (UNDATED) SCOPE OF WORK DOCUMENT DETECTION & ANALYSIS ────────────────
+// A third distinct .doc/.docx shape, alongside dated schedules and bid letters:
+// a flat, undated, numbered list of standing technical/contractual requirements
+// (e.g. "Refrigeration Contractor will install new suction, liquid, and oil
+// filters in all racks... Suction filters are to be removed at the 90-day
+// change..."). These commonly run long (16+ pages) and mix rack-level technical
+// work, standing responsibility rules, and a parts list that may DUPLICATE a
+// separate parts-order-form spreadsheet uploaded in the same batch.
+//
+// Routing this through analyzeScopeDoc (built for dated weekly schedules) would
+// produce thin, oddly-shaped results since there's no date/week structure to
+// find. Routing it through analyzeBidLetter would also be wrong — there's no
+// "Materials: $ / Labor: $" bid breakdown request here, just technical scope.
+export function looksLikeFlatScopeDoc(text) {
+  if (!text) return false;
+  // No date/day-of-week structure anywhere — a real signal this isn't a dated
+  // schedule, combined with scope-specific language below.
+  const hasDateStructure = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(text) || /week\s*#?\s*\d/i.test(text);
+  if (hasDateStructure) return false;
+
+  const signals = [
+    /refrigeration\s+contractor\s+will/i,
+    /refrigeration\s+contractor\s+is\s+(to|responsible)/i,
+    /parts\s+list\s*:/i,
+    /scope\s+of\s+work/i,
+  ];
+  const hits = signals.filter(re => re.test(text)).length;
+  return hits >= 2;
+}
+
+export async function analyzeFlatScopeDoc(text, fileName) {
+  const prompt = `You are an expert commercial refrigeration estimator reading an undated technical scope of work document — a flat, typically numbered list of standing requirements for a remodel job, NOT a dated schedule.
+
+This document mixes several kinds of content. Separate them:
+- Rack-level technical work (new evaporator coils, valve changes, oil separator floats, header repiping with pipe sizes, EPR conversions, controller programming) → rackTasks
+- Field-level work (case sealing, drip pans, top stubbing, insulation, sensor termination) → fieldTasks
+- A parts list, if present (often near the top, e.g. "PARTS LIST:" followed by quantities and descriptions) → parts
+- Standing rules/responsibilities that affect cost or scheduling but aren't a specific task (minimum crew size requirements, "must be in your bid" statements, day-tech requirements after night work, filter change schedules at fixed intervals) → flags, type "warn" if it has a clear cost/scheduling impact, "info" otherwise
+
+For EVERY item, capture pipe sizes, valve sizes, or other technical specifics EXACTLY as written — do not round or simplify (e.g. "3 5/8 with 2 1/8 double riser" must stay exactly that, not generalized to "large pipe").
+
+Pay special attention to statements that explicitly say something must be included in the bid (e.g. "MAKE SURE THIS GETS IN YOUR BIDS") — always capture these as a "warn" flag, verbatim.
+
+Do NOT invent dates — this document has none, leave date fields empty. Do NOT invent circuit IDs unless explicitly stated.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"flat_scope","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"minimumCrew":"","flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the overall scope"}
+
+If this chunk contains no relevant content, return the same shape with empty arrays.`;
+
+  const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
+  const merged = { rackTasks: [], fieldTasks: [], parts: [], flags: [], minimumCrew: '', chunkSummaries: [] };
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
+    const resultText = await callClaude(
+      [{ role: 'user', content: `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunks[i]}\n\n${prompt}` }],
+      'You are an expert commercial refrigeration estimator. Return only valid JSON.'
+    );
+    const parsed = parseAIJson(resultText);
+    if (!parsed) {
+      merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName });
+      continue;
+    }
+    if (parsed.minimumCrew && !merged.minimumCrew) merged.minimumCrew = parsed.minimumCrew;
+    (parsed.rackTasks || []).forEach(t => merged.rackTasks.push(t));
+    (parsed.fieldTasks || []).forEach(t => merged.fieldTasks.push(t));
+    (parsed.parts || []).forEach(p => merged.parts.push(p));
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.chunkSummaries.push(parsed.summary);
+  }
+
+  merged.summary = merged.chunkSummaries.join(' ');
+  return merged;
+}
