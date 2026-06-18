@@ -52,6 +52,34 @@ function isHighlighted(color) {
   return [CYAN, LIGHT_CYAN, YELLOW, LIGHT_GREEN, LIGHT_BLUE].includes(color);
 }
 
+// Some BPRs mark new work with a plain gray/generic shade rather than one of
+// the specific named highlight colors above — "shaded" rows the user has seen
+// on real jobs that the named-color check alone would miss. Treat ANY actual
+// fill color (not just the five whitelisted ones, and not pure white/none) as
+// a signal worth counting, per the "any signal counts" decision: missing a
+// genuinely new circuit costs real money in the field; flagging an existing
+// one as new costs a few seconds of review-screen cleanup. Asymmetric risk,
+// so this errs toward catching more candidates.
+function isShaded(color) {
+  if(!color) return false;
+  if(isHighlighted(color)) return true; // already counted, but no harm checking
+  // FFFFFFFF / FFFFFF = white, the default "no shading" fill some files still
+  // report explicitly. Anything else with a real fill is a shading signal.
+  const normalized = color.replace('FF', '').toUpperCase();
+  return normalized !== 'FFFFFF' && normalized !== '';
+}
+
+// Several manufacturers mark new work in plain text instead of (or in
+// addition to) cell color — "NEW", "New Coil", "New Piping Line", "New
+// Retrofit Doors", etc., commonly in the Heat Exchanger/notes-style column.
+// This has been confirmed across both Kysor Warren and Williams & Rowe BPR
+// formats from real jobs. Reading this text is what catches circuits that
+// were never highlighted or shaded at all but are unambiguously new work.
+const NEW_WORK_TEXT = /\bnew\b|\bretrofit\b/i;
+function looksLikeNewWorkText(...values) {
+  return values.some(v => v && NEW_WORK_TEXT.test(String(v)));
+}
+
 function looksLikePipeSize(val) {
   if(!val) return false;
   const str = String(val).trim();
@@ -152,14 +180,32 @@ function sheetToText(ws, maxRows = 80, maxCols = 30) {
   return rows.join('\n');
 }
 
+// ── DIRECT OPENROUTER CALL ──────────────────────────────────────────────────
+// Calling /api/claude via a relative-turned-absolute fetch from inside ANOTHER
+// serverless function is fragile — it depends on Vercel resolving VERCEL_URL
+// correctly for an internal hop, adds a second cold start, and any failure
+// there was being silently swallowed (caught, logged server-side where nobody
+// would see it, and treated as "AI found nothing"). This calls OpenRouter
+// directly instead, matching the exact request shape api/claude.js uses, so
+// there's one less network hop and one less thing that can silently break.
+async function callOpenRouter(messages, system) {
+  const fullMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
+      'HTTP-Referer': 'https://mechbid.vercel.app',
+      'X-Title': 'MechBid'
+    },
+    body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens: 4000, messages: fullMessages })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `OpenRouter error ${response.status}`);
+  return data.choices?.[0]?.message?.content || '';
+}
+
 // ── AI EXTRACTION ──────────────────────────────────────────────────────────────
-// Routed through /api/claude (OpenRouter) — same path every other AI call in
-// this app uses. This previously called api.anthropic.com directly with its own
-// model string, which silently fails whenever the direct Anthropic key has no
-// usable billing/credits, with no visible error to the user (caught by the
-// try/catch below and just treated as "AI found nothing"). That mismatch is
-// likely why non-standard sheets (e.g. parts order forms) returned empty
-// results even when content was clearly present.
 async function extractWithAI(sheetsText, fileName, format) {
   const isRefrig = format !== 'hvac';
 
@@ -231,22 +277,7 @@ Return JSON:
   const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
 
   try {
-    const res = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : ''}/api/claude`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-      })
-    });
-
-    if(!res.ok) {
-      const err = await res.text();
-      throw new Error(`AI API error ${res.status}: ${err}`);
-    }
-
-    const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+    const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt);
     const clean = text.replace(/```json|```/g,'').trim();
     return JSON.parse(clean);
   } catch(e) {
@@ -281,24 +312,9 @@ Return JSON:
 
   const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
 
-  try {
-    const res = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : ''}/api/claude`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-      })
-    });
-    if(!res.ok) return null;
-    const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
-    const clean = text.replace(/```json|```/g,'').trim();
-    return JSON.parse(clean);
-  } catch(e) {
-    console.error('Parts order extraction failed:', e.message);
-    return null;
-  }
+  const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt);
+  const clean = text.replace(/```json|```/g,'').trim();
+  return JSON.parse(clean);
 }
 
 // ── HIGHLIGHT SCANNER ────────────────────────────────────────────────────────
@@ -377,9 +393,21 @@ function parseBPR(wb, circuits, meta) {
       const app = String(row.getCell(7).value||'').trim();
       if(!app || app.match(/SPARE/i)) continue;
 
-      // New circuit = highlighted line size cells (cols 22/23/24)
+      // New circuit = ANY of: highlighted/shaded line-size cells (cols
+      // 22/23/24), OR explicit "new"/"retrofit" text in the Heat Exchanger
+      // column (col 4) or Application column (col 7). Different
+      // manufacturers and techs mark new work differently across real job
+      // files — sometimes highlighted, sometimes a plain-text "NEW"/"New
+      // Coil", sometimes a generic gray shade — and requiring just one
+      // specific convention silently dropped circuits marked the other ways.
       const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
-      if(!lineSizeHighlighted) continue;
+      const lineSizeShaded = [22,23,24].some(c => isShaded(getCellColor(row.getCell(c))));
+      const heatExchangerText = String(row.getCell(4).value||'');
+      const newWorkText = looksLikeNewWorkText(heatExchangerText, app);
+      const isNewCircuit = lineSizeHighlighted || lineSizeShaded || newWorkText;
+      if(!isNewCircuit) continue;
+
+      const newWorkSignal = lineSizeHighlighted ? 'highlighted' : lineSizeShaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
 
       const run = parseFloat(row.getCell(21).value)||0;
       const sh  = sizeToFraction(row.getCell(22).value);
@@ -395,7 +423,7 @@ function parseBPR(wb, circuits, meta) {
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly,
-        colorType: 'new', notes: 'NEW — highlighted line sizes'
+        colorType: 'new', notes: `NEW — ${newWorkSignal}`
       });
     }
   });
@@ -427,12 +455,19 @@ function parseKysorWarren(wb, circuits, meta) {
       if(!circId || !circId.match(/^[A-Z]\d+$/i)) continue;
       if(!circId.toUpperCase().startsWith(rack.toUpperCase())) continue;
 
-      let highlighted = false, colorType = null;
+      let highlighted = false, shaded = false, colorType = null;
       for(let c = 1; c <= 6; c++) {
         const color = getCellColor(row.getCell(c));
         if(isHighlighted(color)) { highlighted = true; colorType = 'cyan'; break; }
+        if(isShaded(color)) shaded = true;
       }
-      if(!highlighted) continue;
+      const heatExchangerText = String(row.getCell(4).value||'');
+      const appText = String(row.getCell(7).value||row.getCell(5).value||'');
+      const newWorkText = looksLikeNewWorkText(heatExchangerText, appText);
+      const isNewCircuit = highlighted || shaded || newWorkText;
+      if(!isNewCircuit) continue;
+      if(!colorType) colorType = shaded ? 'shaded' : 'text';
+      const newWorkSignal = highlighted ? 'highlighted' : shaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
 
       const run   = parseFloat(row.getCell(21).value)||0;
       const riser = parseFloat(row.getCell(22).value)||20;
@@ -449,7 +484,7 @@ function parseKysorWarren(wb, circuits, meta) {
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly: run === 0 && !!sr,
-        colorType, notes: note || ''
+        colorType, notes: [`NEW — ${newWorkSignal}`, note].filter(Boolean).join(' — ')
       });
     }
   });
@@ -620,7 +655,13 @@ module.exports = async function handler(req, res) {
 
         if(isPartsOrderXls) {
           const allText = sheetsToTextGeneric(xlsWbCheck, false);
-          const partsResult = await extractPartsOrderForm(allText, fileName);
+          let partsResult = null;
+          let extractError = null;
+          try {
+            partsResult = await extractPartsOrderForm(allText, fileName);
+          } catch(e) {
+            extractError = e.message;
+          }
           if(partsResult) {
             return res.status(200).json({
               circuits: [],
@@ -631,6 +672,17 @@ module.exports = async function handler(req, res) {
               summary: `${partsResult.items?.length || 0} part(s) found [parts order form] — ${partsResult.summary || fileName}`
             });
           }
+          // Detected as a parts order form but AI extraction failed — say so
+          // explicitly with the real error, rather than silently falling
+          // through to the circuit parser below, which finds nothing and
+          // produces a misleading "older .xls format" warning unrelated to
+          // the actual problem.
+          return res.status(200).json({
+            circuits: [],
+            format: 'parts-order-form-failed',
+            warning: `${fileName} looks like a parts order form, but AI extraction failed${extractError ? ': ' + extractError : ''}. Try again, or add items manually.`,
+            summary: `0 part(s) found [parts order form — extraction failed] — ${fileName}`
+          });
         }
       } catch(e) { /* fall through to normal circuit parsing below */ }
 
@@ -671,7 +723,13 @@ module.exports = async function handler(req, res) {
       // through the circuit-schedule parsers below.
       if(detectPartsOrderForm(wb)) {
         const allText = sheetsToTextGeneric(wb, true);
-        const partsResult = await extractPartsOrderForm(allText, fileName);
+        let partsResult = null;
+        let extractError = null;
+        try {
+          partsResult = await extractPartsOrderForm(allText, fileName);
+        } catch(e) {
+          extractError = e.message;
+        }
         if(partsResult) {
           return res.status(200).json({
             circuits: [],
@@ -682,6 +740,12 @@ module.exports = async function handler(req, res) {
             summary: `${partsResult.items?.length || 0} part(s) found [parts order form] — ${partsResult.summary || fileName}`
           });
         }
+        return res.status(200).json({
+          circuits: [],
+          format: 'parts-order-form-failed',
+          warning: `${fileName} looks like a parts order form, but AI extraction failed${extractError ? ': ' + extractError : ''}. Try again, or add items manually.`,
+          summary: `0 part(s) found [parts order form — extraction failed] — ${fileName}`
+        });
       }
 
       // 2. Detect format
