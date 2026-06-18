@@ -4,7 +4,8 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
   callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
-  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf
+  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
+  looksLikeBidLetter, analyzeBidLetter
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -138,10 +139,25 @@ export default function Step1_Setup({ onNext }) {
           const b64 = await fileToBase64(file);
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
-          parsed = await analyzeScopeDoc(docRes.text, fileMeta.name);
-          const fieldCount = parsed?.fieldTasks?.length || 0;
-          const rackCount = parsed?.rackTasks?.length || 0;
-          newResults.push(`📝 ${fileMeta.name}: Scope/schedule analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s) found`);
+
+          // .doc/.docx covers several genuinely different document types —
+          // dated construction schedules and bid invitation letters both
+          // commonly arrive this way. Detect which one this is from content,
+          // not the file extension, and route to the matching prompt. Forcing
+          // a bid letter through the schedule prompt mostly returns empty
+          // arrays (no dates to find), which looks like a failed extraction
+          // rather than "right tool, wrong document."
+          if (looksLikeBidLetter(docRes.text)) {
+            parsed = await analyzeBidLetter(docRes.text, fileMeta.name);
+            const contactCount = parsed?.contacts?.length || 0;
+            const flagCount = parsed?.flags?.length || 0;
+            newResults.push(`📋 ${fileMeta.name}: Bid invitation letter analyzed — ${contactCount} contact(s), ${flagCount} flag(s) found`);
+          } else {
+            parsed = await analyzeScopeDoc(docRes.text, fileMeta.name);
+            const fieldCount = parsed?.fieldTasks?.length || 0;
+            const rackCount = parsed?.rackTasks?.length || 0;
+            newResults.push(`📝 ${fileMeta.name}: Scope/schedule analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s) found`);
+          }
         }
 
         if (parsed) {
@@ -214,6 +230,27 @@ export default function Step1_Setup({ onNext }) {
           if (parsed.nightWorkRequired) {
             flags.push({ type: 'warn', text: `NIGHT WORK REQUIRED: ${parsed.nightWorkDetails || 'See scope doc'}`, source: fileMeta.name });
           }
+
+          // Bid invitation letter content — required bid categories, contacts,
+          // and due date are surfaced as flags rather than tracked as their
+          // own structured data, since they don't drive pricing the way
+          // circuits/tasks/parts do. The supply/exclusion notes that matter
+          // most (e.g. "Food Lion supplies the gas and drums") already came
+          // through in parsed.flags above — this just adds the remaining
+          // reference info from the same document.
+          if (parsed.documentType === 'bid_letter') {
+            if (parsed.bidCategories?.length) {
+              flags.push({ type: 'info', text: `Bid must be broken down by: ${parsed.bidCategories.join(', ')}`, source: fileMeta.name });
+            }
+            if (parsed.contacts?.length) {
+              const contactLines = parsed.contacts.map(c => [c.name, c.role, c.phone, c.email].filter(Boolean).join(' — ')).join(' | ');
+              flags.push({ type: 'info', text: `Contacts: ${contactLines}`, source: fileMeta.name });
+            }
+            if (parsed.dueInfo) {
+              flags.push({ type: 'warn', text: `Due: ${parsed.dueInfo}`, source: fileMeta.name });
+            }
+          }
+
           if (parsed.summary) newResults.push(`   → ${parsed.summary}`);
         }
 
