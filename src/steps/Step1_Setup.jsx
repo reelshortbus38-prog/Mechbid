@@ -5,7 +5,7 @@ import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../componen
 import {
   callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
-  looksLikeBidLetter, analyzeBidLetter
+  looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -126,13 +126,32 @@ export default function Step1_Setup({ onNext }) {
           sourceType = 'excel';
           const b64 = await fileToBase64(file);
           const res = await parseExcelFile(b64, fileMeta.name);
-          (res.circuits || []).forEach(c => {
-            if (c.circuitId) pushPending('circuit', 'excel', fileMeta.name, c);
-          });
-          if (res.storeName && !projName) projName = res.storeName;
-          newResults.push(`📊 ${fileMeta.name}: ${res.circuits?.length || 0} circuit(s) found [${res.format || 'excel'}]`);
-          if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
-          if (res.summary) newResults.push(`   → ${res.summary}`);
+
+          if (res.format === 'parts-order-form') {
+            // These are typically store/GC-supplied parts (Food Lion supplies
+            // case ends, rack parts, etc.) — not priced line items for the RC's
+            // bid. Surfaced as a flag so the contractor can see what work is
+            // implied (which cases, what kind of rack work) without it
+            // silently becoming a cost line or duplicating parts already
+            // listed elsewhere (e.g. a scope-of-work doc repeating the same
+            // rack parts list).
+            const pof = res.partsOrderForm || {};
+            const itemLines = (pof.items || []).map(i => [i.qty ? `${i.qty}×` : '', i.description, i.partNumber ? `(${i.partNumber})` : '', i.whereUsed ? `— used on: ${i.whereUsed}` : ''].filter(Boolean).join(' ')).join(' | ');
+            flags.push({
+              type: 'info',
+              text: `${pof.formType === 'case ends' ? 'Case ends' : pof.formType === 'rack parts' ? 'Rack parts' : 'Parts'} order form (likely store/GC-supplied, not RC-priced): ${itemLines || 'see file'}${pof.summary ? ' — ' + pof.summary : ''}`,
+              source: fileMeta.name,
+            });
+            newResults.push(`📋 ${fileMeta.name}: Parts order form — ${pof.items?.length || 0} item(s) found, added as a reference flag (not priced)`);
+          } else {
+            (res.circuits || []).forEach(c => {
+              if (c.circuitId) pushPending('circuit', 'excel', fileMeta.name, c);
+            });
+            if (res.storeName && !projName) projName = res.storeName;
+            newResults.push(`📊 ${fileMeta.name}: ${res.circuits?.length || 0} circuit(s) found [${res.format || 'excel'}]`);
+            if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
+            if (res.summary) newResults.push(`   → ${res.summary}`);
+          }
 
         } else if (fileMeta.type === 'scope') {
           sourceType = 'doctext';
@@ -152,6 +171,12 @@ export default function Step1_Setup({ onNext }) {
             const contactCount = parsed?.contacts?.length || 0;
             const flagCount = parsed?.flags?.length || 0;
             newResults.push(`📋 ${fileMeta.name}: Bid invitation letter analyzed — ${contactCount} contact(s), ${flagCount} flag(s) found`);
+          } else if (looksLikeFlatScopeDoc(docRes.text)) {
+            parsed = await analyzeFlatScopeDoc(docRes.text, fileMeta.name);
+            const fieldCount = parsed?.fieldTasks?.length || 0;
+            const rackCount = parsed?.rackTasks?.length || 0;
+            const partCount = parsed?.parts?.length || 0;
+            newResults.push(`📄 ${fileMeta.name}: Flat scope of work analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s), ${partCount} part(s) found`);
           } else {
             parsed = await analyzeScopeDoc(docRes.text, fileMeta.name);
             const fieldCount = parsed?.fieldTasks?.length || 0;
