@@ -60,24 +60,44 @@ function isHighlighted(color) {
 // genuinely new circuit costs real money in the field; flagging an existing
 // one as new costs a few seconds of review-screen cleanup. Asymmetric risk,
 // so this errs toward catching more candidates.
+// Known deliberate shading colors used in BPR files to mark new work —
+// gray variants specifically. These are tight, confirmed values rather than
+// "anything except white," because ExcelJS frequently returns non-white
+// color values from default theme fills (cells with no deliberate shading),
+// which the previous loose check was incorrectly treating as a signal.
+// ARGB format: first two hex chars are alpha (FF = fully opaque). Strip
+// those before comparing so both 'FF808080' and '808080' match.
+const KNOWN_SHADING_COLORS = new Set([
+  'C0C0C0', // silver/light gray — common "new work" shade in BPRs
+  '808080', // medium gray
+  'A6A6A6', // Office theme gray
+  'BFBFBF', // light gray variant
+  'D9D9D9', // very light gray, sometimes used for pending/new rows
+  '969696', // another gray variant seen in some KW files
+]);
+
 function isShaded(color) {
   if(!color) return false;
-  if(isHighlighted(color)) return true; // already counted, but no harm checking
-  // FFFFFFFF / FFFFFF = white, the default "no shading" fill some files still
-  // report explicitly. Anything else with a real fill is a shading signal.
-  const normalized = color.replace('FF', '').toUpperCase();
-  return normalized !== 'FFFFFF' && normalized !== '';
+  if(isHighlighted(color)) return true;
+  // Strip ARGB alpha prefix (first two chars if 8-char hex, e.g. 'FF808080' -> '808080')
+  const hex = color.length === 8 ? color.slice(2).toUpperCase() : color.toUpperCase();
+  return KNOWN_SHADING_COLORS.has(hex);
 }
 
-// Several manufacturers mark new work in plain text instead of (or in
-// addition to) cell color — "NEW", "New Coil", "New Piping Line", "New
-// Retrofit Doors", etc., commonly in the Heat Exchanger/notes-style column.
-// This has been confirmed across both Kysor Warren and Williams & Rowe BPR
-// formats from real jobs. Reading this text is what catches circuits that
-// were never highlighted or shaded at all but are unambiguously new work.
-const NEW_WORK_TEXT = /\bnew\b|\bretrofit\b/i;
-function looksLikeNewWorkText(...values) {
-  return values.some(v => v && NEW_WORK_TEXT.test(String(v)));
+// Text-based new-work detection: explicit phrases that unambiguously mean
+// "this is a new circuit," confirmed across real Kysor Warren and W&R BPR
+// files. "Retrofit" was intentionally dropped — it describes work being
+// done TO an existing circuit (door kits, EPR conversions, etc.), not a
+// new circuit being added. Matching it was the source of the "all circuits
+// showing up as new" bug on store 348 where existing circuits like C4, C10,
+// C11 all had "Retrofit Doors" in the Heat Exchanger column.
+// Only matches the Heat Exchanger column value, not the Application column,
+// since Application values like "MD Fresh Meat 18,19,22" or "Beer Doors
+// 37-39" don't reliably signal new-vs-existing.
+const NEW_WORK_PHRASES = /^NEW$|^New\s+(Coil|Piping|Piping\s+Line|Circuit|Install)/i;
+function looksLikeNewWorkText(heatExchangerValue) {
+  if(!heatExchangerValue) return false;
+  return NEW_WORK_PHRASES.test(String(heatExchangerValue).trim());
 }
 
 function looksLikePipeSize(val) {
@@ -403,7 +423,7 @@ function parseBPR(wb, circuits, meta) {
       const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
       const lineSizeShaded = [22,23,24].some(c => isShaded(getCellColor(row.getCell(c))));
       const heatExchangerText = String(row.getCell(4).value||'');
-      const newWorkText = looksLikeNewWorkText(heatExchangerText, app);
+      const newWorkText = looksLikeNewWorkText(heatExchangerText);
       const isNewCircuit = lineSizeHighlighted || lineSizeShaded || newWorkText;
       if(!isNewCircuit) continue;
 
@@ -463,7 +483,7 @@ function parseKysorWarren(wb, circuits, meta) {
       }
       const heatExchangerText = String(row.getCell(4).value||'');
       const appText = String(row.getCell(7).value||row.getCell(5).value||'');
-      const newWorkText = looksLikeNewWorkText(heatExchangerText, appText);
+      const newWorkText = looksLikeNewWorkText(heatExchangerText);
       const isNewCircuit = highlighted || shaded || newWorkText;
       if(!isNewCircuit) continue;
       if(!colorType) colorType = shaded ? 'shaded' : 'text';
