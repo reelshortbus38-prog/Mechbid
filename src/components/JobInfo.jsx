@@ -16,20 +16,42 @@ import { Card, SLabel, Input, Row, EmptyState } from './UI.jsx';
 // this is meant as a reference view, not a second labor-hours input table
 // (that's still Step5's Field Tasks section).
 
-function tryParseDate(label) {
-  // Schedule date labels look like "Monday, September 28th (Night) w15" — not
-  // directly parseable by Date(). Pull out a month-day pattern if present so
-  // we can sort chronologically; fall back to keeping original order otherwise.
+// Month indices for date parsing
+const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+function extractMonthDay(label) {
   if (!label) return null;
   const match = label.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
   if (!match) return null;
-  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const monthIdx = months.indexOf(match[1].toLowerCase());
+  const monthIdx = MONTHS.indexOf(match[1].toLowerCase());
   const day = parseInt(match[2], 10);
   if (monthIdx < 0 || !day) return null;
-  // Year is rarely stated per-line — use a placeholder year just for sort
-  // ordering within a single document; this never gets displayed.
-  return new Date(2000, monthIdx, day).getTime();
+  return { monthIdx, day };
+}
+
+// Converts a schedule item's date label to a timestamp for sorting/spanning.
+// The tricky case is a job that crosses a calendar year boundary — e.g.
+// September through January. With a naive fixed-year approach (always 2000),
+// January sorts BEFORE September, flipping the project span so it shows
+// "Jan 6 - Nov 26" instead of "Sep 9 - Jan 6". Fix: detect the rollover by
+// finding the earliest month seen across all items, then treat any month that
+// is numerically earlier than that first month as belonging to the next year.
+function buildDateParser(schedule) {
+  // Find the earliest month seen across all schedule items to detect rollover
+  const allMonths = schedule
+    .map(s => extractMonthDay(s.date))
+    .filter(Boolean)
+    .map(d => d.monthIdx);
+  const firstMonth = allMonths.length ? Math.min(...allMonths) : 0;
+
+  return function tryParseDate(label) {
+    const md = extractMonthDay(label);
+    if (!md) return null;
+    // If this month is earlier than the first month we saw in the schedule,
+    // it must be in the following year (e.g. January after a September start).
+    const year = md.monthIdx < firstMonth ? 2001 : 2000;
+    return new Date(year, md.monthIdx, md.day).getTime();
+  };
 }
 
 function isNightDate(label) {
@@ -56,6 +78,11 @@ function formatSpan(startMs, endMs) {
 export default function JobInfo({ compact = false, showStoreFields = true }) {
   const { state, dispatch } = useStore();
   const schedule = state.rcSchedule || [];
+
+  // Build a date parser that's aware of this specific schedule's date range,
+  // so jobs crossing a calendar year boundary (e.g. Sep → Jan) sort correctly
+  // instead of January appearing before September.
+  const tryParseDate = buildDateParser(schedule);
 
   const sorted = [...schedule].sort((a, b) => {
     const ta = tryParseDate(a.date), tb = tryParseDate(b.date);
