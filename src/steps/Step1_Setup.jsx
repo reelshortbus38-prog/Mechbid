@@ -191,11 +191,11 @@ export default function Step1_Setup({ onNext }) {
             let sName = (parsed.storeName || '').replace(/NON\s*/gi, '').trim();
             const chainMatch = sName.match(/food\s*lion|publix|kroger|harris\s*teeter|winn.?dixie|aldi|walmart/i);
             if (chainMatch) sName = chainMatch[0];
-            const num = parsed.storeNumber?.padStart(4, '0') || '';
+            const num = parsed.storeNumber ? String(parsed.storeNumber).padStart(4, '0') : '';
             const candidateName = sName ? sName + (num ? ' #' + num : '') : '';
             if (candidateName || parsed.address) {
               pushPending('projectInfo', sourceType, fileMeta.name, {
-                projName: candidateName, projAddr: parsed.address || '', storeNumber: parsed.storeNumber || '',
+                projName: candidateName, projAddr: parsed.address || '', storeNumber: num,
               });
             }
           }
