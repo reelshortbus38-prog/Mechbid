@@ -387,10 +387,10 @@ A line is RC (Refrigeration Contractor) scope if ANY of these is true — treat 
    - "Remove: (Product only due to same circuits)" followed by case lines → NOT RC scope (product-only moves don't disconnect the circuit)
    - "Remove: (relocate to backroom)" followed by case lines WITH circuit refs → RC scope
 3. The line describes refrigeration piping, line sets, sensor termination, or refrigerant work
-4. The line names RC as an attendee or participant in a meeting or walkthrough — even if other trades are also listed. Examples:
-   - "After Precon - General Contractor, Electrical Contractor, Refrigeration Contractor and Construction Manager to review prints" → RC scope (RC is named as attendee)
-   - "Preconstruction Meeting — all subs must be present" → RC scope (RC is a sub)
-5. The line mentions an RCC (Refrigeration Commissioning Check) — this is the final refrigeration punchlist that RC is directly responsible for completing, regardless of whether "Refrigeration Contractor" is named explicitly. Example:
+4. The line names RC as an attendee or participant in a meeting or walkthrough — even if other trades are listed first. Read the ENTIRE sentence before deciding; RC may appear after GC/EC in the list. Examples:
+   - "After Precon - General Contractor, Electrical Contractor, Energy Specialist, Refrigeration Contractor and Construction Manager to review prints and on-site conditions" → RC scope (RC is named, extract it)
+   - "Pre-construction Meeting Today - between the SM, ASM, General Contractor, Electrical Contractor, Construction Manager and Retail Specialist MUST BE PRESENT" → extract as RC task (RC is a required sub at precon)
+5. The line mentions an RCC (Refrigeration Commissioning Check) — this is the final refrigeration punchlist that RC is directly responsible for completing, regardless of whether "Refrigeration Contractor" is named explicitly:
    - "Energy Team will conduct a complete store RCC" → RC scope (RC must be present and accountable)
 
 IMPORTANT: Many schedules have a "Refrigeration Contractor Notes" or "- Refrigeration Contractor Notes -" subsection under an early week header (often Week 1). Extract EVERY bullet under that subsection as an RC task, associated with the nearest preceding date header. These commonly include:
