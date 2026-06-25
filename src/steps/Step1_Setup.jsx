@@ -54,12 +54,10 @@ export default function Step1_Setup({ onNext }) {
       const id = uid();
       fileObjects.current[id] = f; // store File in ref
       const type = detectType(f);
-      // Generate a blob URL for images and PDFs so the file viewer can open
-      // them later. Blob URLs are valid for the lifetime of this browser tab.
-      // Docs and spreadsheets can't render in-browser so no URL needed.
-      const previewUrl = (type === 'image' || type === 'pdf')
-        ? URL.createObjectURL(f)
-        : null;
+      // Generate a blob URL for every file type so it can be handed off to
+      // the native app on iOS (Pages for .docx, Numbers for .xlsx, etc.)
+      // via a download anchor click in the file viewer.
+      const previewUrl = URL.createObjectURL(f);
       return { id, name: f.name, size: f.size, type, mode: state.mode, previewUrl };
     });
     // Add to state (metadata only, no File object)
