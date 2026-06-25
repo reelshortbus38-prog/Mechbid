@@ -9,6 +9,7 @@ import {
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
+import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
@@ -52,7 +53,14 @@ export default function Step1_Setup({ onNext }) {
     const newMeta = arr.map(f => {
       const id = uid();
       fileObjects.current[id] = f; // store File in ref
-      return { id, name: f.name, size: f.size, type: detectType(f), mode: state.mode };
+      const type = detectType(f);
+      // Generate a blob URL for images and PDFs so the file viewer can open
+      // them later. Blob URLs are valid for the lifetime of this browser tab.
+      // Docs and spreadsheets can't render in-browser so no URL needed.
+      const previewUrl = (type === 'image' || type === 'pdf')
+        ? URL.createObjectURL(f)
+        : null;
+      return { id, name: f.name, size: f.size, type, mode: state.mode, previewUrl };
     });
     // Add to state (metadata only, no File object)
     dispatch({ type: 'SET', key: 'uploadedFiles', value: [...state.uploadedFiles, ...newMeta] });
@@ -466,29 +474,20 @@ export default function Step1_Setup({ onNext }) {
       {modeFiles.length > 0 && (
         <Card>
           <SLabel>Uploaded Files</SLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
             {modeFiles.map(f => {
               const status = fileStatuses[f.id] || 'ready';
               return (
-                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.surface, borderRadius: 8, border: `1px solid ${colors.border}` }}>
-                  <span style={{ fontSize: 18 }}>
-                    {{ excel: '📊', xls: '📊', scope: '📝', pdf: '📄', image: '🖼️' }[f.type] || '📄'}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                    <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>
-                      {(f.size / 1024).toFixed(0)}KB ·{' '}
-                      {status === 'done' ? <span style={{ color: colors.green }}>✅ Analyzed</span> :
-                       status === 'error' ? <span style={{ color: colors.red }}>❌ Error</span> :
-                       status === 'analyzing' ? <span style={{ color: colors.yellow }}>⏳ Analyzing...</span> :
-                       <span>Ready</span>}
-                    </div>
-                  </div>
-                  <button onClick={() => removeFile(f.id)} style={{ background: 'transparent', border: 'none', color: colors.textDim, cursor: 'pointer', fontSize: 18 }}>×</button>
+                <div key={f.id} style={{ fontSize: 10, color: colors.textDim, paddingLeft: 2 }}>
+                  {status === 'done' ? <span style={{ color: colors.green }}>✅</span> :
+                   status === 'error' ? <span style={{ color: colors.red }}>❌</span> :
+                   status === 'analyzing' ? <span style={{ color: colors.yellow }}>⏳</span> :
+                   <span>•</span>} {f.name}
                 </div>
               );
             })}
           </div>
+          <FileList />
         </Card>
       )}
 
