@@ -311,8 +311,6 @@ export function isRCTask(desc) {
 // circuit-tagged RC work actually live) was never read at all. This version
 // chunks the document and processes every chunk, then merges the results.
 const SCOPE_CHUNK_SIZE = 9000;
-// Overlap between chunks so a task description that happens to fall right at
-// a chunk boundary doesn't get cut in half and lost or duplicated oddly.
 const SCOPE_CHUNK_OVERLAP = 500;
 
 function chunkText(text, size, overlap) {
@@ -326,6 +324,48 @@ function chunkText(text, size, overlap) {
     start = end - overlap;
   }
   return chunks;
+}
+
+// Split document text into chunks at week/date header boundaries rather than
+// arbitrary character positions. Splitting mid-paragraph causes two problems:
+// (1) RC tasks get orphaned from their date header when the header is in chunk
+// N but the task text falls into chunk N+1 past the boundary; (2) chunks that
+// start mid-paragraph in dense GC content cause the model to miss RC tasks
+// buried later in the same chunk. Splitting on date headers means every chunk
+// starts cleanly at a date boundary and the model always sees complete
+// date→task associations. Falls back to chunkText if no date headers found.
+function chunkByDateHeaders(text, maxChunkSize = SCOPE_CHUNK_SIZE) {
+  const headerRe = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+\w+\s+\d+\w*[\s(]/im;
+  const lines = text.split('\n');
+  const chunks = [];
+  let currentLines = [];
+  let currentSize = 0;
+
+  for (const line of lines) {
+    const isHeader = headerRe.test(line.trim());
+    const lineSize = line.length + 1;
+
+    // Flush current chunk at a date header if we've accumulated enough content
+    if (isHeader && currentSize > 500 && currentSize + lineSize > maxChunkSize) {
+      chunks.push(currentLines.join('\n'));
+      currentLines = [line];
+      currentSize = lineSize;
+      continue;
+    }
+
+    currentLines.push(line);
+    currentSize += lineSize;
+
+    // Hard size limit in case a single date block is enormous
+    if (currentSize >= maxChunkSize * 1.5) {
+      chunks.push(currentLines.join('\n'));
+      currentLines = [];
+      currentSize = 0;
+    }
+  }
+
+  if (currentLines.length > 0) chunks.push(currentLines.join('\n'));
+  return chunks.length > 1 ? chunks : chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
 }
 
 export async function analyzeScopeDoc(text, fileName) {
@@ -369,7 +409,7 @@ Return ONLY valid JSON, no markdown:
 
 If this chunk contains no RC-relevant content at all, return the same JSON shape with empty arrays.`;
 
-  const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
+  const chunks = chunkByDateHeaders(text);
   const merged = {
     storeName: '', storeNumber: '', address: '', startDate: '',
     fieldTasks: [], rackTasks: [], parts: [], flags: [],
