@@ -10,6 +10,7 @@ import Step5_Labor from '../steps/Step5_Labor.jsx';
 import Step6_Proposal from '../steps/Step6_Proposal.jsx';
 import StepHVACEquipment from '../steps/StepHVACEquipment.jsx';
 import PriceBookModal, { loadDefaultSupplier } from './PriceBook.jsx';
+import FileViewerPanel from './FileViewer.jsx';
 
 // ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
 const STEPS_BY_MODE = {
@@ -53,6 +54,7 @@ export default function Wizard() {
   const [stepIndex, setStepIndex] = useState(0);
   const [showJobs, setShowJobs] = useState(false);
   const [showPriceBook, setShowPriceBook] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
   const [jobs, setJobs] = useState({});
 
@@ -143,6 +145,7 @@ export default function Wizard() {
           <Row style={{ gap: 8, flexShrink: 0 }}>
             <Btn variant="surface" size="sm" onClick={() => setShowPriceBook(true)}>📖 Prices</Btn>
             <Btn variant="surface" size="sm" onClick={() => { setJobs(loadAllJobs()); setShowJobs(true); }}>💾 Jobs</Btn>
+            <Btn variant="surface" size="sm" onClick={() => setShowDocs(true)}>📁 Docs</Btn>
             <Btn variant="green" size="sm" onClick={handleSave}>Save</Btn>
             {saveIndicator && <span style={{ fontSize: 11, color: colors.green }}>{saveIndicator}</span>}
           </Row>
@@ -191,6 +194,9 @@ export default function Wizard() {
 
       {/* Price Book modal */}
       {showPriceBook && <PriceBookModal onClose={() => setShowPriceBook(false)} />}
+
+      {/* Docs viewer modal */}
+      {showDocs && <FileViewerPanel onClose={() => setShowDocs(false)} />}
 
       {/* Jobs modal */}
       {showJobs && (
