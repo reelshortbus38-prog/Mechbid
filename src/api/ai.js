@@ -387,6 +387,11 @@ A line is RC (Refrigeration Contractor) scope if ANY of these is true — treat 
    - "Remove: (Product only due to same circuits)" followed by case lines → NOT RC scope (product-only moves don't disconnect the circuit)
    - "Remove: (relocate to backroom)" followed by case lines WITH circuit refs → RC scope
 3. The line describes refrigeration piping, line sets, sensor termination, or refrigerant work
+4. The line names RC as an attendee or participant in a meeting or walkthrough — even if other trades are also listed. Examples:
+   - "After Precon - General Contractor, Electrical Contractor, Refrigeration Contractor and Construction Manager to review prints" → RC scope (RC is named as attendee)
+   - "Preconstruction Meeting — all subs must be present" → RC scope (RC is a sub)
+5. The line mentions an RCC (Refrigeration Commissioning Check) — this is the final refrigeration punchlist that RC is directly responsible for completing, regardless of whether "Refrigeration Contractor" is named explicitly. Example:
+   - "Energy Team will conduct a complete store RCC" → RC scope (RC must be present and accountable)
 
 IMPORTANT: Many schedules have a "Refrigeration Contractor Notes" or "- Refrigeration Contractor Notes -" subsection under an early week header (often Week 1). Extract EVERY bullet under that subsection as an RC task, associated with the nearest preceding date header. These commonly include:
 - Case labeling requirements (label with case #, removal/relocation status, defrost set points)
@@ -400,7 +405,14 @@ Do NOT extract lines for GC, Electrical (other than sensor termination), Plumbin
 For EVERY RC task you extract:
 - Capture the date/week header exactly as written (e.g. "Tuesday, August 4th (Night) w7")
 - Include ALL case numbers, circuit IDs, and dimensions exactly — never drop these
+- Extract each bullet point as its OWN separate task — do not merge multiple bullets into one description, even if they share the same date
 - If a date block has a Remove list and a Relocate list in the same night, extract each case line as a separate task under that same date header
+
+CRITICAL EXCLUSIONS — these look like RC scope but are NOT:
+- "Electrical Contractor to begin pre-wire of new case sensor cables" → EC scope, NOT RC
+- "Electrician must label both ends" → EC scope, NOT RC
+- Any bullet under "Electrical Contractor Notes" heading — even if it mentions sensor cables — is EC scope UNLESS it explicitly says "Refrigeration Contractor will terminate"
+- The RC sensor termination task is specifically: "The Refrigeration Contractor will terminate both ends" — extract this one, reject the EC pulling/labeling bullets around it
 
 Also read any store address mentioned anywhere in the document — capture it exactly as written.
 
