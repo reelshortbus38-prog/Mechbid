@@ -335,22 +335,32 @@ export async function analyzeScopeDoc(text, fileName) {
   // headers — not a flat list. Date/week context is preserved on every task
   // because RC's obligations in these documents are usually tied to specific
   // night-work windows and case-set sequencing, not just "do this eventually."
-  const prompt = `You are an expert commercial refrigeration estimating system reading a construction remodel schedule. This document is organized by week and date, with bullet points under each date describing work for different trades (General Contractor, Electrical Contractor, Plumbing Contractor, Refrigeration Contractor, etc.) — often in the same paragraph block.
+  const prompt = `You are an expert commercial refrigeration estimating system reading a Food Lion (or similar grocery) remodel construction schedule.
 
-Your job: find every bullet point that is Refrigeration Contractor (RC) scope, and ONLY those. A line is RC scope if it explicitly says "Refrigeration Contractor" or "RC", OR if it describes case removal/relocation/installation, refrigeration line/circuit work, sensor termination (the RC terminates sensor cable ends — note: the Electrical Contractor PULLS the cable, but RC TERMINATES it, so termination lines belong to RC), case labeling for refrigeration purposes, or refrigeration piping.
+A line is RC (Refrigeration Contractor) scope if ANY of these is true — treat each as equally authoritative:
 
-Do NOT extract lines that are purely General Contractor, Electrical Contractor (other than sensor termination), Plumbing, Decor, or other trades' responsibility, even if they're in the same date block as RC work.
+1. The line explicitly says "Refrigeration Contractor" or "RC"
+2. The line describes removing, relocating, or installing a refrigerated case AND includes a circuit reference in parentheses like (C1), (A7), (B6), (A9) etc. That parenthetical circuit tag is the definitive signal this is RC work, regardless of whether the bullet mentions RC by name. Examples from real schedules:
+   - "5 door QIV5V14 Frozen Seafood #20 (C1)" → RC scope (circuit C1)
+   - "40' DX6XN Lunch Meat #16, 17, 18, 19 (A6)" → RC scope (circuit A6)
+   - "12' Meat #8 (A9)" → RC scope (circuit A9)
+   - "Remove: (Product only due to same circuits)" followed by case lines → NOT RC scope (product-only moves don't disconnect the circuit)
+   - "Remove: (relocate to backroom)" followed by case lines WITH circuit refs → RC scope
+3. The line describes refrigeration piping, line sets, sensor termination, or refrigerant work
 
-For EVERY RC task you extract, capture the date/week it's tied to (e.g. "Monday, September 28th (Night) w15") exactly as written in the nearest preceding date header — this matters because RC's work in these schedules is usually tied to a specific night-work window or case-set date, not just "eventually."
+Do NOT extract lines for GC, Electrical (other than sensor termination), Plumbing, Decor, or Store Operations — even if in the same date block as RC work.
 
-Also capture any circuit ID or case number mentioned in parentheses or inline (e.g. "(B6)", "(A7)", "#N74", "Case #23") — these tie directly to refrigeration circuits and should not be dropped.
+For EVERY RC task you extract:
+- Capture the date/week header exactly as written (e.g. "Tuesday, August 4th (Night) w7")
+- Include ALL case numbers, circuit IDs, and dimensions exactly — never drop these
+- If a date block has a Remove list and a Relocate list in the same night, extract each case line as a separate task under that same date header
 
-Also read any store address mentioned anywhere in the document (often near the top, in a header, or near the store name/number) — capture it exactly as written.
+Also read any store address mentioned anywhere in the document — capture it exactly as written.
 
 Return ONLY valid JSON, no markdown:
-{"storeName":"","storeNumber":"","address":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. B6 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
+{"storeName":"","storeNumber":"","address":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. C1 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
 
-If this chunk of the document contains no RC-relevant content at all, return the same JSON shape with empty arrays — don't skip the response.`;
+If this chunk contains no RC-relevant content at all, return the same JSON shape with empty arrays.`;
 
   const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
   const merged = {
