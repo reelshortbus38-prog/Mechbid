@@ -192,7 +192,11 @@ export default function Step1_Setup({ onNext }) {
             const chainMatch = sName.match(/food\s*lion|publix|kroger|harris\s*teeter|winn.?dixie|aldi|walmart/i);
             if (chainMatch) sName = chainMatch[0];
             const num = parsed.storeNumber ? String(parsed.storeNumber).padStart(4, '0') : '';
-            const candidateName = sName ? sName + (num ? ' #' + num : '') : '';
+            // Don't append the store number if the name already contains it
+            // (e.g. storeName came back as "Food Lion #0047-A" — appending
+            // " #0047-A" again would produce "Food Lion #0047-A #0047-A")
+            const nameAlreadyHasNum = num && sName.includes(num);
+            const candidateName = sName ? sName + (num && !nameAlreadyHasNum ? ' #' + num : '') : '';
             if (candidateName || parsed.address) {
               pushPending('projectInfo', sourceType, fileMeta.name, {
                 projName: candidateName, projAddr: parsed.address || '', storeNumber: num,
