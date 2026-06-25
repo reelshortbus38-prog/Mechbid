@@ -474,20 +474,7 @@ export default function Step1_Setup({ onNext }) {
       {modeFiles.length > 0 && (
         <Card>
           <SLabel>Uploaded Files</SLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
-            {modeFiles.map(f => {
-              const status = fileStatuses[f.id] || 'ready';
-              return (
-                <div key={f.id} style={{ fontSize: 10, color: colors.textDim, paddingLeft: 2 }}>
-                  {status === 'done' ? <span style={{ color: colors.green }}>✅</span> :
-                   status === 'error' ? <span style={{ color: colors.red }}>❌</span> :
-                   status === 'analyzing' ? <span style={{ color: colors.yellow }}>⏳</span> :
-                   <span>•</span>} {f.name}
-                </div>
-              );
-            })}
-          </div>
-          <FileList />
+          <FileList fileStatuses={fileStatuses} />
         </Card>
       )}
 
