@@ -294,7 +294,7 @@ export function searchSupplier(query, supplier = 'RE Michel') {
 }
 
 const RC_KEYWORDS = /refriger|circuit|line set|lineset|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|epr|evap|compres|rack|coil|oil|defrost|condenser|ice.*machine/i;
-const NON_RC_KEYWORDS = /mop sink|water supply|floor drain|electrical feed|GFI|receptacle|lighting|ductwork|duct hanger|plumb|paint|drywall|tile|concrete|GC to|general contractor/i;
+const NON_RC_KEYWORDS = /mop sink|water supply|floor drain|electrical feed|GFI|receptacle|lighting|ductwork|duct hanger|plumb|\bpaint\b|drywall|tile|concrete|GC to|general contractor/i;
 
 export function isRCTask(desc) {
   if (!desc) return false;
@@ -347,6 +347,13 @@ A line is RC (Refrigeration Contractor) scope if ANY of these is true — treat 
    - "Remove: (Product only due to same circuits)" followed by case lines → NOT RC scope (product-only moves don't disconnect the circuit)
    - "Remove: (relocate to backroom)" followed by case lines WITH circuit refs → RC scope
 3. The line describes refrigeration piping, line sets, sensor termination, or refrigerant work
+
+IMPORTANT: Many schedules have a "Refrigeration Contractor Notes" or "- Refrigeration Contractor Notes -" subsection under an early week header (often Week 1). Extract EVERY bullet under that subsection as an RC task, associated with the nearest preceding date header. These commonly include:
+- Case labeling requirements (label with case #, removal/relocation status, defrost set points)
+- Kick plate removal (RC to remove kick plates in affected areas before other trades can work)
+- Early line-running instructions (RC to begin running new refrigeration lines early in project)
+- Precon meeting attendance (RC present at Preconstruction meeting to review prints and conditions)
+These are real RC obligations that affect scheduling and crew time even though they don't mention specific circuits.
 
 Do NOT extract lines for GC, Electrical (other than sensor termination), Plumbing, Decor, or Store Operations — even if in the same date block as RC work.
 
