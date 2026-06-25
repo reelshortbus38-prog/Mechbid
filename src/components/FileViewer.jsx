@@ -25,7 +25,7 @@ function viewFile(f) {
 }
 
 // ── FILE LIST ─────────────────────────────────────────────────────────────────
-export function FileList() {
+export function FileList({ fileStatuses = {} }) {
   const { state, dispatch } = useStore();
   const files = (state.uploadedFiles || []).filter(f => f.mode === state.mode);
 
@@ -33,6 +33,14 @@ export function FileList() {
 
   function removeFile(id) {
     dispatch({ type: 'SET', key: 'uploadedFiles', value: state.uploadedFiles.filter(f => f.id !== id) });
+  }
+
+  function statusBadge(id) {
+    const s = fileStatuses[id];
+    if (s === 'done')      return <span style={{ fontSize: 10, color: '#4caf50' }}>✅ Done</span>;
+    if (s === 'error')     return <span style={{ fontSize: 10, color: '#f44336' }}>❌ Error</span>;
+    if (s === 'analyzing') return <span style={{ fontSize: 10, color: '#ff9800' }}>⏳ Analyzing</span>;
+    return null;
   }
 
   return (
@@ -51,7 +59,10 @@ export function FileList() {
             <div style={{ fontSize: 12, color: colors.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {f.name}
             </div>
-            {f.size && <div style={{ fontSize: 10, color: colors.textDim }}>{formatSize(f.size)}</div>}
+            <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2, display: 'flex', gap: 8 }}>
+              {f.size && <span>{formatSize(f.size)}</span>}
+              {statusBadge(f.id)}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             {f.previewUrl ? (
