@@ -171,57 +171,113 @@ function normalizeCalloutKey(desc) {
     .trim();
 }
 
+// Extracts callouts from the EXACT text layer of a vector PDF page (no vision).
+// Because the text is real, circuit IDs and pipe sizes are transcribed verbatim
+// and can't be misread the way they can off a downscaled raster.
+export async function callClaudeRedlineText(pageText, fileName, pageNum, totalPages) {
+  const ctx = totalPages > 1 ? ` (page ${pageNum} of ${totalPages})` : '';
+  const prompt = `You are an expert commercial refrigeration estimator. Below is the EXACT text extracted from the callout boxes and title block of a redlined refrigeration floor/pit plan${ctx}. Because this is the real PDF text layer, every circuit ID and pipe size is already correct — transcribe them verbatim and NEVER alter or "correct" a circuit ID (do not turn B6 into B16).
+
+Split the callouts into separate RC field tasks. Each instruction is its own task — e.g. "DROP NEW B11 IN EXISTING CHASE", "CONNECT EXISTING A2 LINESET TO EXISTING B6 LINESET", "REWORK EXISTING B4, B5 AS NEEDED", "DROP EXISTING A5 BRANCH IN DELI CLOSET. 1 1/8, 1/2".
+- Skip "GC TO..." portions — extract only RC refrigeration scope. If one sentence has both RC and GC parts, keep only the RC part in desc.
+- Put every circuit ID mentioned (there may be several, e.g. "A8, C8") in circuitRef exactly as written, the location/area in location, and any stated pipe size in statedSize (e.g. "1 1/8, 1/2").
+- Ignore obvious watermark fragments (scattered single letters, "PDF-XChange", "Click to buy now").
+- Read the title block for store name, store number, address, and sheet/drawing number — fill a field only if clearly present, never guess.
+
+EXACT TEXT:
+"""
+${pageText}
+"""
+
+Return ONLY valid JSON, no markdown:
+{"storeName":"","storeNumber":"","address":"","drawingNumber":"","fieldTasks":[{"desc":"","circuitRef":"","location":"","statedSize":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
+
+  return callClaude(
+    [{ role: 'user', content: prompt }],
+    'You are an expert commercial refrigeration estimator. Return only valid JSON.'
+  );
+}
+
+// Callout-instruction verbs that signal a page actually carries RC redline
+// scope (vs. a title sheet or a legend) — used to decide whether the text layer
+// is rich enough to skip vision for that page.
+const REDLINE_CALLOUT_RE = /\b(DROP|CONNECT|RECONNECT|DISCONNECT|REWORK|RELOCAT|EXTEND|PIPE THRU|TOP STUB|FEED)\b/i;
+
 export async function analyzeRedlinePdf(file, fileName) {
-  const { renderPdfPagesToImages } = await import('./pdfRender.js');
-  const { pages, totalPages, truncated } = await renderPdfPagesToImages(file);
+  const { renderPdfPagesToImages, extractPdfPagesText } = await import('./pdfRender.js');
 
   const merged = {
     documentType: 'redline_callout',
     storeName: '', storeNumber: '', address: '', drawingNumber: '',
     fieldTasks: [], flags: [], pageSummaries: [],
   };
-
-  // Track seen callouts (per page) and page summaries already recorded, so the
-  // overlapping tile reads don't produce duplicate tasks or repeated summaries.
   const seenTask = new Set();
   const summarizedPages = new Set();
 
-  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
-    const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
-    const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
-    if (!raw) {
-      merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
-      continue;
-    }
-    const parsed = parseAIJson(raw);
-    if (!parsed) {
-      merged.flags.push({ type: 'warn', text: `${tileLabel}: AI response could not be parsed`, source: fileName });
-      continue;
-    }
-
+  // Shared merge: fold one parsed page/tile result into `merged`, deduping
+  // callouts (text layer + overlapping vision tiles can re-read the same box).
+  const absorb = (parsed, pageNum) => {
     if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
     if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
     if (parsed.address && !merged.address) merged.address = parsed.address;
     if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
-
     (parsed.fieldTasks || []).forEach(t => {
-      const key = `${pageNum}::${normalizeCalloutKey(t.desc)}`;
-      if (!t.desc || !normalizeCalloutKey(t.desc)) return; // skip empty
-      if (seenTask.has(key)) return;                       // dedup tile overlap
+      const norm = normalizeCalloutKey(t.desc);
+      if (!norm) return;
+      const key = `${pageNum}::${norm}`;
+      if (seenTask.has(key)) return;
       seenTask.add(key);
       merged.fieldTasks.push({ ...t, pageNum });
     });
     (parsed.flags || []).forEach(f => merged.flags.push(f));
-    // Record one summary per page (from whichever tile first produced one),
-    // not one per tile — otherwise a 4-tile sheet repeats its summary 4×.
     if (parsed.summary && !summarizedPages.has(pageNum)) {
       summarizedPages.add(pageNum);
       merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
     }
+  };
+
+  // 1. TEXT LAYER FIRST — exact, no vision needed when the page has real text.
+  let textPages = [], totalPages = 0;
+  try {
+    const res = await extractPdfPagesText(file);
+    textPages = res.pages;
+    totalPages = res.totalPages;
+  } catch (e) {
+    // If text extraction throws, fall through to vision for every page.
+    merged.flags.push({ type: 'info', text: `Text layer unavailable (${e.message}) — read as scanned image`, source: fileName });
   }
 
-  if (truncated) {
-    merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
+  const visionPageNums = [];
+  for (const tp of textPages) {
+    if (tp.text.length >= 80 && REDLINE_CALLOUT_RE.test(tp.text)) {
+      const raw = await callClaudeRedlineText(tp.text, fileName, tp.pageNum, totalPages);
+      const parsed = raw ? parseAIJson(raw) : null;
+      if (parsed) { absorb(parsed, tp.pageNum); continue; }
+    }
+    // No usable text layer (scan) or text parse failed → vision fallback.
+    visionPageNums.push(tp.pageNum);
+  }
+  // If text extraction failed entirely, vision must cover everything.
+  const visionAll = textPages.length === 0;
+
+  // 2. VISION FALLBACK — render + tile only the pages that need it.
+  if (visionAll || visionPageNums.length) {
+    const { pages, totalPages: vTotal, truncated } = await renderPdfPagesToImages(file);
+    if (!totalPages) totalPages = vTotal;
+    for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
+      if (!visionAll && !visionPageNums.includes(pageNum)) continue;
+      const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
+      const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
+      const parsed = raw ? parseAIJson(raw) : null;
+      if (!parsed) {
+        merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
+        continue;
+      }
+      absorb(parsed, pageNum);
+    }
+    if (truncated) {
+      merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
+    }
   }
 
   merged.summary = merged.pageSummaries.join(' ');

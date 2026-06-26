@@ -18,6 +18,57 @@ async function loadPdfJs() {
   return pdfjsLib;
 }
 
+// ── PDF TEXT LAYER ──────────────────────────────────────────────────────────────
+// Many refrigeration plans are vector PDFs (CAD/Bluebeam exports), not scans —
+// the callout boxes are real, selectable text. Reading that text layer is exact
+// (a circuit ID can never be misread as a different one the way it can from a
+// downscaled raster), so we try it BEFORE falling back to rendering + vision.
+// Returns one { pageNum, text, lineCount } per page; pages with no real text
+// layer (true scans) come back with little/no text and route to vision instead.
+export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
+  const lib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+  const pageCount = Math.min(pdf.numPages, maxPages);
+  const pages = [];
+
+  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const tc = await page.getTextContent();
+    // Reconstruct reading order from glyph positions: top-to-bottom by Y
+    // (PDF Y grows upward), left-to-right by X within a line.
+    const items = tc.items
+      .filter(i => i.str && i.str.trim())
+      .map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5] }))
+      .sort((a, b) => Math.abs(a.y - b.y) > 3 ? b.y - a.y : a.x - b.x);
+
+    let raw = '', lastY = null;
+    for (const it of items) {
+      if (lastY !== null && Math.abs(it.y - lastY) > 3) raw += '\n';
+      raw += it.s + ' ';
+      lastY = it.y;
+    }
+
+    // Strip PDF-editor watermark noise (scattered single letters, "Click to buy
+    // now", "PDF-XChange") so it doesn't pollute the callout text.
+    const lines = raw.split('\n')
+      .map(l => l.trim().replace(/\s+/g, ' '))
+      .filter(l => {
+        if (l.length < 3) return false;
+        if (/click to buy now|pdf-?xchange|tracker-?software|^w[\s.]*w[\s.]*w/i.test(l)) return false;
+        const tokens = l.split(' ');
+        const singleChars = tokens.filter(t => t.length === 1).length;
+        if (tokens.length >= 2 && singleChars === tokens.length) return false; // all single-char watermark fragments
+        if (tokens.length >= 4 && singleChars / tokens.length > 0.5) return false;
+        return true;
+      });
+
+    pages.push({ pageNum, text: lines.join('\n'), lineCount: lines.length });
+  }
+
+  return { pages, totalPages: pdf.numPages };
+}
+
 // Renders every page of a PDF File to JPEG data URLs (base64, no prefix).
 //
 // TILING — the key to reading dense blueprints: vision models internally
