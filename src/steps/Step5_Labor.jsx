@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskCost, calcFieldTasksTotal, primaryCrew } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -172,8 +172,9 @@ function FieldTasksSection() {
     dispatch({ type: 'SET', key: 'fieldTasks', value: fieldTasks.filter(t => t.id !== id) });
   }
 
-  // Get blended crew rate from first labor period
-  const blendedRate = state.laborPeriods?.[0]?.crew?.reduce((s, m) => s + (parseFloat(m.rate) || 0), 0) || 100;
+  // Cost field tasks from the primary crew's average man-hour rate (shared with
+  // the proposal so what's shown here is exactly what lands in the bid).
+  const crew = primaryCrew(state.laborPeriods);
 
   return (
     <div>
@@ -199,7 +200,7 @@ function FieldTasksSection() {
               </thead>
               <tbody>
                 {fieldTasks.map((t, i) => {
-                  const cost = t.men * t.hrs * (blendedRate / Math.max(state.laborPeriods?.[0]?.crew?.length || 1, 1));
+                  const cost = calcFieldTaskCost(t, crew);
                   return (
                     <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : colors.surface + '40' }}>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, width: '40%' }}>
@@ -226,7 +227,7 @@ function FieldTasksSection() {
             <div style={{ padding: '10px 16px', borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: colors.textDim }}>Field Work Total</span>
               <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.green }}>
-                {fmt(fieldTasks.reduce((s, t) => s + t.men * t.hrs * (blendedRate / Math.max(state.laborPeriods?.[0]?.crew?.length || 1, 1)), 0))}
+                {fmt(calcFieldTasksTotal(fieldTasks, crew))}
               </span>
             </div>
           </>

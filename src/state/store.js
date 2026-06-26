@@ -19,13 +19,13 @@ export const initialState = {
   // Shape: { id, date, desc, circuitRef, notes }
   rcSchedule: [],
   rates: {
-    cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+    cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
     // Insulation rates are per pipe size, per temp/line category — mirrors the copper rate shape.
     // e.g. rates.insul.medSuction['3/8'] = 2.10
     insul: {
-      medSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
-      lowSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
-      lowLiquid:  { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0 },
+      medSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
+      lowSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
+      lowLiquid:  { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
     },
     fittingsMarkupPct: 25,
     // 'percentage' = auto allowance line based on % of copper cost.
@@ -176,6 +176,7 @@ export function normalizePipeSize(s) {
   const dec = {
     '0.25':'1/4','0.375':'3/8','0.5':'1/2','0.625':'5/8','0.875':'7/8',
     '1.125':'1-1/8','1.375':'1-3/8','1.625':'1-5/8','2.125':'2-1/8',
+    '2.625':'2-5/8','3.125':'3-1/8',
   };
   if (dec[s]) return dec[s];
   return s.replace(/\s+/g, '-');
@@ -245,4 +246,54 @@ export function calcTotalLabor(laborPeriods) {
 
 export function calcMaterialsTotal(lineItems) {
   return (lineItems || []).reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+}
+
+// ── RACK & FIELD TASK LABOR ──────────────────────────────────────────────────
+// Rack tasks and field tasks are costed from the crew on the FIRST labor period
+// (that's the job's primary crew). These helpers are shared by the step views
+// AND the proposal totals so the number you see while editing is the same number
+// that lands in the bid — previously the proposal read a `laborCost` field that
+// was never persisted, so rack + field labor silently dropped out of the total.
+export function primaryCrew(laborPeriods) {
+  return laborPeriods?.[0]?.crew || [];
+}
+
+export function avgCrewRate(crew) {
+  const list = crew || [];
+  if (!list.length) return 0;
+  const sum = list.reduce((s, m) => s + (parseFloat(m.rate) || 0), 0);
+  return sum / list.length;
+}
+
+// Fallback man-hour rate when no crew has been set up yet, so a task entered
+// before the Labor step still costs something instead of reading as free.
+const FALLBACK_MANHOUR_RATE = 100;
+
+// Rack task: if specific crew roles are assigned, cost each role's count at its
+// rate × hours; otherwise fall back to men × hours × average crew rate.
+export function calcRackTaskCost(task, crew) {
+  const list = crew || [];
+  if (task.crewAssignment && Object.keys(task.crewAssignment).length > 0) {
+    return Object.entries(task.crewAssignment).reduce((s, [roleId, count]) => {
+      const member = list.find(m => m.id === roleId);
+      return s + (count || 0) * (parseFloat(member?.rate) || 0) * (parseFloat(task.hrs) || 0);
+    }, 0);
+  }
+  const rate = avgCrewRate(list) || FALLBACK_MANHOUR_RATE;
+  return (parseFloat(task.men) || 1) * (parseFloat(task.hrs) || 0) * rate;
+}
+
+export function calcRackLaborTotal(rackTasks, crew) {
+  return (rackTasks || []).reduce((s, t) => s + calcRackTaskCost(t, crew), 0);
+}
+
+// Field task: men × hours × average crew rate (per-man rate), fallback rate when
+// no crew is set. Mirrors what the Labor step's Field Work table displays.
+export function calcFieldTaskCost(task, crew) {
+  const rate = avgCrewRate(crew) || FALLBACK_MANHOUR_RATE;
+  return (parseFloat(task.men) || 0) * (parseFloat(task.hrs) || 0) * rate;
+}
+
+export function calcFieldTasksTotal(fieldTasks, crew) {
+  return (fieldTasks || []).reduce((s, t) => s + calcFieldTaskCost(t, crew), 0);
 }
