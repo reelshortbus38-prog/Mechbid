@@ -35,6 +35,23 @@ export const initialState = {
   },
   laborPeriods: [],
   markupPct: 20,
+  // Sales/use tax applied to the marked-up materials+equipment sell price.
+  // Defaults to 0 so it's opt-in and never silently changes an existing bid.
+  materialsTaxPct: 0,
+  // Standard bid exclusions/qualifications — the contractual scope fence shown
+  // on the proposal. Seeded with common mechanical exclusions; fully editable.
+  exclusions: [
+    'Line-voltage electrical wiring, disconnects, and final power connections',
+    'Cutting, patching, core drilling, and structural modifications',
+    'Fire-stopping and fire-sealing of penetrations',
+    'Roofing, flashing, and roof curbs (by others)',
+    'Painting, finish work, and architectural finishes',
+    'Concrete, housekeeping pads, and structural steel',
+    'Permits, fees, and inspections unless explicitly noted',
+    'Controls/BMS programming and integration unless noted',
+    'Overtime and premium-time labor unless noted',
+    'Temporary heating, cooling, or refrigeration',
+  ],
   scenarios: {
     active: 'mid',
     low:  { label:'Low',  markupPct:15, desc:'Tight margin, competitive' },
@@ -228,12 +245,16 @@ export function deleteJob(id) {
 
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period) {
-  const crewRate = (period.crew || []).reduce((s, m) => s + (parseFloat(m.rate) || 0), 0);
+  // Each crew member contributes rate × their own hours/day. hrsPerDay defaults
+  // to 8 so existing periods are unchanged, but a 10-hour day now actually costs
+  // a 10-hour day (previously hrsPerDay was stored and ignored — always ×8).
+  const crewDayRate = (period.crew || []).reduce(
+    (s, m) => s + (parseFloat(m.rate) || 0) * (parseFloat(m.hrsPerDay) || 8), 0);
   const otMult = parseFloat(period.otMult) || 1;
   const nightMult = period.isNight ? (parseFloat(period.nightMult) || 1.5) : 1;
   const days = parseFloat(period.days) || 0;
   const oot = (parseFloat(period.ootPerDay) || 0) * days;
-  const labor = crewRate * 8 * days * otMult * nightMult;
+  const labor = crewDayRate * days * otMult * nightMult;
   return { labor, oot, total: labor + oot };
 }
 

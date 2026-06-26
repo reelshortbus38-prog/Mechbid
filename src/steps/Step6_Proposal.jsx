@@ -1,7 +1,52 @@
 import { useStore, fmt, calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, primaryCrew } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Row } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
+
+// ── TAX & EXCLUSIONS EDITOR ───────────────────────────────────────────────────
+function TaxAndExclusions() {
+  const { state, dispatch } = useStore();
+  const exclusions = state.exclusions || [];
+
+  const setExclusion = (i, val) => {
+    const next = exclusions.slice();
+    next[i] = val;
+    dispatch({ type: 'SET', key: 'exclusions', value: next });
+  };
+  const addExclusion = () => dispatch({ type: 'SET', key: 'exclusions', value: [...exclusions, ''] });
+  const removeExclusion = i => dispatch({ type: 'SET', key: 'exclusions', value: exclusions.filter((_, idx) => idx !== i) });
+
+  return (
+    <Card>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <SLabel style={{ margin: 0 }}>Tax & Exclusions</SLabel>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Materials Sales Tax</span>
+          <Input
+            type="number"
+            value={state.materialsTaxPct ?? 0}
+            onChange={e => dispatch({ type: 'SET', key: 'materialsTaxPct', value: parseFloat(e.target.value) || 0 })}
+            style={{ width: 64, fontFamily: "'DM Mono', monospace", textAlign: 'center' }}
+          />
+          <span style={{ fontSize: 11, color: colors.textDim }}>%</span>
+        </div>
+      </Row>
+      <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 10 }}>
+        Exclusions print on the proposal — your scope fence. Edit, add, or remove lines.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {exclusions.map((x, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: colors.textDim, fontSize: 12, flexShrink: 0 }}>•</span>
+            <Input value={x} onChange={e => setExclusion(i, e.target.value)} style={{ flex: 1 }} placeholder="Exclusion / qualification..." />
+            <button onClick={() => removeExclusion(i)} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 24, height: 24, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>×</button>
+          </div>
+        ))}
+      </div>
+      <Btn variant="ghost" size="sm" onClick={addExclusion} style={{ marginTop: 10 }}>+ Add Exclusion</Btn>
+    </Card>
+  );
+}
 
 // ── SCENARIO CARD ──────────────────────────────────────────────────────────────
 function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarkup, total }) {
@@ -44,6 +89,10 @@ function useBidTotals(state, markupPct) {
   const laborTotal = calcTotalLabor(state.laborPeriods || []);
   const crew = primaryCrew(state.laborPeriods);
   const fieldTasksTotal = calcFieldTasksTotal(state.fieldTasks, crew);
+  // Sales/use tax is charged on the marked-up materials+equipment sell price,
+  // not on labor. Defaults to 0 so it only appears once a rate is set.
+  const taxPct = parseFloat(state.materialsTaxPct) || 0;
+  const taxOf = sell => sell * (taxPct / 100);
 
   if (mode === 'Residential HVAC') {
     const equipTotal = (state.resEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
@@ -51,7 +100,8 @@ function useBidTotals(state, markupPct) {
     const linesetTotal = parseFloat(state.resLinesetTotal) || 0;
     const markupBase = equipTotal + partsTotal + linesetTotal;
     const markupAmt = markupBase * (markupPct / 100);
-    return { markupBase, markupAmt, laborTotal, fieldTasksTotal: 0, total: markupBase + markupAmt + laborTotal, equipTotal, partsTotal, linesetTotal };
+    const taxAmt = taxOf(markupBase + markupAmt);
+    return { markupBase, markupAmt, taxPct, taxAmt, laborTotal, fieldTasksTotal: 0, total: markupBase + markupAmt + taxAmt + laborTotal, equipTotal, partsTotal, linesetTotal };
   }
 
   if (mode === 'Commercial HVAC') {
@@ -59,7 +109,8 @@ function useBidTotals(state, markupPct) {
     const partsTotal = (state.hvacParts || []).reduce((s, p) => s + (p.total || 0), 0);
     const markupBase = equipTotal + partsTotal;
     const markupAmt = markupBase * (markupPct / 100);
-    return { markupBase, markupAmt, laborTotal, fieldTasksTotal, total: markupBase + markupAmt + laborTotal + fieldTasksTotal, equipTotal, partsTotal };
+    const taxAmt = taxOf(markupBase + markupAmt);
+    return { markupBase, markupAmt, taxPct, taxAmt, laborTotal, fieldTasksTotal, total: markupBase + markupAmt + taxAmt + laborTotal + fieldTasksTotal, equipTotal, partsTotal };
   }
 
   // Commercial Refrigeration
@@ -70,7 +121,8 @@ function useBidTotals(state, markupPct) {
   const rackLaborTotal = calcRackLaborTotal(state.rackTasks, crew);
   const markupBase = matsTotal + rackPartsContractor;
   const markupAmt = markupBase * (markupPct / 100);
-  return { markupBase, markupAmt, laborTotal, rackLaborTotal, fieldTasksTotal, total: markupBase + markupAmt + laborTotal + rackLaborTotal + fieldTasksTotal, matsTotal, rackPartsContractor };
+  const taxAmt = taxOf(markupBase + markupAmt);
+  return { markupBase, markupAmt, taxPct, taxAmt, laborTotal, rackLaborTotal, fieldTasksTotal, total: markupBase + markupAmt + taxAmt + laborTotal + rackLaborTotal + fieldTasksTotal, matsTotal, rackPartsContractor };
 }
 
 // ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
@@ -119,7 +171,8 @@ function ProposalView() {
       }
     }
 
-    const { markupBase, markupAmt, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+    const { markupBase, markupAmt, taxPct = 0, taxAmt = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+    const exclusions = (state.exclusions || []).filter(x => x && x.trim());
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bid — ${state.projName}</title>
     <style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:28px}
@@ -142,10 +195,12 @@ function ProposalView() {
     ${scopeRows}
     <h2>Bid Summary</h2>
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Materials & Equipment (marked up ${scenario.markupPct}%)</span><span>${fmt(markupBase + markupAmt)}</span></div>
+    ${taxAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Sales Tax (${taxPct}%)</span><span>${fmt(taxAmt)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Labor</span><span>${fmt(laborTotal)}</span></div>
     ${rackLaborTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rack Work</span><span>${fmt(rackLaborTotal)}</span></div>` : ''}
     ${fieldTasksTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Field Work</span><span>${fmt(fieldTasksTotal)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:14px 0;border-top:3px solid #22c55e;margin-top:8px"><span style="font-size:18px;font-weight:700">TOTAL BID PRICE</span><span class="total">${fmt(total)}</span></div>
+    ${exclusions.length ? `<h2>Exclusions & Qualifications</h2><ul style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${exclusions.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
     <div style="margin-top:32px;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px">Generated by MechBid · ${date} · Prices subject to change</div>
     </body></html>`;
 
@@ -153,8 +208,9 @@ function ProposalView() {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
-  const { markupBase, markupAmt, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+  const { markupBase, markupAmt, taxPct = 0, taxAmt = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
   const markedUpMats = markupBase + markupAmt;
+  const exclusions = (state.exclusions || []).filter(x => x && x.trim());
 
   return (
     <Card style={{ background: colors.surface }}>
@@ -215,6 +271,7 @@ function ProposalView() {
           { label: 'Materials & Equipment', value: fmt(markupBase), dim: true },
           { label: `Markup (${scenario.markupPct}%)`, value: fmt(markupAmt), color: colors.green },
           { label: 'Materials Total (marked up)', value: fmt(markedUpMats), bold: true },
+          taxAmt > 0 && { label: `Sales Tax (${taxPct}%)`, value: fmt(taxAmt), color: colors.text },
           { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
           rackLaborTotal > 0 && { label: 'Rack Work', value: fmt(rackLaborTotal), color: colors.yellow },
           fieldTasksTotal > 0 && { label: 'Field Work', value: fmt(fieldTasksTotal), color: colors.yellow },
@@ -231,6 +288,16 @@ function ProposalView() {
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700 }}>TOTAL BID PRICE</span>
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 30, fontWeight: 800, color: colors.green }}>{fmt(total)}</span>
       </div>
+
+      {/* Exclusions & qualifications */}
+      {exclusions.length > 0 && (
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Exclusions & Qualifications</div>
+          <ul style={{ margin: 0, paddingLeft: 18, color: colors.textDim, fontSize: 11, lineHeight: 1.7 }}>
+            {exclusions.map((x, i) => <li key={i}>{x}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Export */}
       <Row style={{ marginTop: 16, gap: 10 }}>
@@ -288,6 +355,7 @@ export default function Step6_Proposal({ onBack }) {
           {[
             { label: 'Materials & Equipment', value: fmt(totals.markupBase), color: colors.text },
             { label: `Markup (${activeScenario.markupPct}%)`, value: fmt(totals.markupAmt), color: colors.green },
+            totals.taxAmt > 0 && { label: `Sales Tax (${totals.taxPct}%)`, value: fmt(totals.taxAmt), color: colors.text },
             { label: 'Labor', value: fmt(totals.laborTotal), color: colors.yellow },
             totals.rackLaborTotal > 0 && { label: 'Rack Work Labor', value: fmt(totals.rackLaborTotal), color: colors.yellow },
             totals.fieldTasksTotal > 0 && { label: 'Field Work Labor', value: fmt(totals.fieldTasksTotal), color: colors.yellow },
@@ -303,6 +371,9 @@ export default function Step6_Proposal({ onBack }) {
           <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(totals.total)}</span>
         </div>
       </Card>
+
+      {/* Tax & exclusions editor */}
+      <TaxAndExclusions />
 
       {/* Proposal preview */}
       <div>

@@ -23,7 +23,7 @@ export default function CrewBuilder({ crew, onChange, compact = false }) {
   }
 
   function updateMember(id, field, value) {
-    onChange(crew.map(m => m.id === id ? { ...m, [field]: field === 'rate' ? parseFloat(value) || 0 : value } : m));
+    onChange(crew.map(m => m.id === id ? { ...m, [field]: (field === 'rate' || field === 'hrsPerDay') ? parseFloat(value) || 0 : value } : m));
   }
 
   const crewRate = crew.reduce((s, m) => s + (parseFloat(m.rate) || 0), 0);
@@ -88,6 +88,15 @@ export default function CrewBuilder({ crew, onChange, compact = false }) {
                   style={{ width: 60, textAlign: 'right', background: 'transparent', border: 'none', color: colors.text, fontSize: 13, fontFamily: "'DM Mono', monospace", outline: 'none' }}
                 />
                 <span style={{ fontSize: 11, color: colors.textDim }}>/hr</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <input
+                  type="number"
+                  value={m.hrsPerDay ?? 8}
+                  onChange={e => updateMember(m.id, 'hrsPerDay', e.target.value)}
+                  style={{ width: 34, textAlign: 'right', background: 'transparent', border: 'none', color: colors.text, fontSize: 13, fontFamily: "'DM Mono', monospace", outline: 'none' }}
+                />
+                <span style={{ fontSize: 11, color: colors.textDim }}>hrs/day</span>
               </div>
               <button
                 onClick={() => removeMember(m.id)}
