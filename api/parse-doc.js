@@ -1,4 +1,5 @@
 const mammoth = require('mammoth');
+const WordExtractor = require('word-extractor');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -37,14 +38,27 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({text:'', error:'Could not read .docx: '+e.message});
       }
     } else if(isDoc) {
-      // Try mammoth first (sometimes works on .doc)
+      // word-extractor reads the legacy OLE .doc format properly (preserving
+      // word and paragraph boundaries), which the raw-text fallback could not —
+      // critical for circuit-tagged scope lines like "C7 = REPLACE 7/8 SUCTION
+      // LINE WITH 1 3/8". This is a pure-JS reader, so it works on the
+      // serverless runtime where LibreOffice isn't available.
       try {
-        const result = await mammoth.extractRawText({buffer});
-        if(result.value && result.value.trim().length > 50) {
-          text = result.value;
-          method = 'mammoth-doc';
-        }
+        const doc = await new WordExtractor().extract(buffer);
+        const body = (doc.getBody() || '').trim();
+        if(body.length > 50) { text = body; method = 'word-extractor'; }
       } catch(e) { /* try next method */ }
+
+      // Fall back to mammoth (occasionally handles a .doc)
+      if(!text) {
+        try {
+          const result = await mammoth.extractRawText({buffer});
+          if(result.value && result.value.trim().length > 50) {
+            text = result.value;
+            method = 'mammoth-doc';
+          }
+        } catch(e) { /* try next method */ }
+      }
 
       // Probe for LibreOffice once, so we both know whether to attempt it and
       // can report availability back to the client.
