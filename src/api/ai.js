@@ -80,10 +80,18 @@ Return ONLY valid JSON, no markdown:
 // model to fill in numbers it can't see is how you get confident-sounding wrong
 // data, which is exactly what the review screen is supposed to catch — but it's
 // better not to generate it in the first place.
-export async function callClaudeVisionRedline(base64Image, fileName, pageNum, totalPages) {
+export async function callClaudeVisionRedline(base64Image, fileName, pageNum, totalPages, tile = null) {
   try {
     const pageContext = totalPages > 1 ? ` This is page ${pageNum} of ${totalPages} in a multi-sheet drawing set.` : '';
-    const prompt = `You are an expert commercial refrigeration estimator reading a redlined floor plan or piping plan.${pageContext}
+    // When a sheet is sliced into tiles (to keep small callout text legible),
+    // tell the model so it doesn't try to reconstruct callouts that are cut off
+    // at a tile edge — another tile covers the rest, and the merge step dedups
+    // the overlap. This prevents the model from "completing" a partial box with
+    // a guess, which is exactly the failure tiling is meant to avoid.
+    const tileContext = tile && tile.tilesOnPage > 1
+      ? ` This image is section ${tile.tileNum} of ${tile.tilesOnPage} cropped from a single large sheet — it shows only part of the page. Transcribe ONLY callout boxes that are fully legible within this crop. If a box is cut off at the edge of this image, skip it (another section covers it) rather than guessing the missing words.`
+      : '';
+    const prompt = `You are an expert commercial refrigeration estimator reading a redlined floor plan or piping plan.${pageContext}${tileContext}
 
 This drawing has colored callout boxes (usually orange) with leader lines pointing to specific locations on the floor plan. Each callout box is a SEPARATE, SELF-CONTAINED instruction. Callout boxes are often positioned close together or stacked near the same area of the floor plan — this is the single biggest source of error, so follow this rule strictly:
 
@@ -145,6 +153,17 @@ Return ONLY valid JSON, no markdown, no commentary:
 // call, merging results into one combined parsed object. Pages are processed
 // sequentially (not in parallel) to avoid hammering the API with a burst of
 // large image payloads at once for multi-sheet sets.
+// Normalize a callout for dedup: lowercase, drop [unclear] markers, strip
+// punctuation, collapse whitespace. Overlapping tiles re-read the same callout
+// verbatim, so identical normalized text means the same box — keep one copy.
+function normalizeCalloutKey(desc) {
+  return String(desc || '')
+    .toLowerCase()
+    .replace(/\[unclear\]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export async function analyzeRedlinePdf(file, fileName) {
   const { renderPdfPagesToImages } = await import('./pdfRender.js');
   const { pages, totalPages, truncated } = await renderPdfPagesToImages(file);
@@ -155,15 +174,21 @@ export async function analyzeRedlinePdf(file, fileName) {
     fieldTasks: [], flags: [], pageSummaries: [],
   };
 
-  for (const { pageNum, base64 } of pages) {
-    const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages);
+  // Track seen callouts (per page) and page summaries already recorded, so the
+  // overlapping tile reads don't produce duplicate tasks or repeated summaries.
+  const seenTask = new Set();
+  const summarizedPages = new Set();
+
+  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
+    const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
+    const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
     if (!raw) {
-      merged.flags.push({ type: 'warn', text: `Page ${pageNum}: could not be analyzed`, source: fileName });
+      merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
       continue;
     }
     const parsed = parseAIJson(raw);
     if (!parsed) {
-      merged.flags.push({ type: 'warn', text: `Page ${pageNum}: AI response could not be parsed`, source: fileName });
+      merged.flags.push({ type: 'warn', text: `${tileLabel}: AI response could not be parsed`, source: fileName });
       continue;
     }
 
@@ -173,10 +198,19 @@ export async function analyzeRedlinePdf(file, fileName) {
     if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
 
     (parsed.fieldTasks || []).forEach(t => {
+      const key = `${pageNum}::${normalizeCalloutKey(t.desc)}`;
+      if (!t.desc || !normalizeCalloutKey(t.desc)) return; // skip empty
+      if (seenTask.has(key)) return;                       // dedup tile overlap
+      seenTask.add(key);
       merged.fieldTasks.push({ ...t, pageNum });
     });
     (parsed.flags || []).forEach(f => merged.flags.push(f));
-    if (parsed.summary) merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
+    // Record one summary per page (from whichever tile first produced one),
+    // not one per tile — otherwise a 4-tile sheet repeats its summary 4×.
+    if (parsed.summary && !summarizedPages.has(pageNum)) {
+      summarizedPages.add(pageNum);
+      merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
+    }
   }
 
   if (truncated) {
