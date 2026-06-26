@@ -21,9 +21,16 @@ export async function callClaude(messages, system = '') {
 }
 
 // Vision call - uses /api/claude with image support
-export async function callClaudeVision(base64Image, fileName) {
+export async function callClaudeVision(base64Image, fileName, tile = null) {
   try {
-    const prompt = `You are an expert commercial refrigeration estimating system analyzing construction documents.
+    // When a large photo is split into tiles (to keep small text legible),
+    // tell the model it's seeing a crop so it doesn't try to reconstruct a
+    // schedule row or callout that's cut off at the edge — another tile (and
+    // the full-image pass) covers it, and the merge step dedups the overlap.
+    const tileContext = tile && tile.tilesTotal > 1
+      ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger photo — it shows only part of the document. Read only rows/callouts that are fully legible within this crop; if a schedule row or callout box is cut off at the edge, skip it rather than guessing the missing values.`
+      : '';
+    const prompt = `You are an expert commercial refrigeration estimating system analyzing construction documents.${tileContext}
 
 Analyze this image carefully. It may be rotated or upside down — read ALL text regardless of orientation.
 
@@ -218,6 +225,152 @@ export async function analyzeRedlinePdf(file, fileName) {
   }
 
   merged.summary = merged.pageSummaries.join(' ');
+  return merged;
+}
+
+// ── PHOTO / IMAGE TILING ───────────────────────────────────────────────────────
+// Same idea as the PDF tiler, for camera/photo uploads of dense paperwork. The
+// vision model downscales any image to ~1568px on the long edge, crushing small
+// schedule cells and callout text. We send the WHOLE image (preserves table row
+// structure and circuit-to-size associations — important for tabular schedules
+// where a naive tile split could sever a row) PLUS overlapping high-res tiles
+// (recover the fine detail), then merge with dedup. Returns { full, tiles }.
+export function imageToTiles(file, {
+  maxSize = 5200,
+  tileTargetPx = 2600,
+  tileOverlap = 0.12,
+  maxTiles = 4,
+} = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      const longEdge = Math.max(w, h);
+      if (longEdge > maxSize) {
+        const k = maxSize / longEdge;
+        w = Math.round(w * k); h = Math.round(h * k);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const full = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+
+      let cols = Math.max(1, Math.round(w / tileTargetPx));
+      let rows = Math.max(1, Math.round(h / tileTargetPx));
+      while (cols * rows > maxTiles) {
+        if (cols >= rows && cols > 1) cols--;
+        else if (rows > 1) rows--;
+        else break;
+      }
+
+      const tiles = [];
+      if (cols > 1 || rows > 1) {
+        const tileW = w / cols, tileH = h / rows;
+        const ovX = tileW * tileOverlap, ovY = tileH * tileOverlap;
+        const tilesTotal = cols * rows;
+        let tileNum = 0;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            tileNum++;
+            const sx = Math.max(0, c * tileW - ovX);
+            const sy = Math.max(0, r * tileH - ovY);
+            const sw = Math.min(w - sx, tileW + 2 * ovX);
+            const sh = Math.min(h - sy, tileH + 2 * ovY);
+            const tc = document.createElement('canvas');
+            tc.width = Math.round(sw); tc.height = Math.round(sh);
+            const tctx = tc.getContext('2d');
+            tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, tc.width, tc.height);
+            tctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, tc.width, tc.height);
+            tiles.push({ tileNum, tilesTotal, base64: tc.toDataURL('image/jpeg', 0.95).split(',')[1] });
+          }
+        }
+      }
+      resolve({ full, tiles });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+const normMergeKey = s => String(s || '').toLowerCase().replace(/\[unclear\]/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Runs the full-image pass plus each tile through callClaudeVision, merging
+// circuits (deduped by circuit ID, filling empty fields across passes), field
+// tasks, rack tasks, and parts (deduped by normalized text). Returns the same
+// shape callClaudeVision's JSON produces, so Step1 can consume it unchanged.
+export async function analyzeImageDoc(file, fileName) {
+  const { full, tiles } = await imageToTiles(file);
+
+  const merged = {
+    documentType: '', storeName: '', storeNumber: '', address: '', drawingNumber: '',
+    circuits: [], fieldTasks: [], rackTasks: [], parts: [], rcNotes: [], flags: [],
+    nightWorkRequired: false, nightWorkDetails: '', summaries: [],
+  };
+  const circuitIndex = new Map(); // circuitId -> index in merged.circuits
+  const seenTask = new Set(), seenRack = new Set(), seenPart = new Set();
+
+  const passes = [
+    { base64: full, tile: null },
+    ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } })),
+  ];
+
+  for (const { base64, tile } of passes) {
+    const raw = await callClaudeVision(base64, fileName, tile);
+    const parsed = raw ? parseAIJson(raw) : null;
+    if (!parsed) continue;
+
+    if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
+    if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
+    if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
+    if (parsed.address && !merged.address) merged.address = parsed.address;
+    if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
+    if (parsed.nightWorkRequired) merged.nightWorkRequired = true;
+    if (parsed.nightWorkDetails && !merged.nightWorkDetails) merged.nightWorkDetails = parsed.nightWorkDetails;
+
+    (parsed.circuits || []).forEach(c => {
+      const id = String(c.circuitId || '').toUpperCase().trim();
+      if (!id) return;
+      if (circuitIndex.has(id)) {
+        // Fill any empty/zero fields on the existing circuit from this pass —
+        // one tile may catch the run length, another the pipe sizes.
+        const existing = merged.circuits[circuitIndex.get(id)];
+        Object.keys(c).forEach(k => {
+          const v = c[k];
+          const empty = existing[k] === '' || existing[k] === 0 || existing[k] == null;
+          if (empty && v !== '' && v !== 0 && v != null) existing[k] = v;
+        });
+      } else {
+        circuitIndex.set(id, merged.circuits.length);
+        merged.circuits.push({ ...c });
+      }
+    });
+    (parsed.fieldTasks || []).forEach(t => {
+      const k = normMergeKey(t.desc);
+      if (!k || seenTask.has(k)) return;
+      seenTask.add(k); merged.fieldTasks.push(t);
+    });
+    (parsed.rackTasks || []).forEach(t => {
+      const k = normMergeKey(t.desc);
+      if (!k || seenRack.has(k)) return;
+      seenRack.add(k); merged.rackTasks.push(t);
+    });
+    (parsed.parts || []).forEach(p => {
+      const k = normMergeKey(p.partId) + '|' + normMergeKey(p.description);
+      if (k === '|' || seenPart.has(k)) return;
+      seenPart.add(k); merged.parts.push(p);
+    });
+    (parsed.rcNotes || []).forEach(n => merged.rcNotes.push(n));
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.summaries.push(parsed.summary);
+  }
+
+  merged.summary = merged.summaries.join(' ');
   return merged;
 }
 

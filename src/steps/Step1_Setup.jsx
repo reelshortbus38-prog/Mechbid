@@ -3,8 +3,8 @@ import { useStore, uid } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
-  callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
-  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
+  parseAIJson, parseDocFile, parseExcelFile,
+  fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
@@ -112,10 +112,12 @@ export default function Step1_Setup({ onNext }) {
 
         if (fileMeta.type === 'image') {
           sourceType = 'vision';
-          const b64 = await imageToJpeg(file);
-          const raw = await callClaudeVision(b64, fileMeta.name);
-          if (raw) parsed = parseAIJson(raw);
-          newResults.push(`🖼️ ${fileMeta.name}: Analyzed (AI read photo — review carefully)`);
+          // Full image + overlapping high-res tiles, merged — so small schedule
+          // cells / callout text on a dense photo survive the model's downscale.
+          parsed = await analyzeImageDoc(file, fileMeta.name);
+          const cCount = parsed?.circuits?.length || 0;
+          const tCount = parsed?.fieldTasks?.length || 0;
+          newResults.push(`🖼️ ${fileMeta.name}: Analyzed photo — ${cCount} circuit(s), ${tCount} field task(s) (AI read photo — review carefully)`);
 
         } else if (fileMeta.type === 'pdf') {
           // PDFs with no text-extractable schedule (redlines, blueprints, scanned
