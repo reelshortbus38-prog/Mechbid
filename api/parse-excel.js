@@ -520,30 +520,58 @@ function parseXLS(xlsBuffer, circuits, meta) {
     const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
     if(!data || data.length < 5) continue;
 
+    // "Remodel Rack A" / "Remote Hdr 1 (1173)" → a clean rack key ("A" / "Hdr1").
+    // The leading "Remodel " prefix on real Food Lion KWRS sheets was leaving the
+    // rack as "Remodel Rack A", producing circuit IDs like "Remodel Rack A-1".
     let rack = sName.replace(/Remote\s*Hdr\s*/i,'Hdr').replace(/\s*\(\d+\)/,'')
-      .replace(/^Rack\s*/i,'').replace(/^RACK\s*/i,'').trim();
+      .replace(/^Remodel\s+/i,'').replace(/^Rack\s*/i,'').replace(/^RACK\s*/i,'').trim();
     if(!rack || rack.match(/^Sheet\d+$/i)) rack = 'S'+(wb.SheetNames.indexOf(sName)+1);
 
     // Find header row with run/suction columns
-    let headerRow = -1, runCol = -1, sucHCol = -1, sucRCol = -1, liqCol = -1, appCol = -1;
+    let headerRow = -1, runCol = -1, sucHCol = -1, sucRCol = -1, liqCol = -1, appCol = -1, evapCol = -1, heatCol = -1;
 
-    for(let r = 5; r < Math.min(data.length, 25); r++) {
+    // 1. Locate the Run column / header row.
+    for(let r = 5; r < Math.min(data.length, 25) && runCol < 0; r++) {
       const row = data[r] || [];
-      const nextRow = data[r+1] || [];
       for(let c = 0; c < row.length; c++) {
         const v = String(row[c]||'').toLowerCase().trim();
-        const v2 = String(nextRow[c]||'').toLowerCase().trim();
-        const combined = v + ' ' + v2;
-        if((v==='run'||v.includes('run len')||combined.includes('run len')) && runCol<0) { runCol=c; headerRow=r; }
-        if((v.includes('suct')||combined.includes('suct')) && (v2.includes('hor')||v2==='horiz') && sucHCol<0) sucHCol=c;
-        if((v.includes('suct')||combined.includes('suct')) && (v2.includes('ris')) && sucRCol<0) sucRCol=c;
-        if((v.includes('liq')||combined.includes('liq')) && (v2.includes('hor')||v2==='horiz') && liqCol<0) liqCol=c;
-        if(v==='application'||v.includes('applic')) appCol=c;
+        if(v==='run' || v.includes('run len') || v.includes('run length')) { runCol=c; headerRow=r; break; }
       }
-      if(runCol>=0 && sucHCol>=0) break;
     }
-
     if(runCol < 0) continue;
+
+    // 2. Classify the remaining columns from the run header row. On these
+    // Williams & Rowe / Kysor schedules the sub-headers read
+    // Suction Horiz | Suction Riser | Liquid Horiz — keyed off the literal
+    // "Horiz"/"Riser" labels so the riser column isn't missed (the "Suction"
+    // group label sits one column left of "Riser", which defeated the old
+    // "suct"+"riser must share a column" check and dropped every riser size).
+    {
+      const row = data[headerRow] || [];
+      const horizCols = [], riserCols = [];
+      for(let c = 0; c < row.length; c++) {
+        const v = String(row[c]||'').toLowerCase().trim();
+        if(/^horiz/.test(v)) horizCols.push(c);
+        if(/^riser/.test(v)) riserCols.push(c);
+        if((v.includes('evap') || v==='°f' || /^°\s*f$/.test(v)) && evapCol<0) evapCol=c;
+        if((v.includes('exchr') || v.includes('heat exch')) && heatCol<0) heatCol=c;
+        if((v==='application' || v.includes('applic')) && appCol<0) appCol=c;
+      }
+      sucHCol = horizCols[0] ?? (runCol+1);
+      sucRCol = riserCols[0] ?? (runCol+2);
+      liqCol  = horizCols[1] ?? (runCol+3);
+    }
+    // Evap / Heat-Exchanger / Application labels can sit on the group-header row
+    // ABOVE the run row — check there if not found alongside Run.
+    if(evapCol<0 || heatCol<0 || appCol<0) {
+      const prev = data[headerRow-1] || [];
+      for(let c = 0; c < prev.length; c++) {
+        const v = String(prev[c]||'').toLowerCase().trim();
+        if(v.includes('evap') && evapCol<0) evapCol=c;
+        if((v.includes('exchr') || v.includes('heat exch')) && heatCol<0) heatCol=c;
+        if((v==='application' || v.includes('applic')) && appCol<0) appCol=c;
+      }
+    }
 
     // Extract store info
     for(let r=0;r<Math.min(data.length,10);r++) {
@@ -576,16 +604,28 @@ function parseXLS(xlsBuffer, circuits, meta) {
       const app = String(appCol>=0 ? row[appCol]||'' : row[6]||'').trim();
       if(app.match(/SPARE/i)) continue;
 
-      const circId = isNumeric ? `${rack}-${circIdRaw}` : circIdRaw;
+      // Temp type from the Evap °F column instead of assuming medium. Frozen
+      // circuits run well below 0°F (≈ -10 to -25); medium temp is ≈ +20 to +32.
+      // A 10°F split separates them cleanly and stops low-temp lines being
+      // bid with medium-temp insulation.
+      const evapRaw = evapCol>=0 ? String(row[evapCol]||'').replace('+','').trim() : '';
+      const evap = parseFloat(evapRaw);
+      const tempType = (!isNaN(evap) && evap < 10) ? 'low' : 'medium';
+      const heatTxt = heatCol>=0 ? String(row[heatCol]||'').trim() : '';
+      const heatNote = heatTxt && !/^0$/.test(heatTxt) ? `Heat Exchr: ${heatTxt}` : '';
+
+      // Single-letter rack → "A1" (Food Lion convention); longer keys keep the
+      // dash ("Hdr1-1") to stay unambiguous across multi-header BPRs.
+      const circId = isNumeric ? (rack.length <= 2 ? `${rack}${circIdRaw}` : `${rack}-${circIdRaw}`) : circIdRaw;
       if(!circuits.find(c => c.circuitId === circId)) {
         circuits.push({
           circuitId: circId, rack,
           runLength: run, riserLength: 20,
           sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
-          tempType: 'medium',
+          tempType,
           application: app, isRiserOnly: false,
           colorType: 'xls-parsed',
-          notes: 'From .xls — verify manually'
+          notes: ['From .xls — verify manually', heatNote].filter(Boolean).join(' — ')
         });
       }
     }
