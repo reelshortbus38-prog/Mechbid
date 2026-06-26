@@ -35,6 +35,15 @@ export const initialState = {
   },
   laborPeriods: [],
   markupPct: 20,
+  // Equipment markup is tracked separately from material markup because a big
+  // packaged unit shouldn't carry the same margin as copper and consumables.
+  // Empty = "use the material markup" (no behavior change); set a number to
+  // mark equipment up at its own rate. Applies to HVAC + Residential equipment.
+  equipMarkupPct: '',
+  // Subcontractors (electrical, crane/rigging, controls, insulation, demo…) as
+  // first-class pass-through cost rows, with an optional blanket markup.
+  subcontractors: [],   // { id, desc, cost }
+  subMarkupPct: 0,
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
   materialsTaxPct: 0,
