@@ -737,6 +737,10 @@ This document mixes several kinds of content. Separate them:
 - A parts list, if present (often near the top, e.g. "PARTS LIST:" followed by quantities and descriptions) → parts
 - Standing rules/responsibilities that affect cost or scheduling but aren't a specific task (minimum crew size requirements, "must be in your bid" statements, day-tech requirements after night work, filter change schedules at fixed intervals) → flags, type "warn" if it has a clear cost/scheduling impact, "info" otherwise
 
+CIRCUIT-TAGGED LINE CHANGES — capture these carefully, they are priced re-pipe scope and the single most important thing to get right:
+- A line that names a circuit and a pipe change, e.g. "C7 = REPLACE 7/8 SUCTION LINE WITH 1 3/8 AT MEAT COOLER" or "CHANGE EPR ON CIRCUIT 4 TO SORIT 15", is a fieldTask. Put the circuit in circuitRef ("C7", "4"), the NEW size in newSize ("1 3/8"), the OLD/existing size in oldSize ("7/8") if stated, the line type in lineType ("suction" | "liquid" | "hot gas" | "") and the location in location. Keep the full verbatim sentence in desc.
+- These upsize/replace lines drive copper footage and fittings, so never summarize them — keep every size and circuit ID exactly as written, character for character.
+
 For EVERY item, capture pipe sizes, valve sizes, or other technical specifics EXACTLY as written — do not round or simplify (e.g. "3 5/8 with 2 1/8 double riser" must stay exactly that, not generalized to "large pipe").
 
 Pay special attention to statements that explicitly say something must be included in the bid (e.g. "MAKE SURE THIS GETS IN YOUR BIDS") — always capture these as a "warn" flag, verbatim.
@@ -744,7 +748,7 @@ Pay special attention to statements that explicitly say something must be includ
 Do NOT invent dates — this document has none, leave date fields empty. Do NOT invent circuit IDs unless explicitly stated.
 
 Return ONLY valid JSON, no markdown:
-{"documentType":"flat_scope","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"minimumCrew":"","flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the overall scope"}
+{"documentType":"flat_scope","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","circuitRef":"","oldSize":"","newSize":"","lineType":"","location":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"minimumCrew":"","flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the overall scope"}
 
 If this chunk contains no relevant content, return the same shape with empty arrays.`;
 

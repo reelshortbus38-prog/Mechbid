@@ -167,6 +167,17 @@ export default function Step1_Setup({ onNext }) {
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
 
+          // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
+          // present in the serverless runtime) — words run together, which hurts
+          // extraction. Tell the user, and how to get a clean read.
+          if (docRes.method === 'raw-ascii') {
+            flags.push({
+              type: 'warn',
+              text: `${fileMeta.name} was read with a basic text fallback (LibreOffice ${docRes.libreofficeAvailable === false ? 'is not available on the server' : 'unavailable'}), so some text may be run together and extraction may miss items. For a clean read, open it and "Save As" .docx, then re-upload.`,
+              source: fileMeta.name,
+            });
+          }
+
           // .doc/.docx covers several genuinely different document types —
           // dated construction schedules and bid invitation letters both
           // commonly arrive this way. Detect which one this is from content,
