@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useStore, saveJob, loadAllJobs, deleteJob } from '../state/store.js';
+import { useState, useEffect, useRef } from 'react';
+import { useStore, saveJob, loadAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
 import Step1_Setup from '../steps/Step1_Setup.jsx';
@@ -57,6 +57,7 @@ export default function Wizard() {
   const [showDocs, setShowDocs] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
   const [jobs, setJobs] = useState({});
+  const importInputRef = useRef(null);
 
   const steps = STEPS_BY_MODE[state.mode] || STEPS_BY_MODE['Commercial Refrigeration'];
   const currentStep = steps[stepIndex] || steps[0];
@@ -122,6 +123,32 @@ export default function Wizard() {
     dispatch({ type: 'SET', key: 'preferredSupplier', value: loadDefaultSupplier() });
     setShowJobs(false);
     setStepIndex(0);
+  }
+
+  function handleExportJobs() {
+    const blob = new Blob([exportAllJobsJSON()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mechbid-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  }
+
+  function handleImportJobs(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const n = importJobsJSON(String(reader.result));
+        setJobs(loadAllJobs());
+        setSaveIndicator(`✅ Imported ${n} job${n !== 1 ? 's' : ''}`);
+        setTimeout(() => setSaveIndicator(''), 2500);
+      } catch (err) {
+        alert('Import failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   }
 
   function goNext() {
@@ -235,6 +262,9 @@ export default function Wizard() {
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: colors.green }}>💾 Saved Jobs</div>
               <Row style={{ gap: 8 }}>
+                <Btn variant="surface" size="sm" onClick={handleExportJobs}>⬇ Backup</Btn>
+                <Btn variant="surface" size="sm" onClick={() => importInputRef.current?.click()}>⬆ Restore</Btn>
+                <input ref={importInputRef} type="file" accept=".json,application/json" onChange={handleImportJobs} style={{ display: 'none' }} />
                 <Btn variant="green" size="sm" onClick={handleNewJob}>+ New Job</Btn>
                 <button onClick={() => setShowJobs(false)} style={{ background: 'transparent', border: 'none', color: colors.textDim, fontSize: 22, cursor: 'pointer' }}>×</button>
               </Row>

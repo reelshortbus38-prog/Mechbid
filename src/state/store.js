@@ -255,6 +255,28 @@ export function deleteJob(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
 
+// ── BACKUP / RESTORE ───────────────────────────────────────────────────────────
+// Jobs live in this browser's localStorage. Until there's a cloud account,
+// export/import is the safety net against data loss and the way to move bids
+// between devices. Export wraps all jobs in a versioned envelope; import merges
+// them in (incoming jobs win on id collision), tolerating a raw jobs object too.
+export function exportAllJobsJSON() {
+  return JSON.stringify({ app: 'mechbid', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
+}
+
+export function importJobsJSON(text) {
+  const data = JSON.parse(text);
+  const incoming = data && data.jobs ? data.jobs : data; // accept enveloped or raw
+  if (!incoming || typeof incoming !== 'object') throw new Error('Not a MechBid backup file');
+  const jobs = loadAllJobs();
+  let count = 0;
+  for (const [id, job] of Object.entries(incoming)) {
+    if (job && job.data) { jobs[id] = job; count++; }
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  return count;
+}
+
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period) {
   // Each crew member contributes rate × their own hours/day. hrsPerDay defaults
