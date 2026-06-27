@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt } from '../state/store.js';
+import { useStore, uid, fmt, calcRackTaskCost, primaryCrew } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
@@ -35,18 +35,11 @@ export default function Step3_Rack({ onNext, onBack }) {
   }
 
   // ── Crew for tasks ──────────────────────────────────────────────────────────
-  // Use global crew from labor periods if available, otherwise show simple men input
-  const globalCrew = state.laborPeriods?.[0]?.crew || [];
-
-  function calcTaskCost(task) {
-    if (!task.crewAssignment || Object.keys(task.crewAssignment).length === 0) {
-      return (task.men || 1) * (task.hrs || 0) * 100; // fallback $100/hr
-    }
-    return Object.entries(task.crewAssignment).reduce((s, [roleId, count]) => {
-      const member = globalCrew.find(m => m.id === roleId);
-      return s + (count || 0) * (parseFloat(member?.rate) || 0) * (task.hrs || 0);
-    }, 0);
-  }
+  // Use global crew from the first labor period if available, otherwise the
+  // shared helper falls back to an average/placeholder man-hour rate. Costing
+  // lives in store.js so this on-screen number matches the proposal exactly.
+  const globalCrew = primaryCrew(state.laborPeriods);
+  const calcTaskCost = task => calcRackTaskCost(task, globalCrew);
 
   const contractorPartsTotal = state.rackParts.filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
   const rackLaborTotal = state.rackTasks.reduce((s, t) => s + calcTaskCost(t), 0);

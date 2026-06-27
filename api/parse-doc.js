@@ -1,4 +1,5 @@
 const mammoth = require('mammoth');
+const WordExtractor = require('word-extractor');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -17,35 +18,70 @@ module.exports = async function handler(req, res) {
     const isDoc = name.endsWith('.doc') && !isDocx;
 
     let text = '';
+    // Which extraction path produced the text — returned to the client so the
+    // upload UI can warn when a legacy .doc fell back to the crude raw-text
+    // reader (which runs words together and hurts AI extraction quality).
+    let method = 'none';
+    // Whether LibreOffice (soffice) is actually present in this runtime. On
+    // Vercel's serverless runtime it isn't, so .doc conversion falls back to
+    // raw text. Probed once below, reported so you can confirm it from a real
+    // upload instead of guessing.
+    let libreofficeAvailable = null;
 
     if(isDocx) {
       // Use mammoth for .docx
       try {
         const result = await mammoth.extractRawText({buffer});
         text = result.value || '';
+        method = 'mammoth-docx';
       } catch(e) {
         return res.status(200).json({text:'', error:'Could not read .docx: '+e.message});
       }
     } else if(isDoc) {
-      // Try mammoth first (sometimes works on .doc)
+      // word-extractor reads the legacy OLE .doc format properly (preserving
+      // word and paragraph boundaries), which the raw-text fallback could not —
+      // critical for circuit-tagged scope lines like "C7 = REPLACE 7/8 SUCTION
+      // LINE WITH 1 3/8". This is a pure-JS reader, so it works on the
+      // serverless runtime where LibreOffice isn't available.
       try {
-        const result = await mammoth.extractRawText({buffer});
-        if(result.value && result.value.trim().length > 50) {
-          text = result.value;
-        }
+        const doc = await new WordExtractor().extract(buffer);
+        const body = (doc.getBody() || '').trim();
+        if(body.length > 50) { text = body; method = 'word-extractor'; }
       } catch(e) { /* try next method */ }
 
-      // If mammoth failed, try LibreOffice conversion
+      // Fall back to mammoth (occasionally handles a .doc)
       if(!text) {
+        try {
+          const result = await mammoth.extractRawText({buffer});
+          if(result.value && result.value.trim().length > 50) {
+            text = result.value;
+            method = 'mammoth-doc';
+          }
+        } catch(e) { /* try next method */ }
+      }
+
+      // Probe for LibreOffice once, so we both know whether to attempt it and
+      // can report availability back to the client.
+      if(!text) {
+        try {
+          execSync('soffice --version', {timeout: 5000, stdio: 'ignore'});
+          libreofficeAvailable = true;
+        } catch(e) {
+          libreofficeAvailable = false;
+        }
+      }
+
+      // If mammoth failed and LibreOffice exists, convert with it.
+      if(!text && libreofficeAvailable) {
         try {
           const tmpDir = os.tmpdir();
           const tmpFile = path.join(tmpDir, 'convert_' + Date.now() + '.doc');
-          const outFile = path.join(tmpDir, 'convert_' + Date.now() + '.txt');
           fs.writeFileSync(tmpFile, buffer);
           execSync(`soffice --headless --convert-to txt "${tmpFile}" --outdir "${tmpDir}"`, {timeout: 15000});
           const txtFile = tmpFile.replace('.doc', '.txt');
           if(fs.existsSync(txtFile)) {
             text = fs.readFileSync(txtFile, {encoding:'utf8', flag:'r'});
+            method = 'libreoffice';
             fs.unlinkSync(txtFile);
           }
           fs.unlinkSync(tmpFile);
@@ -54,6 +90,7 @@ module.exports = async function handler(req, res) {
 
       // Last resort: raw ASCII extraction
       if(!text) {
+        method = 'raw-ascii';
         const bytes = new Uint8Array(buffer);
         let rawText = '';
         let run = '';
@@ -77,6 +114,8 @@ module.exports = async function handler(req, res) {
     if(!text || !text.trim()) {
       return res.status(200).json({
         text: '',
+        method: 'none',
+        libreofficeAvailable,
         error: `Could not extract text from ${fileName}. Try converting to .docx format.`
       });
     }
@@ -92,7 +131,9 @@ module.exports = async function handler(req, res) {
     // Send the FULL extracted text; let the caller decide how to chunk it.
     return res.status(200).json({
       text: text,
-      length: text.length
+      length: text.length,
+      method,
+      libreofficeAvailable,
     });
 
   } catch(err) {

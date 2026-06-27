@@ -3,8 +3,8 @@ import { useStore, uid } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
-  callClaudeVision, parseAIJson, parseDocFile, parseExcelFile,
-  fileToBase64, imageToJpeg, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
+  parseAIJson, parseDocFile, parseExcelFile,
+  fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
@@ -112,10 +112,12 @@ export default function Step1_Setup({ onNext }) {
 
         if (fileMeta.type === 'image') {
           sourceType = 'vision';
-          const b64 = await imageToJpeg(file);
-          const raw = await callClaudeVision(b64, fileMeta.name);
-          if (raw) parsed = parseAIJson(raw);
-          newResults.push(`🖼️ ${fileMeta.name}: Analyzed (AI read photo — review carefully)`);
+          // Full image + overlapping high-res tiles, merged — so small schedule
+          // cells / callout text on a dense photo survive the model's downscale.
+          parsed = await analyzeImageDoc(file, fileMeta.name);
+          const cCount = parsed?.circuits?.length || 0;
+          const tCount = parsed?.fieldTasks?.length || 0;
+          newResults.push(`🖼️ ${fileMeta.name}: Analyzed photo — ${cCount} circuit(s), ${tCount} field task(s) (AI read photo — review carefully)`);
 
         } else if (fileMeta.type === 'pdf') {
           // PDFs with no text-extractable schedule (redlines, blueprints, scanned
@@ -164,6 +166,17 @@ export default function Step1_Setup({ onNext }) {
           const b64 = await fileToBase64(file);
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
+
+          // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
+          // present in the serverless runtime) — words run together, which hurts
+          // extraction. Tell the user, and how to get a clean read.
+          if (docRes.method === 'raw-ascii') {
+            flags.push({
+              type: 'warn',
+              text: `${fileMeta.name} was read with a basic text fallback (LibreOffice ${docRes.libreofficeAvailable === false ? 'is not available on the server' : 'unavailable'}), so some text may be run together and extraction may miss items. For a clean read, open it and "Save As" .docx, then re-upload.`,
+              source: fileMeta.name,
+            });
+          }
 
           // .doc/.docx covers several genuinely different document types —
           // dated construction schedules and bid invitation letters both

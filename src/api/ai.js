@@ -21,9 +21,16 @@ export async function callClaude(messages, system = '') {
 }
 
 // Vision call - uses /api/claude with image support
-export async function callClaudeVision(base64Image, fileName) {
+export async function callClaudeVision(base64Image, fileName, tile = null) {
   try {
-    const prompt = `You are an expert commercial refrigeration estimating system analyzing construction documents.
+    // When a large photo is split into tiles (to keep small text legible),
+    // tell the model it's seeing a crop so it doesn't try to reconstruct a
+    // schedule row or callout that's cut off at the edge — another tile (and
+    // the full-image pass) covers it, and the merge step dedups the overlap.
+    const tileContext = tile && tile.tilesTotal > 1
+      ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger photo — it shows only part of the document. Read only rows/callouts that are fully legible within this crop; if a schedule row or callout box is cut off at the edge, skip it rather than guessing the missing values.`
+      : '';
+    const prompt = `You are an expert commercial refrigeration estimating system analyzing construction documents.${tileContext}
 
 Analyze this image carefully. It may be rotated or upside down — read ALL text regardless of orientation.
 
@@ -80,10 +87,18 @@ Return ONLY valid JSON, no markdown:
 // model to fill in numbers it can't see is how you get confident-sounding wrong
 // data, which is exactly what the review screen is supposed to catch — but it's
 // better not to generate it in the first place.
-export async function callClaudeVisionRedline(base64Image, fileName, pageNum, totalPages) {
+export async function callClaudeVisionRedline(base64Image, fileName, pageNum, totalPages, tile = null) {
   try {
     const pageContext = totalPages > 1 ? ` This is page ${pageNum} of ${totalPages} in a multi-sheet drawing set.` : '';
-    const prompt = `You are an expert commercial refrigeration estimator reading a redlined floor plan or piping plan.${pageContext}
+    // When a sheet is sliced into tiles (to keep small callout text legible),
+    // tell the model so it doesn't try to reconstruct callouts that are cut off
+    // at a tile edge — another tile covers the rest, and the merge step dedups
+    // the overlap. This prevents the model from "completing" a partial box with
+    // a guess, which is exactly the failure tiling is meant to avoid.
+    const tileContext = tile && tile.tilesOnPage > 1
+      ? ` This image is section ${tile.tileNum} of ${tile.tilesOnPage} cropped from a single large sheet — it shows only part of the page. Transcribe ONLY callout boxes that are fully legible within this crop. If a box is cut off at the edge of this image, skip it (another section covers it) rather than guessing the missing words.`
+      : '';
+    const prompt = `You are an expert commercial refrigeration estimator reading a redlined floor plan or piping plan.${pageContext}${tileContext}
 
 This drawing has colored callout boxes (usually orange) with leader lines pointing to specific locations on the floor plan. Each callout box is a SEPARATE, SELF-CONTAINED instruction. Callout boxes are often positioned close together or stacked near the same area of the floor plan — this is the single biggest source of error, so follow this rule strictly:
 
@@ -145,45 +160,273 @@ Return ONLY valid JSON, no markdown, no commentary:
 // call, merging results into one combined parsed object. Pages are processed
 // sequentially (not in parallel) to avoid hammering the API with a burst of
 // large image payloads at once for multi-sheet sets.
+// Normalize a callout for dedup: lowercase, drop [unclear] markers, strip
+// punctuation, collapse whitespace. Overlapping tiles re-read the same callout
+// verbatim, so identical normalized text means the same box — keep one copy.
+function normalizeCalloutKey(desc) {
+  return String(desc || '')
+    .toLowerCase()
+    .replace(/\[unclear\]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// Extracts callouts from the EXACT text layer of a vector PDF page (no vision).
+// Because the text is real, circuit IDs and pipe sizes are transcribed verbatim
+// and can't be misread the way they can off a downscaled raster.
+export async function callClaudeRedlineText(pageText, fileName, pageNum, totalPages) {
+  const ctx = totalPages > 1 ? ` (page ${pageNum} of ${totalPages})` : '';
+  const prompt = `You are an expert commercial refrigeration estimator. Below is the EXACT text extracted from the callout boxes and title block of a redlined refrigeration floor/pit plan${ctx}. Because this is the real PDF text layer, every circuit ID and pipe size is already correct — transcribe them verbatim and NEVER alter or "correct" a circuit ID (do not turn B6 into B16).
+
+Split the callouts into separate RC field tasks. Each instruction is its own task — e.g. "DROP NEW B11 IN EXISTING CHASE", "CONNECT EXISTING A2 LINESET TO EXISTING B6 LINESET", "REWORK EXISTING B4, B5 AS NEEDED", "DROP EXISTING A5 BRANCH IN DELI CLOSET. 1 1/8, 1/2".
+- Skip "GC TO..." portions — extract only RC refrigeration scope. If one sentence has both RC and GC parts, keep only the RC part in desc.
+- Put every circuit ID mentioned (there may be several, e.g. "A8, C8") in circuitRef exactly as written, the location/area in location, and any stated pipe size in statedSize (e.g. "1 1/8, 1/2").
+- Ignore obvious watermark fragments (scattered single letters, "PDF-XChange", "Click to buy now").
+- Read the title block for store name, store number, address, and sheet/drawing number — fill a field only if clearly present, never guess.
+
+EXACT TEXT:
+"""
+${pageText}
+"""
+
+Return ONLY valid JSON, no markdown:
+{"storeName":"","storeNumber":"","address":"","drawingNumber":"","fieldTasks":[{"desc":"","circuitRef":"","location":"","statedSize":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
+
+  return callClaude(
+    [{ role: 'user', content: prompt }],
+    'You are an expert commercial refrigeration estimator. Return only valid JSON.'
+  );
+}
+
+// Callout-instruction verbs that signal a page actually carries RC redline
+// scope (vs. a title sheet or a legend) — used to decide whether the text layer
+// is rich enough to skip vision for that page.
+const REDLINE_CALLOUT_RE = /\b(DROP|CONNECT|RECONNECT|DISCONNECT|REWORK|RELOCAT|EXTEND|PIPE THRU|TOP STUB|FEED)\b/i;
+
 export async function analyzeRedlinePdf(file, fileName) {
-  const { renderPdfPagesToImages } = await import('./pdfRender.js');
-  const { pages, totalPages, truncated } = await renderPdfPagesToImages(file);
+  const { renderPdfPagesToImages, extractPdfPagesText } = await import('./pdfRender.js');
 
   const merged = {
     documentType: 'redline_callout',
     storeName: '', storeNumber: '', address: '', drawingNumber: '',
     fieldTasks: [], flags: [], pageSummaries: [],
   };
+  const seenTask = new Set();
+  const summarizedPages = new Set();
 
-  for (const { pageNum, base64 } of pages) {
-    const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages);
-    if (!raw) {
-      merged.flags.push({ type: 'warn', text: `Page ${pageNum}: could not be analyzed`, source: fileName });
-      continue;
-    }
-    const parsed = parseAIJson(raw);
-    if (!parsed) {
-      merged.flags.push({ type: 'warn', text: `Page ${pageNum}: AI response could not be parsed`, source: fileName });
-      continue;
-    }
-
+  // Shared merge: fold one parsed page/tile result into `merged`, deduping
+  // callouts (text layer + overlapping vision tiles can re-read the same box).
+  const absorb = (parsed, pageNum) => {
     if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
     if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
     if (parsed.address && !merged.address) merged.address = parsed.address;
     if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
-
     (parsed.fieldTasks || []).forEach(t => {
+      const norm = normalizeCalloutKey(t.desc);
+      if (!norm) return;
+      const key = `${pageNum}::${norm}`;
+      if (seenTask.has(key)) return;
+      seenTask.add(key);
       merged.fieldTasks.push({ ...t, pageNum });
     });
     (parsed.flags || []).forEach(f => merged.flags.push(f));
-    if (parsed.summary) merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
+    if (parsed.summary && !summarizedPages.has(pageNum)) {
+      summarizedPages.add(pageNum);
+      merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
+    }
+  };
+
+  // 1. TEXT LAYER FIRST — exact, no vision needed when the page has real text.
+  let textPages = [], totalPages = 0;
+  try {
+    const res = await extractPdfPagesText(file);
+    textPages = res.pages;
+    totalPages = res.totalPages;
+  } catch (e) {
+    // If text extraction throws, fall through to vision for every page.
+    merged.flags.push({ type: 'info', text: `Text layer unavailable (${e.message}) — read as scanned image`, source: fileName });
   }
 
-  if (truncated) {
-    merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
+  const visionPageNums = [];
+  for (const tp of textPages) {
+    if (tp.text.length >= 80 && REDLINE_CALLOUT_RE.test(tp.text)) {
+      const raw = await callClaudeRedlineText(tp.text, fileName, tp.pageNum, totalPages);
+      const parsed = raw ? parseAIJson(raw) : null;
+      if (parsed) { absorb(parsed, tp.pageNum); continue; }
+    }
+    // No usable text layer (scan) or text parse failed → vision fallback.
+    visionPageNums.push(tp.pageNum);
+  }
+  // If text extraction failed entirely, vision must cover everything.
+  const visionAll = textPages.length === 0;
+
+  // 2. VISION FALLBACK — render + tile only the pages that need it.
+  if (visionAll || visionPageNums.length) {
+    const { pages, totalPages: vTotal, truncated } = await renderPdfPagesToImages(file);
+    if (!totalPages) totalPages = vTotal;
+    for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
+      if (!visionAll && !visionPageNums.includes(pageNum)) continue;
+      const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
+      const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
+      const parsed = raw ? parseAIJson(raw) : null;
+      if (!parsed) {
+        merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
+        continue;
+      }
+      absorb(parsed, pageNum);
+    }
+    if (truncated) {
+      merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
+    }
   }
 
   merged.summary = merged.pageSummaries.join(' ');
+  return merged;
+}
+
+// ── PHOTO / IMAGE TILING ───────────────────────────────────────────────────────
+// Same idea as the PDF tiler, for camera/photo uploads of dense paperwork. The
+// vision model downscales any image to ~1568px on the long edge, crushing small
+// schedule cells and callout text. We send the WHOLE image (preserves table row
+// structure and circuit-to-size associations — important for tabular schedules
+// where a naive tile split could sever a row) PLUS overlapping high-res tiles
+// (recover the fine detail), then merge with dedup. Returns { full, tiles }.
+export function imageToTiles(file, {
+  maxSize = 5200,
+  tileTargetPx = 2600,
+  tileOverlap = 0.12,
+  maxTiles = 4,
+} = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      const longEdge = Math.max(w, h);
+      if (longEdge > maxSize) {
+        const k = maxSize / longEdge;
+        w = Math.round(w * k); h = Math.round(h * k);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const full = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+
+      let cols = Math.max(1, Math.round(w / tileTargetPx));
+      let rows = Math.max(1, Math.round(h / tileTargetPx));
+      while (cols * rows > maxTiles) {
+        if (cols >= rows && cols > 1) cols--;
+        else if (rows > 1) rows--;
+        else break;
+      }
+
+      const tiles = [];
+      if (cols > 1 || rows > 1) {
+        const tileW = w / cols, tileH = h / rows;
+        const ovX = tileW * tileOverlap, ovY = tileH * tileOverlap;
+        const tilesTotal = cols * rows;
+        let tileNum = 0;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            tileNum++;
+            const sx = Math.max(0, c * tileW - ovX);
+            const sy = Math.max(0, r * tileH - ovY);
+            const sw = Math.min(w - sx, tileW + 2 * ovX);
+            const sh = Math.min(h - sy, tileH + 2 * ovY);
+            const tc = document.createElement('canvas');
+            tc.width = Math.round(sw); tc.height = Math.round(sh);
+            const tctx = tc.getContext('2d');
+            tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, tc.width, tc.height);
+            tctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, tc.width, tc.height);
+            tiles.push({ tileNum, tilesTotal, base64: tc.toDataURL('image/jpeg', 0.95).split(',')[1] });
+          }
+        }
+      }
+      resolve({ full, tiles });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+const normMergeKey = s => String(s || '').toLowerCase().replace(/\[unclear\]/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Runs the full-image pass plus each tile through callClaudeVision, merging
+// circuits (deduped by circuit ID, filling empty fields across passes), field
+// tasks, rack tasks, and parts (deduped by normalized text). Returns the same
+// shape callClaudeVision's JSON produces, so Step1 can consume it unchanged.
+export async function analyzeImageDoc(file, fileName) {
+  const { full, tiles } = await imageToTiles(file);
+
+  const merged = {
+    documentType: '', storeName: '', storeNumber: '', address: '', drawingNumber: '',
+    circuits: [], fieldTasks: [], rackTasks: [], parts: [], rcNotes: [], flags: [],
+    nightWorkRequired: false, nightWorkDetails: '', summaries: [],
+  };
+  const circuitIndex = new Map(); // circuitId -> index in merged.circuits
+  const seenTask = new Set(), seenRack = new Set(), seenPart = new Set();
+
+  const passes = [
+    { base64: full, tile: null },
+    ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } })),
+  ];
+
+  for (const { base64, tile } of passes) {
+    const raw = await callClaudeVision(base64, fileName, tile);
+    const parsed = raw ? parseAIJson(raw) : null;
+    if (!parsed) continue;
+
+    if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
+    if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
+    if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
+    if (parsed.address && !merged.address) merged.address = parsed.address;
+    if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
+    if (parsed.nightWorkRequired) merged.nightWorkRequired = true;
+    if (parsed.nightWorkDetails && !merged.nightWorkDetails) merged.nightWorkDetails = parsed.nightWorkDetails;
+
+    (parsed.circuits || []).forEach(c => {
+      const id = String(c.circuitId || '').toUpperCase().trim();
+      if (!id) return;
+      if (circuitIndex.has(id)) {
+        // Fill any empty/zero fields on the existing circuit from this pass —
+        // one tile may catch the run length, another the pipe sizes.
+        const existing = merged.circuits[circuitIndex.get(id)];
+        Object.keys(c).forEach(k => {
+          const v = c[k];
+          const empty = existing[k] === '' || existing[k] === 0 || existing[k] == null;
+          if (empty && v !== '' && v !== 0 && v != null) existing[k] = v;
+        });
+      } else {
+        circuitIndex.set(id, merged.circuits.length);
+        merged.circuits.push({ ...c });
+      }
+    });
+    (parsed.fieldTasks || []).forEach(t => {
+      const k = normMergeKey(t.desc);
+      if (!k || seenTask.has(k)) return;
+      seenTask.add(k); merged.fieldTasks.push(t);
+    });
+    (parsed.rackTasks || []).forEach(t => {
+      const k = normMergeKey(t.desc);
+      if (!k || seenRack.has(k)) return;
+      seenRack.add(k); merged.rackTasks.push(t);
+    });
+    (parsed.parts || []).forEach(p => {
+      const k = normMergeKey(p.partId) + '|' + normMergeKey(p.description);
+      if (k === '|' || seenPart.has(k)) return;
+      seenPart.add(k); merged.parts.push(p);
+    });
+    (parsed.rcNotes || []).forEach(n => merged.rcNotes.push(n));
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.summaries.push(parsed.summary);
+  }
+
+  merged.summary = merged.summaries.join(' ');
   return merged;
 }
 
@@ -550,6 +793,10 @@ This document mixes several kinds of content. Separate them:
 - A parts list, if present (often near the top, e.g. "PARTS LIST:" followed by quantities and descriptions) → parts
 - Standing rules/responsibilities that affect cost or scheduling but aren't a specific task (minimum crew size requirements, "must be in your bid" statements, day-tech requirements after night work, filter change schedules at fixed intervals) → flags, type "warn" if it has a clear cost/scheduling impact, "info" otherwise
 
+CIRCUIT-TAGGED LINE CHANGES — capture these carefully, they are priced re-pipe scope and the single most important thing to get right:
+- A line that names a circuit and a pipe change, e.g. "C7 = REPLACE 7/8 SUCTION LINE WITH 1 3/8 AT MEAT COOLER" or "CHANGE EPR ON CIRCUIT 4 TO SORIT 15", is a fieldTask. Put the circuit in circuitRef ("C7", "4"), the NEW size in newSize ("1 3/8"), the OLD/existing size in oldSize ("7/8") if stated, the line type in lineType ("suction" | "liquid" | "hot gas" | "") and the location in location. Keep the full verbatim sentence in desc.
+- These upsize/replace lines drive copper footage and fittings, so never summarize them — keep every size and circuit ID exactly as written, character for character.
+
 For EVERY item, capture pipe sizes, valve sizes, or other technical specifics EXACTLY as written — do not round or simplify (e.g. "3 5/8 with 2 1/8 double riser" must stay exactly that, not generalized to "large pipe").
 
 Pay special attention to statements that explicitly say something must be included in the bid (e.g. "MAKE SURE THIS GETS IN YOUR BIDS") — always capture these as a "warn" flag, verbatim.
@@ -557,7 +804,7 @@ Pay special attention to statements that explicitly say something must be includ
 Do NOT invent dates — this document has none, leave date fields empty. Do NOT invent circuit IDs unless explicitly stated.
 
 Return ONLY valid JSON, no markdown:
-{"documentType":"flat_scope","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"minimumCrew":"","flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the overall scope"}
+{"documentType":"flat_scope","rackTasks":[{"desc":"","rack":"","notes":""}],"fieldTasks":[{"desc":"","circuitRef":"","oldSize":"","newSize":"","lineType":"","location":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"minimumCrew":"","flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the overall scope"}
 
 If this chunk contains no relevant content, return the same shape with empty arrays.`;
 

@@ -718,23 +718,31 @@ export default function Step4_Materials({ onNext, onBack }) {
     // in that case (handled by preserving them below).
 
     // ── Insulation, bucketed by SIZE within each temp/line category ──────
-    // sucBySize[size] / liqBySize[size] track footage per pipe size, split med vs low temp.
+    // Suction lines are insulated over their FULL length — horizontal run at the
+    // horizontal size AND the riser at the riser size (previously the riser was
+    // either skipped entirely on riser-only circuits, or insulated at the wrong
+    // size). Med-temp liquid lines aren't insulated; low-temp liquid is.
     const medSucBySize = {};
     const lowSucBySize = {};
     const lowLiqBySize = {};
     state.circuits.forEach(c=>{
-      if(c.isRiserOnly) return;
-      const runFt=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
-      if (runFt <= 0) return;
+      const run = parseFloat(c.runLength)||0, riser = parseFloat(c.riserLength)||0;
       const isLow = c.tempType === 'low';
-      if (c.sucHoriz) {
-        const k = normalizePipeSize(c.sucHoriz);
-        if (isLow) lowSucBySize[k] = (lowSucBySize[k]||0) + runFt;
-        else medSucBySize[k] = (medSucBySize[k]||0) + runFt;
+      const sucTarget = isLow ? lowSucBySize : medSucBySize;
+      const addSuc = (size, ft) => {
+        if (!size || ft <= 0) return;
+        const k = normalizePipeSize(size);
+        sucTarget[k] = (sucTarget[k]||0) + ft;
+      };
+      if (c.isRiserOnly) {
+        addSuc(c.sucRiser, riser);
+        return;
       }
+      addSuc(c.sucHoriz, run);
+      addSuc(c.sucRiser, riser);
       if (isLow && c.liqHoriz) {
         const k = normalizePipeSize(c.liqHoriz);
-        lowLiqBySize[k] = (lowLiqBySize[k]||0) + runFt;
+        lowLiqBySize[k] = (lowLiqBySize[k]||0) + run + riser;
       }
     });
 
@@ -750,9 +758,14 @@ export default function Step4_Materials({ onNext, onBack }) {
     pushInsulLines(lowSucBySize, 'lowSuction', 'Suction Insulation — Low Temp (1" wall)');
     pushInsulLines(lowLiqBySize, 'lowLiquid', 'Liquid Insulation — Low Temp (1/2" wall)');
 
-    // ── Hardware & consumables (unchanged) ────────────────────────────────
-    const longestRun=Math.max(...state.circuits.filter(c=>!c.isRiserOnly).map(c=>parseFloat(c.runLength)||0),0);
-    if(longestRun>0) items.push({id:uid(),section:'Hardware',desc:'Pipe Hangers @ 6ft spacing',qty:Math.ceil(longestRun/6),unit:'ea',unitCost:0,total:0});
+    // ── Hardware & consumables ────────────────────────────────────────────
+    // Hangers carry every horizontal foot of pipe, not just the single longest
+    // circuit. Estimate from TOTAL horizontal run footage across all circuits
+    // at 6ft spacing. (Risers are strapped separately and not counted here.)
+    const totalHorizRun = state.circuits
+      .filter(c => !c.isRiserOnly)
+      .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
+    if (totalHorizRun > 0) items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: Math.ceil(totalHorizRun / 6), unit: 'ea', unitCost: 0, total: 0 });
     items.push({id:uid(),section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Brazing Rod (15% silver)',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Foam & Insulation Adhesive',qty:0,unit:'can',unitCost:0,total:0});
@@ -817,7 +830,7 @@ export default function Step4_Materials({ onNext, onBack }) {
 // every time you land on this step. Insulation categories are independently
 // collapsible inside here too, since the per-size rate grid (9 sizes × 3
 // categories = 27 inputs) is the single biggest source of clutter on this page.
-const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8'];
+const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
 const INSUL_CATEGORIES = [
   { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
   { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },
