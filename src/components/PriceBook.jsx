@@ -5,7 +5,10 @@ import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
 const SUPPLIER_DEFAULT_KEY = 'mechbid_default_supplier_v1';
-export const SUPPLIERS = ['RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco'];
+export const SUPPLIERS = [
+  'RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco',
+  'Southern Refrigeration', 'Baker Distributing', 'Gustave A. Larson', 'Carrier Enterprise',
+];
 
 export function loadDefaultSupplier() {
   try {

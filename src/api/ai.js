@@ -532,8 +532,15 @@ export function searchSupplier(query, supplier = 'RE Michel') {
     'Ferguson': `https://www.ferguson.com/search#q=${encodeURIComponent(q)}`,
     'Wesco': `https://www.wesco.com/search?q=${encodeURIComponent(q)}`,
     'URI': `https://www.uri.com/INTERSHOP/web/BOS/URI-URIUS-Site/en_US/-/USD/Search-SimpleSearch?SearchTerm=${encodeURIComponent(q)}&submit=Search`,
+    'Baker Distributing': `https://www.bakerdist.com/search?q=${encodeURIComponent(q)}`,
+    'Carrier Enterprise': `https://www.carrierenterprise.com/catalogsearch/result/?q=${encodeURIComponent(q)}`,
   };
-  window.open(urls[supplier] || urls['RE Michel'], '_blank');
+  // Any supplier without a known site-search endpoint (e.g. a regional house
+  // like Southern Refrigeration) falls back to a Google search scoped to the
+  // supplier name — the button always does something useful, and new suppliers
+  // can be added to the SUPPLIERS list without needing a hand-coded URL.
+  const url = urls[supplier] || `https://www.google.com/search?q=${encodeURIComponent(supplier + ' ' + q)}`;
+  window.open(url, '_blank');
 }
 
 const RC_KEYWORDS = /refriger|circuit|line set|lineset|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|epr|evap|compres|rack|coil|oil|defrost|condenser|ice.*machine/i;

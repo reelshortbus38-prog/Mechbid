@@ -168,6 +168,24 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     }));
   }
 
+  // Bulk accept/skip everything in one category (e.g. all Field Tasks at once),
+  // so a big section doesn't have to be triaged one card at a time.
+  function setKindStatus(kind, status) {
+    setItems(prev => prev.map(i => {
+      if (i.kind !== kind) return i;
+      if (status === 'accepted') {
+        const hasUnclear = typeof i.data?.desc === 'string' && i.data.desc.includes('[unclear]');
+        if (hasUnclear) return i; // unclear items are never swept in
+      }
+      return { ...i, status };
+    }));
+  }
+
+  // Sections collapse so you can fold away a category you've handled and jump
+  // to the next — keeps a 20+ item extraction scannable.
+  const [collapsed, setCollapsed] = useState({});
+  const toggleCollapse = kind => setCollapsed(c => ({ ...c, [kind]: !c[kind] }));
+
   const grouped = {
     projectInfo: items.filter(i => i.kind === 'projectInfo'),
     circuit: items.filter(i => i.kind === 'circuit'),
@@ -212,17 +230,40 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
         Object.entries(grouped).map(([kind, list]) => {
           if (list.length === 0) return null;
           const label = KIND_LABELS[kind];
+          const isCollapsed = !!collapsed[kind];
+          const accepted = list.filter(i => i.status === 'accepted').length;
+          const skipped = list.filter(i => i.status === 'rejected').length;
+          const pending = list.length - accepted - skipped;
           return (
-            <div key={kind}>
-              <SLabel>{label.icon} {label.title} ({list.length})</SLabel>
-              {list.map(item => (
-                <ReviewRow
-                  key={item.id}
-                  item={item}
-                  onChange={newData => updateItemData(item.id, newData)}
-                  onToggle={status => toggleStatus(item.id, status)}
-                />
-              ))}
+            <div key={kind} style={{ border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
+              {/* Section header — collapse toggle + per-category bulk actions */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px', background: colors.surface, flexWrap: 'wrap' }}>
+                <div onClick={() => toggleCollapse(kind)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 160 }}>
+                  <span style={{ color: colors.textDim, fontSize: 12 }}>{isCollapsed ? '▶' : '▼'}</span>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>{label.icon} {label.title}</span>
+                  <span style={{ fontSize: 11, color: colors.textDim }}>
+                    {list.length} total{pending > 0 ? ` · ${pending} to review` : ''}
+                    {accepted > 0 ? ` · ` : ''}{accepted > 0 && <span style={{ color: colors.green }}>{accepted} ✓</span>}
+                    {skipped > 0 ? ` · ` : ''}{skipped > 0 && <span style={{ color: colors.red }}>{skipped} ✕</span>}
+                  </span>
+                </div>
+                <Row style={{ gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => setKindStatus(kind, 'accepted')} style={{ background: 'transparent', color: colors.green, border: `1px solid ${colors.green}`, borderRadius: 6, padding: '3px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>✓ Accept all</button>
+                  <button onClick={() => setKindStatus(kind, 'rejected')} style={{ background: 'transparent', color: colors.red, border: `1px solid ${colors.red}`, borderRadius: 6, padding: '3px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>✕ Skip all</button>
+                </Row>
+              </div>
+              {!isCollapsed && (
+                <div style={{ padding: '10px 12px' }}>
+                  {list.map(item => (
+                    <ReviewRow
+                      key={item.id}
+                      item={item}
+                      onChange={newData => updateItemData(item.id, newData)}
+                      onToggle={status => toggleStatus(item.id, status)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })
