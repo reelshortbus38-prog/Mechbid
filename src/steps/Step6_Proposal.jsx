@@ -1,7 +1,43 @@
-import { useStore, fmt, uid, calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, primaryCrew } from '../state/store.js';
+import { useState } from 'react';
+import { useStore, fmt, uid, calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, primaryCrew, loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
+
+// ── COMPANY PROFILE (your letterhead) ────────────────────────────────────────
+function CompanyProfileCard({ company, onChange }) {
+  const [open, setOpen] = useState(!company.name);
+  const set = (k, v) => { const next = { ...company, [k]: v }; onChange(next); saveCompanyProfile(next); };
+  const FIELDS = [
+    { k: 'name', label: 'Company Name', ph: 'Acme Refrigeration & HVAC' },
+    { k: 'license', label: 'License #', ph: 'NC #12345' },
+    { k: 'phone', label: 'Phone', ph: '(555) 123-4567' },
+    { k: 'email', label: 'Email', ph: 'bids@acme.com' },
+    { k: 'address', label: 'Address', ph: '123 Main St, City, ST' },
+    { k: 'website', label: 'Website', ph: 'acmerefrig.com' },
+  ];
+  return (
+    <Card>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>🏢 Your Company (appears on the proposal)</SLabel>
+          {!open && <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>{company.name ? company.name : 'Not set — tap to add your letterhead'}</div>}
+        </div>
+        <span style={{ color: colors.textDim, fontSize: 13 }}>{open ? '▲' : '▼ Edit'}</span>
+      </div>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 12 }}>
+          {FIELDS.map(f => (
+            <div key={f.k}>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>{f.label}</div>
+              <Input value={company[f.k] || ''} onChange={e => set(f.k, e.target.value)} placeholder={f.ph} />
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 // ── EQUIPMENT MARKUP & SUBCONTRACTORS ─────────────────────────────────────────
 function MarkupAndSubs() {
@@ -209,7 +245,7 @@ function useBidTotals(state, markupPct) {
 }
 
 // ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
-function ProposalView() {
+function ProposalView({ company = {} }) {
   const { state } = useStore();
   const mode = state.mode;
   const scenario = state.scenarios[state.scenarios.active];
@@ -270,7 +306,13 @@ function ProposalView() {
     h2{font-size:13px;color:#1f4e79;margin:16px 0 8px}
     @media print{body{padding:16px}}</style></head><body>
     <div class="header">
-      <div><div class="logo">MECH<span>BID</span></div><div style="font-size:10px;color:#6b7280">${mode}</div></div>
+      <div>
+        ${company.name
+          ? `<div class="logo" style="color:#111">${company.name}</div>
+             <div style="font-size:10px;color:#6b7280">${[company.license, company.phone, company.email, company.address, company.website].filter(Boolean).join(' · ')}</div>`
+          : `<div class="logo">MECH<span>BID</span></div>`}
+        <div style="font-size:10px;color:#6b7280">${mode}</div>
+      </div>
       <div style="text-align:right">
         <div style="font-size:16px;font-weight:700">${state.projName || 'Project'}</div>
         ${state.projAddr ? `<div style="color:#6b7280">${state.projAddr}</div>` : ''}
@@ -307,9 +349,18 @@ function ProposalView() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${colors.green}` }}>
         <div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em' }}>
-            MECH<span style={{ color: colors.green }}>BID</span>
-          </div>
+          {company.name ? (
+            <>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 900, letterSpacing: '-0.02em' }}>{company.name}</div>
+              <div style={{ fontSize: 10, color: colors.textDim, maxWidth: 260 }}>
+                {[company.license, company.phone, company.email, company.address, company.website].filter(Boolean).join(' · ')}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em' }}>
+              MECH<span style={{ color: colors.green }}>BID</span>
+            </div>
+          )}
           <div style={{ fontSize: 10, color: colors.textDim }}>{mode}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -410,11 +461,15 @@ export default function Step6_Proposal({ onBack }) {
   const { state, dispatch } = useStore();
   const activeScenario = state.scenarios[state.scenarios.active];
   const totals = useBidTotals(state, activeScenario.markupPct);
+  const [company, setCompany] = useState(loadCompanyProfile());
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <JobInfo />
+
+      {/* Your company letterhead (global, saved across jobs) */}
+      <CompanyProfileCard company={company} onChange={setCompany} />
 
       {/* Scenarios */}
       <div>
@@ -473,7 +528,7 @@ export default function Step6_Proposal({ onBack }) {
       {/* Proposal preview */}
       <div>
         <SLabel>Bid Proposal Preview</SLabel>
-        <ProposalView />
+        <ProposalView company={company} />
       </div>
 
       <Row style={{ justifyContent: 'flex-start', marginTop: 10 }}>

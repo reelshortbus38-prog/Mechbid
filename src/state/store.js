@@ -264,6 +264,21 @@ export function exportAllJobsJSON() {
   return JSON.stringify({ app: 'mechbid', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
 }
 
+// ── COMPANY PROFILE ──────────────────────────────────────────────────────────
+// The contractor's own company details — global (same across every job) and
+// printed on the proposal so a bid goes out on YOUR letterhead, not "MechBid".
+const COMPANY_KEY = 'mechbid_company_v1';
+
+export function loadCompanyProfile() {
+  try { return JSON.parse(localStorage.getItem(COMPANY_KEY) || '{}') || {}; }
+  catch { return {}; }
+}
+
+export function saveCompanyProfile(profile) {
+  try { localStorage.setItem(COMPANY_KEY, JSON.stringify(profile || {})); }
+  catch (e) { console.warn('Company profile save failed:', e); }
+}
+
 export function importJobsJSON(text) {
   const data = JSON.parse(text);
   const incoming = data && data.jobs ? data.jobs : data; // accept enveloped or raw
