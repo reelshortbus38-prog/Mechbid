@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskCost, calcFieldTasksTotal, primaryCrew } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskCost, calcFieldTasksTotal, primaryCrew, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -237,6 +237,72 @@ function FieldTasksSection() {
   );
 }
 
+// ── CIRCUIT LABOR ESTIMATOR ─────────────────────────────────────────────────
+// Derives man-hours from the circuit list using the labor-unit library, so
+// labor starts from a consistent takeoff instead of a blank guess. The estimate
+// can be turned into per-circuit field tasks (which flow into the bid).
+function CircuitLaborEstimator() {
+  const { state, dispatch } = useStore();
+  const [open, setOpen] = useState(false);
+  const circuits = state.circuits || [];
+  if (circuits.length === 0) return null;
+
+  const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+  const crew = primaryCrew(state.laborPeriods);
+  const rate = avgCrewRate(crew) || 100;
+  const est = estimateCircuitLabor(circuits, units);
+  const cost = est.totalHours * rate;
+
+  const setUnit = (key, val) => dispatch({ type: 'SET', key: 'laborUnits', value: { ...units, [key]: parseFloat(val) || 0 } });
+
+  function generateFieldTasks() {
+    const idOf = desc => (String(desc).match(/^Run & connect (\S+)/) || [])[1];
+    const existing = state.fieldTasks || [];
+    const have = new Set(existing.map(t => idOf(t.desc)).filter(Boolean));
+    const fresh = est.perCircuit
+      .filter(pc => !have.has(pc.circuitId))
+      .map(pc => ({
+        id: uid(),
+        desc: `Run & connect ${pc.circuitId}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft}ft)`,
+        men: 1, hrs: pc.hours, notes: 'Auto-estimated from circuit labor units', crewAssignment: {},
+      }));
+    if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
+  }
+
+  const UNIT_FIELDS = [
+    { key: 'perFtSmall', label: 'Run/ft ≤7/8"' }, { key: 'perFtMed', label: 'Run/ft 1⅛–1⅜"' }, { key: 'perFtLarge', label: 'Run/ft ≥1⅝"' },
+    { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
+    { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
+  ];
+
+  return (
+    <Card style={{ background: colors.greenFaint, border: `1px solid ${colors.green}40` }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>⚙️ Labor Estimator (from circuits)</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+            {circuits.length} circuit{circuits.length !== 1 ? 's' : ''} → <strong style={{ color: colors.green }}>{est.totalHours} hrs</strong> · ~{fmt(cost)} at {fmt(rate)}/hr blended
+          </div>
+        </div>
+        <Btn variant="green" size="sm" onClick={generateFieldTasks}>+ Generate Field Tasks</Btn>
+      </Row>
+      <div onClick={() => setOpen(o => !o)} style={{ marginTop: 10, fontSize: 11, color: colors.textDim, cursor: 'pointer', userSelect: 'none' }}>
+        {open ? '▲ Hide assumptions' : '▼ Adjust labor-unit assumptions (hrs)'}
+      </div>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
+          {UNIT_FIELDS.map(f => (
+            <div key={f.key}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{f.label}</div>
+              <Input type="number" value={units[f.key]} step="0.05" onChange={e => setUnit(f.key, e.target.value)} style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── MAIN STEP 5 ───────────────────────────────────────────────────────────────
 export default function Step5_Labor({ onNext, onBack }) {
   const { state, dispatch } = useStore();
@@ -269,6 +335,9 @@ export default function Step5_Labor({ onNext, onBack }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Derive labor from the circuit takeoff */}
+      <CircuitLaborEstimator />
 
       {/* Quick add */}
       <div>
