@@ -330,8 +330,14 @@ function ResidentialEquipment({ onNext, onBack }) {
           <SLabel>Parts & Misc Materials</SLabel>
           <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
         </Row>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {['Thermostat', 'Disconnect & whip', 'Condensate pump', 'Float / safety switch', 'Equipment pad', 'Lineset cover', 'Refrigerant (R-410A / R-454B)', 'Filter / media cabinet', 'Drain line (PVC)', 'Surge protector', 'Permit'].map(c => (
+            <button key={c} onClick={() => dispatch({ type: 'SET', key: 'resParts', value: [...parts, { id: uid(), desc: c, qty: 1, unitCost: 0, total: 0 }] })}
+              style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.surface, color: colors.textDim }}>+ {c}</button>
+          ))}
+        </div>
         {parts.length === 0 ? (
-          <Card><EmptyState icon="🔧" title="No parts yet" subtitle="Add disconnect boxes, thermostat, refrigerant, etc." /></Card>
+          <Card><EmptyState icon="🔧" title="No parts yet" subtitle="Tap a common item above, or + Add Part" /></Card>
         ) : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {parts.map((p, i) => (
