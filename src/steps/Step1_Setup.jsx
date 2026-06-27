@@ -5,7 +5,8 @@ import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../componen
 import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
-  looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc
+  looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc,
+  emailFileToText
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -44,6 +45,7 @@ export default function Step1_Setup({ onNext }) {
     if (n.match(/\.(docx?)$/)) return 'scope';
     if (n.match(/\.(doc)$/)) return 'scope';
     if (n.match(/\.(pdf)$/)) return 'pdf';
+    if (n.match(/\.(eml)$/)) return 'email';
     if (n.match(/\.(jpe?g|png|gif|webp|heic)$/)) return 'image';
     return 'other';
   }
@@ -159,6 +161,24 @@ export default function Step1_Setup({ onNext }) {
             newResults.push(`📊 ${fileMeta.name}: ${res.circuits?.length || 0} circuit(s) found [${res.format || 'excel'}]`);
             if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
             if (res.summary) newResults.push(`   → ${res.summary}`);
+          }
+
+        } else if (fileMeta.type === 'email') {
+          // Saved bid emails (.eml). Parse the body client-side, then route
+          // through the same content detection as scope docs — a bid email is
+          // usually a bid-invitation letter, but occasionally carries scope text.
+          sourceType = 'doctext';
+          const text = await emailFileToText(file);
+          if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
+          if (looksLikeBidLetter(text)) {
+            parsed = await analyzeBidLetter(text, fileMeta.name);
+            newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
+          } else if (looksLikeFlatScopeDoc(text)) {
+            parsed = await analyzeFlatScopeDoc(text, fileMeta.name);
+            newResults.push(`✉️ ${fileMeta.name}: Email scope analyzed — ${parsed?.fieldTasks?.length || 0} field task(s)`);
+          } else {
+            parsed = await analyzeScopeDoc(text, fileMeta.name);
+            newResults.push(`✉️ ${fileMeta.name}: Email analyzed — ${parsed?.fieldTasks?.length || 0} field task(s)`);
           }
 
         } else if (fileMeta.type === 'scope') {
