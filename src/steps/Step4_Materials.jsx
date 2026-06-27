@@ -417,6 +417,22 @@ function ResidentialEquipment({ onNext, onBack }) {
           <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Total Bid</span>
           <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 800, color: colors.green }}>{fmt(bidTotal)}</span>
         </div>
+
+        {/* Utility/manufacturer rebate — a closing tool: shows the homeowner
+            their net cost without changing what you're paid. */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: 12, color: colors.textDim }}>Est. utility/mfr rebate (credit to customer)</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: colors.textDim }}>$</span>
+            <Input type="number" value={state.resRebate || ''} onChange={e => dispatch({ type: 'SET', key: 'resRebate', value: parseFloat(e.target.value) || 0 })} placeholder="0" style={{ width: 90, fontFamily: "'DM Mono', monospace", textAlign: 'right' }} />
+          </div>
+        </div>
+        {(parseFloat(state.resRebate) || 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Net to customer after rebate</span>
+            <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.blue }}>{fmt(bidTotal - (parseFloat(state.resRebate) || 0))}</span>
+          </div>
+        )}
       </Card>
 
       <Row style={{ justifyContent: 'space-between' }}>

@@ -85,6 +85,9 @@ export const initialState = {
   resSucSize: '',
   resLiqSize: '',
   resLineLength: '',
+  // Estimated utility/manufacturer rebate — shown to the homeowner as a credit
+  // against their net cost (a closing tool); does not reduce the contractor's bid.
+  resRebate: 0,
   // Commercial HVAC
   hvacEquipment: [],
   hvacParts: [],
