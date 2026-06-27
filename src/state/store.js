@@ -54,6 +54,9 @@ export const initialState = {
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
   materialsTaxPct: 0,
+  bondPct: 0,        // payment & performance bond, % of bid
+  permitFee: 0,      // flat permit/fees
+  bidValidDays: 30,  // proposal validity period (days)
   // Standard bid exclusions/qualifications — the contractual scope fence shown
   // on the proposal. Seeded with common mechanical exclusions; fully editable.
   exclusions: [

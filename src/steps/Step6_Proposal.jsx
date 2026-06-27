@@ -129,7 +129,7 @@ function TaxAndExclusions() {
   return (
     <Card>
       <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <SLabel style={{ margin: 0 }}>Tax & Exclusions</SLabel>
+        <SLabel style={{ margin: 0 }}>Tax, Bond, Permits & Exclusions</SLabel>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: colors.textDim }}>Materials Sales Tax</span>
           <Input
@@ -141,6 +141,20 @@ function TaxAndExclusions() {
           <span style={{ fontSize: 11, color: colors.textDim }}>%</span>
         </div>
       </Row>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Bond %</div>
+          <Input type="number" value={state.bondPct ?? 0} onChange={e => dispatch({ type: 'SET', key: 'bondPct', value: parseFloat(e.target.value) || 0 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Permit / Fees ($)</div>
+          <Input type="number" value={state.permitFee ?? 0} onChange={e => dispatch({ type: 'SET', key: 'permitFee', value: parseFloat(e.target.value) || 0 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Bid valid (days)</div>
+          <Input type="number" value={state.bidValidDays ?? 30} onChange={e => dispatch({ type: 'SET', key: 'bidValidDays', value: parseFloat(e.target.value) || 0 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+        </div>
+      </div>
       <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 10 }}>
         Exclusions print on the proposal — your scope fence. Edit, add, or remove lines.
       </div>
@@ -211,6 +225,14 @@ function useBidTotals(state, markupPct) {
   const subsBase = (state.subcontractors || []).reduce((s, x) => s + (parseFloat(x.cost) || 0), 0);
   const subMarkupPct = parseFloat(state.subMarkupPct) || 0;
   const subsTotal = subsBase * (1 + subMarkupPct / 100);
+  // Bond is a % of the bid (P&P bonds run ~1–3%); permit is a flat fee. Both
+  // default to 0 and are added last, on top of the rest of the bid.
+  const bondPct = parseFloat(state.bondPct) || 0;
+  const permitFee = parseFloat(state.permitFee) || 0;
+  const finish = (subtotal, rest) => {
+    const bondAmt = subtotal * (bondPct / 100);
+    return { ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee, total: subtotal + bondAmt + permitFee };
+  };
 
   if (mode === 'Residential HVAC') {
     const equipTotal = (state.resEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
@@ -220,7 +242,8 @@ function useBidTotals(state, markupPct) {
     // Equipment at its own rate; parts + lineset at the material rate.
     const markupAmt = equipTotal * (equipMarkupPct / 100) + (partsTotal + linesetTotal) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    return { markupBase, markupAmt, equipMarkupPct, taxPct, taxAmt, subsBase, subMarkupPct, subsTotal, laborTotal, fieldTasksTotal: 0, total: markupBase + markupAmt + taxAmt + subsTotal + laborTotal, equipTotal, partsTotal, linesetTotal };
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal;
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal });
   }
 
   if (mode === 'Commercial HVAC') {
@@ -229,7 +252,8 @@ function useBidTotals(state, markupPct) {
     const markupBase = equipTotal + partsTotal;
     const markupAmt = equipTotal * (equipMarkupPct / 100) + partsTotal * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    return { markupBase, markupAmt, equipMarkupPct, taxPct, taxAmt, subsBase, subMarkupPct, subsTotal, laborTotal, fieldTasksTotal, total: markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal, equipTotal, partsTotal };
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal;
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal, equipTotal, partsTotal });
   }
 
   // Commercial Refrigeration (no separate equipment line — all material markup)
@@ -241,7 +265,8 @@ function useBidTotals(state, markupPct) {
   const markupBase = matsTotal + rackPartsContractor;
   const markupAmt = markupBase * (markupPct / 100);
   const taxAmt = taxOf(markupBase + markupAmt);
-  return { markupBase, markupAmt, equipMarkupPct: markupPct, taxPct, taxAmt, subsBase, subMarkupPct, subsTotal, laborTotal, rackLaborTotal, fieldTasksTotal, total: markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal, matsTotal, rackPartsContractor };
+  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal;
+  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor });
 }
 
 // ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
@@ -290,8 +315,9 @@ function ProposalView({ company = {} }) {
       }
     }
 
-    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
     const exclusions = (state.exclusions || []).filter(x => x && x.trim());
+    const validDays = state.bidValidDays ?? 30;
     const markupLabel = equipMarkupPct !== scenario.markupPct
       ? `marked up: materials ${scenario.markupPct}% · equipment ${equipMarkupPct}%`
       : `marked up ${scenario.markupPct}%`;
@@ -328,7 +354,10 @@ function ProposalView({ company = {} }) {
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Labor</span><span>${fmt(laborTotal)}</span></div>
     ${rackLaborTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rack Work</span><span>${fmt(rackLaborTotal)}</span></div>` : ''}
     ${fieldTasksTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Field Work</span><span>${fmt(fieldTasksTotal)}</span></div>` : ''}
+    ${bondAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>P&amp;P Bond (${bondPct}%)</span><span>${fmt(bondAmt)}</span></div>` : ''}
+    ${permitFee > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Permits &amp; Fees</span><span>${fmt(permitFee)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:14px 0;border-top:3px solid #22c55e;margin-top:8px"><span style="font-size:18px;font-weight:700">TOTAL BID PRICE</span><span class="total">${fmt(total)}</span></div>
+    ${validDays > 0 ? `<div style="margin-top:8px;font-size:11px;color:#6b7280">This proposal is valid for ${validDays} days from ${date}. Pricing subject to material market changes.</div>` : ''}
     ${exclusions.length ? `<h2>Exclusions & Qualifications</h2><ul style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${exclusions.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
     <div style="margin-top:32px;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px">Generated by MechBid · ${date} · Prices subject to change</div>
     </body></html>`;
@@ -337,7 +366,7 @@ function ProposalView({ company = {} }) {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
-  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
   const markedUpMats = markupBase + markupAmt;
   const exclusions = (state.exclusions || []).filter(x => x && x.trim());
   const markupLabel = equipMarkupPct !== scenario.markupPct
@@ -417,6 +446,8 @@ function ProposalView({ company = {} }) {
           { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
           rackLaborTotal > 0 && { label: 'Rack Work', value: fmt(rackLaborTotal), color: colors.yellow },
           fieldTasksTotal > 0 && { label: 'Field Work', value: fmt(fieldTasksTotal), color: colors.yellow },
+          bondAmt > 0 && { label: `P&P Bond (${bondPct}%)`, value: fmt(bondAmt), color: colors.text },
+          permitFee > 0 && { label: 'Permits & Fees', value: fmt(permitFee), color: colors.text },
         ].filter(Boolean).map((line, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: `1px solid ${colors.border}` }}>
             <span style={{ fontSize: 13, color: line.dim ? colors.textDim : colors.text }}>{line.label}</span>
@@ -506,6 +537,8 @@ export default function Step6_Proposal({ onBack }) {
             { label: 'Labor', value: fmt(totals.laborTotal), color: colors.yellow },
             totals.rackLaborTotal > 0 && { label: 'Rack Work Labor', value: fmt(totals.rackLaborTotal), color: colors.yellow },
             totals.fieldTasksTotal > 0 && { label: 'Field Work Labor', value: fmt(totals.fieldTasksTotal), color: colors.yellow },
+            totals.bondAmt > 0 && { label: `P&P Bond (${totals.bondPct}%)`, value: fmt(totals.bondAmt), color: colors.text },
+            totals.permitFee > 0 && { label: 'Permits & Fees', value: fmt(totals.permitFee), color: colors.text },
           ].filter(Boolean).map(s => (
             <div key={s.label} style={{ padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 4 }}>{s.label}</div>
