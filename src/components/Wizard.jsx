@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useStore, saveJob, loadAllJobs, deleteJob } from '../state/store.js';
+import { useState, useEffect, useRef } from 'react';
+import { useStore, saveJob, loadAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
 import Step1_Setup from '../steps/Step1_Setup.jsx';
@@ -57,9 +57,25 @@ export default function Wizard() {
   const [showDocs, setShowDocs] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
   const [jobs, setJobs] = useState({});
+  const importInputRef = useRef(null);
 
   const steps = STEPS_BY_MODE[state.mode] || STEPS_BY_MODE['Commercial Refrigeration'];
   const currentStep = steps[stepIndex] || steps[0];
+
+  // How many items live in each step — shown as a badge on the step tabs so the
+  // progress bar doubles as a map of the job (what's populated, where to jump).
+  function stepCount(stepId) {
+    switch (stepId) {
+      case 'circuits':   return (state.circuits || []).length;
+      case 'rack':       return (state.rackParts || []).length + (state.rackTasks || []).length;
+      case 'hvac_equip': return (state.hvacEquipment || []).length;
+      case 'materials':
+        if (state.mode === 'Residential HVAC') return (state.resEquipment || []).length + (state.resParts || []).length;
+        return (state.lineItems || []).length + (state.supplyItems || []).length;
+      case 'labor':      return (state.laborPeriods || []).length + (state.fieldTasks || []).length;
+      default:           return 0;
+    }
+  }
 
   // Reset to first step when mode changes
   useEffect(() => {
@@ -107,6 +123,32 @@ export default function Wizard() {
     dispatch({ type: 'SET', key: 'preferredSupplier', value: loadDefaultSupplier() });
     setShowJobs(false);
     setStepIndex(0);
+  }
+
+  function handleExportJobs() {
+    const blob = new Blob([exportAllJobsJSON()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mechbid-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  }
+
+  function handleImportJobs(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const n = importJobsJSON(String(reader.result));
+        setJobs(loadAllJobs());
+        setSaveIndicator(`✅ Imported ${n} job${n !== 1 ? 's' : ''}`);
+        setTimeout(() => setSaveIndicator(''), 2500);
+      } catch (err) {
+        alert('Import failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   }
 
   function goNext() {
@@ -169,7 +211,16 @@ export default function Wizard() {
                   transition: 'all 0.15s', minWidth: 60,
                 }}
               >
-                <div style={{ fontSize: 18, opacity: isActive ? 1 : isDone ? 0.7 : 0.35 }}>{s.icon}</div>
+                <div style={{ position: 'relative', fontSize: 18, opacity: isActive ? 1 : isDone ? 0.7 : 0.35 }}>
+                  {s.icon}
+                  {stepCount(s.id) > 0 && (
+                    <span style={{
+                      position: 'absolute', top: -6, right: -12, minWidth: 16, height: 16, padding: '0 4px',
+                      borderRadius: 8, background: colors.green, color: '#000', fontSize: 9, fontWeight: 800,
+                      fontFamily: "'DM Mono', monospace", display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                    }}>{stepCount(s.id)}</span>
+                  )}
+                </div>
                 <div style={{
                   fontSize: 11, fontWeight: 700,
                   color: isActive ? colors.green : isDone ? colors.text : colors.textDim,
@@ -211,6 +262,9 @@ export default function Wizard() {
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: colors.green }}>💾 Saved Jobs</div>
               <Row style={{ gap: 8 }}>
+                <Btn variant="surface" size="sm" onClick={handleExportJobs}>⬇ Backup</Btn>
+                <Btn variant="surface" size="sm" onClick={() => importInputRef.current?.click()}>⬆ Restore</Btn>
+                <input ref={importInputRef} type="file" accept=".json,application/json" onChange={handleImportJobs} style={{ display: 'none' }} />
                 <Btn variant="green" size="sm" onClick={handleNewJob}>+ New Job</Btn>
                 <button onClick={() => setShowJobs(false)} style={{ background: 'transparent', border: 'none', color: colors.textDim, fontSize: 22, cursor: 'pointer' }}>×</button>
               </Row>

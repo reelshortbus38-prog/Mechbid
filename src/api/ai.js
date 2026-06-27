@@ -522,6 +522,68 @@ export function imageToJpeg(file, maxSize = 3200) {
   });
 }
 
+// ── .EML (BID EMAIL) → TEXT ─────────────────────────────────────────────────────
+// Bid invitations frequently arrive as a saved email (.eml). Parse the body
+// client-side (text/plain preferred, HTML stripped as fallback) so it can route
+// through the same bid-letter / scope analysis as a pasted email or .doc.
+function decodeQuotedPrintable(s) {
+  return s.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+function stripHtml(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&#39;/g, "'").replace(/&quot;/gi, '"')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+export function emlToText(raw) {
+  const text = String(raw || '').replace(/\r\n/g, '\n');
+
+  // Collect every MIME boundary declared anywhere (emails nest multipart/related
+  // > multipart/alternative > text/plain), then split flat on all of them so a
+  // deeply-nested text part is reached regardless of nesting depth.
+  const boundaries = [...text.matchAll(/boundary="?([^"\n;]+)"?/gi)].map(m => m[1]);
+  if (boundaries.length) {
+    const esc = b => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const splitRe = new RegExp('\\n--(?:' + boundaries.map(esc).join('|') + ')(?:--)?\\n', 'g');
+    const segments = ('\n' + text).split(splitRe);
+    const bodies = [];
+    for (const seg of segments) {
+      const sep = seg.indexOf('\n\n');
+      if (sep < 0) continue;
+      const headers = seg.slice(0, sep).toLowerCase();
+      let body = seg.slice(sep + 2);
+      const isPlain = /content-type:\s*text\/plain/.test(headers);
+      const isHtml = /content-type:\s*text\/html/.test(headers);
+      if (!isPlain && !isHtml) continue;                  // skip nested containers & attachments
+      if (/content-transfer-encoding:\s*quoted-printable/.test(headers)) body = decodeQuotedPrintable(body);
+      else if (/content-transfer-encoding:\s*base64/.test(headers)) { try { body = atob(body.replace(/\s+/g, '')); } catch { /* leave as-is */ } }
+      if (isHtml) body = stripHtml(body);
+      body = body.trim();
+      if (body.length > 10) bodies.push({ isPlain, text: body });
+    }
+    // Prefer the longest text/plain part; otherwise the longest part of any kind.
+    const plain = bodies.filter(b => b.isPlain).sort((a, b) => b.text.length - a.text.length)[0];
+    if (plain) return plain.text;
+    if (bodies.length) return bodies.sort((a, b) => b.text.length - a.text.length)[0].text;
+  }
+
+  // Single-part: take the body after the header block.
+  const sep = text.indexOf('\n\n');
+  const headers = sep >= 0 ? text.slice(0, sep).toLowerCase() : '';
+  let body = sep >= 0 ? text.slice(sep + 2) : text;
+  if (/content-transfer-encoding:\s*quoted-printable/.test(headers)) body = decodeQuotedPrintable(body);
+  if (/content-type:\s*text\/html/.test(headers) || /<html|<body/i.test(body)) body = stripHtml(body);
+  return body.trim();
+}
+export async function emailFileToText(file) {
+  return emlToText(await file.text());
+}
+
 export function searchSupplier(query, supplier = 'RE Michel') {
   if (!query?.trim()) return;
   const q = query.trim();
@@ -532,8 +594,15 @@ export function searchSupplier(query, supplier = 'RE Michel') {
     'Ferguson': `https://www.ferguson.com/search#q=${encodeURIComponent(q)}`,
     'Wesco': `https://www.wesco.com/search?q=${encodeURIComponent(q)}`,
     'URI': `https://www.uri.com/INTERSHOP/web/BOS/URI-URIUS-Site/en_US/-/USD/Search-SimpleSearch?SearchTerm=${encodeURIComponent(q)}&submit=Search`,
+    'Baker Distributing': `https://www.bakerdist.com/search?q=${encodeURIComponent(q)}`,
+    'Carrier Enterprise': `https://www.carrierenterprise.com/catalogsearch/result/?q=${encodeURIComponent(q)}`,
   };
-  window.open(urls[supplier] || urls['RE Michel'], '_blank');
+  // Any supplier without a known site-search endpoint (e.g. a regional house
+  // like Southern Refrigeration) falls back to a Google search scoped to the
+  // supplier name — the button always does something useful, and new suppliers
+  // can be added to the SUPPLIERS list without needing a hand-coded URL.
+  const url = urls[supplier] || `https://www.google.com/search?q=${encodeURIComponent(supplier + ' ' + q)}`;
+  window.open(url, '_blank');
 }
 
 const RC_KEYWORDS = /refriger|circuit|line set|lineset|suction|liquid|copper|insul|drip pan|sensor|case move|top stub|epr|evap|compres|rack|coil|oil|defrost|condenser|ice.*machine/i;

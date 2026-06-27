@@ -34,6 +34,9 @@ export const initialState = {
     wasteFactor: 10,
   },
   laborPeriods: [],
+  // Editable labor-unit assumptions for deriving hours from circuits (see
+  // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
+  laborUnits: undefined,
   markupPct: 20,
   // Equipment markup is tracked separately from material markup because a big
   // packaged unit shouldn't carry the same margin as copper and consumables.
@@ -252,6 +255,28 @@ export function deleteJob(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
 
+// ── BACKUP / RESTORE ───────────────────────────────────────────────────────────
+// Jobs live in this browser's localStorage. Until there's a cloud account,
+// export/import is the safety net against data loss and the way to move bids
+// between devices. Export wraps all jobs in a versioned envelope; import merges
+// them in (incoming jobs win on id collision), tolerating a raw jobs object too.
+export function exportAllJobsJSON() {
+  return JSON.stringify({ app: 'mechbid', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
+}
+
+export function importJobsJSON(text) {
+  const data = JSON.parse(text);
+  const incoming = data && data.jobs ? data.jobs : data; // accept enveloped or raw
+  if (!incoming || typeof incoming !== 'object') throw new Error('Not a MechBid backup file');
+  const jobs = loadAllJobs();
+  let count = 0;
+  for (const [id, job] of Object.entries(incoming)) {
+    if (job && job.data) { jobs[id] = job; count++; }
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  return count;
+}
+
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period) {
   // Each crew member contributes rate × their own hours/day. hrsPerDay defaults
@@ -326,4 +351,48 @@ export function calcFieldTaskCost(task, crew) {
 
 export function calcFieldTasksTotal(fieldTasks, crew) {
   return (fieldTasks || []).reduce((s, t) => s + calcFieldTaskCost(t, crew), 0);
+}
+
+// ── LABOR-UNIT LIBRARY ───────────────────────────────────────────────────────
+// Standard man-hour units so labor can be DERIVED from the circuit list instead
+// of hand-entered each time — the core of a consistent, fast estimate. Defaults
+// are reasonable commercial-refrigeration ballparks (editable per job): joints
+// dominate, so they're tracked separately from footage. Sizes are bucketed
+// small (≤7/8") / med (1-1/8"–1-3/8") / large (≥1-5/8").
+export const DEFAULT_LABOR_UNITS = {
+  perFtSmall: 0.06, perFtMed: 0.09, perFtLarge: 0.13,   // hrs per ft of run
+  perJointSmall: 0.4, perJointMed: 0.7, perJointLarge: 1.1, // hrs per braze joint
+  perCase: 1.5,      // hrs to hook up a refrigerated case
+  perRackTie: 2.0,   // hrs to tie a circuit into the rack
+  stickLength: 20,   // ft of hard copper per stick → number of joints
+};
+
+export function pipeSizeBucket(size) {
+  const order = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
+  const i = order.indexOf(normalizePipeSize(size));
+  if (i < 0) return 'med';
+  if (i <= 4) return 'small';   // ≤ 7/8"
+  if (i <= 6) return 'med';     // 1-1/8" – 1-3/8"
+  return 'large';               // ≥ 1-5/8"
+}
+
+// Estimate man-hours for each circuit: pipe running (ft × per-ft) + brazing
+// (joints × per-joint, joints ≈ one per stick + a rack tie + a case hookup) +
+// a flat case-hookup and rack-tie allowance. Returns total + per-circuit detail.
+export function estimateCircuitLabor(circuits, units) {
+  const u = { ...DEFAULT_LABOR_UNITS, ...(units || {}) };
+  let totalHours = 0;
+  const perCircuit = [];
+  (circuits || []).forEach(c => {
+    const run = parseFloat(c.runLength) || 0, riser = parseFloat(c.riserLength) || 0;
+    const ft = c.isRiserOnly ? riser : run + riser;
+    const bucket = pipeSizeBucket(c.sucHoriz || c.sucRiser || '');
+    const perFt = bucket === 'small' ? u.perFtSmall : bucket === 'large' ? u.perFtLarge : u.perFtMed;
+    const perJoint = bucket === 'small' ? u.perJointSmall : bucket === 'large' ? u.perJointLarge : u.perJointMed;
+    const joints = Math.ceil(ft / (u.stickLength || 20)) + 2; // sticks + rack tie + case
+    const hrs = ft * perFt + joints * perJoint + u.perCase + u.perRackTie;
+    totalHours += hrs;
+    perCircuit.push({ circuitId: c.circuitId || '?', application: c.application || '', ft, bucket, hours: Math.round(hrs * 10) / 10 });
+  });
+  return { totalHours: Math.round(totalHours * 10) / 10, perCircuit };
 }

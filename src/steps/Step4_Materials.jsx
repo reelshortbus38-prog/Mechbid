@@ -595,6 +595,7 @@ function SupplyHouseList() {
     state.rackParts.filter(p=>!p.storeSupplied).forEach(p => {
       items.push({ id:uid(), partId:p.partId, desc:p.desc, qty:p.qty, unit:p.unit, unitCost:p.unitCost, total:p.total, category:'Rack Parts' });
     });
+    items.push({ id:uid(), partId:'', desc:'Refrigerant — verify type (R-448A / R-407A / CO₂) & charge by lb', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Nitrogen — pressure test & purge', qty:0, unit:'cylinder', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Brazing rod (15% silver)', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     const existingDescs = new Set(state.supplyItems.map(i=>i.desc));
@@ -766,6 +767,7 @@ export default function Step4_Materials({ onNext, onBack }) {
       .filter(c => !c.isRiserOnly)
       .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
     if (totalHorizRun > 0) items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: Math.ceil(totalHorizRun / 6), unit: 'ea', unitCost: 0, total: 0 });
+    items.push({id:uid(),section:'Consumables',desc:'Refrigerant — verify type (R-448A / R-407A / CO₂) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Brazing Rod (15% silver)',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Foam & Insulation Adhesive',qty:0,unit:'can',unitCost:0,total:0});
