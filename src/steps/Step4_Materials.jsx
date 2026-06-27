@@ -589,15 +589,20 @@ function SupplyHouseList() {
         copperBySize[k]=(copperBySize[k]||0)+run;
       });
     });
+    const isCO2 = state.systemType === 'CO2';
     Object.entries(copperBySize).forEach(([size,footage]) => {
-      items.push({ id:uid(), partId:'', desc:`${size}" ACR Copper Lineset`, qty:Math.ceil(footage*wasteFactor), unit:'ft', unitCost:0, total:0, category:'Copper' });
+      items.push({ id:uid(), partId:'', desc:`${size}" ${isCO2 ? 'K65 Copper (CO₂ HP)' : 'ACR Copper Lineset'}`, qty:Math.ceil(footage*wasteFactor), unit:'ft', unitCost:0, total:0, category:'Copper' });
     });
     state.rackParts.filter(p=>!p.storeSupplied).forEach(p => {
       items.push({ id:uid(), partId:p.partId, desc:p.desc, qty:p.qty, unit:p.unit, unitCost:p.unitCost, total:p.total, category:'Rack Parts' });
     });
-    items.push({ id:uid(), partId:'', desc:'Refrigerant — verify type (R-448A / R-407A / CO₂) & charge by lb', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
+    items.push({ id:uid(), partId:'', desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Nitrogen — pressure test & purge', qty:0, unit:'cylinder', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Brazing rod (15% silver)', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
+    if (isCO2) {
+      items.push({ id:uid(), partId:'', desc:'High-pressure fittings (K65 / CO₂-rated, 1300+ psi)', qty:0, unit:'lot', unitCost:0, total:0, category:'Consumables' });
+      items.push({ id:uid(), partId:'', desc:'CO₂ leak detection / sensors', qty:0, unit:'ea', unitCost:0, total:0, category:'Consumables' });
+    }
     const existingDescs = new Set(state.supplyItems.map(i=>i.desc));
     const newItems = items.filter(i=>!existingDescs.has(i.desc));
     dispatch({ type:'SET', key:'supplyItems', value:[...state.supplyItems, ...newItems] });
@@ -688,6 +693,10 @@ export default function Step4_Materials({ onNext, onBack }) {
     const items = [];
     const rates = state.rates || {};
     const wasteFactor = 1+((rates.wasteFactor||10)/100);
+    // CO₂ transcritical: high-pressure side uses K65 copper-iron alloy (rated for
+    // ~1300+ psi), not standard ACR copper, and the joining/fittings differ.
+    const isCO2 = state.systemType === 'CO2';
+    const copperLabel = isCO2 ? 'K65 Copper (CO₂ HP)' : 'ACR Copper';
 
     // ── Copper, bucketed by size ──────────────────────────────────────────
     const copperBySize = {};
@@ -703,7 +712,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     });
     Object.entries(copperBySize).forEach(([size,footage])=>{
       const rate=rates?.cu?.[size]||0; const qty=Math.ceil(footage*wasteFactor);
-      items.push({id:uid(),section:'Copper',desc:`${size}" ACR Copper`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage});
+      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage});
     });
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
 
@@ -767,10 +776,16 @@ export default function Step4_Materials({ onNext, onBack }) {
       .filter(c => !c.isRiserOnly)
       .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
     if (totalHorizRun > 0) items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: Math.ceil(totalHorizRun / 6), unit: 'ea', unitCost: 0, total: 0 });
-    items.push({id:uid(),section:'Consumables',desc:'Refrigerant — verify type (R-448A / R-407A / CO₂) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Brazing Rod (15% silver)',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Foam & Insulation Adhesive',qty:0,unit:'can',unitCost:0,total:0});
+    if (isCO2) {
+      // CO₂-specific items that are easy to forget and pressure-rating critical.
+      items.push({id:uid(),section:'Consumables',desc:'High-pressure fittings (K65 / CO₂-rated, 1300+ psi) — verify ratings',qty:0,unit:'lot',unitCost:0,total:0});
+      items.push({id:uid(),section:'Consumables',desc:'CO₂ leak detection / sensors — verify code requirement',qty:0,unit:'ea',unitCost:0,total:0});
+      items.push({id:uid(),section:'Consumables',desc:'CO₂ pressure-relief / vent piping allowance',qty:0,unit:'lot',unitCost:0,total:0});
+    }
 
     // ── Preserve manually-added fittings when in manual mode ──────────────
     // "Generate from Circuits" rebuilds Copper/Insulation/Hardware/Consumables from scratch,
@@ -795,8 +810,32 @@ export default function Step4_Materials({ onNext, onBack }) {
   // are still visible at a glance without taking over the screen.
   const ratesSummary = `${fittingsMode === 'percentage' ? `${state.rates?.fittingsMarkupPct||25}% fittings` : 'Itemized fittings'} · ${state.rates?.wasteFactor||10}% waste · ${state.markupPct||20}% markup`;
 
+  const systemType = state.systemType || 'HFC';
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {/* System type — switches generated copper to K65 and adds CO₂-specific items */}
+      <Card style={{ padding:'12px 16px' }}>
+        <Row style={{ justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+          <div>
+            <SLabel style={{ margin:0 }}>Refrigeration System</SLabel>
+            <div style={{ fontSize:11, color:colors.textDim, marginTop:3 }}>
+              {systemType==='CO2' ? 'CO₂ transcritical — K65 copper & high-pressure (1300+ psi) fittings' : 'Standard HFC (R-448A / R-407A etc.) — ACR copper'}
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:6 }}>
+            {[{k:'HFC',label:'HFC'},{k:'CO2',label:'CO₂ Transcritical'}].map(o => (
+              <button key={o.k} onClick={() => dispatch({ type:'SET', key:'systemType', value:o.k })}
+                style={{ padding:'7px 12px', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700,
+                  border:`1px solid ${systemType===o.k?colors.green:colors.border}`,
+                  background:systemType===o.k?colors.green:colors.surface, color:systemType===o.k?'#000':colors.textDim }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </Row>
+      </Card>
 
       <RatesPanel
         open={ratesOpen}

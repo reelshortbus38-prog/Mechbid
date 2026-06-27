@@ -6,6 +6,10 @@ import { createContext, useContext, useReducer } from 'react';
 // the real global default on RESET/new job — see applyDefaultSupplier() usage there.
 export const initialState = {
   mode: 'Commercial Refrigeration',
+  // Refrigeration system type. CO₂ transcritical (R-744) uses K65 copper-iron
+  // alloy and high-pressure (1300+ psi) fittings instead of standard ACR copper,
+  // so the generated material list and refrigerant change with it.
+  systemType: 'HFC',   // 'HFC' | 'CO2'
   projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
   uploadedFiles: [], extractionResults: [], flags: [],
   circuits: [],
