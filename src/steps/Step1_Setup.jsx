@@ -87,6 +87,7 @@ export default function Step1_Setup({ onNext }) {
     const flags = [];
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
+    let keyDates = null;         // pre-con / completion / job length from an ERF
     let projName = '';
     let projAddr = '';
 
@@ -174,6 +175,13 @@ export default function Step1_Setup({ onNext }) {
               source: fileMeta.name,
             });
             newResults.push(`📋 ${fileMeta.name}: Parts order form — ${pof.items?.length || 0} item(s) found, added as a reference flag (not priced)`);
+          } else if (res.keyDates) {
+            // Equipment Request Form → pre-con / completion / job length.
+            keyDates = res.keyDates;
+            const parts = [];
+            if (res.keyDates.preconDate) parts.push(`pre-con ${res.keyDates.preconDate}`);
+            if (res.keyDates.jobLengthWeeks) parts.push(`~${res.keyDates.jobLengthWeeks} week job`);
+            newResults.push(`📅 ${fileMeta.name}: Key dates found — ${parts.join(' · ') || 'see ERF'}`);
           } else if (res.equipment?.length) {
             // HVAC equipment schedule — map units onto the Equipment step.
             res.equipment.forEach(e => equipmentImports.push({
@@ -381,6 +389,10 @@ export default function Step1_Setup({ onNext }) {
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
+      // Key dates from an ERF — only fill fields the user hasn't set, so a
+      // re-upload or manual entry isn't overwritten.
+      ...(keyDates && keyDates.preconDate && !state.preconDate ? { preconDate: keyDates.preconDate } : {}),
+      ...(keyDates && keyDates.jobLengthWeeks && !state.jobLength ? { jobLength: `${keyDates.jobLengthWeeks} weeks` } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
       ...(equipmentImports.length ? {
