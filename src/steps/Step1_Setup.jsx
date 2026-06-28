@@ -310,11 +310,14 @@ export default function Step1_Setup({ onNext }) {
           // important as the task text itself. date/circuitRef are ALSO kept
           // as their own fields (not just baked into desc) so that accepted
           // items can populate the dedicated RC Schedule view cleanly.
-          // Redline callouts are SCOPE NOTES (what/where to pipe), not billable
-          // labor — so a redline routes its callouts to the 'note' review
-          // category instead of the Field Work labor table. Dated-schedule and
-          // scope-doc field tasks are real labor activities and stay 'fieldTask'.
+          // What's a note vs. billable labor:
+          //  - Redline callouts (no date) → scope notes (what/where to pipe).
+          //  - Any DATED task → schedule note: the construction schedule is used
+          //    for timing (total days, start, case-move start, RCC date), not as
+          //    labor line items. These feed the RC Schedule view, not Field Work.
+          //  - Undated scope-of-work tasks → real Field Work labor.
           const isRedline = parsed.documentType === 'redline_callout';
+          const bidAsLineItems = state.taskBidMode === 'lineItems';
           // First night-work / case-move dated task = RC night-work start date.
           if (!isRedline && !rcNightStart) {
             for (const t of (parsed.fieldTasks || [])) {
@@ -333,28 +336,45 @@ export default function Step1_Setup({ onNext }) {
                 t.statedSize ? `Size: ${t.statedSize}` : '',
               ].filter(Boolean).join(' · ');
               const combinedNotes = [extraContext, t.notes].filter(Boolean).join(' — ');
-              const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
               if (isRedline) {
                 pushPending('note', sourceType, fileMeta.name, {
-                  desc, circuitRef: t.circuitRef || '', location: t.location || '', notes: combinedNotes, rawDesc: t.desc,
+                  desc: t.desc, circuitRef: t.circuitRef || '', location: t.location || '', notes: combinedNotes, rawDesc: t.desc,
+                });
+              } else if (t.date) {
+                // Dated → schedule note (RC Schedule view), not labor — always.
+                pushPending('note', sourceType, fileMeta.name, {
+                  desc: t.desc, date: t.date, circuitRef: t.circuitRef || '', notes: combinedNotes, rawDesc: t.desc,
+                });
+              } else if (bidAsLineItems) {
+                pushPending('fieldTask', sourceType, fileMeta.name, {
+                  desc: t.desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {},
+                  circuitRef: t.circuitRef || '', rawDesc: t.desc,
                 });
               } else {
-                pushPending('fieldTask', sourceType, fileMeta.name, {
-                  desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {},
-                  date: t.date || '', circuitRef: t.circuitRef || '', rawDesc: t.desc,
+                // Default: scope task is a note, labor estimated in bulk.
+                pushPending('note', sourceType, fileMeta.name, {
+                  desc: t.desc, circuitRef: t.circuitRef || '', notes: combinedNotes, rawDesc: t.desc,
                 });
               }
             }
           });
 
-          // Rack tasks
+          // Rack tasks — dated → schedule note; undated → rack labor or note.
           (parsed.rackTasks || []).forEach(t => {
             if (t.desc) {
-              const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
-              pushPending('rackTask', sourceType, fileMeta.name, {
-                desc, hrs: 0, notes: t.notes || '', crewAssignment: {},
-                date: t.date || '', rawDesc: t.desc,
-              });
+              if (t.date) {
+                pushPending('note', sourceType, fileMeta.name, {
+                  desc: t.desc, date: t.date, notes: t.notes || '', rawDesc: t.desc,
+                });
+              } else if (bidAsLineItems) {
+                pushPending('rackTask', sourceType, fileMeta.name, {
+                  desc: t.desc, hrs: 0, notes: t.notes || '', crewAssignment: {}, rawDesc: t.desc,
+                });
+              } else {
+                pushPending('note', sourceType, fileMeta.name, {
+                  desc: t.desc, notes: t.notes || '', rawDesc: t.desc,
+                });
+              }
             }
           });
 
@@ -481,10 +501,21 @@ export default function Step1_Setup({ onNext }) {
           });
         }
       } else if (item.kind === 'note') {
-        // Redline scope note → a flag, with circuit prefix for quick reference.
-        const text = item.data.circuitRef ? `[${item.data.circuitRef}] ${item.data.desc}` : item.data.desc;
-        if (!newNotes.find(f => f.text === text)) {
-          newNotes.push({ type: 'note', text, source: item.fileName });
+        if (item.data.date) {
+          // Dated schedule note → RC Schedule view (timing reference).
+          newScheduleItems.push({
+            id: uid(),
+            date: item.data.date,
+            desc: item.data.rawDesc || item.data.desc,
+            circuitRef: item.data.circuitRef || '',
+            notes: item.data.notes || '',
+          });
+        } else {
+          // Redline scope note → a flag, with circuit prefix for quick reference.
+          const text = item.data.circuitRef ? `[${item.data.circuitRef}] ${item.data.desc}` : item.data.desc;
+          if (!newNotes.find(f => f.text === text)) {
+            newNotes.push({ type: 'note', text, source: item.fileName });
+          }
         }
       } else if (item.kind === 'part') {
         if (!newRackParts.find(x => x.partId === item.data.partId) && !state.rackParts.find(x => x.partId === item.data.partId)) {
@@ -614,6 +645,31 @@ export default function Step1_Setup({ onNext }) {
           style={{ width: '100%', minHeight: 100, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 12, color: colors.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
         />
       </div>
+
+      {/* Task handling option */}
+      <Card style={{ padding: '12px 16px' }}>
+        <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Scope tasks</div>
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>
+              {state.taskBidMode === 'lineItems'
+                ? 'Each task becomes a billable labor line (task-by-task bidding)'
+                : 'Tasks are notes; you bid labor in bulk (crew/periods/labor units)'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[{ k: 'notes', label: 'Notes' }, { k: 'lineItems', label: 'Bid each task' }].map(o => (
+              <button key={o.k} onClick={() => dispatch({ type: 'SET', key: 'taskBidMode', value: o.k })}
+                style={{ padding: '6px 11px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  border: `1px solid ${(state.taskBidMode || 'notes') === o.k ? colors.green : colors.border}`,
+                  background: (state.taskBidMode || 'notes') === o.k ? colors.green : colors.surface,
+                  color: (state.taskBidMode || 'notes') === o.k ? '#000' : colors.textDim }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </Row>
+      </Card>
 
       {/* Analyze button */}
       <Btn variant="green" onClick={analyzeAll} disabled={analyzing || !hasFiles}
