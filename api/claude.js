@@ -12,6 +12,10 @@ export default async function handler(req, res) {
     const body = {
       model: 'openai/gpt-4o',  // Use gpt-4o for vision support
       max_tokens: req.body.max_tokens || 4000,
+      // Deterministic extraction: temperature 0 so the same document yields the
+      // same result every run (otherwise the model splits/merges callouts
+      // differently each time and the task count drifts, e.g. 8 vs 9 vs 12).
+      temperature: typeof req.body.temperature === 'number' ? req.body.temperature : 0,
       messages,
     };
 
