@@ -447,7 +447,7 @@ Extract the following EXACTLY as written — never round, simplify, or invent:
 
 1) TITLE BLOCK: drawing number (e.g. "M2.1"), drawing title (e.g. "NEW MECHANICAL PLAN"), project name, and date if shown.
 
-2) EQUIPMENT — units shown as TAGS inside hexagons, ovals, or boxes. Capture each distinct tag ONCE. Common prefixes and what they mean: RTU=rooftop unit, AHU=air handling unit, FCU=fan coil unit, VAV=variable air volume box, CU=condensing unit, AC=AC/condenser unit, EF=exhaust fan, TF=transfer fan, MAU=make-up air unit, ERV/HRV=energy/heat recovery ventilator, P=pump, B=boiler, CH=chiller, MB=mixing box, BH/FH=baseboard/finned-tube heater. Return {tag, type, notes}; infer type from the prefix. If the same tag appears repeatedly it is still ONE entry — say so in notes.
+2) EQUIPMENT — units shown as TAGS, either inside hexagons/ovals/boxes OR as plain text labels next to the unit (e.g. "AHU-1 ON ROOF", "ASHP-1 ON ROOF", "ERV-2"). Capture each distinct tag ONCE. Common prefixes and what they mean: RTU=rooftop unit, AHU=air handling unit, FCU=fan coil unit, VAV=variable air volume box, CU=condensing unit, AC=AC/condenser unit, EF=exhaust fan, TF=transfer fan, MAU=make-up air unit, ERV/HRV=energy/heat recovery ventilator, ASHP/HP=heat pump (air-source), CU/CH=condensing unit/chiller, P=pump, B=boiler, FF=force-flow/cabinet/unit heater, HC=heating coil, UH=unit heater, MB=mixing box, BH/FH=baseboard/finned-tube heater. Return {tag, type, notes}; infer type from the prefix. If the same tag appears repeatedly it is still ONE entry — say so in notes.
 
 3) AIR DEVICES — supply diffusers, return/exhaust grilles, registers. On these plans they read as TYPE-NUMBER with a neck size and a CFM, e.g. "CD-1 8\"⌀ 100" = ceiling diffuser CD-1, 8 inch round neck, 100 CFM. Prefixes: CD=ceiling/supply diffuser, SG=supply grille, RG=return grille, EG or ED=exhaust grille/diffuser, TG=transfer grille, LD=linear diffuser. A "(TYP. n)" note means n identical devices — put n in qty. Return {tag, deviceType, neckSize, cfm, qty}.
 
@@ -455,10 +455,12 @@ Extract the following EXACTLY as written — never round, simplify, or invent:
 
 5) PIPE RUNS — on a piping plan, hydronic/refrigerant lines labeled with size + service, e.g. "4\" CHWS&R" (chilled water supply & return), "2½\" HWS&R" (hot water S&R), "1\" HWR". Return {size, service, notes}.
 
-If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, or counts.
+6) RADIANT / HYDRONIC HEATING ZONES — many hydronic jobs tag heating zones as "ZONE n" with a heating load in MBH or BTUH (e.g. "ZONE 10  35.1 MBH", "ZONE 1  24.5 MBH"). A "RADIANT FLOOR HEATING SUMMARY" table may also list, per zone: manifold no., room, area (sq ft), number of loops, capacity (BTUH), flow (GPM), and tube spacing. Capture each zone as {zone, room, loadMBH, area, loops, notes} — pull whatever of those is shown; loadMBH is the MBH number (convert BTUH to MBH by dividing by 1000 if only BTUH is given).
+
+If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, loads, or counts.
 
 Return ONLY valid JSON, no markdown:
-{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
+{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
 
 export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
   try {
@@ -491,7 +493,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
 function newHvacMerged() {
   return {
     documentType: '', drawingNumber: '', drawingTitle: '', projectName: '', date: '',
-    equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], flags: [], summaries: [],
+    equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], hydronicZones: [], flags: [], summaries: [],
   };
 }
 function absorbHvac(merged, parsed, seen) {
@@ -528,6 +530,13 @@ function absorbHvac(merged, parsed, seen) {
     const k = 'pr|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
     if (seen.has(k)) return; seen.add(k);
     merged.pipeRuns.push({ ...r, size });
+  });
+  (parsed.hydronicZones || []).forEach(z => {
+    const zone = String(z.zone || '').toUpperCase().trim();
+    if (!zone && !z.loadMBH) return;
+    const k = 'hz|' + zone + '|' + (z.room || '');
+    if (seen.has(k)) return; seen.add(k);
+    merged.hydronicZones.push({ ...z, zone });
   });
   (parsed.flags || []).forEach(f => merged.flags.push(f));
   if (parsed.summary) merged.summaries.push(parsed.summary);

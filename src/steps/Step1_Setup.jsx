@@ -173,9 +173,9 @@ export default function Step1_Setup({ onNext }) {
       if (/fcu|fan coil/.test(s)) return 'Fan Coil Unit (FCU)';
       if (/vav/.test(s)) return 'VAV Box';
       if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
+      if (/ashp|air.?source|heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
       if (/condens|^cu\b|\bcu-|^ac\b|\bac-/.test(s)) return 'Split System — Condenser';
       if (/split/.test(s)) return 'Split System — Air Handler';
-      if (/heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
       if (/chiller|^ch\b|\bch-/.test(s)) return 'Chiller';
       if (/boiler|^b-\d|^bh\b|\bbh-/.test(s)) return 'Boiler';
       if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
@@ -229,14 +229,24 @@ export default function Step1_Setup({ onNext }) {
           notes: drawing, rawDesc: r.size,
         });
       });
+      (hv.hydronicZones || []).forEach(z => {
+        const spec = [z.room, z.loadMBH ? `${z.loadMBH} MBH` : '', z.area ? `${z.area} sq ft` : '', z.loops ? `${z.loops} loop(s)` : '']
+          .filter(Boolean).join(' · ');
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${z.zone || 'Zone'}${spec ? ' — ' + spec : ''}`.trim(),
+          notes: [drawing, z.notes].filter(Boolean).join(' — '), rawDesc: z.zone || 'zone',
+        });
+      });
 
       const totalCfm = (hv.airDevices || []).reduce((s, d) => s + (Number(d.cfm) || 0) * (Number(d.qty) || 1), 0);
+      const totalMbh = (hv.hydronicZones || []).reduce((s, z) => s + (Number(z.loadMBH) || 0), 0);
       const bits = [
         `${(hv.equipment || []).length} unit(s)`,
         `${(hv.airDevices || []).length} air device type(s)`,
         totalCfm ? `${totalCfm.toLocaleString()} CFM total` : '',
         `${(hv.ductRuns || []).length} duct size(s)`,
         (hv.pipeRuns || []).length ? `${hv.pipeRuns.length} pipe run(s)` : '',
+        (hv.hydronicZones || []).length ? `${hv.hydronicZones.length} heating zone(s)${totalMbh ? ` / ${Math.round(totalMbh)} MBH` : ''}` : '',
       ].filter(Boolean).join(' · ');
       flags.push({ type: 'info', text: `HVAC takeoff${drawing ? ` [${drawing}]` : ''}: ${bits}`, source: fileMeta.name });
       (hv.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
