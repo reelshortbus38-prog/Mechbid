@@ -13,6 +13,17 @@ import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 
+// Parse a schedule date header ("Monday, August 4th (Night) w7") to a short
+// label ("Aug 4") for the RC night-work start field.
+const SCHED_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const SCHED_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function schedDateLabel(label) {
+  const m = String(label || '').match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  if (!m) return '';
+  const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
+  return mi >= 0 ? `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}` : '';
+}
+
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
 const MODE_DESC = {
@@ -88,6 +99,7 @@ export default function Step1_Setup({ onNext }) {
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
     let keyDates = null;         // pre-con / completion / job length from an ERF
+    let rcNightStart = '';       // first night-work / case-move date from a schedule
     let projName = '';
     let projAddr = '';
 
@@ -303,6 +315,16 @@ export default function Step1_Setup({ onNext }) {
           // category instead of the Field Work labor table. Dated-schedule and
           // scope-doc field tasks are real labor activities and stay 'fieldTask'.
           const isRedline = parsed.documentType === 'redline_callout';
+          // First night-work / case-move dated task = RC night-work start date.
+          if (!isRedline && !rcNightStart) {
+            for (const t of (parsed.fieldTasks || [])) {
+              const nighty = /night/i.test(t.date || '') || /\b(relocat|case\s*move)\b/i.test(t.desc || '');
+              if (nighty && t.date) {
+                rcNightStart = schedDateLabel(t.date) || '';
+                if (rcNightStart) break;
+              }
+            }
+          }
           (parsed.fieldTasks || []).forEach(t => {
             if (t.desc && isRCTask(t.desc)) {
               const extraContext = [
@@ -393,6 +415,7 @@ export default function Step1_Setup({ onNext }) {
       // re-upload or manual entry isn't overwritten.
       ...(keyDates && keyDates.preconDate && !state.preconDate ? { preconDate: keyDates.preconDate } : {}),
       ...(keyDates && keyDates.jobLengthWeeks && !state.jobLength ? { jobLength: `${keyDates.jobLengthWeeks} weeks` } : {}),
+      ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
       ...(equipmentImports.length ? {
