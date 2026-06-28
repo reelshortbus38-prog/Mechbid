@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useStore, uid } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Flag, EmptyState, Spinner } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Row, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
