@@ -24,6 +24,23 @@ function schedDateLabel(label) {
   return mi >= 0 ? `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}` : '';
 }
 
+// Find the schedule date for a marker line (e.g. "MOBILIZE & PRE-CON MEETING"
+// or "NIGHT WORK BEGINS"). The date header is usually on the same line; if not,
+// look back a few lines for the nearest one. Deterministic — reads the raw doc
+// text, not the AI's task list, so it picks the right date every time.
+function scanScheduleDate(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    let label = schedDateLabel(lines[i]);
+    for (let j = i - 1; !label && j >= Math.max(0, i - 6); j--) label = schedDateLabel(lines[j]);
+    if (label) return label;
+  }
+  return '';
+}
+const PRECON_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\s*meeting/i;
+const NIGHT_START_RE = /night work begins|night work to begin/i;
+
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
 const MODE_DESC = {
@@ -99,7 +116,8 @@ export default function Step1_Setup({ onNext }) {
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
     let keyDates = null;         // pre-con / completion / job length from an ERF
-    let rcNightStart = '';       // first night-work / case-move date from a schedule
+    let rcNightStart = '';       // night-work start date from a schedule
+    let preconFromDoc = '';      // pre-con date scanned from a schedule doc
     let projName = '';
     let projAddr = '';
 
@@ -223,6 +241,8 @@ export default function Step1_Setup({ onNext }) {
           sourceType = 'doctext';
           const text = await emailFileToText(file);
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
+          { const p = scanScheduleDate(text, PRECON_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const n = scanScheduleDate(text, NIGHT_START_RE); if (n) rcNightStart = n; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
@@ -239,6 +259,12 @@ export default function Step1_Setup({ onNext }) {
           const b64 = await fileToBase64(file);
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
+
+          // Deterministic key dates straight from the schedule text — the
+          // "MOBILIZE & PRE-CON MEETING" and "NIGHT WORK BEGINS" lines carry
+          // their own date headers, so this is exact (not guessed from tasks).
+          { const p = scanScheduleDate(docRes.text, PRECON_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const n = scanScheduleDate(docRes.text, NIGHT_START_RE); if (n) rcNightStart = n; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts
@@ -431,9 +457,10 @@ export default function Step1_Setup({ onNext }) {
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
-      // Key dates from an ERF — only fill fields the user hasn't set, so a
-      // re-upload or manual entry isn't overwritten.
-      ...(keyDates && keyDates.preconDate && !state.preconDate ? { preconDate: keyDates.preconDate } : {}),
+      // Key dates — pre-con from the ERF or the schedule's pre-con line, job
+      // length from the ERF, RC night-work start from the schedule. Only fill
+      // blanks so a re-upload or manual entry isn't overwritten.
+      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (keyDates && keyDates.preconDate) || preconFromDoc } : {}),
       ...(keyDates && keyDates.jobLengthWeeks && !state.jobLength ? { jobLength: `${keyDates.jobLengthWeeks} weeks` } : {}),
       ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
