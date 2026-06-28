@@ -313,6 +313,60 @@ Return JSON:
 // (case ends, rack parts) rather than the refrigeration contractor pricing them.
 // The goal here is reference visibility — "what work does this imply" — not a
 // priced line-item list, since these parts typically aren't on the RC's bid.
+// ── ERF (EQUIPMENT REQUEST FORM) KEY DATES ───────────────────────────────────
+// The OCR Equipment Request Form carries the dates a refrigeration estimator
+// needs up front — PRE-CON DATE and STORE COMPLETION DATE — as real date cells.
+// Pull them deterministically (ExcelJS returns date cells as JS Dates; older
+// files store them as 1900-system serials, handled by toDate).
+function erfToDate(v) {
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (v && typeof v === 'object' && v.result instanceof Date) return v.result; // formula cell
+  const n = parseFloat(v);
+  if (!isNaN(n) && n > 20000 && n < 80000) {       // sane Excel serial range
+    const d = new Date(Math.round((n - 25569) * 86400000));
+    return isNaN(d) ? null : d;
+  }
+  return null;
+}
+function fmtErfDate(d) {
+  return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+}
+// ExcelJS cells can be rich text / hyperlink / formula objects, not plain values.
+function erfCellText(v) {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    if (Array.isArray(v.richText)) return v.richText.map(t => t.text).join('').trim();
+    if (v.text != null) return String(v.text).trim();
+    if (v.result != null) return String(v.result).trim();
+    return '';
+  }
+  return String(v).trim();
+}
+function detectAndExtractERF(wb) {
+  let isERF = false, precon = null, completion = null, storeNo = '';
+  wb.eachSheet(ws => {
+    if (/equipment request|store info/i.test(ws.name)) isERF = true;
+    for (let r = 1; r <= 60; r++) {
+      const row = ws.getRow(r);
+      row.eachCell((cell, col) => {
+        const v = String(cell.value || '');
+        if (/equipment request form|OCR\s*\d/i.test(v)) isERF = true;
+        if (/PRE-?CON\s*DATE/i.test(v)) { isERF = true; const d = erfToDate(row.getCell(col + 1).value); if (d) precon = d; }
+        if (/STORE\s*COMPLETION/i.test(v)) { const d = erfToDate(row.getCell(col + 1).value); if (d) completion = d; }
+        if (/^Store\s*#?:?$/i.test(v.trim())) { const t = erfCellText(row.getCell(col + 1).value); if (t && /\d/.test(t)) storeNo = t; }
+      });
+    }
+  });
+  if (!isERF || (!precon && !completion)) return null;
+  const jobLengthWeeks = (precon && completion) ? Math.round((completion - precon) / (7 * 86400000)) : null;
+  return {
+    preconDate: fmtErfDate(precon),
+    completionDate: fmtErfDate(completion),
+    jobLengthWeeks,
+    storeNumber: storeNo,
+  };
+}
+
 async function extractPartsOrderForm(sheetsText, fileName) {
   const systemPrompt = `You are an expert commercial refrigeration estimator reading a parts order form (e.g. a Kysor Warren or case-manufacturer parts order template). Return ONLY valid JSON.`;
 
@@ -778,6 +832,18 @@ module.exports = async function handler(req, res) {
         wb.xlsx.load(buffer),
         new Promise((_,rej) => setTimeout(() => rej(new Error('Timeout loading xlsx')), 20000))
       ]);
+
+      // 0. Equipment Request Form → key bid dates (pre-con, completion, length).
+      const erf = detectAndExtractERF(wb);
+      if(erf) {
+        return res.status(200).json({
+          circuits: [],
+          keyDates: { preconDate: erf.preconDate, completionDate: erf.completionDate, jobLengthWeeks: erf.jobLengthWeeks },
+          storeNumber: erf.storeNumber || '',
+          format: 'erf',
+          summary: `Equipment Request Form — pre-con ${erf.preconDate || 'n/a'}${erf.jobLengthWeeks ? `, ~${erf.jobLengthWeeks} week job` : ''}`,
+        });
+      }
 
       // 1. Check for parts-order-form shape FIRST — this should never be run
       // through the circuit-schedule parsers below.

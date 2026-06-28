@@ -206,6 +206,30 @@ Return ONLY valid JSON, no markdown:
 // is rich enough to skip vision for that page.
 const REDLINE_CALLOUT_RE = /\b(DROP|CONNECT|RECONNECT|DISCONNECT|REWORK|RELOCAT|EXTEND|PIPE THRU|TOP STUB|FEED)\b/i;
 
+// Deterministic extraction of callouts from an exact PDF text layer — no model,
+// so the same drawing always yields the same tasks (the AI step was dropping and
+// merging callouts differently every run). One task per callout line: the GC
+// portion is stripped, circuit IDs are pulled verbatim, and exact duplicates are
+// removed. Over-segmenting is safe (you assign hours per task); the danger is
+// dropping a callout, which this never does.
+const CALLOUT_START_RE = /^(DROP|CONNECT|RECONNECT|DISCONNECT|REWORK|RELOCAT|INSTALL|ADD)\b/i;
+export function extractCalloutTasksFromText(pageText) {
+  const lines = String(pageText || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const tasks = [];
+  const seen = new Set();
+  for (const line of lines) {
+    if (!REDLINE_CALLOUT_RE.test(line)) continue;
+    // Drop the "GC TO ..." tail — that's general-contractor scope, not RC.
+    const desc = (line.replace(/\bGC TO\b[\s\S]*$/i, '').trim()) || line;
+    const key = desc.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const circuitRef = [...new Set((desc.match(/\b[A-E]\d{1,2}\b/g) || []))].join(', ');
+    tasks.push({ desc, circuitRef, location: '', statedSize: '', notes: '' });
+  }
+  return tasks;
+}
+
 export async function analyzeRedlinePdf(file, fileName) {
   const { renderPdfPagesToImages, extractPdfPagesText } = await import('./pdfRender.js');
 
@@ -253,11 +277,14 @@ export async function analyzeRedlinePdf(file, fileName) {
   const visionPageNums = [];
   for (const tp of textPages) {
     if (tp.text.length >= 80 && REDLINE_CALLOUT_RE.test(tp.text)) {
-      const raw = await callClaudeRedlineText(tp.text, fileName, tp.pageNum, totalPages);
-      const parsed = raw ? parseAIJson(raw) : null;
-      if (parsed) { absorb(parsed, tp.pageNum); continue; }
+      // Deterministic, exact, free — no model deciding the count.
+      const fieldTasks = extractCalloutTasksFromText(tp.text);
+      if (fieldTasks.length) {
+        absorb({ fieldTasks, summary: `${fieldTasks.length} callout(s) read from the PDF text layer` }, tp.pageNum);
+        continue;
+      }
     }
-    // No usable text layer (scan) or text parse failed → vision fallback.
+    // No usable text layer (scan) or no callouts found → vision fallback.
     visionPageNums.push(tp.pageNum);
   }
   // If text extraction failed entirely, vision must cover everything.

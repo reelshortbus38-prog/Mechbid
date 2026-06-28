@@ -119,6 +119,7 @@ export function Flag({ flag }) {
     error: { bg: 'rgba(239,68,68,0.08)', border: colors.red, icon: '❌', color: colors.red },
     warn:  { bg: 'rgba(234,179,8,0.08)', border: colors.yellow, icon: '⚠️', color: colors.yellow },
     info:  { bg: 'rgba(34,197,94,0.06)', border: colors.green, icon: 'ℹ️', color: colors.textDim },
+    note:  { bg: 'rgba(59,130,246,0.06)', border: colors.blue, icon: '📝', color: colors.textDim },
   };
   const s = styles[flag.type] || styles.info;
   return (

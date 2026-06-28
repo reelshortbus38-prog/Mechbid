@@ -5,7 +5,7 @@ import {
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
   estimateCircuitLabor, DEFAULT_LABOR_UNITS,
 } from './store.js';
-import { emlToText } from '../api/ai.js';
+import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
 // These guard the "money math" — the numbers that land in a real bid. If any of
 // these change unexpectedly, a future edit has altered what customers are quoted.
@@ -94,6 +94,36 @@ describe('estimateCircuitLabor', () => {
 
   it('returns zero for no circuits', () => {
     expect(estimateCircuitLabor([], DEFAULT_LABOR_UNITS).totalHours).toBe(0);
+  });
+});
+
+describe('extractCalloutTasksFromText', () => {
+  const text = [
+    'DROP NEW B11 IN EXISTING CHASE. REWORK EXISTING B4, B5 AS NEEDED. GC TO DEMO, REPAIR CHASE',
+    'DROP NEW C6 IN MEAT PREP. PIPE THRU WALL TO CASE TOP. GC TO COVER LINES',
+    'CONNECT EXISTING A2 LINESET TO EXISTING B6 LINESET OVER TO-GO ROOM',
+    'this line is not a callout and should be ignored',
+  ].join('\n');
+
+  it('is deterministic — identical output every run', () => {
+    expect(extractCalloutTasksFromText(text)).toEqual(extractCalloutTasksFromText(text));
+  });
+
+  it('keeps one task per callout line and drops non-callouts', () => {
+    const tasks = extractCalloutTasksFromText(text);
+    expect(tasks).toHaveLength(3);
+  });
+
+  it('strips the GC TO… tail and pulls circuit IDs', () => {
+    const tasks = extractCalloutTasksFromText(text);
+    expect(tasks[0].desc).not.toMatch(/GC TO/i);
+    expect(tasks[0].circuitRef).toContain('B11');
+    expect(tasks[2].circuitRef).toContain('A2');
+    expect(tasks[2].circuitRef).toContain('B6');
+  });
+
+  it('dedups identical callouts', () => {
+    expect(extractCalloutTasksFromText('DROP NEW B11 IN CHASE\nDROP NEW B11 IN CHASE')).toHaveLength(1);
   });
 });
 
