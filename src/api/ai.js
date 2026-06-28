@@ -178,8 +178,11 @@ export async function callClaudeRedlineText(pageText, fileName, pageNum, totalPa
   const ctx = totalPages > 1 ? ` (page ${pageNum} of ${totalPages})` : '';
   const prompt = `You are an expert commercial refrigeration estimator. Below is the EXACT text extracted from the callout boxes and title block of a redlined refrigeration floor/pit plan${ctx}. Because this is the real PDF text layer, every circuit ID and pipe size is already correct — transcribe them verbatim and NEVER alter or "correct" a circuit ID (do not turn B6 into B16).
 
-Split the callouts into separate RC field tasks. Each instruction is its own task — e.g. "DROP NEW B11 IN EXISTING CHASE", "CONNECT EXISTING A2 LINESET TO EXISTING B6 LINESET", "REWORK EXISTING B4, B5 AS NEEDED", "DROP EXISTING A5 BRANCH IN DELI CLOSET. 1 1/8, 1/2".
-- Skip "GC TO..." portions — extract only RC refrigeration scope. If one sentence has both RC and GC parts, keep only the RC part in desc.
+TASK GRANULARITY — follow this exactly so the result is consistent every run:
+- The text below is already split so that EACH NON-EMPTY LINE is ONE callout box. Produce EXACTLY ONE field task per line that contains refrigeration (RC) scope.
+- NEVER split one line into multiple tasks, even if that line contains several sentences or several circuit IDs (e.g. "DROP NEW B11 IN EXISTING CHASE. REWORK EXISTING B4, B5 AS NEEDED." is ONE task, not two). NEVER merge two lines into one task.
+- Skip a line entirely only if it has no RC scope at all (pure GC work, a legend entry, or watermark text).
+- Skip "GC TO..." portions within a line — keep only the RC part in desc, but it is still one task for that line.
 - Put every circuit ID mentioned (there may be several, e.g. "A8, C8") in circuitRef exactly as written, the location/area in location, and any stated pipe size in statedSize (e.g. "1 1/8, 1/2").
 - Ignore obvious watermark fragments (scattered single letters, "PDF-XChange", "Click to buy now").
 - Read the title block for store name, store number, address, and sheet/drawing number — fill a field only if clearly present, never guess.
