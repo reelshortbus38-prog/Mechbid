@@ -104,6 +104,10 @@ export const initialState = {
   // Shared
   preferredSupplier: 'RE Michel',
   jobMemory: {},
+  // Calibration: actual costs entered after a job completes, to compare against
+  // the estimate and tune labor units / rates. { materials, labor, subs, other }.
+  actuals: {},
+  actualNotes: '',
 };
 
 // ── REDUCER ────────────────────────────────────────────────────────────────────

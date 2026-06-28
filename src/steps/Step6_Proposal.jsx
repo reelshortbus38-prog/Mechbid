@@ -39,6 +39,100 @@ function CompanyProfileCard({ company, onChange }) {
   );
 }
 
+// ── CALIBRATION: COMPARE TO ACTUAL ───────────────────────────────────────────
+// After a job finishes, enter what it actually cost and see where the estimate
+// diverged — the way to prove accuracy and tune the labor units / rates. Compares
+// estimated COST (not sell price) against actuals, so markup doesn't muddy it.
+function Calibration({ totals }) {
+  const { state, dispatch } = useStore();
+  const [open, setOpen] = useState(false);
+  const actuals = state.actuals || {};
+  const setActual = (k, v) => dispatch({ type: 'SET', key: 'actuals', value: { ...actuals, [k]: parseFloat(v) || 0 } });
+
+  const estLabor = (totals.laborTotal || 0) + (totals.rackLaborTotal || 0) + (totals.fieldTasksTotal || 0);
+  const rows = [
+    { k: 'materials', label: 'Materials & Equipment', est: totals.markupBase || 0 },
+    { k: 'labor', label: 'Labor', est: estLabor },
+    { k: 'subs', label: 'Subcontractors', est: totals.subsBase || 0 },
+    { k: 'other', label: 'Other', est: 0 },
+  ];
+  const totalEst = rows.reduce((s, r) => s + r.est, 0);
+  const totalAct = rows.reduce((s, r) => s + (parseFloat(actuals[r.k]) || 0), 0);
+  const hasActuals = totalAct > 0;
+
+  const variance = (est, act) => {
+    if (!act) return null;
+    const diff = act - est;
+    const pct = est ? Math.round((diff / est) * 100) : null;
+    return { diff, pct };
+  };
+  const vColor = diff => diff > 0 ? colors.red : colors.green; // over cost = red
+
+  // Labor calibration hint — the most actionable lever for tuning estimates.
+  const laborV = variance(estLabor, parseFloat(actuals.labor) || 0);
+
+  return (
+    <Card>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>🎯 Calibration — Compare to Actual</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+            {hasActuals ? `Actual ${fmt(totalAct)} vs estimated cost ${fmt(totalEst)} (${totalEst ? (totalAct > totalEst ? '+' : '') + Math.round((totalAct - totalEst) / totalEst * 100) + '%' : '—'})` : 'Enter what the finished job actually cost to tune your rates'}
+          </div>
+        </div>
+        <span style={{ color: colors.textDim, fontSize: 13 }}>{open ? '▲' : '▼ Open'}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 0.9fr', gap: 8, fontSize: 10, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 0 6px', borderBottom: `1px solid ${colors.border}` }}>
+            <div>Category</div><div style={{ textAlign: 'right' }}>Estimated cost</div><div style={{ textAlign: 'right' }}>Actual</div><div style={{ textAlign: 'right' }}>Variance</div>
+          </div>
+          {rows.map(r => {
+            const v = variance(r.est, parseFloat(actuals[r.k]) || 0);
+            return (
+              <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 0.9fr', gap: 8, alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${colors.border}40` }}>
+                <div style={{ fontSize: 12 }}>{r.label}</div>
+                <div style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12, color: colors.textDim }}>{fmt(r.est)}</div>
+                <div style={{ textAlign: 'right' }}>
+                  <Input type="number" value={actuals[r.k] ?? ''} onChange={e => setActual(r.k, e.target.value)} placeholder="0" style={{ width: 90, textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+                </div>
+                <div style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: v ? vColor(v.diff) : colors.textDim }}>
+                  {v ? `${v.diff > 0 ? '+' : ''}${fmt(v.diff)}${v.pct != null ? ` (${v.pct > 0 ? '+' : ''}${v.pct}%)` : ''}` : '—'}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 0.9fr', gap: 8, padding: '10px 0 0', fontWeight: 700 }}>
+            <div style={{ fontSize: 12 }}>Total cost</div>
+            <div style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(totalEst)}</div>
+            <div style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(totalAct)}</div>
+            <div style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12, color: hasActuals ? vColor(totalAct - totalEst) : colors.textDim }}>
+              {hasActuals ? `${totalAct - totalEst > 0 ? '+' : ''}${fmt(totalAct - totalEst)}` : '—'}
+            </div>
+          </div>
+
+          {laborV && laborV.pct != null && Math.abs(laborV.pct) >= 5 && (
+            <div style={{ marginTop: 12, fontSize: 12, color: colors.text, background: colors.surface, borderRadius: 8, padding: '10px 12px', lineHeight: 1.5 }}>
+              💡 Labor came in <strong style={{ color: vColor(laborV.diff) }}>{laborV.pct > 0 ? `${laborV.pct}% over` : `${Math.abs(laborV.pct)}% under`}</strong> estimate. Consider {laborV.pct > 0 ? 'raising' : 'lowering'} your labor-unit hours (Labor step → Labor Estimator) by about {Math.abs(laborV.pct)}% on similar jobs.
+            </div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Lessons learned / what to adjust next time</div>
+            <textarea
+              value={state.actualNotes || ''}
+              onChange={e => dispatch({ type: 'SET', key: 'actualNotes', value: e.target.value })}
+              placeholder="e.g. brazing took longer in the freezer; copper price jumped mid-job…"
+              style={{ width: '100%', minHeight: 70, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10, color: colors.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── EQUIPMENT MARKUP & SUBCONTRACTORS ─────────────────────────────────────────
 function MarkupAndSubs() {
   const { state, dispatch } = useStore();
@@ -568,6 +662,9 @@ export default function Step6_Proposal({ onBack }) {
           <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(totals.total)}</span>
         </div>
       </Card>
+
+      {/* Calibration — compare the estimate to actual job cost */}
+      <Calibration totals={totals} />
 
       {/* Equipment markup & subcontractors */}
       <MarkupAndSubs />
