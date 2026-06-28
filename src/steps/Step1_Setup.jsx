@@ -209,7 +209,7 @@ export default function Step1_Setup({ onNext }) {
       });
 
       (hv.airDevices || []).forEach(d => {
-        const spec = [d.deviceType, d.neckSize ? `neck ${d.neckSize}` : '', d.cfm ? `${d.cfm} CFM` : '', d.qty > 1 ? `× ${d.qty}` : '']
+        const spec = [d.deviceType, d.faceSize ? `face ${d.faceSize}` : '', d.neckSize ? `neck ${d.neckSize}` : '', d.cfm ? `${d.cfm} CFM` : '', d.qty > 1 ? `× ${d.qty}` : '']
           .filter(Boolean).join(' · ');
         pushPending('note', 'vision', fileMeta.name, {
           desc: `Air device ${d.tag || ''}${spec ? ' — ' + spec : ''}`.trim(),
