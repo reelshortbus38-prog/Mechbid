@@ -54,6 +54,22 @@ function scanScheduleDate(text, markerRe) {
   }
   return '';
 }
+// The pre-con bullet carries the meeting time ("MUST BE PRESENT at 1:00 pm").
+// Find the time on the marker line or the next few wrapped lines after it.
+function scanScheduleTime(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    for (let j = i; j < Math.min(lines.length, i + 4); j++) {
+      const m = lines[j].match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
+      if (m) {
+        const min = m[2] ? `:${m[2]}` : ':00';
+        return `${parseInt(m[1], 10)}${min} ${m[3].replace(/\./g, '').toLowerCase()}`;
+      }
+    }
+  }
+  return '';
+}
 // The actual pre-con is the "Pre-construction Meeting Today" line (the meeting
 // day), NOT the "MOBILIZE & PRE-CON MEETING" header that sits on the prior day.
 // Match the meeting-today line first; fall back to the broader phrase.
@@ -141,6 +157,7 @@ export default function Step1_Setup({ onNext }) {
     let keyDates = null;         // pre-con / completion / job length from an ERF
     let rcNightStart = '';       // night-work start date from a schedule
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
+    let preconTimeFromDoc = '';  // pre-con meeting time ("1:00 pm") from the doc
     let jobLengthFromDoc = '';   // total job length inferred by the AI
     let projName = '';
     let projAddr = '';
@@ -266,6 +283,7 @@ export default function Step1_Setup({ onNext }) {
           const text = await emailFileToText(file);
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
           { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
@@ -288,6 +306,7 @@ export default function Step1_Setup({ onNext }) {
           // "MOBILIZE & PRE-CON MEETING" and "NIGHT WORK BEGINS" lines carry
           // their own date headers, so this is exact (not guessed from tasks).
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
@@ -377,6 +396,7 @@ export default function Step1_Setup({ onNext }) {
           // safety net. Order of trust: regex marker → AI → crude task heuristic.
           if (!isRedline) {
             if (!preconFromDoc && parsed.preconDate) preconFromDoc = schedDateLabel(parsed.preconDate) || parsed.preconDate;
+            if (!preconTimeFromDoc && parsed.preconTime) preconTimeFromDoc = parsed.preconTime;
             if (!rcNightStart && parsed.rcFirstNightDate) rcNightStart = schedDateLabel(parsed.rcFirstNightDate) || parsed.rcFirstNightDate;
             if (!jobLengthFromDoc && parsed.jobLengthWeeks) jobLengthFromDoc = `${parsed.jobLengthWeeks} weeks`;
           }
@@ -496,7 +516,7 @@ export default function Step1_Setup({ onNext }) {
       // Key dates — pre-con from the ERF or the schedule's pre-con line, job
       // length from the ERF, RC night-work start from the schedule. Only fill
       // blanks so a re-upload or manual entry isn't overwritten.
-      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (keyDates && keyDates.preconDate) || preconFromDoc } : {}),
+      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (() => { const d = (keyDates && keyDates.preconDate) || preconFromDoc; return preconTimeFromDoc ? `${d} · ${preconTimeFromDoc}` : d; })() } : {}),
       ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && !state.jobLength ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
       ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an

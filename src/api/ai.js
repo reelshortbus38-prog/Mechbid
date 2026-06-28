@@ -730,19 +730,20 @@ Also read any store address mentioned anywhere in the document — capture it ex
 
 THREE KEY DATES — find these and return them as real calendar dates (e.g. "2025-06-23" or "June 23, 2025", whatever the document shows). These are the most important fields for an estimator and every schedule formats them differently, so reason from MEANING, not from a fixed phrase:
 - preconDate: the day the pre-construction / pre-con meeting actually happens (the meeting day itself). Schedules sometimes have a "mobilize / pre-con" header on the day BEFORE the meeting — if so, use the meeting day, not the mobilize day. Look for lines like "Pre-construction Meeting Today", "Pre-Con Meeting", "Preconstruction conference".
+- preconTime: the meeting time on that same pre-con line if one is given (e.g. "MUST BE PRESENT at 1:00 pm" -> "1:00 pm"). Leave empty if no time is stated.
 - rcFirstNightDate: the FIRST night the REFRIGERATION CONTRACTOR (RC) itself starts night work — i.e. when RC begins removing product / washing / moving / relocating refrigerated cases. This is NOT the general "Night Work Begins" milestone, which usually marks when the GENERAL CONTRACTOR's night work starts (demo, fixtures) — that is typically weeks earlier. Use the first dated night on which the RC's own case removal/relocation/move work begins (look for "remove product and wash cases", "case moves begin", "RC removes/relocates cases", the first night with refrigerated-case relocation tied to circuit tags). If the GC night-work start and the RC case-move start are different dates, return the RC one.
 - jobLengthWeeks: total length of the job. If the schedule is organized in numbered weeks (w1…wN) return the highest week number; otherwise estimate total calendar weeks from the first to the last dated milestone. Return a number only.
 Leave any date you cannot determine as an empty string. Do NOT guess — only return a date you can tie to a specific line in the document.
 
 Return ONLY valid JSON, no markdown:
-{"storeName":"","storeNumber":"","address":"","startDate":"","preconDate":"","rcFirstNightDate":"","jobLengthWeeks":0,"fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. C1 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
+{"storeName":"","storeNumber":"","address":"","startDate":"","preconDate":"","preconTime":"","rcFirstNightDate":"","jobLengthWeeks":0,"fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. C1 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
 
 If this chunk contains no RC-relevant content at all, return the same JSON shape with empty arrays.`;
 
   const chunks = chunkByDateHeaders(text);
   const merged = {
     storeName: '', storeNumber: '', address: '', startDate: '',
-    preconDate: '', rcFirstNightDate: '', jobLengthWeeks: 0,
+    preconDate: '', preconTime: '', rcFirstNightDate: '', jobLengthWeeks: 0,
     fieldTasks: [], rackTasks: [], parts: [], flags: [],
     nightWorkRequired: false, nightWorkDetails: '', minimumCrew: '',
     chunkSummaries: [],
@@ -765,6 +766,7 @@ If this chunk contains no RC-relevant content at all, return the same JSON shape
     if (parsed.address && !merged.address) merged.address = parsed.address;
     if (parsed.startDate && !merged.startDate) merged.startDate = parsed.startDate;
     if (parsed.preconDate && !merged.preconDate) merged.preconDate = parsed.preconDate;
+    if (parsed.preconTime && !merged.preconTime) merged.preconTime = parsed.preconTime;
     if (parsed.rcFirstNightDate && !merged.rcFirstNightDate) merged.rcFirstNightDate = parsed.rcFirstNightDate;
     if (parsed.jobLengthWeeks && parsed.jobLengthWeeks > (merged.jobLengthWeeks || 0)) merged.jobLengthWeeks = parsed.jobLengthWeeks;
     if (parsed.minimumCrew && !merged.minimumCrew) merged.minimumCrew = parsed.minimumCrew;
