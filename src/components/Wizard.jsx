@@ -101,6 +101,21 @@ export default function Wizard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-save: persist the job ~1.5s after the last change, so work is never
+  // lost to a refresh or a forgotten Save tap. Only kicks in once the job has a
+  // name or has been saved before (so blank new jobs don't create clutter).
+  useEffect(() => {
+    if (!state.projName && !state.jobId) return;
+    const t = setTimeout(() => {
+      const id = saveJob(state);
+      if (id && id !== state.jobId) dispatch({ type: 'MERGE', payload: { jobId: id } });
+      setSaveIndicator('✓ Saved');
+      setTimeout(() => setSaveIndicator(''), 1000);
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   function handleSave() {
     const id = saveJob(state);
     if (id) {

@@ -6,6 +6,10 @@ import { createContext, useContext, useReducer } from 'react';
 // the real global default on RESET/new job — see applyDefaultSupplier() usage there.
 export const initialState = {
   mode: 'Commercial Refrigeration',
+  // Refrigeration system type. CO₂ transcritical (R-744) uses K65 copper-iron
+  // alloy and high-pressure (1300+ psi) fittings instead of standard ACR copper,
+  // so the generated material list and refrigerant change with it.
+  systemType: 'HFC',   // 'HFC' | 'CO2'
   projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
   uploadedFiles: [], extractionResults: [], flags: [],
   circuits: [],
@@ -50,6 +54,9 @@ export const initialState = {
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
   materialsTaxPct: 0,
+  bondPct: 0,        // payment & performance bond, % of bid
+  permitFee: 0,      // flat permit/fees
+  bidValidDays: 30,  // proposal validity period (days)
   // Standard bid exclusions/qualifications — the contractual scope fence shown
   // on the proposal. Seeded with common mechanical exclusions; fully editable.
   exclusions: [
@@ -78,6 +85,9 @@ export const initialState = {
   resSucSize: '',
   resLiqSize: '',
   resLineLength: '',
+  // Estimated utility/manufacturer rebate — shown to the homeowner as a credit
+  // against their net cost (a closing tool); does not reduce the contractor's bid.
+  resRebate: 0,
   // Commercial HVAC
   hvacEquipment: [],
   hvacParts: [],
@@ -262,6 +272,21 @@ export function deleteJob(id) {
 // them in (incoming jobs win on id collision), tolerating a raw jobs object too.
 export function exportAllJobsJSON() {
   return JSON.stringify({ app: 'mechbid', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
+}
+
+// ── COMPANY PROFILE ──────────────────────────────────────────────────────────
+// The contractor's own company details — global (same across every job) and
+// printed on the proposal so a bid goes out on YOUR letterhead, not "MechBid".
+const COMPANY_KEY = 'mechbid_company_v1';
+
+export function loadCompanyProfile() {
+  try { return JSON.parse(localStorage.getItem(COMPANY_KEY) || '{}') || {}; }
+  catch { return {}; }
+}
+
+export function saveCompanyProfile(profile) {
+  try { localStorage.setItem(COMPANY_KEY, JSON.stringify(profile || {})); }
+  catch (e) { console.warn('Company profile save failed:', e); }
 }
 
 export function importJobsJSON(text) {

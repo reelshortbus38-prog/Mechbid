@@ -86,8 +86,29 @@ export default function Step1_Setup({ onNext }) {
     const newResults = [];
     const flags = [];
     const pending = []; // { id, kind, sourceType, fileName, data, status }
+    const equipmentImports = []; // HVAC equipment parsed from a schedule
     let projName = '';
     let projAddr = '';
+
+    // Map a free-text equipment type from a schedule onto the HVAC type dropdown.
+    function mapHvacType(t) {
+      const s = String(t || '').toLowerCase();
+      if (/rtu|rooftop/.test(s)) return 'Rooftop Unit (RTU)';
+      if (/ahu|air handl/.test(s)) return 'Air Handling Unit (AHU)';
+      if (/fcu|fan coil/.test(s)) return 'Fan Coil Unit (FCU)';
+      if (/vav/.test(s)) return 'VAV Box';
+      if (/condens/.test(s)) return 'Split System — Condenser';
+      if (/split/.test(s)) return 'Split System — Air Handler';
+      if (/heat pump|hp\b/.test(s)) return 'Packaged Heat Pump';
+      if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
+      if (/chiller/.test(s)) return 'Chiller';
+      if (/boiler/.test(s)) return 'Boiler';
+      if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
+      if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
+      if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
+      if (/exhaust/.test(s)) return 'Exhaust Fan';
+      return 'Other';
+    }
 
     function pushPending(kind, sourceType, fileName, data) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
@@ -153,6 +174,18 @@ export default function Step1_Setup({ onNext }) {
               source: fileMeta.name,
             });
             newResults.push(`📋 ${fileMeta.name}: Parts order form — ${pof.items?.length || 0} item(s) found, added as a reference flag (not priced)`);
+          } else if (res.equipment?.length) {
+            // HVAC equipment schedule — map units onto the Equipment step.
+            res.equipment.forEach(e => equipmentImports.push({
+              id: uid(), tag: e.tag || '', type: mapHvacType(e.type),
+              tons: e.tons || e.cfm || '', brand: e.brand || '', model: e.model || '',
+              refrigerant: 'R-410A', mca: '', mop: '', voltage: '', location: '',
+              cost: 0, task: e.isNew === false ? 'Replacement' : 'New Installation',
+              notes: e.notes || '',
+            }));
+            if (res.storeName && !projName) projName = res.storeName;
+            newResults.push(`🌀 ${fileMeta.name}: ${res.equipment.length} HVAC unit(s) found — added to Equipment (review on the Equipment step)`);
+            if (res.summary) newResults.push(`   → ${res.summary}`);
           } else {
             (res.circuits || []).forEach(c => {
               if (c.circuitId) pushPending('circuit', 'excel', fileMeta.name, c);
@@ -337,6 +370,14 @@ export default function Step1_Setup({ onNext }) {
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
+      // HVAC equipment goes straight to the Equipment step (which is itself an
+      // editable review list), deduped by tag against what's already there.
+      ...(equipmentImports.length ? {
+        hvacEquipment: [
+          ...(state.hvacEquipment || []),
+          ...equipmentImports.filter(e => !e.tag || !(state.hvacEquipment || []).some(x => x.tag && x.tag === e.tag)),
+        ],
+      } : {}),
     }});
 
     setResults(newResults);

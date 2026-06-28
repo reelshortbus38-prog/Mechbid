@@ -217,12 +217,28 @@ function MiscParts() {
 
   const partsTotal = parts.reduce((s, p) => s + (p.total || 0), 0);
 
+  // Common commercial-HVAC install items that are easy to leave off a bid —
+  // one tap adds the line so the estimator just fills qty/cost.
+  const COMMON = [
+    'Curb adapter', 'Roof curb / rails', 'Crane / rigging', 'Disconnect & whip',
+    'Programmable / BMS thermostat', 'Economizer', 'Low-ambient kit', 'Hail guards',
+    'Condensate trap & drain (PVC)', 'Duct smoke detector', 'Vibration isolation',
+    'Filter rack & filters', 'Duct connection / flex / transitions',
+    'Refrigerant (R-410A / R-454B) by lb', 'Lineset (split)', 'Refrigerant line insulation',
+  ];
+  const addNamed = desc => dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc, qty: 1, unitCost: 0, total: 0 }] });
+
   return (
     <div>
       <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <SLabel>Parts & Misc Materials</SLabel>
         <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
       </Row>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+        {COMMON.map(c => (
+          <button key={c} onClick={() => addNamed(c)} style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.surface, color: colors.textDim }}>+ {c}</button>
+        ))}
+      </div>
       {parts.length === 0 ? (
         <Card><EmptyState icon="🔧" title="No parts yet" subtitle="Add thermostats, controls, refrigerant, filters, curb adapters, etc." /></Card>
       ) : (
