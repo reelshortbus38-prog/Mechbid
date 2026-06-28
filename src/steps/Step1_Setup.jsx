@@ -18,10 +18,26 @@ import JobInfo from '../components/JobInfo.jsx';
 const SCHED_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
 const SCHED_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function schedDateLabel(label) {
-  const m = String(label || '').match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
-  if (!m) return '';
-  const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
-  return mi >= 0 ? `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}` : '';
+  const s = String(label || '');
+  // "June 23" / "June 23rd, 2025" — textual month + day (schedule headers).
+  const m = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  if (m) {
+    const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
+    if (mi >= 0) return `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}`;
+  }
+  // ISO "2025-06-23" — the AI commonly normalizes to this.
+  const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    const mi = parseInt(iso[2], 10) - 1;
+    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(iso[3], 10)}`;
+  }
+  // Numeric "6/23/2025" or "6/23" (month-first, US convention).
+  const us = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/);
+  if (us) {
+    const mi = parseInt(us[1], 10) - 1;
+    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(us[2], 10)}`;
+  }
+  return '';
 }
 
 // Find the schedule date for a marker line (e.g. "MOBILIZE & PRE-CON MEETING"
@@ -38,8 +54,15 @@ function scanScheduleDate(text, markerRe) {
   }
   return '';
 }
-const PRECON_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\s*meeting/i;
-const NIGHT_START_RE = /night work begins|night work to begin/i;
+// The actual pre-con is the "Pre-construction Meeting Today" line (the meeting
+// day), NOT the "MOBILIZE & PRE-CON MEETING" header that sits on the prior day.
+// Match the meeting-today line first; fall back to the broader phrase.
+const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
+const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\s*meeting/i;
+// The RC's first night is when CASES start moving, NOT the general "NIGHT WORK
+// BEGINS" (that's GC). In Food Lion schedules the first case-move night is
+// marked by "remove product and wash cases by 9 pm".
+const RC_NIGHT_RE = /remove product and wash cases|case (?:moves?|relocations?) begin/i;
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -118,6 +141,7 @@ export default function Step1_Setup({ onNext }) {
     let keyDates = null;         // pre-con / completion / job length from an ERF
     let rcNightStart = '';       // night-work start date from a schedule
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
+    let jobLengthFromDoc = '';   // total job length inferred by the AI
     let projName = '';
     let projAddr = '';
 
@@ -241,8 +265,8 @@ export default function Step1_Setup({ onNext }) {
           sourceType = 'doctext';
           const text = await emailFileToText(file);
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
-          { const p = scanScheduleDate(text, PRECON_RE); if (p && !preconFromDoc) preconFromDoc = p;
-            const n = scanScheduleDate(text, NIGHT_START_RE); if (n) rcNightStart = n; }
+          { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
@@ -263,8 +287,8 @@ export default function Step1_Setup({ onNext }) {
           // Deterministic key dates straight from the schedule text — the
           // "MOBILIZE & PRE-CON MEETING" and "NIGHT WORK BEGINS" lines carry
           // their own date headers, so this is exact (not guessed from tasks).
-          { const p = scanScheduleDate(docRes.text, PRECON_RE); if (p && !preconFromDoc) preconFromDoc = p;
-            const n = scanScheduleDate(docRes.text, NIGHT_START_RE); if (n) rcNightStart = n; }
+          { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts
@@ -344,6 +368,18 @@ export default function Step1_Setup({ onNext }) {
           //  - Undated scope-of-work tasks → real Field Work labor.
           const isRedline = parsed.documentType === 'redline_callout';
           const bidAsLineItems = state.taskBidMode === 'lineItems';
+          // Key dates — "not every schedule is the same," so the AI reads them
+          // from MEANING (pre-con meeting day; the RC's own first case-move
+          // night, which is distinct from the GC's general night-work start).
+          // The deterministic regex scan above runs first when its markers are
+          // present (exact on the Food Lion format); the AI fills in whatever
+          // the regex couldn't, and both stay editable downstream as the final
+          // safety net. Order of trust: regex marker → AI → crude task heuristic.
+          if (!isRedline) {
+            if (!preconFromDoc && parsed.preconDate) preconFromDoc = schedDateLabel(parsed.preconDate) || parsed.preconDate;
+            if (!rcNightStart && parsed.rcFirstNightDate) rcNightStart = schedDateLabel(parsed.rcFirstNightDate) || parsed.rcFirstNightDate;
+            if (!jobLengthFromDoc && parsed.jobLengthWeeks) jobLengthFromDoc = `${parsed.jobLengthWeeks} weeks`;
+          }
           // First night-work / case-move dated task = RC night-work start date.
           if (!isRedline && !rcNightStart) {
             for (const t of (parsed.fieldTasks || [])) {
@@ -461,7 +497,7 @@ export default function Step1_Setup({ onNext }) {
       // length from the ERF, RC night-work start from the schedule. Only fill
       // blanks so a re-upload or manual entry isn't overwritten.
       ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (keyDates && keyDates.preconDate) || preconFromDoc } : {}),
-      ...(keyDates && keyDates.jobLengthWeeks && !state.jobLength ? { jobLength: `${keyDates.jobLengthWeeks} weeks` } : {}),
+      ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && !state.jobLength ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
       ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
