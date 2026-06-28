@@ -16,6 +16,12 @@ export const initialState = {
   rcStartDate: '',      // RC night-work / case-move start
   jobLength: '',        // total job length (e.g. "16 weeks")
   uploadedFiles: [], extractionResults: [], flags: [],
+  // How extracted scope tasks are treated. 'notes' (default): tasks are
+  // reference notes and labor is estimated in bulk (crew/periods/labor units).
+  // 'lineItems': each task becomes a billable Field Work / Rack labor line, for
+  // shops that bid task-by-task. Dated schedule items and redline callouts are
+  // always notes regardless.
+  taskBidMode: 'notes',
   circuits: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
@@ -98,6 +104,10 @@ export const initialState = {
   // Shared
   preferredSupplier: 'RE Michel',
   jobMemory: {},
+  // Calibration: actual costs entered after a job completes, to compare against
+  // the estimate and tune labor units / rates. { materials, labor, subs, other }.
+  actuals: {},
+  actualNotes: '',
 };
 
 // ── REDUCER ────────────────────────────────────────────────────────────────────

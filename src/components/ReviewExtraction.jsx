@@ -98,7 +98,7 @@ function ReviewRow({ item, onChange, onToggle }) {
         {item.kind === 'note' && (
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>
-              Redline Note{item.data.circuitRef ? ` · ${item.data.circuitRef}` : ''}{item.data.location ? ` · ${item.data.location}` : ''}
+              {item.data.date ? `Schedule Note · ${item.data.date}` : 'Redline Note'}{item.data.circuitRef ? ` · ${item.data.circuitRef}` : ''}{item.data.location ? ` · ${item.data.location}` : ''}
             </div>
             <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
             {(item.data.desc || '').includes('[unclear]') && (
@@ -216,7 +216,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
   const KIND_LABELS = {
     projectInfo: { title: 'Project Info', icon: '📋' },
     circuit: { title: 'Circuits', icon: '⚡' },
-    note: { title: 'Redline Notes (scope, not labor)', icon: '📝' },
+    note: { title: 'Notes (scope & schedule — not labor)', icon: '📝' },
     rackTask: { title: 'Rack Tasks', icon: '🔩' },
     fieldTask: { title: 'Field Tasks', icon: '🔨' },
     part: { title: 'Parts', icon: '🔧' },
