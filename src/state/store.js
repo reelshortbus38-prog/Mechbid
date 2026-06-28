@@ -11,6 +11,10 @@ export const initialState = {
   // so the generated material list and refrigerant change with it.
   systemType: 'HFC',   // 'HFC' | 'CO2'
   projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
+  // Key bid dates a refrigeration estimator needs up front.
+  preconDate: '',       // pre-construction meeting
+  rcStartDate: '',      // RC night-work / case-move start
+  jobLength: '',        // total job length (e.g. "16 weeks")
   uploadedFiles: [], extractionResults: [], flags: [],
   circuits: [],
   rackParts: [], rackTasks: [],

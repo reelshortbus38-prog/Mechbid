@@ -142,6 +142,26 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
               <Input value={state.projAddr || ''} onChange={e => dispatch({ type: 'SET', key: 'projAddr', value: e.target.value })} placeholder="Street, City, State" />
             </div>
           </div>
+          {/* Key bid dates — pre-con, RC night-work start, total job length */}
+          <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Pre-Con Date</div>
+              <Input value={state.preconDate || ''} onChange={e => dispatch({ type: 'SET', key: 'preconDate', value: e.target.value })} placeholder="e.g. Aug 4" />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>RC Start (Night Work / Case Moves)</div>
+              <Input value={state.rcStartDate || ''} onChange={e => dispatch({ type: 'SET', key: 'rcStartDate', value: e.target.value })} placeholder="e.g. Aug 18" />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Total Job Length</div>
+              <Input value={state.jobLength || ''} onChange={e => dispatch({ type: 'SET', key: 'jobLength', value: e.target.value })} placeholder="e.g. 16 weeks" />
+            </div>
+          </div>
+          {(minDate != null || maxWeek != null) && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14 }}>
+              From the schedule: {minDate != null ? `span ${formatSpan(minDate, maxDate)}` : ''}{minDate != null && maxWeek != null ? ' · ' : ''}{maxWeek != null ? `through week ${maxWeek}` : ''}{nightDates > 0 ? ` · ${nightDates} night${nightDates !== 1 ? 's' : ''}` : ''} — confirm the dates above.
+            </div>
+          )}
           <div style={{ height: 1, background: colors.border, margin: '4px 0 14px' }} />
         </>
       )}
