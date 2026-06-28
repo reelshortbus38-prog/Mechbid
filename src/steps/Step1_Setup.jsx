@@ -290,6 +290,11 @@ export default function Step1_Setup({ onNext }) {
           // important as the task text itself. date/circuitRef are ALSO kept
           // as their own fields (not just baked into desc) so that accepted
           // items can populate the dedicated RC Schedule view cleanly.
+          // Redline callouts are SCOPE NOTES (what/where to pipe), not billable
+          // labor — so a redline routes its callouts to the 'note' review
+          // category instead of the Field Work labor table. Dated-schedule and
+          // scope-doc field tasks are real labor activities and stay 'fieldTask'.
+          const isRedline = parsed.documentType === 'redline_callout';
           (parsed.fieldTasks || []).forEach(t => {
             if (t.desc && isRCTask(t.desc)) {
               const extraContext = [
@@ -299,10 +304,16 @@ export default function Step1_Setup({ onNext }) {
               ].filter(Boolean).join(' · ');
               const combinedNotes = [extraContext, t.notes].filter(Boolean).join(' — ');
               const desc = t.date ? `[${t.date}] ${t.desc}` : t.desc;
-              pushPending('fieldTask', sourceType, fileMeta.name, {
-                desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {},
-                date: t.date || '', circuitRef: t.circuitRef || '', rawDesc: t.desc,
-              });
+              if (isRedline) {
+                pushPending('note', sourceType, fileMeta.name, {
+                  desc, circuitRef: t.circuitRef || '', location: t.location || '', notes: combinedNotes, rawDesc: t.desc,
+                });
+              } else {
+                pushPending('fieldTask', sourceType, fileMeta.name, {
+                  desc, men: 1, hrs: 0, notes: combinedNotes, crewAssignment: {},
+                  date: t.date || '', circuitRef: t.circuitRef || '', rawDesc: t.desc,
+                });
+              }
             }
           });
 
@@ -395,6 +406,7 @@ export default function Step1_Setup({ onNext }) {
     const newFieldTasks = [];
     const newRackParts = [];
     const newScheduleItems = [];
+    const newNotes = []; // redline scope notes → flags
     let projName = '';
     let projAddr = '';
     let storeNumber = '';
@@ -433,6 +445,12 @@ export default function Step1_Setup({ onNext }) {
             notes: item.data.notes || '',
           });
         }
+      } else if (item.kind === 'note') {
+        // Redline scope note → a flag, with circuit prefix for quick reference.
+        const text = item.data.circuitRef ? `[${item.data.circuitRef}] ${item.data.desc}` : item.data.desc;
+        if (!newNotes.find(f => f.text === text)) {
+          newNotes.push({ type: 'note', text, source: item.fileName });
+        }
       } else if (item.kind === 'part') {
         if (!newRackParts.find(x => x.partId === item.data.partId) && !state.rackParts.find(x => x.partId === item.data.partId)) {
           newRackParts.push({ id: uid(), ...item.data });
@@ -450,6 +468,7 @@ export default function Step1_Setup({ onNext }) {
       fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
       rackParts: [...state.rackParts, ...newRackParts],
       rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
+      flags: [...(state.flags || []), ...newNotes],
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),
       ...(storeNumber && !state.storeNumber ? { storeNumber } : {}),

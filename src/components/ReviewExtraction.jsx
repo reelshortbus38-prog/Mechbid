@@ -95,6 +95,20 @@ function ReviewRow({ item, onChange, onToggle }) {
           </div>
         )}
 
+        {item.kind === 'note' && (
+          <div>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>
+              Redline Note{item.data.circuitRef ? ` · ${item.data.circuitRef}` : ''}{item.data.location ? ` · ${item.data.location}` : ''}
+            </div>
+            <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            {(item.data.desc || '').includes('[unclear]') && (
+              <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700 }}>
+                ⚠️ Part of this callout was unclear — check the drawing before accepting.
+              </div>
+            )}
+          </div>
+        )}
+
         {item.kind === 'rackTask' && (
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rack Task Description</div>
@@ -189,6 +203,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
   const grouped = {
     projectInfo: items.filter(i => i.kind === 'projectInfo'),
     circuit: items.filter(i => i.kind === 'circuit'),
+    note: items.filter(i => i.kind === 'note'),
     rackTask: items.filter(i => i.kind === 'rackTask'),
     fieldTask: items.filter(i => i.kind === 'fieldTask'),
     part: items.filter(i => i.kind === 'part'),
@@ -201,6 +216,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
   const KIND_LABELS = {
     projectInfo: { title: 'Project Info', icon: '📋' },
     circuit: { title: 'Circuits', icon: '⚡' },
+    note: { title: 'Redline Notes (scope, not labor)', icon: '📝' },
     rackTask: { title: 'Rack Tasks', icon: '🔩' },
     fieldTask: { title: 'Field Tasks', icon: '🔨' },
     part: { title: 'Parts', icon: '🔧' },
