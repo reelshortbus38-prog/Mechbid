@@ -6,7 +6,7 @@ import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc,
-  emailFileToText
+  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -163,27 +163,85 @@ export default function Step1_Setup({ onNext }) {
     let projAddr = '';
 
     // Map a free-text equipment type from a schedule onto the HVAC type dropdown.
+    // Maps a free-text type OR a bare equipment tag (AHU-1, EF-3, CU-1…) onto the
+    // HVAC type dropdown. Plan sheets give a tag, not a spelled-out type, so the
+    // tag prefix is often all we have to go on.
     function mapHvacType(t) {
       const s = String(t || '').toLowerCase();
       if (/rtu|rooftop/.test(s)) return 'Rooftop Unit (RTU)';
       if (/ahu|air handl/.test(s)) return 'Air Handling Unit (AHU)';
       if (/fcu|fan coil/.test(s)) return 'Fan Coil Unit (FCU)';
       if (/vav/.test(s)) return 'VAV Box';
-      if (/condens/.test(s)) return 'Split System — Condenser';
-      if (/split/.test(s)) return 'Split System — Air Handler';
-      if (/heat pump|hp\b/.test(s)) return 'Packaged Heat Pump';
       if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
-      if (/chiller/.test(s)) return 'Chiller';
-      if (/boiler/.test(s)) return 'Boiler';
+      if (/condens|^cu\b|\bcu-|^ac\b|\bac-/.test(s)) return 'Split System — Condenser';
+      if (/split/.test(s)) return 'Split System — Air Handler';
+      if (/heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
+      if (/chiller|^ch\b|\bch-/.test(s)) return 'Chiller';
+      if (/boiler|^b-\d|^bh\b|\bbh-/.test(s)) return 'Boiler';
       if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
       if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
       if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
-      if (/exhaust/.test(s)) return 'Exhaust Fan';
+      if (/exhaust|^ef\b|\bef-|^tf\b|\btf-/.test(s)) return 'Exhaust Fan';
       return 'Other';
     }
 
     function pushPending(kind, sourceType, fileName, data) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
+    }
+
+    // Fold an HVAC mechanical-plan extraction into the same channels the rest of
+    // the wizard uses: equipment units go to the Equipment step (via
+    // equipmentImports), and air devices + duct/pipe runs become reviewable
+    // takeoff notes (sizes/CFM the estimator prices up — we don't auto-price
+    // them, since duct/pipe LENGTH is scaled off the sheet, not labeled).
+    function handleHvacResult(hv, fileMeta) {
+      if (!hv) { newResults.push(`🌀 ${fileMeta.name}: No HVAC takeoff could be read`); return; }
+      const drawing = [hv.drawingNumber, hv.drawingTitle].filter(Boolean).join(' — ');
+      if (hv.projectName && !projName) projName = hv.projectName;
+
+      (hv.equipment || []).forEach(e => {
+        equipmentImports.push({
+          id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
+          tons: '', brand: '', model: '', refrigerant: 'R-410A', mca: '', mop: '',
+          voltage: '', location: '', cost: 0, task: 'New Installation',
+          notes: [e.type, e.notes].filter(Boolean).join(' · '),
+        });
+      });
+
+      (hv.airDevices || []).forEach(d => {
+        const spec = [d.deviceType, d.neckSize ? `neck ${d.neckSize}` : '', d.cfm ? `${d.cfm} CFM` : '', d.qty > 1 ? `× ${d.qty}` : '']
+          .filter(Boolean).join(' · ');
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `Air device ${d.tag || ''}${spec ? ' — ' + spec : ''}`.trim(),
+          notes: drawing, rawDesc: d.tag || d.deviceType || 'air device',
+        });
+      });
+      (hv.ductRuns || []).forEach(r => {
+        const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${label}${r.service ? ` (${r.service})` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
+          notes: drawing, rawDesc: r.size,
+        });
+      });
+      (hv.pipeRuns || []).forEach(r => {
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${r.size} pipe${r.service ? ` ${r.service}` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
+          notes: drawing, rawDesc: r.size,
+        });
+      });
+
+      const totalCfm = (hv.airDevices || []).reduce((s, d) => s + (Number(d.cfm) || 0) * (Number(d.qty) || 1), 0);
+      const bits = [
+        `${(hv.equipment || []).length} unit(s)`,
+        `${(hv.airDevices || []).length} air device type(s)`,
+        totalCfm ? `${totalCfm.toLocaleString()} CFM total` : '',
+        `${(hv.ductRuns || []).length} duct size(s)`,
+        (hv.pipeRuns || []).length ? `${hv.pipeRuns.length} pipe run(s)` : '',
+      ].filter(Boolean).join(' · ');
+      flags.push({ type: 'info', text: `HVAC takeoff${drawing ? ` [${drawing}]` : ''}: ${bits}`, source: fileMeta.name });
+      (hv.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
+      newResults.push(`🌀 ${fileMeta.name}: HVAC plan read — ${bits} (review on the Equipment step & Review screen)`);
+      if (hv.summary) newResults.push(`   → ${hv.summary}`);
     }
 
     for (const fileMeta of modeFiles) {
@@ -205,7 +263,21 @@ export default function Step1_Setup({ onNext }) {
         // most reliable — these auto-accept but are still visible for review).
         let sourceType = 'doctext';
 
-        if (fileMeta.type === 'image') {
+        // HVAC jobs upload mechanical plan sheets (ductwork/piping plans,
+        // equipment schedules), not refrigeration redlines/BPRs — route those to
+        // the HVAC vision extractor, which reads equipment tags, air devices
+        // (CFM), and duct/pipe sizes instead of circuits.
+        const isHvacMode = /hvac/i.test(fileMeta.mode || state.mode || '');
+
+        if (isHvacMode && (fileMeta.type === 'image' || fileMeta.type === 'pdf')) {
+          sourceType = 'vision';
+          const hv = fileMeta.type === 'pdf'
+            ? await analyzeHvacPlanPdf(file, fileMeta.name)
+            : await analyzeHvacPlanImage(file, fileMeta.name);
+          handleHvacResult(hv, fileMeta);
+          parsed = null; // handled in-place; skip the refrigeration mapping below
+
+        } else if (fileMeta.type === 'image') {
           sourceType = 'vision';
           // Full image + overlapping high-res tiles, merged — so small schedule
           // cells / callout text on a dense photo survive the model's downscale.

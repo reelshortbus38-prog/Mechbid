@@ -430,6 +430,148 @@ export async function analyzeImageDoc(file, fileName) {
   return merged;
 }
 
+// ── HVAC MECHANICAL DRAWING VISION ─────────────────────────────────────────────
+// Mechanical sheets (ductwork plans like "M2.1 NEW MECHANICAL PLAN", hydronic
+// piping plans like "M2.2 NEW MECHANICAL PIPING PLAN", or equipment schedules)
+// are a completely different document type from the refrigeration redline/BPR
+// the standard vision prompt targets. Here the priced takeoff is: equipment
+// units (AHU/FCU/VAV/EF/RTU/CU…), air devices (diffusers/grilles with neck size
+// + CFM + "TYP." counts), duct runs (rectangular WxH and round ⌀ sizes), and —
+// on a piping sheet — hydronic/refrigerant pipe runs (size + service). Duct/pipe
+// LENGTH is almost never labeled on these plans (it's scaled off the drawing),
+// so the prompt is told NOT to invent lengths — sizes, counts and CFM are what's
+// actually on the page.
+const HVAC_VISION_PROMPT = `You are an expert commercial HVAC estimator reading a mechanical drawing sheet — a ductwork plan, a hydronic/refrigerant piping plan, or an equipment schedule. The image may be rotated; read ALL text regardless of orientation.
+
+Extract the following EXACTLY as written — never round, simplify, or invent:
+
+1) TITLE BLOCK: drawing number (e.g. "M2.1"), drawing title (e.g. "NEW MECHANICAL PLAN"), project name, and date if shown.
+
+2) EQUIPMENT — units shown as TAGS inside hexagons, ovals, or boxes. Capture each distinct tag ONCE. Common prefixes and what they mean: RTU=rooftop unit, AHU=air handling unit, FCU=fan coil unit, VAV=variable air volume box, CU=condensing unit, AC=AC/condenser unit, EF=exhaust fan, TF=transfer fan, MAU=make-up air unit, ERV/HRV=energy/heat recovery ventilator, P=pump, B=boiler, CH=chiller, MB=mixing box, BH/FH=baseboard/finned-tube heater. Return {tag, type, notes}; infer type from the prefix. If the same tag appears repeatedly it is still ONE entry — say so in notes.
+
+3) AIR DEVICES — supply diffusers, return/exhaust grilles, registers. On these plans they read as TYPE-NUMBER with a neck size and a CFM, e.g. "CD-1 8\"⌀ 100" = ceiling diffuser CD-1, 8 inch round neck, 100 CFM. Prefixes: CD=ceiling/supply diffuser, SG=supply grille, RG=return grille, EG or ED=exhaust grille/diffuser, TG=transfer grille, LD=linear diffuser. A "(TYP. n)" note means n identical devices — put n in qty. Return {tag, deviceType, neckSize, cfm, qty}.
+
+4) DUCT RUNS — duct segments labeled with a size on the run. Rectangular ducts are "WxH" (e.g. "24x16", "60x24"). Round ducts use a diameter mark (e.g. "8\"⌀", "12 DIA", "10∅"). Capture every distinct size you can read. Note "UP THRU ROOF" or the service (supply/return/exhaust/outside air) when indicated. Return {shape:"rect"|"round", size, service, notes}. Do NOT report duct LENGTH unless a length with ft or ' is explicitly written on the run — these plans scale length off the drawing, so guessing it is wrong.
+
+5) PIPE RUNS — on a piping plan, hydronic/refrigerant lines labeled with size + service, e.g. "4\" CHWS&R" (chilled water supply & return), "2½\" HWS&R" (hot water S&R), "1\" HWR". Return {size, service, notes}.
+
+If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, or counts.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
+
+export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
+  try {
+    const tileContext = tile && tile.tilesTotal > 1
+      ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger sheet — read only tags/labels fully legible within this crop; another tile and the full-sheet pass cover the rest, and the merge dedups overlap.`
+      : '';
+    const res = await fetch('/api/claude-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+            { type: 'text', text: HVAC_VISION_PROMPT + tileContext }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+  } catch (e) {
+    console.warn('HVAC vision error:', e.message);
+    return null;
+  }
+}
+
+// Fresh, empty HVAC takeoff accumulator + the dedupe keys used to merge passes.
+function newHvacMerged() {
+  return {
+    documentType: '', drawingNumber: '', drawingTitle: '', projectName: '', date: '',
+    equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], flags: [], summaries: [],
+  };
+}
+function absorbHvac(merged, parsed, seen) {
+  if (!parsed) return;
+  if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
+  if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
+  if (parsed.drawingTitle && !merged.drawingTitle) merged.drawingTitle = parsed.drawingTitle;
+  if (parsed.projectName && !merged.projectName) merged.projectName = parsed.projectName;
+  if (parsed.date && !merged.date) merged.date = parsed.date;
+  (parsed.equipment || []).forEach(e => {
+    const tag = String(e.tag || '').toUpperCase().trim();
+    if (!tag) return;
+    const k = 'eq|' + tag;
+    if (seen.has(k)) return; seen.add(k);
+    merged.equipment.push({ ...e, tag });
+  });
+  (parsed.airDevices || []).forEach(d => {
+    const tag = String(d.tag || '').toUpperCase().trim();
+    const k = 'ad|' + tag + '|' + (d.neckSize || '') + '|' + (d.cfm || '');
+    if (!tag && !d.cfm) return;
+    if (seen.has(k)) return; seen.add(k);
+    merged.airDevices.push({ ...d, tag, qty: d.qty || 1 });
+  });
+  (parsed.ductRuns || []).forEach(r => {
+    const size = String(r.size || '').trim();
+    if (!size) return;
+    const k = 'dr|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
+    if (seen.has(k)) return; seen.add(k);
+    merged.ductRuns.push({ ...r, size });
+  });
+  (parsed.pipeRuns || []).forEach(r => {
+    const size = String(r.size || '').trim();
+    if (!size) return;
+    const k = 'pr|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
+    if (seen.has(k)) return; seen.add(k);
+    merged.pipeRuns.push({ ...r, size });
+  });
+  (parsed.flags || []).forEach(f => merged.flags.push(f));
+  if (parsed.summary) merged.summaries.push(parsed.summary);
+}
+function finishHvac(merged) {
+  merged.summary = merged.summaries.join(' ');
+  delete merged.summaries;
+  return merged;
+}
+
+// Image upload of an HVAC sheet (photo or screenshot): full image + tiles.
+export async function analyzeHvacPlanImage(file, fileName) {
+  const { full, tiles } = await imageToTiles(file);
+  const merged = newHvacMerged();
+  const seen = new Set();
+  const passes = [{ base64: full, tile: null }, ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } }))];
+  for (const { base64, tile } of passes) {
+    const raw = await callClaudeVisionHVAC(base64, fileName, tile);
+    absorbHvac(merged, raw ? parseAIJson(raw) : null, seen);
+  }
+  return finishHvac(merged);
+}
+
+// PDF upload of an HVAC sheet (CAD/Bluebeam export, usually a flattened raster):
+// render each page + tiles to images and read via the HVAC vision prompt. These
+// sheets are graphics, not a text layer, so there's no deterministic shortcut.
+export async function analyzeHvacPlanPdf(file, fileName) {
+  const { renderPdfPagesToImages } = await import('./pdfRender.js');
+  const merged = newHvacMerged();
+  const seen = new Set();
+  const { pages, truncated } = await renderPdfPagesToImages(file);
+  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
+    const raw = await callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage });
+    const parsed = raw ? parseAIJson(raw) : null;
+    if (!parsed) {
+      merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed`, source: fileName });
+      continue;
+    }
+    absorbHvac(merged, parsed, seen);
+  }
+  if (truncated) merged.flags.push({ type: 'warn', text: 'Document has more pages than were analyzed (limit reached) — some sheets may be missing', source: fileName });
+  return finishHvac(merged);
+}
+
 export function parseAIJson(text) {
   try {
     let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
