@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useStore, fmt, uid, calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, primaryCrew, loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
+import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
+import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
@@ -302,66 +303,9 @@ function ScenarioCard({ scenarioKey, scenario, isActive, onSelect, onUpdateMarku
 }
 
 // ── HELPERS: compute totals per mode ──────────────────────────────────────────
-function useBidTotals(state, markupPct) {
-  const mode = state.mode;
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const crew = primaryCrew(state.laborPeriods);
-  const fieldTasksTotal = calcFieldTasksTotal(state.fieldTasks, crew);
-  // Sales/use tax is charged on the marked-up materials+equipment sell price,
-  // not on labor. Defaults to 0 so it only appears once a rate is set.
-  const taxPct = parseFloat(state.materialsTaxPct) || 0;
-  const taxOf = sell => sell * (taxPct / 100);
-  // Equipment markup falls back to the (scenario) material markup when unset.
-  const equipMarkupPct = (state.equipMarkupPct === '' || state.equipMarkupPct == null)
-    ? markupPct : (parseFloat(state.equipMarkupPct) || 0);
-  // Subcontractors: pass-through cost with an optional blanket markup. Not taxed
-  // (services), not subject to material markup.
-  const subsBase = (state.subcontractors || []).reduce((s, x) => s + (parseFloat(x.cost) || 0), 0);
-  const subMarkupPct = parseFloat(state.subMarkupPct) || 0;
-  const subsTotal = subsBase * (1 + subMarkupPct / 100);
-  // Bond is a % of the bid (P&P bonds run ~1–3%); permit is a flat fee. Both
-  // default to 0 and are added last, on top of the rest of the bid.
-  const bondPct = parseFloat(state.bondPct) || 0;
-  const permitFee = parseFloat(state.permitFee) || 0;
-  const finish = (subtotal, rest) => {
-    const bondAmt = subtotal * (bondPct / 100);
-    return { ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee, total: subtotal + bondAmt + permitFee };
-  };
-
-  if (mode === 'Residential HVAC') {
-    const equipTotal = (state.resEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
-    const partsTotal = (state.resParts || []).reduce((s, p) => s + (p.total || 0), 0);
-    const linesetTotal = parseFloat(state.resLinesetTotal) || 0;
-    const markupBase = equipTotal + partsTotal + linesetTotal;
-    // Equipment at its own rate; parts + lineset at the material rate.
-    const markupAmt = equipTotal * (equipMarkupPct / 100) + (partsTotal + linesetTotal) * (markupPct / 100);
-    const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal });
-  }
-
-  if (mode === 'Commercial HVAC') {
-    const equipTotal = (state.hvacEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
-    const partsTotal = (state.hvacParts || []).reduce((s, p) => s + (p.total || 0), 0);
-    const markupBase = equipTotal + partsTotal;
-    const markupAmt = equipTotal * (equipMarkupPct / 100) + partsTotal * (markupPct / 100);
-    const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal, equipTotal, partsTotal });
-  }
-
-  // Commercial Refrigeration (no separate equipment line — all material markup)
-  const matsTotal = (state.lineItems || []).reduce((s, i) => s + (i.total || 0), 0);
-  const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
-  // Rack labor is computed from the rack tasks + primary crew (the field is not
-  // persisted on the task, so it must be recomputed here — see calcRackLaborTotal).
-  const rackLaborTotal = calcRackLaborTotal(state.rackTasks, crew);
-  const markupBase = matsTotal + rackPartsContractor;
-  const markupAmt = markupBase * (markupPct / 100);
-  const taxAmt = taxOf(markupBase + markupAmt);
-  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal;
-  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor });
-}
+// Bid-total math lives in ./bidTotals.js (pure, unit-tested for the
+// total == sum-of-components invariant). This is just the call site.
+const useBidTotals = (state, markupPct) => computeBidTotals(state, markupPct);
 
 // ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
 function ProposalView({ company = {} }) {

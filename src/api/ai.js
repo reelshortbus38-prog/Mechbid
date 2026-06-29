@@ -20,6 +20,25 @@ export async function callClaude(messages, system = '') {
   return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
 }
 
+// Conversational assistant call — same OpenRouter endpoint, but a non-zero
+// temperature so answers read naturally (the extraction calls pin temp 0 for
+// determinism, which makes chat answers terse and repetitive). Takes the full
+// multi-turn message history so the assistant remembers the conversation.
+export async function chatWithAI(messages, system = '') {
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system, messages, temperature: 0.4, max_tokens: 1200 }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Assistant error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+}
+
 // Vision call - uses /api/claude with image support
 export async function callClaudeVision(base64Image, fileName, tile = null) {
   try {
@@ -882,9 +901,10 @@ CRITICAL EXCLUSIONS — these look like RC scope but are NOT:
 Also read any store address mentioned anywhere in the document — capture it exactly as written.
 
 THREE KEY DATES — find these and return them as real calendar dates (e.g. "2025-06-23" or "June 23, 2025", whatever the document shows). These are the most important fields for an estimator and every schedule formats them differently, so reason from MEANING, not from a fixed phrase:
-- preconDate: the day the pre-construction / pre-con meeting actually happens (the meeting day itself). Schedules sometimes have a "mobilize / pre-con" header on the day BEFORE the meeting — if so, use the meeting day, not the mobilize day. Look for lines like "Pre-construction Meeting Today", "Pre-Con Meeting", "Preconstruction conference".
+- IMPORTANT — ignore the DRAFT/ISSUE DATE: schedules often open with a bare date on the very first line (the day the schedule was written/revised, e.g. "July 1st, 2024" sitting alone above the store name). That is NOT the job start and NOT any milestone — never use it for any date field. The job actually starts at the first dated milestone under "Week #1" (the mobilize day).
+- preconDate: the day the pre-construction / pre-con meeting actually happens (the meeting day itself). Schedules sometimes have a "mobilize / pre-con" header on the day BEFORE the meeting — if so, use the meeting day, not the mobilize day. Look for lines like "Pre-construction Meeting Today", "Pre-Con Meeting", "Pre-construction/schedule Coordination Meeting", "Preconstruction conference".
 - preconTime: the meeting time on that same pre-con line if one is given (e.g. "MUST BE PRESENT at 1:00 pm" -> "1:00 pm"). Leave empty if no time is stated.
-- rcFirstNightDate: the FIRST night the REFRIGERATION CONTRACTOR (RC) itself starts night work — i.e. when RC begins removing product / washing / moving / relocating refrigerated cases. This is NOT the general "Night Work Begins" milestone, which usually marks when the GENERAL CONTRACTOR's night work starts (demo, fixtures) — that is typically weeks earlier. Use the first dated night on which the RC's own case removal/relocation/move work begins (look for "remove product and wash cases", "case moves begin", "RC removes/relocates cases", the first night with refrigerated-case relocation tied to circuit tags). If the GC night-work start and the RC case-move start are different dates, return the RC one.
+- rcFirstNightDate: the FIRST night the REFRIGERATION CONTRACTOR (RC) moves refrigerated cases — disconnects/relocates/temp-sets them. It shows up as an action header followed by a list of specific cases with CASE NUMBERS, e.g. "Disconnect and relocate to back room: (2) 8' Meat promo case# 25, 26", "Relocate and temp set on front wall: 16' self serve cold deli case# 1, 2", or "Refrigeration Contractor to temp cases out". The presence of a case# being moved is the key signal. Use the date of the FIRST such night. Do NOT use: the store's prep task "Store Associates to remove product and wash cases by 9 pm" (that's the STORE emptying/cleaning cases, not RC work); front-end "Remove: 5 LH Checkouts / Relocate: self-checkouts" (those are checkouts, not refrigerated cases); the GC's "Night Work Begins" milestone (demo/fixtures); or the late new-equipment install ("install Deli cases").
 - jobLengthWeeks: total length of the job. If the schedule is organized in numbered weeks (w1…wN) return the highest week number; otherwise estimate total calendar weeks from the first to the last dated milestone. Return a number only.
 Leave any date you cannot determine as an empty string. Do NOT guess — only return a date you can tie to a specific line in the document.
 
