@@ -84,8 +84,8 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
               <Input value={state.projAddr || ''} onChange={e => dispatch({ type: 'SET', key: 'projAddr', value: e.target.value })} placeholder="Street, City, State" />
             </div>
           </div>
-          {/* Key bid dates — pre-con, RC night-work start, total job length */}
-          <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+          {/* Key bid dates — pre-con, RC night start, final RCC, total job length */}
+          <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(2,1fr)', gap: 10, marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Pre-Con Date</div>
               <Input value={state.preconDate || ''} onChange={e => dispatch({ type: 'SET', key: 'preconDate', value: e.target.value })} placeholder="e.g. Aug 4" />
@@ -93,6 +93,10 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
             <div>
               <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>RC Start (Night Work / Case Moves)</div>
               <Input value={state.rcStartDate || ''} onChange={e => dispatch({ type: 'SET', key: 'rcStartDate', value: e.target.value })} placeholder="e.g. Aug 18" />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Final RCC Date</div>
+              <Input value={state.rccDate || ''} onChange={e => dispatch({ type: 'SET', key: 'rccDate', value: e.target.value })} placeholder="e.g. Nov 23" />
             </div>
             <div>
               <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Total Job Length</div>

@@ -12,7 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE } from '../components/scheduleDates.js';
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -92,6 +92,7 @@ export default function Step1_Setup({ onNext }) {
     let rcNightStart = '';       // night-work start date from a schedule
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
     let preconTimeFromDoc = '';  // pre-con meeting time ("1:00 pm") from the doc
+    let rccFromDoc = '';         // final store RCC date scanned from the schedule
     let jobLengthFromDoc = '';   // total job length inferred by the AI
     let projName = '';
     let projAddr = '';
@@ -301,6 +302,7 @@ export default function Step1_Setup({ onNext }) {
           { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanRcFirstCaseNight(text); if (n) rcNightStart = n;
+            const rcc = scanScheduleDate(text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
             const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
@@ -325,6 +327,7 @@ export default function Step1_Setup({ onNext }) {
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
+            const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
             const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
@@ -416,6 +419,7 @@ export default function Step1_Setup({ onNext }) {
             if (!preconFromDoc && parsed.preconDate) preconFromDoc = schedDateLabel(parsed.preconDate) || parsed.preconDate;
             if (!preconTimeFromDoc && parsed.preconTime) preconTimeFromDoc = parsed.preconTime;
             if (!rcNightStart && parsed.rcFirstNightDate) rcNightStart = schedDateLabel(parsed.rcFirstNightDate) || parsed.rcFirstNightDate;
+            if (!rccFromDoc && parsed.rccDate) rccFromDoc = schedDateLabel(parsed.rccDate) || parsed.rccDate;
             if (!jobLengthFromDoc && parsed.jobLengthWeeks) jobLengthFromDoc = `${parsed.jobLengthWeeks} weeks`;
           }
           // First night-work / case-move dated task = RC night-work start date.
@@ -537,6 +541,7 @@ export default function Step1_Setup({ onNext }) {
       ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (() => { const d = (keyDates && keyDates.preconDate) || preconFromDoc; return preconTimeFromDoc ? `${d} · ${preconTimeFromDoc}` : d; })() } : {}),
       ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && !state.jobLength ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
       ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
+      ...(rccFromDoc && !state.rccDate ? { rccDate: rccFromDoc } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
       ...(equipmentImports.length ? {

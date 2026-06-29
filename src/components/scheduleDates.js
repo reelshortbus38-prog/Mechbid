@@ -121,6 +121,9 @@ export function scanScheduleTime(text, markerRe) {
   return '';
 }
 
+// The final store RCC (Refrigeration Commissioning Check) — "Energy Team will
+// conduct a complete store RCC". The refrigeration system's final sign-off date.
+export const RCC_RE = /complete\s+store\s+RCC|conduct[^.\n]{0,30}\bRCC\b|\bstore\s+RCC\b|\bRCC\b/i;
 export const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
 // "pre-con(struction)" with "meeting" close by, either order — catches
 // "Pre-construction Meeting", "Pre-construction/schedule Coordination Meeting",
