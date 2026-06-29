@@ -101,7 +101,7 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
           </div>
           {(minDate != null || maxWeek != null) && (
             <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14 }}>
-              From the schedule: {minDate != null ? `span ${formatSpan(minDate, maxDate)}` : ''}{minDate != null && maxWeek != null ? ' · ' : ''}{maxWeek != null ? `through week ${maxWeek}` : ''}{nightDates > 0 ? ` · ${nightDates} night${nightDates !== 1 ? 's' : ''}` : ''} — confirm the dates above.
+              RC field tasks: {minDate != null ? `${formatSpan(minDate, maxDate)}` : ''}{minDate != null && maxWeek != null ? ' · ' : ''}{maxWeek != null ? `weeks 1–${maxWeek}` : ''}{nightDates > 0 ? ` · ${nightDates} night${nightDates !== 1 ? 's' : ''}` : ''}. The total job length above is the whole project (GC punch, commissioning, RCC run later) — confirm the dates.
             </div>
           )}
           <div style={{ height: 1, background: colors.border, margin: '4px 0 14px' }} />
@@ -115,13 +115,13 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 16 }}>
           {minDate != null && (
             <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Project Span</div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>RC Task Span</div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800 }}>{formatSpan(minDate, maxDate)}</div>
             </div>
           )}
           {minWeek != null && (
             <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Week Range</div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>RC Task Weeks</div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 800 }}>
                 {minWeek === maxWeek ? `Week ${minWeek}` : `Weeks ${minWeek}–${maxWeek}`}
               </div>
