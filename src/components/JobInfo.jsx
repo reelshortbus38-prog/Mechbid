@@ -1,6 +1,7 @@
 import { useStore, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Input, Row, EmptyState } from './UI.jsx';
+import { buildDateParser, isNightDate, extractWeekNum, formatSpan } from './scheduleDates.js';
 
 // ── JOB INFO ─────────────────────────────────────────────────────────────────
 // A dedicated, easy-to-find home for store info and the dated RC schedule —
@@ -15,65 +16,6 @@ import { Card, SLabel, Input, Row, EmptyState } from './UI.jsx';
 // sorted chronologically, read-only by default with simple edit/remove since
 // this is meant as a reference view, not a second labor-hours input table
 // (that's still Step5's Field Tasks section).
-
-// Month indices for date parsing
-const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-
-function extractMonthDay(label) {
-  if (!label) return null;
-  const match = label.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
-  if (!match) return null;
-  const monthIdx = MONTHS.indexOf(match[1].toLowerCase());
-  const day = parseInt(match[2], 10);
-  if (monthIdx < 0 || !day) return null;
-  return { monthIdx, day };
-}
-
-// Converts a schedule item's date label to a timestamp for sorting/spanning.
-// The tricky case is a job that crosses a calendar year boundary — e.g.
-// September through January. With a naive fixed-year approach (always 2000),
-// January sorts BEFORE September, flipping the project span so it shows
-// "Jan 6 - Nov 26" instead of "Sep 9 - Jan 6". Fix: detect the rollover by
-// finding the earliest month seen across all items, then treat any month that
-// is numerically earlier than that first month as belonging to the next year.
-function buildDateParser(schedule) {
-  // Find the earliest month seen across all schedule items to detect rollover
-  const allMonths = schedule
-    .map(s => extractMonthDay(s.date))
-    .filter(Boolean)
-    .map(d => d.monthIdx);
-  const firstMonth = allMonths.length ? Math.min(...allMonths) : 0;
-
-  return function tryParseDate(label) {
-    const md = extractMonthDay(label);
-    if (!md) return null;
-    // If this month is earlier than the first month we saw in the schedule,
-    // it must be in the following year (e.g. January after a September start).
-    const year = md.monthIdx < firstMonth ? 2001 : 2000;
-    return new Date(year, md.monthIdx, md.day).getTime();
-  };
-}
-
-function isNightDate(label) {
-  if (!label) return false;
-  return /\bnight\b/i.test(label);
-}
-
-function extractWeekNum(label) {
-  if (!label) return null;
-  // Matches "w15", "wk15", "week 15" in whatever form the date header used.
-  const match = label.match(/\bw(?:eek)?\.?\s*(\d{1,2})\b/i);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-function formatSpan(startMs, endMs) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const fmtOne = ms => {
-    const d = new Date(ms);
-    return `${months[d.getMonth()]} ${d.getDate()}`;
-  };
-  return `${fmtOne(startMs)} – ${fmtOne(endMs)}`;
-}
 
 export default function JobInfo({ compact = false, showStoreFields = true }) {
   const { state, dispatch } = useStore();

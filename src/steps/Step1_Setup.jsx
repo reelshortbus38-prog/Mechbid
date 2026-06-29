@@ -74,7 +74,11 @@ function scanScheduleTime(text, markerRe) {
 // day), NOT the "MOBILIZE & PRE-CON MEETING" header that sits on the prior day.
 // Match the meeting-today line first; fall back to the broader phrase.
 const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
-const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\s*meeting/i;
+// Broad fallback: a "pre-con(struction)" reference with "meeting" close by, in
+// either order — catches "Pre-construction Meeting", "Pre-construction/schedule
+// Coordination Meeting", and "Mobilize & Pre-Con Meeting". The bounded gap
+// keeps it from matching incidental "...at the pre-con..." prose elsewhere.
+const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\b.{0,40}\bmeeting\b|\bmeeting\b.{0,40}pre-?con(?:struction)?\b/i;
 // The RC's first night is when CASES start moving, NOT the general "NIGHT WORK
 // BEGINS" (that's GC). In Food Lion schedules the first case-move night is
 // marked by "remove product and wash cases by 9 pm".
