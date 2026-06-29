@@ -126,16 +126,36 @@ export const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
 // "Pre-construction Meeting", "Pre-construction/schedule Coordination Meeting",
 // "Mobilize & Pre-Con Meeting". Bounded gap avoids incidental "at the pre-con" prose.
 export const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\b.{0,40}\bmeeting\b|\bmeeting\b.{0,40}pre-?con(?:struction)?\b/i;
-// RC's first night = the first night the REFRIGERATION CONTRACTOR handles cases
-// (removes / relocates / temps them). In these schedules that work appears as
-// "Remove:" / "Relocate:" case sections under a night header (the cases the RC
-// pulls and moves), and/or an explicit "Refrigeration Contractor to temp/remove/
-// relocate cases" line. scanScheduleDate returns the first match top-down = the
-// earliest such night. This is deliberately NOT the store's "remove product and
-// wash cases" prep (store associates empty/clean the cases — not RC labor) and
-// NOT the GC's general night-work start. "install" is excluded so the late
-// new-equipment install ("install Deli cases") isn't mistaken for the first move.
-export const RC_NIGHT_RE = /^\s*(?:remove|relocate)\s*:|refrigeration contractor[^.\n]{0,70}\b(?:relocat\w*|remov\w*|temp\w*|reset\w*|move\w*)\s+(?:the\s+|all\s+|existing\s+|new\s+|\w+\s+){0,2}cases?\b/i;
+// An RC case-move ACTION: the refrigeration contractor disconnecting, relocating,
+// or temp-setting refrigerated cases ("Disconnect and relocate to back room:",
+// "Relocate and temp set on front wall:", "Refrigeration Contractor to temp cases
+// out"). These action phrases are RC work — the store never "disconnects and
+// relocates" a case.
+const RC_MOVE_ACTION_RE = /disconnect[^.\n]{0,20}relocat|relocat[^.\n]{0,25}(?:temp|reset|back\s*room|front\s*wall)|temp\s*set|temp\s+cases?\s+out|disconnect[^.\n]{0,20}cases?\b|refrigeration contractor[^.\n]{0,40}\b(?:temp\w*|relocat\w*|remov\w*)\s+(?:\w+\s+){0,2}cases?\b/i;
+// A specific refrigerated case being worked — a case number ("case# 25", "Case
+// 36") or a circuit tag ("(Circuit C1)"). This is what separates a real case
+// move from front-end "5 LH Checkouts" and "temp set shelving". Schedules vary:
+// some write "case# 25", others "Case 36 (Circuit C1)" with no #.
+const CASE_NUM_RE = /\bcases?\s*#?\s*\d|\(\s*circuit\b/i;
+
+// The RC's first case-move night: the first dated night on which an RC case-move
+// action is tied to a specific case number. NOT the store's "remove product and
+// wash cases" prep (store associates empty/clean the cases — not RC labor), NOT
+// front-end checkout relocations, and NOT the late new-equipment install.
+export function scanRcFirstCaseNight(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  let curDate = '';
+  for (let i = 0; i < lines.length; i++) {
+    if (DOW_HEADER_RE.test(lines[i])) { const l = schedDateLabel(lines[i]); if (l) curDate = l; }
+    if (!RC_MOVE_ACTION_RE.test(lines[i])) continue;
+    // Confirm a case number on this line or the next few (the case list usually
+    // follows the action header on the next line).
+    let hasCase = CASE_NUM_RE.test(lines[i]);
+    for (let j = i + 1; j < Math.min(lines.length, i + 4) && !hasCase; j++) hasCase = CASE_NUM_RE.test(lines[j]);
+    if (hasCase && curDate) return curDate;
+  }
+  return '';
+}
 
 export function formatSpan(startMs, endMs) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

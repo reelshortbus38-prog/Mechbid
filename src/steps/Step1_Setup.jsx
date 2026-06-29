@@ -12,7 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, PRECON_RE, PRECON_FALLBACK_RE, RC_NIGHT_RE } from '../components/scheduleDates.js';
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE } from '../components/scheduleDates.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -300,7 +300,7 @@ export default function Step1_Setup({ onNext }) {
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
           { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n;
+            const n = scanRcFirstCaseNight(text); if (n) rcNightStart = n;
             const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
@@ -324,7 +324,7 @@ export default function Step1_Setup({ onNext }) {
           // their own date headers, so this is exact (not guessed from tasks).
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n;
+            const n = scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
             const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not

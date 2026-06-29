@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, PRECON_RE, PRECON_FALLBACK_RE, RC_NIGHT_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -51,25 +51,45 @@ describe('schedule date span (year-wrap)', () => {
     expect(maxWeekNumber('Tuesday w7 night work')).toBe(7);
   });
 
-  it('date scan anchors to the day-of-week header, not a date in task prose', () => {
-    // Mirrors the real store-0348 trap: the line above the RC task mentions
-    // "November 5th" in prose, but the night's header is "October 20th".
+  it('RC first case-move night = first case# move, not store prep or checkouts', () => {
+    // Mirrors the real store-812 Week-5 night: store prep + RC disconnect/relocate
+    // of refrigerated cases (with case numbers) is the true first move (Oct 14).
+    // An earlier night relocating front-end checkouts must NOT count.
     const text = [
-      'Monday, October 20th (Night) w6',
+      'Tuesday, October 1st (Night)',
+      'Remove:',
+      '5 LH Checkouts',
+      'Relocate:',
+      '3 existing self-checkouts',
       '',
-      'Deli Bakery suspend operations for renovations until November 5th.',
-      '',
-      'Refrigeration Contractor to temp cases out on sales floor so drains can be moved.',
+      'Monday, October 14th (Night)',
+      'Store Associates to remove product and wash cases by 9 pm.',
+      'Disconnect and relocate to back room:',
+      "(2) 8' Meat promo case# 25, 26",
+      'Relocate and temp set on front wall:',
+      "16' self serve cold deli case# 1, 2",
     ].join('\n');
-    expect(scanScheduleDate(text, RC_NIGHT_RE)).toBe('Oct 20');
+    expect(scanRcFirstCaseNight(text)).toBe('Oct 14');
   });
 
-  it('RC night marker = case handling, not the store wash or kick plates', () => {
-    expect(RC_NIGHT_RE.test('Remove:')).toBe(true);
-    expect(RC_NIGHT_RE.test('Relocate:')).toBe(true);
-    expect(RC_NIGHT_RE.test('Refrigeration Contractor to temp cases out on sales floor')).toBe(true);
-    expect(RC_NIGHT_RE.test('Store Associates to remove product and wash cases by 9 pm.')).toBe(false);
-    expect(RC_NIGHT_RE.test('Refrigeration Contractor to remove kick plates in affected case areas')).toBe(false);
+  it('RC scan handles case numbers written without "#" plus a circuit tag', () => {
+    // Store-0348 style: "temp cases out" then cases as "Case 36 (Circuit C1)".
+    const text = [
+      'Monday, October 20th (Night) w6',
+      'Refrigeration Contractor to temp cases out on sales floor so drains can be moved.',
+      '',
+      "8' PT-67 Deli Self-Serve Case 36 (Circuit C1)",
+    ].join('\n');
+    expect(scanRcFirstCaseNight(text)).toBe('Oct 20');
+  });
+
+  it('RC scan ignores the store wash and produce-specialist temp-set of shelving', () => {
+    const text = [
+      'Monday, October 14th (Night)',
+      'Store Associates to remove product and wash cases by 9 pm.',
+      'Produce specialist to temp set shelving on back wall.',
+    ].join('\n');
+    expect(scanRcFirstCaseNight(text)).toBe('');
   });
 
   it('pre-con scan reads the meeting day + time, varied wording', () => {
