@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -102,6 +102,15 @@ describe('schedule date span (year-wrap)', () => {
     const t = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE);
     expect(d).toBe('Sep 10');
     expect(t).toBe('10:00 am');
+  });
+
+  it('final RCC date reads the "complete store RCC" night', () => {
+    const text = [
+      'Monday, November 23rd (Day) w23',
+      'Crescent Construction to perform electrical commissioning report this week.',
+      'Energy Team will conduct a complete store RCC, General Contractor to complete any items.',
+    ].join('\n');
+    expect(scanScheduleDate(text, RCC_RE)).toBe('Nov 23');
   });
 
   it('empty/undated schedule does not throw', () => {

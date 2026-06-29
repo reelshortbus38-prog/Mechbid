@@ -14,6 +14,7 @@ export const initialState = {
   // Key bid dates a refrigeration estimator needs up front.
   preconDate: '',       // pre-construction meeting
   rcStartDate: '',      // RC night-work / case-move start
+  rccDate: '',          // final store RCC (refrigeration commissioning check)
   jobLength: '',        // total job length (e.g. "16 weeks")
   uploadedFiles: [], extractionResults: [], flags: [],
   // How extracted scope tasks are treated. 'notes' (default): tasks are
