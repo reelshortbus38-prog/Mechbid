@@ -6,7 +6,7 @@ import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc,
-  emailFileToText
+  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -18,11 +18,67 @@ import JobInfo from '../components/JobInfo.jsx';
 const SCHED_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
 const SCHED_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function schedDateLabel(label) {
-  const m = String(label || '').match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
-  if (!m) return '';
-  const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
-  return mi >= 0 ? `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}` : '';
+  const s = String(label || '');
+  // "June 23" / "June 23rd, 2025" — textual month + day (schedule headers).
+  const m = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  if (m) {
+    const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
+    if (mi >= 0) return `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}`;
+  }
+  // ISO "2025-06-23" — the AI commonly normalizes to this.
+  const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    const mi = parseInt(iso[2], 10) - 1;
+    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(iso[3], 10)}`;
+  }
+  // Numeric "6/23/2025" or "6/23" (month-first, US convention).
+  const us = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/);
+  if (us) {
+    const mi = parseInt(us[1], 10) - 1;
+    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(us[2], 10)}`;
+  }
+  return '';
 }
+
+// Find the schedule date for a marker line (e.g. "MOBILIZE & PRE-CON MEETING"
+// or "NIGHT WORK BEGINS"). The date header is usually on the same line; if not,
+// look back a few lines for the nearest one. Deterministic — reads the raw doc
+// text, not the AI's task list, so it picks the right date every time.
+function scanScheduleDate(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    let label = schedDateLabel(lines[i]);
+    for (let j = i - 1; !label && j >= Math.max(0, i - 6); j--) label = schedDateLabel(lines[j]);
+    if (label) return label;
+  }
+  return '';
+}
+// The pre-con bullet carries the meeting time ("MUST BE PRESENT at 1:00 pm").
+// Find the time on the marker line or the next few wrapped lines after it.
+function scanScheduleTime(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    for (let j = i; j < Math.min(lines.length, i + 4); j++) {
+      const m = lines[j].match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
+      if (m) {
+        const min = m[2] ? `:${m[2]}` : ':00';
+        return `${parseInt(m[1], 10)}${min} ${m[3].replace(/\./g, '').toLowerCase()}`;
+      }
+    }
+  }
+  return '';
+}
+// The actual pre-con is the "Pre-construction Meeting Today" line (the meeting
+// day), NOT the "MOBILIZE & PRE-CON MEETING" header that sits on the prior day.
+// Match the meeting-today line first; fall back to the broader phrase.
+const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
+const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\s*meeting/i;
+// The RC's first night is when CASES start moving, NOT the general "NIGHT WORK
+// BEGINS" (that's GC). In Food Lion schedules the first case-move night is
+// marked by "remove product and wash cases by 9 pm".
+const RC_NIGHT_RE = /remove product and wash cases|case (?:moves?|relocations?) begin/i;
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -99,32 +155,103 @@ export default function Step1_Setup({ onNext }) {
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
     let keyDates = null;         // pre-con / completion / job length from an ERF
-    let rcNightStart = '';       // first night-work / case-move date from a schedule
+    let rcNightStart = '';       // night-work start date from a schedule
+    let preconFromDoc = '';      // pre-con date scanned from a schedule doc
+    let preconTimeFromDoc = '';  // pre-con meeting time ("1:00 pm") from the doc
+    let jobLengthFromDoc = '';   // total job length inferred by the AI
     let projName = '';
     let projAddr = '';
 
     // Map a free-text equipment type from a schedule onto the HVAC type dropdown.
+    // Maps a free-text type OR a bare equipment tag (AHU-1, EF-3, CU-1…) onto the
+    // HVAC type dropdown. Plan sheets give a tag, not a spelled-out type, so the
+    // tag prefix is often all we have to go on.
     function mapHvacType(t) {
       const s = String(t || '').toLowerCase();
       if (/rtu|rooftop/.test(s)) return 'Rooftop Unit (RTU)';
       if (/ahu|air handl/.test(s)) return 'Air Handling Unit (AHU)';
       if (/fcu|fan coil/.test(s)) return 'Fan Coil Unit (FCU)';
       if (/vav/.test(s)) return 'VAV Box';
-      if (/condens/.test(s)) return 'Split System — Condenser';
-      if (/split/.test(s)) return 'Split System — Air Handler';
-      if (/heat pump|hp\b/.test(s)) return 'Packaged Heat Pump';
       if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
-      if (/chiller/.test(s)) return 'Chiller';
-      if (/boiler/.test(s)) return 'Boiler';
+      if (/ashp|air.?source|heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
+      if (/condens|^cu\b|\bcu-|^ac\b|\bac-/.test(s)) return 'Split System — Condenser';
+      if (/split/.test(s)) return 'Split System — Air Handler';
+      if (/chiller|^ch\b|\bch-/.test(s)) return 'Chiller';
+      if (/boiler|^b-\d|^bh\b|\bbh-/.test(s)) return 'Boiler';
       if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
       if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
       if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
-      if (/exhaust/.test(s)) return 'Exhaust Fan';
+      if (/exhaust|^ef\b|\bef-|^tf\b|\btf-/.test(s)) return 'Exhaust Fan';
       return 'Other';
     }
 
     function pushPending(kind, sourceType, fileName, data) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
+    }
+
+    // Fold an HVAC mechanical-plan extraction into the same channels the rest of
+    // the wizard uses: equipment units go to the Equipment step (via
+    // equipmentImports), and air devices + duct/pipe runs become reviewable
+    // takeoff notes (sizes/CFM the estimator prices up — we don't auto-price
+    // them, since duct/pipe LENGTH is scaled off the sheet, not labeled).
+    function handleHvacResult(hv, fileMeta) {
+      if (!hv) { newResults.push(`🌀 ${fileMeta.name}: No HVAC takeoff could be read`); return; }
+      const drawing = [hv.drawingNumber, hv.drawingTitle].filter(Boolean).join(' — ');
+      if (hv.projectName && !projName) projName = hv.projectName;
+
+      (hv.equipment || []).forEach(e => {
+        equipmentImports.push({
+          id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
+          tons: '', brand: '', model: '', refrigerant: 'R-410A', mca: '', mop: '',
+          voltage: '', location: '', cost: 0, task: 'New Installation',
+          notes: [e.type, e.notes].filter(Boolean).join(' · '),
+        });
+      });
+
+      (hv.airDevices || []).forEach(d => {
+        const spec = [d.deviceType, d.faceSize ? `face ${d.faceSize}` : '', d.neckSize ? `neck ${d.neckSize}` : '', d.cfm ? `${d.cfm} CFM` : '', d.qty > 1 ? `× ${d.qty}` : '']
+          .filter(Boolean).join(' · ');
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `Air device ${d.tag || ''}${spec ? ' — ' + spec : ''}`.trim(),
+          notes: drawing, rawDesc: d.tag || d.deviceType || 'air device',
+        });
+      });
+      (hv.ductRuns || []).forEach(r => {
+        const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${label}${r.service ? ` (${r.service})` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
+          notes: drawing, rawDesc: r.size,
+        });
+      });
+      (hv.pipeRuns || []).forEach(r => {
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${r.size} pipe${r.service ? ` ${r.service}` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
+          notes: drawing, rawDesc: r.size,
+        });
+      });
+      (hv.hydronicZones || []).forEach(z => {
+        const spec = [z.room, z.loadMBH ? `${z.loadMBH} MBH` : '', z.area ? `${z.area} sq ft` : '', z.loops ? `${z.loops} loop(s)` : '']
+          .filter(Boolean).join(' · ');
+        pushPending('note', 'vision', fileMeta.name, {
+          desc: `${z.zone || 'Zone'}${spec ? ' — ' + spec : ''}`.trim(),
+          notes: [drawing, z.notes].filter(Boolean).join(' — '), rawDesc: z.zone || 'zone',
+        });
+      });
+
+      const totalCfm = (hv.airDevices || []).reduce((s, d) => s + (Number(d.cfm) || 0) * (Number(d.qty) || 1), 0);
+      const totalMbh = (hv.hydronicZones || []).reduce((s, z) => s + (Number(z.loadMBH) || 0), 0);
+      const bits = [
+        `${(hv.equipment || []).length} unit(s)`,
+        `${(hv.airDevices || []).length} air device type(s)`,
+        totalCfm ? `${totalCfm.toLocaleString()} CFM total` : '',
+        `${(hv.ductRuns || []).length} duct size(s)`,
+        (hv.pipeRuns || []).length ? `${hv.pipeRuns.length} pipe run(s)` : '',
+        (hv.hydronicZones || []).length ? `${hv.hydronicZones.length} heating zone(s)${totalMbh ? ` / ${Math.round(totalMbh)} MBH` : ''}` : '',
+      ].filter(Boolean).join(' · ');
+      flags.push({ type: 'info', text: `HVAC takeoff${drawing ? ` [${drawing}]` : ''}: ${bits}`, source: fileMeta.name });
+      (hv.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
+      newResults.push(`🌀 ${fileMeta.name}: HVAC plan read — ${bits} (review on the Equipment step & Review screen)`);
+      if (hv.summary) newResults.push(`   → ${hv.summary}`);
     }
 
     for (const fileMeta of modeFiles) {
@@ -146,7 +273,21 @@ export default function Step1_Setup({ onNext }) {
         // most reliable — these auto-accept but are still visible for review).
         let sourceType = 'doctext';
 
-        if (fileMeta.type === 'image') {
+        // HVAC jobs upload mechanical plan sheets (ductwork/piping plans,
+        // equipment schedules), not refrigeration redlines/BPRs — route those to
+        // the HVAC vision extractor, which reads equipment tags, air devices
+        // (CFM), and duct/pipe sizes instead of circuits.
+        const isHvacMode = /hvac/i.test(fileMeta.mode || state.mode || '');
+
+        if (isHvacMode && (fileMeta.type === 'image' || fileMeta.type === 'pdf')) {
+          sourceType = 'vision';
+          const hv = fileMeta.type === 'pdf'
+            ? await analyzeHvacPlanPdf(file, fileMeta.name)
+            : await analyzeHvacPlanImage(file, fileMeta.name);
+          handleHvacResult(hv, fileMeta);
+          parsed = null; // handled in-place; skip the refrigeration mapping below
+
+        } else if (fileMeta.type === 'image') {
           sourceType = 'vision';
           // Full image + overlapping high-res tiles, merged — so small schedule
           // cells / callout text on a dense photo survive the model's downscale.
@@ -223,6 +364,9 @@ export default function Step1_Setup({ onNext }) {
           sourceType = 'doctext';
           const text = await emailFileToText(file);
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
+          { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
+            const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
@@ -239,6 +383,13 @@ export default function Step1_Setup({ onNext }) {
           const b64 = await fileToBase64(file);
           const docRes = await parseDocFile(b64, fileMeta.name);
           if (!docRes.text) throw new Error('Could not extract text from document');
+
+          // Deterministic key dates straight from the schedule text — the
+          // "MOBILIZE & PRE-CON MEETING" and "NIGHT WORK BEGINS" lines carry
+          // their own date headers, so this is exact (not guessed from tasks).
+          { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+            const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
+            const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts
@@ -318,6 +469,19 @@ export default function Step1_Setup({ onNext }) {
           //  - Undated scope-of-work tasks → real Field Work labor.
           const isRedline = parsed.documentType === 'redline_callout';
           const bidAsLineItems = state.taskBidMode === 'lineItems';
+          // Key dates — "not every schedule is the same," so the AI reads them
+          // from MEANING (pre-con meeting day; the RC's own first case-move
+          // night, which is distinct from the GC's general night-work start).
+          // The deterministic regex scan above runs first when its markers are
+          // present (exact on the Food Lion format); the AI fills in whatever
+          // the regex couldn't, and both stay editable downstream as the final
+          // safety net. Order of trust: regex marker → AI → crude task heuristic.
+          if (!isRedline) {
+            if (!preconFromDoc && parsed.preconDate) preconFromDoc = schedDateLabel(parsed.preconDate) || parsed.preconDate;
+            if (!preconTimeFromDoc && parsed.preconTime) preconTimeFromDoc = parsed.preconTime;
+            if (!rcNightStart && parsed.rcFirstNightDate) rcNightStart = schedDateLabel(parsed.rcFirstNightDate) || parsed.rcFirstNightDate;
+            if (!jobLengthFromDoc && parsed.jobLengthWeeks) jobLengthFromDoc = `${parsed.jobLengthWeeks} weeks`;
+          }
           // First night-work / case-move dated task = RC night-work start date.
           if (!isRedline && !rcNightStart) {
             for (const t of (parsed.fieldTasks || [])) {
@@ -431,10 +595,11 @@ export default function Step1_Setup({ onNext }) {
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
-      // Key dates from an ERF — only fill fields the user hasn't set, so a
-      // re-upload or manual entry isn't overwritten.
-      ...(keyDates && keyDates.preconDate && !state.preconDate ? { preconDate: keyDates.preconDate } : {}),
-      ...(keyDates && keyDates.jobLengthWeeks && !state.jobLength ? { jobLength: `${keyDates.jobLengthWeeks} weeks` } : {}),
+      // Key dates — pre-con from the ERF or the schedule's pre-con line, job
+      // length from the ERF, RC night-work start from the schedule. Only fill
+      // blanks so a re-upload or manual entry isn't overwritten.
+      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (() => { const d = (keyDates && keyDates.preconDate) || preconFromDoc; return preconTimeFromDoc ? `${d} · ${preconTimeFromDoc}` : d; })() } : {}),
+      ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && !state.jobLength ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
       ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.

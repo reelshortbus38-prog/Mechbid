@@ -430,6 +430,159 @@ export async function analyzeImageDoc(file, fileName) {
   return merged;
 }
 
+// ── HVAC MECHANICAL DRAWING VISION ─────────────────────────────────────────────
+// Mechanical sheets (ductwork plans like "M2.1 NEW MECHANICAL PLAN", hydronic
+// piping plans like "M2.2 NEW MECHANICAL PIPING PLAN", or equipment schedules)
+// are a completely different document type from the refrigeration redline/BPR
+// the standard vision prompt targets. Here the priced takeoff is: equipment
+// units (AHU/FCU/VAV/EF/RTU/CU…), air devices (diffusers/grilles with neck size
+// + CFM + "TYP." counts), duct runs (rectangular WxH and round ⌀ sizes), and —
+// on a piping sheet — hydronic/refrigerant pipe runs (size + service). Duct/pipe
+// LENGTH is almost never labeled on these plans (it's scaled off the drawing),
+// so the prompt is told NOT to invent lengths — sizes, counts and CFM are what's
+// actually on the page.
+const HVAC_VISION_PROMPT = `You are an expert commercial HVAC estimator reading a mechanical drawing sheet — a ductwork plan, a hydronic/refrigerant piping plan, or an equipment schedule. The image may be rotated; read ALL text regardless of orientation.
+
+Extract the following EXACTLY as written — never round, simplify, or invent:
+
+1) TITLE BLOCK: drawing number (e.g. "M2.1"), drawing title (e.g. "NEW MECHANICAL PLAN"), project name, and date if shown.
+
+2) EQUIPMENT — units shown as TAGS, either inside hexagons/ovals/boxes OR as plain text labels next to the unit (e.g. "AHU-1 ON ROOF", "ASHP-1 ON ROOF", "ERV-2"). Capture each distinct tag ONCE. Common prefixes and what they mean: RTU=rooftop unit, AHU=air handling unit, FCU=fan coil unit, VAV=variable air volume box, CU=condensing unit, AC=AC/condenser unit, EF=exhaust fan, TF=transfer fan, MAU=make-up air unit, ERV/HRV=energy/heat recovery ventilator, ASHP/HP=heat pump (air-source), CU/CH=condensing unit/chiller, P=pump, B=boiler, FF=force-flow/cabinet/unit heater, HC=heating coil, UH=unit heater, MB=mixing box, BH/FH=baseboard/finned-tube heater. Return {tag, type, notes}; infer type from the prefix. If the same tag appears repeatedly it is still ONE entry — say so in notes.
+
+3) AIR DEVICES — supply diffusers, return/exhaust grilles, registers. They read as TYPE-NUMBER with a neck size and a CFM, e.g. "CD-1 8\"⌀ 100" = ceiling diffuser CD-1, 8 inch round neck, 100 CFM. They MAY also carry a face/grille size before the tag, e.g. "24x24 CD-1 8\"⌀ NECK 200 CFM" = 24x24 face, 8" neck, 200 CFM — capture that face size too. Prefixes: CD=ceiling/supply diffuser, SG=supply grille, RG=return grille, EG or ED=exhaust grille/diffuser, TG=transfer grille, LD=linear diffuser. A "(TYP. n)" note means n identical devices — put n in qty. Return {tag, deviceType, faceSize, neckSize, cfm, qty}.
+
+4) DUCT RUNS — duct segments labeled with a size on the run. Rectangular ducts are "WxH" (e.g. "24x16", "60x24"). Round ducts use a diameter mark (e.g. "8\"⌀", "12 DIA", "10∅"). Capture every distinct size you can read. Note "UP THRU ROOF" or the service (supply/return/exhaust/outside air) when indicated. Return {shape:"rect"|"round", size, service, notes}. Do NOT report duct LENGTH unless a length with ft or ' is explicitly written on the run — these plans scale length off the drawing, so guessing it is wrong.
+
+5) PIPE RUNS — on a piping plan, hydronic/refrigerant lines labeled with size + service, e.g. "4\" CHWS&R" (chilled water supply & return), "2½\" HWS&R" (hot water S&R), "1\" HWR". Return {size, service, notes}.
+
+6) RADIANT / HYDRONIC HEATING ZONES — many hydronic jobs tag heating zones as "ZONE n" with a heating load in MBH or BTUH (e.g. "ZONE 10  35.1 MBH", "ZONE 1  24.5 MBH"). A "RADIANT FLOOR HEATING SUMMARY" table may also list, per zone: manifold no., room, area (sq ft), number of loops, capacity (BTUH), flow (GPM), and tube spacing. Capture each zone as {zone, room, loadMBH, area, loops, notes} — pull whatever of those is shown; loadMBH is the MBH number (convert BTUH to MBH by dividing by 1000 if only BTUH is given).
+
+7) COST-AFFECTING GENERAL NOTES — capture as flags (type "warn") any standing note that changes the price of the work, verbatim. Common ones: duct lining/insulation requirements ("ALL SUPPLY AND RETURN DUCTWORK SHALL BE PROVIDED WITH 1.5\" THICK LINING"), flex connections at diffusers, double-wall duct, welded fittings, seismic bracing, or anything that says it "shall be" provided/installed a certain way. These drive material and labor cost even though they aren't a tag.
+
+If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, loads, or counts.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","faceSize":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
+
+export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
+  try {
+    const tileContext = tile && tile.tilesTotal > 1
+      ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger sheet — read only tags/labels fully legible within this crop; another tile and the full-sheet pass cover the rest, and the merge dedups overlap.`
+      : '';
+    const res = await fetch('/api/claude-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+            { type: 'text', text: HVAC_VISION_PROMPT + tileContext }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+  } catch (e) {
+    console.warn('HVAC vision error:', e.message);
+    return null;
+  }
+}
+
+// Fresh, empty HVAC takeoff accumulator + the dedupe keys used to merge passes.
+function newHvacMerged() {
+  return {
+    documentType: '', drawingNumber: '', drawingTitle: '', projectName: '', date: '',
+    equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], hydronicZones: [], flags: [], summaries: [],
+  };
+}
+function absorbHvac(merged, parsed, seen) {
+  if (!parsed) return;
+  if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
+  if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
+  if (parsed.drawingTitle && !merged.drawingTitle) merged.drawingTitle = parsed.drawingTitle;
+  if (parsed.projectName && !merged.projectName) merged.projectName = parsed.projectName;
+  if (parsed.date && !merged.date) merged.date = parsed.date;
+  (parsed.equipment || []).forEach(e => {
+    const tag = String(e.tag || '').toUpperCase().trim();
+    if (!tag) return;
+    const k = 'eq|' + tag;
+    if (seen.has(k)) return; seen.add(k);
+    merged.equipment.push({ ...e, tag });
+  });
+  (parsed.airDevices || []).forEach(d => {
+    const tag = String(d.tag || '').toUpperCase().trim();
+    const k = 'ad|' + tag + '|' + (d.neckSize || '') + '|' + (d.cfm || '');
+    if (!tag && !d.cfm) return;
+    if (seen.has(k)) return; seen.add(k);
+    merged.airDevices.push({ ...d, tag, qty: d.qty || 1 });
+  });
+  (parsed.ductRuns || []).forEach(r => {
+    const size = String(r.size || '').trim();
+    if (!size) return;
+    const k = 'dr|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
+    if (seen.has(k)) return; seen.add(k);
+    merged.ductRuns.push({ ...r, size });
+  });
+  (parsed.pipeRuns || []).forEach(r => {
+    const size = String(r.size || '').trim();
+    if (!size) return;
+    const k = 'pr|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
+    if (seen.has(k)) return; seen.add(k);
+    merged.pipeRuns.push({ ...r, size });
+  });
+  (parsed.hydronicZones || []).forEach(z => {
+    const zone = String(z.zone || '').toUpperCase().trim();
+    if (!zone && !z.loadMBH) return;
+    const k = 'hz|' + zone + '|' + (z.room || '');
+    if (seen.has(k)) return; seen.add(k);
+    merged.hydronicZones.push({ ...z, zone });
+  });
+  (parsed.flags || []).forEach(f => merged.flags.push(f));
+  if (parsed.summary) merged.summaries.push(parsed.summary);
+}
+function finishHvac(merged) {
+  merged.summary = merged.summaries.join(' ');
+  delete merged.summaries;
+  return merged;
+}
+
+// Image upload of an HVAC sheet (photo or screenshot): full image + tiles.
+export async function analyzeHvacPlanImage(file, fileName) {
+  const { full, tiles } = await imageToTiles(file);
+  const merged = newHvacMerged();
+  const seen = new Set();
+  const passes = [{ base64: full, tile: null }, ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } }))];
+  for (const { base64, tile } of passes) {
+    const raw = await callClaudeVisionHVAC(base64, fileName, tile);
+    absorbHvac(merged, raw ? parseAIJson(raw) : null, seen);
+  }
+  return finishHvac(merged);
+}
+
+// PDF upload of an HVAC sheet (CAD/Bluebeam export, usually a flattened raster):
+// render each page + tiles to images and read via the HVAC vision prompt. These
+// sheets are graphics, not a text layer, so there's no deterministic shortcut.
+export async function analyzeHvacPlanPdf(file, fileName) {
+  const { renderPdfPagesToImages } = await import('./pdfRender.js');
+  const merged = newHvacMerged();
+  const seen = new Set();
+  const { pages, truncated } = await renderPdfPagesToImages(file);
+  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
+    const raw = await callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage });
+    const parsed = raw ? parseAIJson(raw) : null;
+    if (!parsed) {
+      merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed`, source: fileName });
+      continue;
+    }
+    absorbHvac(merged, parsed, seen);
+  }
+  if (truncated) merged.flags.push({ type: 'warn', text: 'Document has more pages than were analyzed (limit reached) — some sheets may be missing', source: fileName });
+  return finishHvac(merged);
+}
+
 export function parseAIJson(text) {
   try {
     let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
@@ -728,14 +881,22 @@ CRITICAL EXCLUSIONS — these look like RC scope but are NOT:
 
 Also read any store address mentioned anywhere in the document — capture it exactly as written.
 
+THREE KEY DATES — find these and return them as real calendar dates (e.g. "2025-06-23" or "June 23, 2025", whatever the document shows). These are the most important fields for an estimator and every schedule formats them differently, so reason from MEANING, not from a fixed phrase:
+- preconDate: the day the pre-construction / pre-con meeting actually happens (the meeting day itself). Schedules sometimes have a "mobilize / pre-con" header on the day BEFORE the meeting — if so, use the meeting day, not the mobilize day. Look for lines like "Pre-construction Meeting Today", "Pre-Con Meeting", "Preconstruction conference".
+- preconTime: the meeting time on that same pre-con line if one is given (e.g. "MUST BE PRESENT at 1:00 pm" -> "1:00 pm"). Leave empty if no time is stated.
+- rcFirstNightDate: the FIRST night the REFRIGERATION CONTRACTOR (RC) itself starts night work — i.e. when RC begins removing product / washing / moving / relocating refrigerated cases. This is NOT the general "Night Work Begins" milestone, which usually marks when the GENERAL CONTRACTOR's night work starts (demo, fixtures) — that is typically weeks earlier. Use the first dated night on which the RC's own case removal/relocation/move work begins (look for "remove product and wash cases", "case moves begin", "RC removes/relocates cases", the first night with refrigerated-case relocation tied to circuit tags). If the GC night-work start and the RC case-move start are different dates, return the RC one.
+- jobLengthWeeks: total length of the job. If the schedule is organized in numbered weeks (w1…wN) return the highest week number; otherwise estimate total calendar weeks from the first to the last dated milestone. Return a number only.
+Leave any date you cannot determine as an empty string. Do NOT guess — only return a date you can tie to a specific line in the document.
+
 Return ONLY valid JSON, no markdown:
-{"storeName":"","storeNumber":"","address":"","startDate":"","fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. C1 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
+{"storeName":"","storeNumber":"","address":"","startDate":"","preconDate":"","preconTime":"","rcFirstNightDate":"","jobLengthWeeks":0,"fieldTasks":[{"date":"exact date/week header text","desc":"the RC task as written, including case numbers and circuit IDs","circuitRef":"circuit ID if mentioned, e.g. C1 or A7","notes":""}],"rackTasks":[{"date":"","desc":"","rack":"","notes":""}],"parts":[{"partId":"","description":"","qty":0}],"nightWorkRequired":false,"nightWorkDetails":"","minimumCrew":"","flags":[{"type":"info|warn|error","text":""}],"summary":"one sentence summarizing what RC scope this chunk covers"}
 
 If this chunk contains no RC-relevant content at all, return the same JSON shape with empty arrays.`;
 
   const chunks = chunkByDateHeaders(text);
   const merged = {
     storeName: '', storeNumber: '', address: '', startDate: '',
+    preconDate: '', preconTime: '', rcFirstNightDate: '', jobLengthWeeks: 0,
     fieldTasks: [], rackTasks: [], parts: [], flags: [],
     nightWorkRequired: false, nightWorkDetails: '', minimumCrew: '',
     chunkSummaries: [],
@@ -757,6 +918,10 @@ If this chunk contains no RC-relevant content at all, return the same JSON shape
     if (parsed.storeNumber && !merged.storeNumber) merged.storeNumber = parsed.storeNumber;
     if (parsed.address && !merged.address) merged.address = parsed.address;
     if (parsed.startDate && !merged.startDate) merged.startDate = parsed.startDate;
+    if (parsed.preconDate && !merged.preconDate) merged.preconDate = parsed.preconDate;
+    if (parsed.preconTime && !merged.preconTime) merged.preconTime = parsed.preconTime;
+    if (parsed.rcFirstNightDate && !merged.rcFirstNightDate) merged.rcFirstNightDate = parsed.rcFirstNightDate;
+    if (parsed.jobLengthWeeks && parsed.jobLengthWeeks > (merged.jobLengthWeeks || 0)) merged.jobLengthWeeks = parsed.jobLengthWeeks;
     if (parsed.minimumCrew && !merged.minimumCrew) merged.minimumCrew = parsed.minimumCrew;
     if (parsed.nightWorkRequired) merged.nightWorkRequired = true;
     if (parsed.nightWorkDetails && !merged.nightWorkDetails) merged.nightWorkDetails = parsed.nightWorkDetails;
