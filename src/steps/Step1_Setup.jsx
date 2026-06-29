@@ -12,78 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber } from '../components/scheduleDates.js';
-
-// Parse a schedule date header ("Monday, August 4th (Night) w7") to a short
-// label ("Aug 4") for the RC night-work start field.
-const SCHED_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-const SCHED_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function schedDateLabel(label) {
-  const s = String(label || '');
-  // "June 23" / "June 23rd, 2025" — textual month + day (schedule headers).
-  const m = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
-  if (m) {
-    const mi = SCHED_MONTHS.indexOf(m[1].toLowerCase());
-    if (mi >= 0) return `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}`;
-  }
-  // ISO "2025-06-23" — the AI commonly normalizes to this.
-  const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (iso) {
-    const mi = parseInt(iso[2], 10) - 1;
-    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(iso[3], 10)}`;
-  }
-  // Numeric "6/23/2025" or "6/23" (month-first, US convention).
-  const us = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/);
-  if (us) {
-    const mi = parseInt(us[1], 10) - 1;
-    if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(us[2], 10)}`;
-  }
-  return '';
-}
-
-// Find the schedule date for a marker line (e.g. "MOBILIZE & PRE-CON MEETING"
-// or "NIGHT WORK BEGINS"). The date header is usually on the same line; if not,
-// look back a few lines for the nearest one. Deterministic — reads the raw doc
-// text, not the AI's task list, so it picks the right date every time.
-function scanScheduleDate(text, markerRe) {
-  const lines = String(text || '').split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    if (!markerRe.test(lines[i])) continue;
-    let label = schedDateLabel(lines[i]);
-    for (let j = i - 1; !label && j >= Math.max(0, i - 6); j--) label = schedDateLabel(lines[j]);
-    if (label) return label;
-  }
-  return '';
-}
-// The pre-con bullet carries the meeting time ("MUST BE PRESENT at 1:00 pm").
-// Find the time on the marker line or the next few wrapped lines after it.
-function scanScheduleTime(text, markerRe) {
-  const lines = String(text || '').split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    if (!markerRe.test(lines[i])) continue;
-    for (let j = i; j < Math.min(lines.length, i + 4); j++) {
-      const m = lines[j].match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
-      if (m) {
-        const min = m[2] ? `:${m[2]}` : ':00';
-        return `${parseInt(m[1], 10)}${min} ${m[3].replace(/\./g, '').toLowerCase()}`;
-      }
-    }
-  }
-  return '';
-}
-// The actual pre-con is the "Pre-construction Meeting Today" line (the meeting
-// day), NOT the "MOBILIZE & PRE-CON MEETING" header that sits on the prior day.
-// Match the meeting-today line first; fall back to the broader phrase.
-const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
-// Broad fallback: a "pre-con(struction)" reference with "meeting" close by, in
-// either order — catches "Pre-construction Meeting", "Pre-construction/schedule
-// Coordination Meeting", and "Mobilize & Pre-Con Meeting". The bounded gap
-// keeps it from matching incidental "...at the pre-con..." prose elsewhere.
-const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\b.{0,40}\bmeeting\b|\bmeeting\b.{0,40}pre-?con(?:struction)?\b/i;
-// The RC's first night is when CASES start moving, NOT the general "NIGHT WORK
-// BEGINS" (that's GC). In Food Lion schedules the first case-move night is
-// marked by "remove product and wash cases by 9 pm".
-const RC_NIGHT_RE = /remove product and wash cases|case (?:moves?|relocations?) begin/i;
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, PRECON_RE, PRECON_FALLBACK_RE, RC_NIGHT_RE } from '../components/scheduleDates.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };

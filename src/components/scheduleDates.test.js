@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber } from './scheduleDates.js';
+import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
+  scanScheduleDate, scanScheduleTime, PRECON_RE, PRECON_FALLBACK_RE, RC_NIGHT_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -48,6 +49,39 @@ describe('schedule date span (year-wrap)', () => {
     expect(maxWeekNumber(text)).toBe(27);
     expect(maxWeekNumber('no weeks here')).toBe(null);
     expect(maxWeekNumber('Tuesday w7 night work')).toBe(7);
+  });
+
+  it('date scan anchors to the day-of-week header, not a date in task prose', () => {
+    // Mirrors the real store-0348 trap: the line above the RC task mentions
+    // "November 5th" in prose, but the night's header is "October 20th".
+    const text = [
+      'Monday, October 20th (Night) w6',
+      '',
+      'Deli Bakery suspend operations for renovations until November 5th.',
+      '',
+      'Refrigeration Contractor to temp cases out on sales floor so drains can be moved.',
+    ].join('\n');
+    expect(scanScheduleDate(text, RC_NIGHT_RE)).toBe('Oct 20');
+  });
+
+  it('RC night marker = case handling, not the store wash or kick plates', () => {
+    expect(RC_NIGHT_RE.test('Remove:')).toBe(true);
+    expect(RC_NIGHT_RE.test('Relocate:')).toBe(true);
+    expect(RC_NIGHT_RE.test('Refrigeration Contractor to temp cases out on sales floor')).toBe(true);
+    expect(RC_NIGHT_RE.test('Store Associates to remove product and wash cases by 9 pm.')).toBe(false);
+    expect(RC_NIGHT_RE.test('Refrigeration Contractor to remove kick plates in affected case areas')).toBe(false);
+  });
+
+  it('pre-con scan reads the meeting day + time, varied wording', () => {
+    const text = [
+      'Tuesday, September 10th (Day)',
+      '',
+      'Pre-construction/schedule Coordination Meeting between the Store Personnel and GC. All MUST BE PRESENT at 10:00 am.',
+    ].join('\n');
+    const d = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE);
+    const t = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE);
+    expect(d).toBe('Sep 10');
+    expect(t).toBe('10:00 am');
   });
 
   it('empty/undated schedule does not throw', () => {

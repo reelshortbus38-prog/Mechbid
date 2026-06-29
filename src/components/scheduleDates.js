@@ -64,6 +64,79 @@ export function maxWeekNumber(text) {
   return weeks.length ? Math.max(...weeks) : null;
 }
 
+// ── SCHEDULE-TEXT SCANNERS ──────────────────────────────────────────────────
+// Deterministic key-date extraction straight from a schedule document's text.
+
+const SCHED_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SCHED_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+// Pull a clean "Mon Day" label from a date string — textual schedule headers
+// plus ISO/numeric forms the AI may normalize to.
+export function schedDateLabel(label) {
+  const s = String(label || '');
+  const m = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  if (m) {
+    const mi = SCHED_FULL.indexOf(m[1].toLowerCase());
+    if (mi >= 0) return `${SCHED_ABBR[mi]} ${parseInt(m[2], 10)}`;
+  }
+  const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) { const mi = parseInt(iso[2], 10) - 1; if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(iso[3], 10)}`; }
+  const us = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/);
+  if (us) { const mi = parseInt(us[1], 10) - 1; if (mi >= 0 && mi < 12) return `${SCHED_ABBR[mi]} ${parseInt(us[2], 10)}`; }
+  return '';
+}
+
+// A schedule date HEADER starts with a day of week, e.g.
+// "Monday, October 20th (Night) w6". Anchoring on these is what keeps us from
+// reading a date out of task prose like "...suspend operations until Nov 5th."
+const DOW_HEADER_RE = /\b(?:sun|mon|tues|wednes|thurs|fri|satur)day\b/i;
+
+// Find the date for a marker line by walking back to the nearest day-of-week
+// header (or using the marker line itself if it is one). Header-anchored so a
+// date mentioned in a task sentence near the marker can't hijack the result.
+export function scanScheduleDate(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    if (DOW_HEADER_RE.test(lines[i])) { const l = schedDateLabel(lines[i]); if (l) return l; }
+    for (let j = i - 1; j >= Math.max(0, i - 30); j--) {
+      if (!DOW_HEADER_RE.test(lines[j])) continue;
+      const l = schedDateLabel(lines[j]);
+      if (l) return l;
+    }
+  }
+  return '';
+}
+
+// The meeting time on a marker line ("...MUST BE PRESENT at 1:00 pm").
+export function scanScheduleTime(text, markerRe) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!markerRe.test(lines[i])) continue;
+    for (let j = i; j < Math.min(lines.length, i + 4); j++) {
+      const m = lines[j].match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)\b/i);
+      if (m) { const min = m[2] ? `:${m[2]}` : ':00'; return `${parseInt(m[1], 10)}${min} ${m[3].replace(/\./g, '').toLowerCase()}`; }
+    }
+  }
+  return '';
+}
+
+export const PRECON_RE = /pre-?con(?:struction)?\s*meeting\s*today/i;
+// "pre-con(struction)" with "meeting" close by, either order — catches
+// "Pre-construction Meeting", "Pre-construction/schedule Coordination Meeting",
+// "Mobilize & Pre-Con Meeting". Bounded gap avoids incidental "at the pre-con" prose.
+export const PRECON_FALLBACK_RE = /\bmobilize\b.*pre-?con|pre-?con(?:struction)?\b.{0,40}\bmeeting\b|\bmeeting\b.{0,40}pre-?con(?:struction)?\b/i;
+// RC's first night = the first night the REFRIGERATION CONTRACTOR handles cases
+// (removes / relocates / temps them). In these schedules that work appears as
+// "Remove:" / "Relocate:" case sections under a night header (the cases the RC
+// pulls and moves), and/or an explicit "Refrigeration Contractor to temp/remove/
+// relocate cases" line. scanScheduleDate returns the first match top-down = the
+// earliest such night. This is deliberately NOT the store's "remove product and
+// wash cases" prep (store associates empty/clean the cases — not RC labor) and
+// NOT the GC's general night-work start. "install" is excluded so the late
+// new-equipment install ("install Deli cases") isn't mistaken for the first move.
+export const RC_NIGHT_RE = /^\s*(?:remove|relocate)\s*:|refrigeration contractor[^.\n]{0,70}\b(?:relocat\w*|remov\w*|temp\w*|reset\w*|move\w*)\s+(?:the\s+|all\s+|existing\s+|new\s+|\w+\s+){0,2}cases?\b/i;
+
 export function formatSpan(startMs, endMs) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtOne = ms => {
