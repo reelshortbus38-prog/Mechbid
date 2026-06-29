@@ -20,6 +20,25 @@ export async function callClaude(messages, system = '') {
   return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
 }
 
+// Conversational assistant call — same OpenRouter endpoint, but a non-zero
+// temperature so answers read naturally (the extraction calls pin temp 0 for
+// determinism, which makes chat answers terse and repetitive). Takes the full
+// multi-turn message history so the assistant remembers the conversation.
+export async function chatWithAI(messages, system = '') {
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system, messages, temperature: 0.4, max_tokens: 1200 }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Assistant error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+}
+
 // Vision call - uses /api/claude with image support
 export async function callClaudeVision(base64Image, fileName, tile = null) {
   try {
