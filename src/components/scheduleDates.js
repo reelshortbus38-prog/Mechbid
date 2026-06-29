@@ -56,6 +56,14 @@ export function extractWeekNum(label) {
   return match ? parseInt(match[1], 10) : null;
 }
 
+// Total job length in weeks, read deterministically from a schedule's own week
+// headers — the highest "Week #N" anywhere in the document text. Exact (the AI
+// estimate is a fallback), and works on any schedule that numbers its weeks.
+export function maxWeekNumber(text) {
+  const weeks = [...String(text || '').matchAll(/\bw(?:eek)?\.?\s*#?\s*(\d{1,2})\b/gi)].map(m => parseInt(m[1], 10));
+  return weeks.length ? Math.max(...weeks) : null;
+}
+
 export function formatSpan(startMs, endMs) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtOne = ms => {

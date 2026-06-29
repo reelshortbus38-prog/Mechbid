@@ -12,6 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
+import { maxWeekNumber } from '../components/scheduleDates.js';
 
 // Parse a schedule date header ("Monday, August 4th (Night) w7") to a short
 // label ("Aug 4") for the RC night-work start field.
@@ -370,7 +371,8 @@ export default function Step1_Setup({ onNext }) {
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
           { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n; }
+            const n = scanScheduleDate(text, RC_NIGHT_RE); if (n) rcNightStart = n;
+            const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
@@ -393,7 +395,8 @@ export default function Step1_Setup({ onNext }) {
           // their own date headers, so this is exact (not guessed from tasks).
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n; }
+            const n = scanScheduleDate(docRes.text, RC_NIGHT_RE); if (n) rcNightStart = n;
+            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts

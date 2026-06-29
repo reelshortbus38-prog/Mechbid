@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { anchorMonth, buildDateParser, formatSpan, extractWeekNum } from './scheduleDates.js';
+import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -41,6 +41,13 @@ describe('schedule date span (year-wrap)', () => {
     expect(extractWeekNum('Tuesday, August 4th (Night) w7')).toBe(7);
     expect(extractWeekNum('WEEK #17')).toBe(17);
     expect(extractWeekNum('no week here')).toBe(null);
+  });
+
+  it('job length = highest week number, mixed "Week #N" / "wN" forms', () => {
+    const text = 'Week #1 mobilize ... Week #12 ... WEEK #17 floor tile ... Week #27 final inspections';
+    expect(maxWeekNumber(text)).toBe(27);
+    expect(maxWeekNumber('no weeks here')).toBe(null);
+    expect(maxWeekNumber('Tuesday w7 night work')).toBe(7);
   });
 
   it('empty/undated schedule does not throw', () => {
