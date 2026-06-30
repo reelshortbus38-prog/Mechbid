@@ -731,6 +731,9 @@ export default function Step1_Setup({ onNext }) {
           <input ref={fileRef} type="file" multiple style={{ display: 'none' }}
             onChange={e => { handleFiles(e.target.files); e.target.value = ''; }} />
         </div>
+        <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+          🔒 Uploaded documents are processed by third-party AI services (OpenAI / Anthropic) to extract takeoff data. Don't upload anything you're not authorized to share. See the Privacy Policy.
+        </div>
       </div>
 
       {/* File list */}
