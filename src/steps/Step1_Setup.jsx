@@ -283,11 +283,20 @@ export default function Step1_Setup({ onNext }) {
             newResults.push(`🌀 ${fileMeta.name}: ${res.equipment.length} HVAC unit(s) found — added to Equipment (review on the Equipment step)`);
             if (res.summary) newResults.push(`   → ${res.summary}`);
           } else {
-            (res.circuits || []).forEach(c => {
-              if (c.circuitId) pushPending('circuit', 'excel', fileMeta.name, c);
-            });
+            // Only circuits with a readable ID can populate the Circuits step.
+            // Count what's actually usable (not every row that looked circuit-ish)
+            // and flag any dropped for a missing ID, so "N found" never disagrees
+            // with what shows up. A dropped circuit usually means the legend's
+            // circuit-ID column wasn't recognized for that format.
+            const usable = (res.circuits || []).filter(c => c.circuitId);
+            usable.forEach(c => pushPending('circuit', 'excel', fileMeta.name, c));
             if (res.storeName && !projName) projName = res.storeName;
-            newResults.push(`📊 ${fileMeta.name}: ${res.circuits?.length || 0} circuit(s) found [${res.format || 'excel'}]`);
+            const foundCount = res.circuits?.length || 0;
+            const dropped = foundCount - usable.length;
+            newResults.push(`📊 ${fileMeta.name}: ${usable.length} circuit(s) found [${res.format || 'excel'}]`);
+            if (dropped > 0) {
+              flags.push({ type: 'warn', text: `${fileMeta.name}: ${dropped} row${dropped !== 1 ? 's' : ''} looked like a circuit but had no readable circuit ID, so ${dropped !== 1 ? 'they were' : 'it was'} skipped. The legend's circuit-ID column may be in a layout MechBid doesn't recognize yet — send the file so it can be added.`, source: fileMeta.name });
+            }
             if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
             if (res.summary) newResults.push(`   → ${res.summary}`);
           }
