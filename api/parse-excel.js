@@ -529,19 +529,21 @@ function parseKysorWarren(wb, circuits, meta) {
       if(!circId || !circId.match(/^[A-Z]\d+$/i)) continue;
       if(!circId.toUpperCase().startsWith(rack.toUpperCase())) continue;
 
-      let highlighted = false, shaded = false, colorType = null;
-      for(let c = 1; c <= 6; c++) {
-        const color = getCellColor(row.getCell(c));
-        if(isHighlighted(color)) { highlighted = true; colorType = 'cyan'; break; }
-        if(isShaded(color)) shaded = true;
-      }
-      const heatExchangerText = String(row.getCell(4).value||'');
-      const appText = String(row.getCell(7).value||row.getCell(5).value||'');
-      const newWorkText = looksLikeNewWorkText(heatExchangerText);
-      const isNewCircuit = highlighted || shaded || newWorkText;
-      if(!isNewCircuit) continue;
-      if(!colorType) colorType = shaded ? 'shaded' : 'text';
-      const newWorkSignal = highlighted ? 'highlighted' : shaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
+      // New copper is run only where the PIPE-SIZE cells are marked. Highlighting
+      // the circuit ID or case description — which EVERY revised circuit has — does
+      // NOT mean new copper (e.g. "New Retrofit Doors" adds doors to an existing
+      // circuit whose pipe stays). Confirmed against real KWRS legends (store 1086):
+      // a full new circuit marks its horizontal run (Suction Horz col 23 and/or
+      // Liquid Horz col 25); a riser-only add marks just the riser (Suction Riser
+      // col 24 / Vert Riser col 22). Cols: 21 Run · 22 Vert Riser · 23 Suction
+      // Horz · 24 Suction Riser · 25 Liquid Horz.
+      const marked = c => { const col = getCellColor(row.getCell(c)); return isHighlighted(col) || isShaded(col); };
+      const sucHorzM = marked(23), liqHorzM = marked(25), sucRiserM = marked(24), vRiserM = marked(22);
+      const horizMarked = sucHorzM || liqHorzM;   // a new horizontal run → new circuit
+      const riserMarked = sucRiserM || vRiserM;   // a new riser drop
+      if(!horizMarked && !riserMarked) continue;  // pipe not marked → no new copper here
+      const riserOnly = riserMarked && !horizMarked;
+      const colorType = [22,23,24,25].some(c => isHighlighted(getCellColor(row.getCell(c)))) ? 'cyan' : 'shaded';
 
       const run   = parseFloat(row.getCell(21).value)||0;
       const riser = parseFloat(row.getCell(22).value)||20;
@@ -554,11 +556,13 @@ function parseKysorWarren(wb, circuits, meta) {
 
       circuits.push({
         circuitId: circId, rack,
-        runLength: run, riserLength: riser,
+        // Riser-only adds no new horizontal copper — zero the run so the takeoff
+        // prices just the new riser, not the existing horizontal main.
+        runLength: riserOnly ? 0 : run, riserLength: riser,
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
-        application: app, isRiserOnly: run === 0 && !!sr,
-        colorType, notes: [`NEW — ${newWorkSignal}`, note].filter(Boolean).join(' — ')
+        application: app, isRiserOnly: riserOnly,
+        colorType, notes: [riserOnly ? 'RISER — new riser drop' : 'NEW CIRCUIT — new copper run', note].filter(Boolean).join(' — ')
       });
     }
   });
