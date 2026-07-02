@@ -12,7 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -93,6 +93,7 @@ export default function Step1_Setup({ onNext }) {
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
     let preconTimeFromDoc = '';  // pre-con meeting time ("1:00 pm") from the doc
     let rccFromDoc = '';         // final store RCC date scanned from the schedule
+    let rcNightSchedule = [];    // deterministic RC case-move nights (grouped)
     let jobLengthFromDoc = '';   // total job length inferred by the AI
     let projName = '';
     let projAddr = '';
@@ -312,7 +313,8 @@ export default function Step1_Setup({ onNext }) {
             const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanRcFirstCaseNight(text); if (n) rcNightStart = n;
             const rcc = scanScheduleDate(text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
-            const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
+            const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`;
+            const nights = extractRcSchedule(text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
@@ -337,7 +339,8 @@ export default function Step1_Setup({ onNext }) {
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const n = scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
             const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
-            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
+            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`;
+            const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts
@@ -454,7 +457,11 @@ export default function Step1_Setup({ onNext }) {
                   desc: t.desc, circuitRef: t.circuitRef || '', location: t.location || '', notes: combinedNotes, rawDesc: t.desc,
                 });
               } else if (t.date) {
-                // Dated → schedule note (RC Schedule view), not labor — always.
+                // Dated tasks feed the RC Schedule. When a deterministic RC night
+                // schedule was extracted from the doc (complete + grouped by
+                // night), skip the AI's per-task dated notes — the deterministic
+                // one is authoritative and avoids duplicate/partial items.
+                if (rcNightSchedule.length) return;
                 pushPending('note', sourceType, fileMeta.name, {
                   desc: t.desc, date: t.date, circuitRef: t.circuitRef || '', notes: combinedNotes, rawDesc: t.desc,
                 });
@@ -539,6 +546,17 @@ export default function Step1_Setup({ onNext }) {
       }
     }
 
+    // Deterministic RC schedule (grouped by night) — complete and gap-free, so
+    // it supersedes the AI's per-task dated notes (which were skipped above when
+    // this is present). One review item per night, tasks grouped.
+    if (rcNightSchedule.length) {
+      rcNightSchedule.forEach(n => pushPending('note', 'doctext', 'schedule', {
+        desc: n.tasks.join(' · '), date: n.date, tasks: n.tasks, isNight: n.isNight,
+        frozen: n.frozen, week: n.week, scheduleNight: true, rawDesc: n.header,
+      }));
+      newResults.push(`📅 RC schedule: ${rcNightSchedule.length} case-move night(s) read directly from the schedule`);
+    }
+
     // Flags are low-risk (informational) — merge immediately.
     // Everything else waits in pendingReview until the user confirms it.
     dispatch({ type: 'MERGE', payload: {
@@ -621,9 +639,13 @@ export default function Step1_Setup({ onNext }) {
           newScheduleItems.push({
             id: uid(),
             date: item.data.date,
-            desc: item.data.rawDesc || item.data.desc,
+            // Grouped deterministic nights keep their joined-task desc; legacy
+            // single-task notes fall back to their raw task text.
+            desc: item.data.scheduleNight ? item.data.desc : (item.data.rawDesc || item.data.desc),
             circuitRef: item.data.circuitRef || '',
             notes: item.data.notes || '',
+            // Grouped-night fields (absent on legacy items) drive the by-night display.
+            ...(item.data.scheduleNight ? { tasks: item.data.tasks, isNight: item.data.isNight, frozen: item.data.frozen, week: item.data.week, header: item.data.rawDesc } : {}),
           });
         } else {
           // Redline scope note → a flag, with circuit prefix for quick reference.
