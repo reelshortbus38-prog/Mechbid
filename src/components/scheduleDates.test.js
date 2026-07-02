@@ -33,6 +33,15 @@ describe('schedule date span (year-wrap)', () => {
     expect(span(sched).startsWith('Jul')).toBe(true);
   });
 
+  it('parses numeric M/D dates (store 1086 "Monday 5/13" style)', () => {
+    const sched = [
+      { date: 'Monday 4/29' }, { date: 'Monday 5/13 thru Thursday 5/16' },
+      { date: 'Tuesday 5/28' }, { date: 'Monday 8/5' },
+    ];
+    expect(span(sched)).toBe('Apr 29 – Aug 5');
+    expect(extractWeekNum('Week 3')).toBe(3); // "Week N" without a #
+  });
+
   it('non-wrapping job (store 47, Jun→Aug) is unchanged', () => {
     const sched = [{ date: 'June 23rd' }, { date: 'July 27th' }, { date: 'August 12th' }];
     expect(span(sched)).toBe('Jun 23 – Aug 12');

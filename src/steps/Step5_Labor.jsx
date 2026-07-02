@@ -3,11 +3,29 @@ import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskC
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
+import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 
 const DEFAULT_PERIOD_NAMES = [
   'Rack Prep', 'Medium Temp Cases', 'Frozen Food Nights',
   'Dairy Cases', 'Case Startup', 'Punch List / Day Tech',
 ];
+
+// Preset crews for the quick-add buttons — a starting point so you don't build
+// each crew from scratch. Frozen-food case-move nights run a bigger crew (6),
+// other case nights ~4, rack/startup a small crew, day-tech punch just one.
+// Roles/rates/days stay fully editable after adding; days start at 0 so you set
+// them from the schedule (which the reference panel above shows).
+const T = { role: 'Technician', rate: 150 };
+const H = { role: 'Helper', rate: 100 };
+const F = { role: 'Foreman', rate: 175 };
+const PERIOD_PRESETS = {
+  'Rack Prep':             { crew: [T, H], isNight: false },
+  'Medium Temp Cases':     { crew: [F, T, T, H], isNight: true },
+  'Frozen Food Nights':    { crew: [F, T, T, T, H, H], isNight: true },
+  'Dairy Cases':           { crew: [F, T, T, H], isNight: true },
+  'Case Startup':          { crew: [T, H], isNight: false },
+  'Punch List / Day Tech': { crew: [T], isNight: false },
+};
 
 // A period counts as "already set up" once it has a name, any crew, or days
 // entered — used to decide whether a card should default open or collapsed.
@@ -308,14 +326,15 @@ export default function Step5_Labor({ onNext, onBack }) {
   const { state, dispatch } = useStore();
 
   function addPeriod(name = '') {
+    const preset = PERIOD_PRESETS[name];
     dispatch({
       type: 'ADD_LABOR_PERIOD',
       period: {
         id: uid(),
         name: name || '',
-        crew: [],
+        crew: preset ? preset.crew.map(m => ({ id: uid(), role: m.role, rate: m.rate, hrsPerDay: 8 })) : [],
         days: 0,
-        isNight: false,
+        isNight: preset ? preset.isNight : false,
         otMult: 1,
         nightMult: 1.5,
         ootPerDay: 0,
@@ -335,6 +354,10 @@ export default function Step5_Labor({ onNext, onBack }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Schedule + rack work reference, so crews can be sized against the
+          actual nights (frozen-food vs other) without leaving the Labor step */}
+      <ScheduleRackReference />
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
