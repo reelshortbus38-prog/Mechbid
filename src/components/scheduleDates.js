@@ -5,12 +5,22 @@ const MONTHS = ['january','february','march','april','may','june','july','august
 
 export function extractMonthDay(label) {
   if (!label) return null;
-  const match = String(label).match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
-  if (!match) return null;
-  const monthIdx = MONTHS.indexOf(match[1].toLowerCase());
-  const day = parseInt(match[2], 10);
-  if (monthIdx < 0 || !day) return null;
-  return { monthIdx, day };
+  const s = String(label);
+  // Textual month + day: "October 20", "Monday, October 20th".
+  const match = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  if (match) {
+    const monthIdx = MONTHS.indexOf(match[1].toLowerCase());
+    const day = parseInt(match[2], 10);
+    if (monthIdx >= 0 && day) return { monthIdx, day };
+  }
+  // Numeric month-first M/D or M/D/YY: "5/13", "Monday 5/13 thru Thursday 5/16".
+  const num = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/);
+  if (num) {
+    const monthIdx = parseInt(num[1], 10) - 1;
+    const day = parseInt(num[2], 10);
+    if (monthIdx >= 0 && monthIdx < 12 && day >= 1 && day <= 31) return { monthIdx, day };
+  }
+  return null;
 }
 
 // The job's start month for a schedule that may cross the calendar year. Math.min
