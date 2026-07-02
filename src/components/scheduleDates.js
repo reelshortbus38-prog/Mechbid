@@ -170,6 +170,48 @@ export function scanRcFirstCaseNight(text) {
   return '';
 }
 
+// ── FULL RC SCHEDULE (grouped by night) ─────────────────────────────────────
+// Deterministic extraction of every night the refrigeration contractor moves
+// cases, grouped so one night = one entry with all its RC work together (remove
+// + relocate + install on the same night stay together, as the crew works them).
+// This replaces the AI's per-task schedule read, which drops items in the middle
+// of a long schedule and leaves gaps. Store/GC/EC lines are excluded; the store's
+// "remove product and wash cases" prep is not RC work.
+const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*\/\s*install\s*:[^.\n]*(?:refrigeration contractor|\brc\b)|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
+const NON_RC_SECTION_RE = /^\s*-?\s*(?:general contractor|electrical contractor|plumbing contractor|hard tile|soft tile|store associates|market specialist|produce specialist|sas |these items|new note|note\s*:|deli\s*\/\s*bakery|reminder|vendor|energy)/i;
+const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|^\s*-?\s*\d+\s*['’]|#\s*\d/i;
+
+export function extractRcSchedule(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const nights = [];
+  let cur = null, action = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (DOW_HEADER_RE.test(line) && /\((?:day|night)\)/i.test(line)) {
+      const date = schedDateLabel(line);
+      if (date) { cur = { date, header: line.replace(/\s+/g, ' '), week: extractWeekNum(line), isNight: /\(night\)/i.test(line), groups: [] }; action = null; nights.push(cur); continue; }
+    }
+    if (!cur) continue;
+    if (NON_RC_SECTION_RE.test(line)) { action = null; continue; }
+    if (RC_SECTION_RE.test(line)) {
+      action = { label: line.replace(/\s*:\s*$/, '').replace(/^-\s*/, '').trim(), cases: [] };
+      cur.groups.push(action);
+      if (/temp cases? out|refrigeration contractor to (?:temp|remove|relocat|install)/i.test(line) && CASE_CONTENT_RE.test(line)) action.cases.push(line);
+      continue;
+    }
+    if (action && CASE_CONTENT_RE.test(line)) action.cases.push(line);
+  }
+  const usable = g => g.cases.length > 0 || /temp cases? out/i.test(g.label);
+  return nights
+    .filter(n => n.groups.some(usable))
+    .map(n => {
+      const tasks = n.groups.filter(usable).map(g => g.cases.length ? `${g.label}: ${g.cases.join('; ')}` : g.label);
+      const blob = (n.header + ' ' + tasks.join(' ')).toLowerCase();
+      return { date: n.date, header: n.header, week: n.week, isNight: n.isNight, frozen: /\bfrozen\b|ice\s*cream/.test(blob), tasks };
+    });
+}
+
 export function formatSpan(startMs, endMs) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtOne = ms => {

@@ -75,19 +75,24 @@ export default function ScheduleRackReference() {
           {sorted.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 14 }}>
               {sorted.map((item, i) => {
-                const frozen = isFrozen(item.desc) || isFrozen(item.notes) || isFrozen(item.rawDesc);
-                const night = isNightDate(item.date);
-                const move = isCaseMove(item.desc) || isCaseMove(item.rawDesc);
+                const tasks = item.tasks && item.tasks.length ? item.tasks : [item.desc].filter(Boolean);
+                const frozen = item.frozen || tasks.some(isFrozen) || isFrozen(item.notes);
+                const night = item.isNight != null ? item.isNight : isNightDate(item.date);
+                const move = tasks.some(isCaseMove) || isCaseMove(item.rawDesc);
                 return (
                   <div key={item.id || i} style={{ background: frozen ? 'rgba(6,182,212,0.06)' : colors.surface, border: `1px solid ${frozen ? colors.cyan : colors.border}`, borderRadius: 7, padding: '7px 10px' }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
-                      {item.date && <span style={{ fontSize: 11, fontWeight: 700, color: colors.green }}>{item.date}</span>}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
+                      {item.date && <span style={{ fontSize: 11, fontWeight: 700, color: colors.green }}>{item.date}{item.week ? ` · w${item.week}` : ''}</span>}
                       {night && badge('🌙', 'night', colors.yellow)}
                       {frozen && badge('❄️', 'frozen', colors.cyan)}
                       {move && !frozen && badge('📦', 'case move', colors.textDim)}
                       {item.circuitRef && badge('', item.circuitRef, colors.textDim)}
                     </div>
-                    <div style={{ fontSize: 12, color: colors.text, lineHeight: 1.4 }}>{item.desc}</div>
+                    {tasks.map((t, j) => (
+                      <div key={j} style={{ fontSize: 12, color: colors.text, lineHeight: 1.45, paddingLeft: tasks.length > 1 ? 10 : 0, textIndent: tasks.length > 1 ? -8 : 0 }}>
+                        {tasks.length > 1 ? '• ' : ''}{t}
+                      </div>
+                    ))}
                   </div>
                 );
               })}

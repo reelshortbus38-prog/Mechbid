@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -120,6 +120,30 @@ describe('schedule date span (year-wrap)', () => {
       'Energy Team will conduct a complete store RCC, General Contractor to complete any items.',
     ].join('\n');
     expect(scanScheduleDate(text, RCC_RE)).toBe('Nov 23');
+  });
+
+  it('extractRcSchedule groups a night and skips GC/store lines', () => {
+    const text = [
+      'Tuesday, September 8th (Night) w12',
+      'Store Associates to remove product and wash cases by 9 pm from ALL deli cases.',
+      'Remove:',
+      "6' Bakery #34",
+      "8' Deli Island #39",
+      'Relocate: (temp set)',
+      "18' PT-67 Deli #37, 38",
+      'General Contractor to remove and discard the following:',
+      'Filler wedges',
+      'Wednesday, September 9th (Day) w12',
+      'Electrical Contractor to begin overhead lighting.',
+    ].join('\n');
+    const s = extractRcSchedule(text);
+    expect(s.length).toBe(1);                 // only the RC night, not the EC day
+    expect(s[0].date).toBe('Sep 8');
+    expect(s[0].isNight).toBe(true);
+    expect(s[0].tasks.length).toBe(2);        // Remove + Relocate(temp set), grouped
+    expect(s[0].tasks[0]).toMatch(/Remove.*Bakery #34.*Deli Island #39/);
+    // GC "Filler wedges" must not be captured as an RC task
+    expect(s[0].tasks.join(' ')).not.toMatch(/Filler wedges/);
   });
 
   it('empty/undated schedule does not throw', () => {
