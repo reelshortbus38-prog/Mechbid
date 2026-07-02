@@ -179,34 +179,58 @@ export function scanRcFirstCaseNight(text) {
 // "remove product and wash cases" prep is not RC work.
 const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*\/\s*install\s*:[^.\n]*(?:refrigeration contractor|\brc\b)|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
 const NON_RC_SECTION_RE = /^\s*-?\s*(?:general contractor|electrical contractor|plumbing contractor|hard tile|soft tile|store associates|market specialist|produce specialist|sas |these items|new note|note\s*:|deli\s*\/\s*bakery|reminder|vendor|energy)/i;
-const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|^\s*-?\s*\d+\s*['’]|#\s*\d/i;
+const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|\d+\s*['’]|#\s*\d|\bN\d{2,3}\b/i;
+
+// A date header line STARTS with a day of week, so a date mentioned mid-sentence
+// ("...by Monday 6/10") can't be mistaken for one. Works for the strict Food Lion
+// form ("Tuesday, September 8th (Night) w12") and the looser rough-draft form
+// ("Monday 6/3 thru Thursday 6/6" — no Day/Night marker).
+const HEADER_START_RE = /^\s*-?\s*(?:sun|mon|tues|wednes|thurs|fri|satur)day\b/i;
+// An inline RC task written on one line, "RC to accept and install N84- 6' Promo"
+// or "Refrigeration Contractor to temp cases out". The "RC" abbreviation and the
+// spelled-out form are both used across real schedules.
+const RC_INLINE_RE = /^\s*-?\s*(?:rc|refrigeration contractor)\b[^.\n]{0,8}\b(?:to|is\s+to|will|shall)\b/i;
 
 export function extractRcSchedule(text) {
   const lines = String(text || '').split(/\r?\n/);
   const nights = [];
-  let cur = null, action = null;
+  let cur = null, action = null, curWeek = null;
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) continue;
-    if (DOW_HEADER_RE.test(line) && /\((?:day|night)\)/i.test(line)) {
+    // A standalone "Week 6" line sets the week for the headers that follow it
+    // (the rough-draft form puts the week number on its own line).
+    const wk = line.match(/^week\s*#?\s*(\d{1,2})\b/i);
+    if (wk && !HEADER_START_RE.test(line)) { curWeek = parseInt(wk[1], 10); continue; }
+    // Date header?
+    if (HEADER_START_RE.test(line)) {
       const date = schedDateLabel(line);
-      if (date) { cur = { date, header: line.replace(/\s+/g, ' '), week: extractWeekNum(line), isNight: /\(night\)/i.test(line), groups: [] }; action = null; nights.push(cur); continue; }
+      if (date) { cur = { date, header: line.replace(/\s+/g, ' '), week: extractWeekNum(line) || curWeek, isNight: /\(night\)/i.test(line), groups: [] }; action = null; nights.push(cur); continue; }
     }
     if (!cur) continue;
     if (NON_RC_SECTION_RE.test(line)) { action = null; continue; }
-    if (RC_SECTION_RE.test(line)) {
+    // RC action SECTION header — cases are listed on the FOLLOWING lines. Covers
+    // "Refrigeration Contractor to remove:" and 1086's "RC to accept and install:"
+    // (any RC line ending in a colon introduces a case list). Checked before the
+    // inline case so a section header isn't swallowed as one task.
+    if (RC_SECTION_RE.test(line) || (RC_INLINE_RE.test(line) && /:\s*(?:\([^)]*\))?\s*$/.test(line))) {
       action = { label: line.replace(/\s*:\s*$/, '').replace(/^-\s*/, '').trim(), cases: [] };
       cur.groups.push(action);
-      if (/temp cases? out|refrigeration contractor to (?:temp|remove|relocat|install)/i.test(line) && CASE_CONTENT_RE.test(line)) action.cases.push(line);
+      if (/temp cases? out/i.test(line) && CASE_CONTENT_RE.test(line)) action.cases.push(line);
       continue;
+    }
+    // Inline RC task, cases named on the same line ("RC to accept and install
+    // N74/75- 24' DX6LN", "RC to remove 1,2,3 and 8") — one complete task.
+    if (RC_INLINE_RE.test(line)) {
+      cur.groups.push({ label: line.replace(/^-\s*/, '').trim(), cases: [], inline: true }); action = null; continue;
     }
     if (action && CASE_CONTENT_RE.test(line)) action.cases.push(line);
   }
-  const usable = g => g.cases.length > 0 || /temp cases? out/i.test(g.label);
+  const usable = g => g.inline || g.cases.length > 0 || /temp cases? out/i.test(g.label);
   return nights
     .filter(n => n.groups.some(usable))
     .map(n => {
-      const tasks = n.groups.filter(usable).map(g => g.cases.length ? `${g.label}: ${g.cases.join('; ')}` : g.label);
+      const tasks = n.groups.filter(usable).map(g => (g.inline || !g.cases.length) ? g.label : `${g.label}: ${g.cases.join('; ')}`);
       const blob = (n.header + ' ' + tasks.join(' ')).toLowerCase();
       return { date: n.date, header: n.header, week: n.week, isNight: n.isNight, frozen: /\bfrozen\b|ice\s*cream/.test(blob), tasks };
     });
