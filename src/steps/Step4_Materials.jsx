@@ -920,7 +920,14 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
         <>
           <div style={{ height: 1, background: colors.border, margin: '14px 0' }} />
 
-          <SLabel>Copper Rates ($/ft)</SLabel>
+          <Row style={{ justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <SLabel style={{ marginBottom:0 }}>Copper Rates ($/ft)</SLabel>
+            <button
+              onClick={()=>{ if (confirm('Reload default copper & insulation prices? This overwrites the current copper and insulation rates (fittings % and waste are kept).')) dispatch({ type:'LOAD_DEFAULT_RATES' }); }}
+              style={{ background:'none', border:`1px solid ${colors.border}`, color:colors.green, fontSize:11, padding:'4px 10px', borderRadius:6, cursor:'pointer' }}
+            >↺ Load default prices</button>
+          </Row>
+          <div style={{ fontSize:10, color:colors.textMuted, marginBottom:8, lineHeight:1.5 }}>Pre-filled with ballpark contractor pricing — copper moves with the market, so review before you bid.</div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:18 }}>
             {PIPE_SIZE_LIST.map(size=>(
               <div key={size}>
