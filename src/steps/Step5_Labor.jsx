@@ -15,9 +15,9 @@ const DEFAULT_PERIOD_NAMES = [
 // other case nights ~4, rack/startup a small crew, day-tech punch just one.
 // Roles/rates/days stay fully editable after adding; days start at 0 so you set
 // them from the schedule (which the reference panel above shows).
-const T = { role: 'Technician', rate: 150 };
-const H = { role: 'Helper', rate: 100 };
-const F = { role: 'Foreman', rate: 175 };
+const T = { role: 'Technician', rate: 75 };
+const H = { role: 'Helper', rate: 50 };
+const F = { role: 'Foreman', rate: 100 };
 // Case-move crews run 1 foreman + 1 tech + the rest helpers — the skilled
 // disconnect/reconnect is a couple of guys; the extra hands move cases fast.
 const PERIOD_PRESETS = {
