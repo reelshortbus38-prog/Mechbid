@@ -4,10 +4,10 @@ import { Btn, Input, Row, SLabel } from './UI.jsx';
 import { uid } from '../state/store.js';
 
 const DEFAULT_ROLES = [
-  { role: 'Technician', rate: 150 },
-  { role: 'Helper', rate: 100 },
-  { role: 'Foreman', rate: 175 },
-  { role: 'Apprentice', rate: 80 },
+  { role: 'Technician', rate: 75 },
+  { role: 'Helper', rate: 50 },
+  { role: 'Foreman', rate: 100 },
+  { role: 'Apprentice', rate: 40 },
 ];
 
 export default function CrewBuilder({ crew, onChange, compact = false }) {
