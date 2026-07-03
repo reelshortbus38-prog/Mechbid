@@ -205,7 +205,12 @@ function ResidentialEquipment({ onNext, onBack }) {
   const sucSize = state.resSucSize || '';
   const liqSize = state.resLiqSize || '';
   const lineLength = parseFloat(state.resLineLength)||0;
-  const linesetTotal = parseFloat(state.resLinesetTotal)||0;
+  const manualLinesetTotal = parseFloat(state.resLinesetTotal)||0;
+  // Roll copper prices straight off the copper rate table (suction + liquid run)
+  // × length, so entering size + length yields a price with no manual entry.
+  const cuRates = state.rates?.cu || {};
+  const rollCopperTotal = ((cuRates[sucSize]||0) + (cuRates[liqSize]||0)) * lineLength;
+  const linesetTotal = linesetType === 'roll' ? rollCopperTotal : manualLinesetTotal;
 
   // Labor
   const laborPeriods = state.laborPeriods || [];
@@ -323,7 +328,9 @@ function ResidentialEquipment({ onNext, onBack }) {
             ))}
           </div>
           <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px', background: colors.surface, borderRadius: 6 }}>
-            {linesetType === 'preinsulated' ? 'Pre-insulated lineset — enter total cost from supplier quote' : 'Roll copper — price from copper rates, add insulation to parts'}
+            {linesetType === 'preinsulated'
+              ? 'Pre-insulated lineset — enter total cost from supplier quote'
+              : `Roll copper — priced automatically from your copper rates (suction + liquid) × length${(!cuRates[sucSize] || !cuRates[liqSize]) ? '. Pick both sizes above to get a price; load default prices on the refrigeration Materials step if rates are blank.' : '. Add insulation separately in Parts.'}`}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
@@ -345,11 +352,17 @@ function ResidentialEquipment({ onNext, onBack }) {
               <Input type="number" value={state.resLineLength||''} onChange={e => dispatch({ type: 'SET', key: 'resLineLength', value: e.target.value })} placeholder="0" />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Lineset Total</div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ color: colors.textDim }}>$</span>
-                <Input type="number" value={linesetTotal||''} onChange={e => dispatch({ type: 'SET', key: 'resLinesetTotal', value: parseFloat(e.target.value)||0 })} placeholder="0.00" />
-              </div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Lineset Total {linesetType === 'roll' && <span style={{ color: colors.green }}>(auto)</span>}</div>
+              {linesetType === 'roll' ? (
+                <div style={{ display: 'flex', alignItems: 'center', height: 40, fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>
+                  {fmt(rollCopperTotal)}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: colors.textDim }}>$</span>
+                  <Input type="number" value={manualLinesetTotal||''} onChange={e => dispatch({ type: 'SET', key: 'resLinesetTotal', value: parseFloat(e.target.value)||0 })} placeholder="0.00" />
+                </div>
+              )}
             </div>
           </div>
           <Btn variant="blue" size="sm" style={{ marginTop: 12 }}
