@@ -565,7 +565,9 @@ export default function Step6_Proposal({ onBack }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <JobInfo />
+      {/* Store details & RC schedule — refrigeration-only (RC case-move
+          schedule, pre-con/RCC dates don't apply to HVAC jobs) */}
+      {state.mode === 'Commercial Refrigeration' && <JobInfo />}
 
       {/* Your company letterhead (global, saved across jobs) */}
       <CompanyProfileCard company={company} onChange={setCompany} />

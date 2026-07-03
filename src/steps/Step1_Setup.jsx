@@ -838,7 +838,7 @@ export default function Step1_Setup({ onNext }) {
       {/* RC Schedule — dated tasks accepted from schedule documents land here,
           separate from the quick Project Info fields above (which already
           cover name/address/store number) */}
-      {(state.rcSchedule || []).length > 0 && <JobInfo showStoreFields={false} />}
+      {state.mode === 'Commercial Refrigeration' && (state.rcSchedule || []).length > 0 && <JobInfo showStoreFields={false} />}
 
       {/* Next */}
       <Btn variant="green" onClick={onNext} style={{ width: '100%', justifyContent: 'center', padding: '16px', fontSize: 15 }}>

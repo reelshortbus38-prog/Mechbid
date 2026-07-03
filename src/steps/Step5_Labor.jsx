@@ -358,8 +358,9 @@ export default function Step5_Labor({ onNext, onBack }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Schedule + rack work reference, so crews can be sized against the
-          actual nights (frozen-food vs other) without leaving the Labor step */}
-      <ScheduleRackReference />
+          actual nights (frozen-food vs other) without leaving the Labor step.
+          Refrigeration-only — the RC/case-move schedule doesn't apply to HVAC. */}
+      {state.mode === 'Commercial Refrigeration' && <ScheduleRackReference />}
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
