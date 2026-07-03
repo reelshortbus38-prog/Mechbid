@@ -22,7 +22,11 @@ function sizeToFraction(val) {
   if(!val && val !== 0) return '';
   const str = String(val).trim().replace(/"/g,'');
   if(!str || str === '0') return '';
-  if(str.match(/\d[\s-]\d\/\d/) || str.match(/^\d\/\d/)) return str + '"';
+  // Normalize compound fractions to the dash form ("1 1/8" → "1-1/8") the size
+  // dropdowns AND the copper rate table both key on. .xls schedules store these
+  // with a space, which matched neither — so the size showed blank in the UI and
+  // priced at $0. Simple fractions (7/8, 1/2) have no space and are unaffected.
+  if(str.match(/\d[\s-]\d\/\d/) || str.match(/^\d\/\d/)) return str.replace(/\s+/, '-') + '"';
   const map = {
     0.25:'1/4"',0.375:'3/8"',0.5:'1/2"',0.625:'5/8"',0.75:'3/4"',
     0.875:'7/8"',1.0:'1"',1.125:'1-1/8"',1.25:'1-1/4"',1.375:'1-3/8"',
