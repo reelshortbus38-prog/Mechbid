@@ -18,11 +18,13 @@ const DEFAULT_PERIOD_NAMES = [
 const T = { role: 'Technician', rate: 150 };
 const H = { role: 'Helper', rate: 100 };
 const F = { role: 'Foreman', rate: 175 };
+// Case-move crews run 1 foreman + 1 tech + the rest helpers — the skilled
+// disconnect/reconnect is a couple of guys; the extra hands move cases fast.
 const PERIOD_PRESETS = {
-  'Rack Prep':             { crew: [T, H], isNight: false },
-  'Medium Temp Cases':     { crew: [F, T, T, H], isNight: true },
-  'Frozen Food Nights':    { crew: [F, T, T, T, H, H], isNight: true },
-  'Dairy Cases':           { crew: [F, T, T, H], isNight: true },
+  'Rack Prep':             { crew: [T, H], isNight: false },        // small skilled crew
+  'Medium Temp Cases':     { crew: [F, T, H, H], isNight: true },   // 4: 1F 1T 2H
+  'Frozen Food Nights':    { crew: [F, T, H, H, H, H], isNight: true }, // 6: 1F 1T 4H
+  'Dairy Cases':           { crew: [F, T, H, H], isNight: true },   // 4: 1F 1T 2H
   'Case Startup':          { crew: [T, H], isNight: false },
   'Punch List / Day Tech': { crew: [T], isNight: false },
 };

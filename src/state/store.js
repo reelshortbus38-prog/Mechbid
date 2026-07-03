@@ -1,5 +1,24 @@
 import { createContext, useContext, useReducer } from 'react';
 
+// ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
+// Starting-point contractor prices so a new job computes without hand-entering
+// every rate. These are ballpark ACR-copper ($/ft) and Armaflex insulation ($/ft)
+// costs — copper especially swings with the commodity market, so they're meant to
+// be reviewed and tuned per shop, not treated as gospel. Editable in the Materials
+// step, and reloadable there via "Load default prices".
+export const DEFAULT_CU_RATES = {
+  '1/4': 1.10, '3/8': 1.70, '1/2': 2.40, '5/8': 3.10, '7/8': 4.70,
+  '1-1/8': 6.30, '1-3/8': 8.20, '1-5/8': 10.50, '2-1/8': 15.00, '2-5/8': 20.00, '3-1/8': 25.00,
+};
+export const DEFAULT_INSUL_RATES = {
+  // 1/2" wall Armaflex, medium-temp suction.
+  medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40 },
+  // 3/4"–1" wall for low-temp suction — thicker, ~35% more.
+  lowSuction: { '1/4': 1.20, '3/8': 1.40, '1/2': 1.70, '5/8': 2.10, '7/8': 2.70, '1-1/8': 3.30, '1-3/8': 4.00, '1-5/8': 4.65, '2-1/8': 5.95, '2-5/8': 7.30, '3-1/8': 8.65 },
+  // Low-temp liquid lines — insulated but smaller sizes dominate.
+  lowLiquid: { '1/4': 0.95, '3/8': 1.10, '1/2': 1.35, '5/8': 1.65, '7/8': 2.15, '1-1/8': 2.60, '1-3/8': 3.15, '1-5/8': 3.70, '2-1/8': 4.70, '2-5/8': 5.75, '3-1/8': 6.85 },
+};
+
 // ── INITIAL STATE ──────────────────────────────────────────────────────────────
 // preferredSupplier starts as 'RE Michel' here for safety (this module can't import
 // from components/PriceBook.jsx without a circular import risk). Wizard.jsx applies
@@ -34,13 +53,15 @@ export const initialState = {
   // Shape: { id, date, desc, circuitRef, notes }
   rcSchedule: [],
   rates: {
-    cu: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
+    // Pre-filled with default contractor pricing (see DEFAULT_CU_RATES) so a new
+    // job estimates copper without hand-entering every size; fully editable.
+    cu: { ...DEFAULT_CU_RATES },
     // Insulation rates are per pipe size, per temp/line category — mirrors the copper rate shape.
     // e.g. rates.insul.medSuction['3/8'] = 2.10
     insul: {
-      medSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
-      lowSuction: { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
-      lowLiquid:  { '1/4':0,'3/8':0,'1/2':0,'5/8':0,'7/8':0,'1-1/8':0,'1-3/8':0,'1-5/8':0,'2-1/8':0,'2-5/8':0,'3-1/8':0 },
+      medSuction: { ...DEFAULT_INSUL_RATES.medSuction },
+      lowSuction: { ...DEFAULT_INSUL_RATES.lowSuction },
+      lowLiquid: { ...DEFAULT_INSUL_RATES.lowLiquid },
     },
     fittingsMarkupPct: 25,
     // 'percentage' = auto allowance line based on % of copper cost.
@@ -122,6 +143,19 @@ export function reducer(state, action) {
 
     case 'SET_RATE':
       return { ...state, rates: { ...state.rates, cu: { ...state.rates.cu, [action.size]: action.value } } };
+
+    case 'LOAD_DEFAULT_RATES':
+      // Reload the built-in default copper + insulation prices (leaves fittings %
+      // and waste factor as the user set them).
+      return { ...state, rates: {
+        ...state.rates,
+        cu: { ...DEFAULT_CU_RATES },
+        insul: {
+          medSuction: { ...DEFAULT_INSUL_RATES.medSuction },
+          lowSuction: { ...DEFAULT_INSUL_RATES.lowSuction },
+          lowLiquid: { ...DEFAULT_INSUL_RATES.lowLiquid },
+        },
+      } };
 
     case 'SET_INSUL_RATE':
       // action.category: 'medSuction' | 'lowSuction' | 'lowLiquid'
