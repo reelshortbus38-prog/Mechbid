@@ -84,6 +84,26 @@ function isShaded(color) {
   return KNOWN_SHADING_COLORS.has(hex);
 }
 
+// ── LEGACY .XLS FILL READING (via SheetJS) ──────────────────────────────────
+// ExcelJS is .xlsx-only, but SheetJS (read with cellStyles:true) exposes cell
+// fills on legacy .xls too — as `cell.s.fgColor.rgb`. Colors come back as bare
+// 6-char RRGGBB (e.g. '69FFFF') OR 8-char AARRGGBB; normalize the alpha off and
+// compare against the same KWRS highlight/shading palette used on the .xlsx path
+// so new-copper detection works identically for both file types.
+const XLS_HIGHLIGHT_RGB = new Set(['00FFFF','69FFFF','FFFF00','CCFFCC','ADD8E6']);
+function xlsFillRgb(ws, r, c) {
+  if (c == null || c < 0) return null;
+  const cell = ws[XLSX.utils.encode_cell({ r, c })];
+  const rgb = cell && cell.s && cell.s.fgColor && cell.s.fgColor.rgb;
+  return rgb ? String(rgb).toUpperCase() : null;
+}
+function isHighlightRgb(rgb) {
+  if (!rgb) return false;
+  const s = rgb.length === 8 ? rgb.slice(2) : rgb;
+  if (s === 'FFFFFF') return false;              // plain white is not a mark
+  return XLS_HIGHLIGHT_RGB.has(s) || KNOWN_SHADING_COLORS.has(s);
+}
+
 // Text-based new-work detection: explicit phrases that unambiguously mean
 // "this is a new circuit," confirmed across real Kysor Warren and W&R BPR
 // files. "Retrofit" was intentionally dropped — it describes work being
@@ -570,7 +590,17 @@ function parseKysorWarren(wb, circuits, meta) {
 
 // ── XLS FALLBACK PARSER ────────────────────────────────────────────────────────
 function parseXLS(xlsBuffer, circuits, meta) {
-  const wb = XLSX.read(xlsBuffer, {type:'buffer'});
+  // cellStyles:true so we can read fills — KWRS legends mark new copper by
+  // highlighting the pipe-size cells, and without this every circuit in the
+  // schedule (existing included) gets extracted (the "35 circuits" bug).
+  const wb = XLSX.read(xlsBuffer, {type:'buffer', cellStyles:true});
+
+  // Collect all circuit candidates first with their pipe-cell highlight flags,
+  // then decide: if ANY candidate has a highlighted pipe cell, the file marks
+  // new work by highlighting → keep only highlighted circuits. If nothing is
+  // highlighted anywhere (older .xls with no color info, or an unmarked sheet),
+  // fall back to keeping all rows so we don't silently return zero.
+  const candidates = [];
 
   for(const sName of wb.SheetNames) {
     if(sName.includes('Module') || sName.includes('Chart')) continue;
@@ -652,15 +682,21 @@ function parseXLS(xlsBuffer, circuits, meta) {
       if(!isNumeric && !isLetter) continue;
 
       const run = parseFloat(String(row[runCol]||''))||0;
-      if(!run) continue;
-
       const sh  = sizeToFraction(sucHCol>=0 ? row[sucHCol] : '');
-      if(!sh) continue;
-
       const sr  = sizeToFraction(sucRCol>=0 ? row[sucRCol] : '');
       const lh  = sizeToFraction(liqCol>=0  ? row[liqCol]  : '');
+      // Need at least one pipe fact to be a real circuit row.
+      if(!run && !sh && !sr && !lh) continue;
+
       const app = String(appCol>=0 ? row[appCol]||'' : row[6]||'').trim();
       if(app.match(/SPARE/i)) continue;
+
+      // Pipe-cell highlighting = new copper. A highlighted Suction Horiz or
+      // Liquid Horiz means a new horizontal run (new circuit); a highlighted
+      // Suction Riser with no horizontal mark is a riser-only add. Same rule as
+      // the .xlsx KWRS parser, just reading fills through SheetJS.
+      const horizMarked = isHighlightRgb(xlsFillRgb(ws, r, sucHCol)) || isHighlightRgb(xlsFillRgb(ws, r, liqCol));
+      const riserMarked = isHighlightRgb(xlsFillRgb(ws, r, sucRCol));
 
       // Temp type from the Evap °F column instead of assuming medium. Frozen
       // circuits run well below 0°F (≈ -10 to -25); medium temp is ≈ +20 to +32.
@@ -675,18 +711,38 @@ function parseXLS(xlsBuffer, circuits, meta) {
       // Single-letter rack → "A1" (Food Lion convention); longer keys keep the
       // dash ("Hdr1-1") to stay unambiguous across multi-header BPRs.
       const circId = isNumeric ? (rack.length <= 2 ? `${rack}${circIdRaw}` : `${rack}-${circIdRaw}`) : circIdRaw;
-      if(!circuits.find(c => c.circuitId === circId)) {
-        circuits.push({
-          circuitId: circId, rack,
-          runLength: run, riserLength: 20,
-          sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
-          tempType,
-          application: app, isRiserOnly: false,
-          colorType: 'xls-parsed',
-          notes: ['From .xls — verify manually', heatNote].filter(Boolean).join(' — ')
-        });
-      }
+
+      candidates.push({ circId, rack, run, sh, sr, lh, tempType, app, heatNote, horizMarked, riserMarked });
     }
+  }
+
+  // If highlighting exists anywhere, it's the new-work signal — keep only marked
+  // circuits. Otherwise keep everything (no color info to filter on).
+  const hasHighlightInfo = candidates.some(c => c.horizMarked || c.riserMarked);
+
+  for(const c of candidates) {
+    const marked = c.horizMarked || c.riserMarked;
+    if(hasHighlightInfo && !marked) continue;
+    // No-highlight fallback keeps the old stricter guards (run + suction size)
+    // to avoid dragging in stray non-circuit rows.
+    if(!hasHighlightInfo && (!c.run || !c.sh)) continue;
+
+    const riserOnly = hasHighlightInfo && c.riserMarked && !c.horizMarked;
+    if(circuits.find(x => x.circuitId === c.circId)) continue;
+
+    circuits.push({
+      circuitId: c.circId, rack: c.rack,
+      // Riser-only adds no horizontal copper — zero the run so the takeoff
+      // prices just the new riser, not the existing main.
+      runLength: riserOnly ? 0 : c.run, riserLength: 20,
+      sucHoriz: c.sh, sucRiser: c.sr, liqHoriz: c.lh,
+      tempType: c.tempType,
+      application: c.app, isRiserOnly: riserOnly,
+      colorType: hasHighlightInfo ? 'cyan' : 'xls-parsed',
+      notes: hasHighlightInfo
+        ? [riserOnly ? 'RISER — new riser drop' : 'NEW CIRCUIT — new copper run', c.heatNote].filter(Boolean).join(' — ')
+        : ['From .xls — verify manually', c.heatNote].filter(Boolean).join(' — ')
+    });
   }
 }
 
