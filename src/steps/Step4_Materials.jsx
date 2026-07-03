@@ -10,6 +10,31 @@ const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8
 const FITTING_TYPES = ['Coupling','Elbow 90°','Elbow 45°','Tee','Bushing','Reducer','P-Trap','Wye','Cap','Union','Street Ell','Sweat Adapter'];
 const RES_EQUIP_TYPES = ['Heat Pump','Mini Split','Package Unit','Split System AC','Air Handler','Condenser','Gas Furnace','Heat Strip','ERV/HRV'];
 
+// Default wholesale/contractor equipment cost by type and tonnage (15–16 SEER2
+// baseline). 2.5 / 3.5 ton interpolated. Auto-fills an empty cost once type +
+// tonnage are set; always editable. Ballpark — verify at your distributor.
+const RES_EQUIP_DEFAULTS = {
+  'Split System AC': { 1.5:1600, 2:1950, 2.5:2350, 3:2800, 3.5:3200, 4:3600, 5:4400 },
+  'Heat Pump':       { 1.5:2100, 2:2450, 2.5:2900, 3:3400, 3.5:3850, 4:4300, 5:5200 },
+  'Gas Furnace':     { 1.5:750,  2:850,  2.5:975,  3:1100, 3.5:1225, 4:1350, 5:1600 },
+};
+// Standard change-out install kit (~$880 total, wholesale).
+const RES_KIT = [
+  { desc: 'Copper line set & insulation (25 ft)', cost: 200 },
+  { desc: 'Electrical whip & disconnect box', cost: 120 },
+  { desc: 'Equipment pad / condenser feet', cost: 75 },
+  { desc: 'Refrigerant (8 lb @ $20/lb)', cost: 160 },
+  { desc: 'Smart thermostat', cost: 175 },
+  { desc: 'Misc (drains, tape, mastic, screws)', cost: 150 },
+];
+// Priced quick-add chips for common residential parts.
+const RES_PART_QUICKADD = [
+  ['Thermostat', 175], ['Disconnect & whip', 120], ['Condensate pump', 60],
+  ['Float / safety switch', 15], ['Equipment pad', 75], ['Lineset cover', 90],
+  ['Refrigerant (R-410A / R-454B)', 160], ['Filter / media cabinet', 120],
+  ['Drain line (PVC)', 40], ['Surge protector', 45], ['Permit', 150],
+];
+
 const RES_LABOR_PERIOD_NAMES = ['Installation Day','Startup & Commissioning','Service Call','Warranty Return'];
 
 // ── RESIDENTIAL LABOR ─────────────────────────────────────────────────────────
@@ -138,9 +163,19 @@ function ResidentialEquipment({ onNext, onBack }) {
   }
 
   function updateEquipment(id, field, value) {
-    dispatch({ type: 'SET', key: 'resEquipment', value: equipment.map(e =>
-      e.id === id ? { ...e, [field]: field === 'cost' ? parseFloat(value)||0 : value } : e
-    )});
+    dispatch({ type: 'SET', key: 'resEquipment', value: equipment.map(e => {
+      if (e.id !== id) return e;
+      const updated = { ...e, [field]: field === 'cost' ? parseFloat(value)||0 : value };
+      // When type or tonnage changes and the cost is still empty, drop in the
+      // default wholesale cost for that type+tonnage (never overwrites a value
+      // the user already typed).
+      if ((field === 'type' || field === 'tons') && !(parseFloat(updated.cost) > 0)) {
+        const tons = parseFloat(String(updated.tons).replace(/[^\d.]/g, ''));
+        const def = RES_EQUIP_DEFAULTS[updated.type]?.[tons];
+        if (def) updated.cost = def;
+      }
+      return updated;
+    })});
   }
 
   function removeEquipment(id) {
@@ -330,12 +365,15 @@ function ResidentialEquipment({ onNext, onBack }) {
           <SLabel>Parts & Misc Materials</SLabel>
           <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
         </Row>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-          {['Thermostat', 'Disconnect & whip', 'Condensate pump', 'Float / safety switch', 'Equipment pad', 'Lineset cover', 'Refrigerant (R-410A / R-454B)', 'Filter / media cabinet', 'Drain line (PVC)', 'Surge protector', 'Permit'].map(c => (
-            <button key={c} onClick={() => dispatch({ type: 'SET', key: 'resParts', value: [...parts, { id: uid(), desc: c, qty: 1, unitCost: 0, total: 0 }] })}
-              style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.surface, color: colors.textDim }}>+ {c}</button>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <button onClick={() => dispatch({ type: 'SET', key: 'resParts', value: [...parts, ...RES_KIT.map(k => ({ id: uid(), desc: k.desc, qty: 1, unitCost: k.cost, total: k.cost }))] })}
+            style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: `1px solid ${colors.green}`, background: colors.greenFaint, color: colors.green, fontWeight: 700 }}>+ Install kit ($880)</button>
+          {RES_PART_QUICKADD.map(([c, cost]) => (
+            <button key={c} onClick={() => dispatch({ type: 'SET', key: 'resParts', value: [...parts, { id: uid(), desc: c, qty: 1, unitCost: cost, total: cost }] })}
+              style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.surface, color: colors.textDim }}>+ {c} <span style={{ color: colors.textMuted }}>${cost}</span></button>
           ))}
         </div>
+        <div style={{ fontSize: 10, color: colors.textMuted, marginBottom: 12 }}>Chips add at a default wholesale cost — edit any line below.</div>
         {parts.length === 0 ? (
           <Card><EmptyState icon="🔧" title="No parts yet" subtitle="Tap a common item above, or + Add Part" /></Card>
         ) : (
