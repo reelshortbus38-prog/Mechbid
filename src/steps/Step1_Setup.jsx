@@ -358,7 +358,7 @@ export default function Step1_Setup({ onNext }) {
             rackSections.forEach(sec => sec.tasks.forEach(t => {
               detRackDescs.add(normalizeDesc(t));
               pushPending('rackTask', sourceType, fileMeta.name, {
-                desc: `[Rack ${sec.rack}] ${t}`, rack: sec.rack, hrs: 0, notes: 'From scope doc rack work section',
+                desc: t, rack: sec.rack, hrs: 0, notes: 'From scope doc rack work section',
                 crewAssignment: {}, rawDesc: t,
               });
             }));
@@ -656,7 +656,11 @@ export default function Step1_Setup({ onNext }) {
           });
         }
       } else if (item.kind === 'rackTask') {
-        if (!newRackTasks.find(x => x.desc === item.data.desc) && !state.rackTasks.find(x => x.desc === item.data.desc)) {
+        // Key on rack + desc: the same task legitimately repeats across racks
+        // (store 47 changes the oil separator float on racks A, B, AND C) —
+        // desc-only dedupe collapsed those into one.
+        const rtKey = d => `${(d.rack || '').toUpperCase()}|${d.desc}`;
+        if (!newRackTasks.find(x => rtKey(x) === rtKey(item.data)) && !state.rackTasks.find(x => rtKey(x) === rtKey(item.data))) {
           newRackTasks.push({ id: uid(), ...item.data });
         }
         if (item.data.date) {

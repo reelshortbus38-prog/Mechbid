@@ -1,13 +1,27 @@
 import { useState } from 'react';
 import { useStore, uid, fmt, calcRackTaskCost, primaryCrew } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput, TblArea } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip } from '../components/PriceBook.jsx';
+
+// Rack tasks group by which rack they're on. Newer extractions carry a rack
+// field; earlier ones baked a "[Rack A]" prefix into the description instead —
+// read either, so existing saved jobs group correctly too.
+const RACK_PREFIX_RE = /^\[Rack\s+([A-Z]\d?)\]\s*/i;
+function taskRack(t) {
+  if (t.rack) return String(t.rack).toUpperCase();
+  const m = String(t.desc || '').match(RACK_PREFIX_RE);
+  return m ? m[1].toUpperCase() : '';
+}
+function taskDisplayDesc(t) {
+  return String(t.desc || '').replace(RACK_PREFIX_RE, '');
+}
 
 export default function Step3_Rack({ onNext, onBack }) {
   const { state, dispatch } = useStore();
   const [uriSearch, setUriSearch] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState({});
 
   // ── Rack Parts ──────────────────────────────────────────────────────────────
   function addRackPart() {
@@ -33,6 +47,28 @@ export default function Step3_Rack({ onNext, onBack }) {
   function updateRackTask(id, field, value) {
     dispatch({ type: 'UPDATE_RACK_TASK', id, updates: { [field]: field === 'hrs' ? parseFloat(value) || 0 : value } });
   }
+
+  // Editing a description saves what's typed (prefix-free) and, for legacy
+  // items whose rack lived only in the "[Rack A]" desc prefix, moves that rack
+  // into its own field so the task stays in its group after the edit.
+  function updateRackTaskDesc(t, value) {
+    const updates = { desc: value };
+    if (!t.rack) { const k = taskRack(t); if (k) updates.rack = k; }
+    dispatch({ type: 'UPDATE_RACK_TASK', id: t.id, updates });
+  }
+
+  // Group tasks by rack — racks alphabetically, ungrouped general work last.
+  const taskGroups = (() => {
+    const map = new Map();
+    state.rackTasks.forEach(t => {
+      const k = taskRack(t);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    });
+    return [...map.keys()]
+      .sort((a, b) => (a === '') - (b === '') || a.localeCompare(b))
+      .map(k => ({ key: k || 'general', label: k ? `Rack ${k}` : 'General Rack Work', tasks: map.get(k) }));
+  })();
 
   // ── Crew for tasks ──────────────────────────────────────────────────────────
   // Use global crew from the first labor period if available, otherwise the
@@ -159,39 +195,80 @@ export default function Step3_Rack({ onNext, onBack }) {
             <EmptyState icon="🔧" title="No rack tasks" subtitle="Upload a scope doc to auto-populate, or add manually" />
           ) : (
             <>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: colors.surface }}>
-                    {['Task', 'Men', 'Hrs', 'Cost', 'Notes', ''].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.rackTasks.map((t, i) => (
-                    <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : colors.surface + '40' }}>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, width: '38%' }}>
-                        <TblInput value={t.desc} onChange={e => updateRackTask(t.id, 'desc', e.target.value)} placeholder="Task description" />
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <TblInput type="number" value={t.men || 1} onChange={e => updateRackTask(t.id, 'men', e.target.value)} style={{ width: 44, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <TblInput type="number" value={t.hrs} onChange={e => updateRackTask(t.id, 'hrs', e.target.value)} style={{ width: 52, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.green }}>
-                        {fmt(calcTaskCost(t))}
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <TblInput value={t.notes} onChange={e => updateRackTask(t.id, 'notes', e.target.value)} placeholder="Notes" />
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <button onClick={() => dispatch({ type: 'REMOVE_RACK_TASK', id: t.id })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {taskGroups.map(group => {
+                const collapsed = !!collapsedGroups[group.key];
+                const subtotal = group.tasks.reduce((s, t) => s + calcTaskCost(t), 0);
+                return (
+                  <div key={group.key}>
+                    {/* Group header — click to collapse/expand */}
+                    <div
+                      onClick={() => setCollapsedGroups(c => ({ ...c, [group.key]: !c[group.key] }))}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '10px 14px', background: colors.surface, cursor: 'pointer', userSelect: 'none',
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 800 }}>
+                          🔩 {group.label}
+                        </span>
+                        <span style={{ fontSize: 11, color: colors.textDim }}>
+                          {group.tasks.length} task{group.tasks.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: subtotal > 0 ? colors.green : colors.textDim }}>{fmt(subtotal)}</span>
+                        <span style={{ color: colors.textDim, fontSize: 11 }}>{collapsed ? '▼' : '▲'}</span>
+                      </div>
+                    </div>
+
+                    {!collapsed && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed' }}>
+                        <colgroup>
+                          <col style={{ width: '40%' }} />
+                          <col style={{ width: 60 }} />
+                          <col style={{ width: 66 }} />
+                          <col style={{ width: 84 }} />
+                          <col />
+                          <col style={{ width: 46 }} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            {['Task', 'Men', 'Hrs', 'Cost', 'Notes', ''].map(h => (
+                              <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.tasks.map((t, i) => (
+                            <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : colors.surface + '40' }}>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
+                                <TblArea value={taskDisplayDesc(t)} onChange={e => updateRackTaskDesc(t, e.target.value)} placeholder="Task description" />
+                              </td>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
+                                <TblInput type="number" value={t.men || 1} onChange={e => updateRackTask(t.id, 'men', e.target.value)} style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                              </td>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
+                                <TblInput type="number" value={t.hrs} onChange={e => updateRackTask(t.id, 'hrs', e.target.value)} style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                              </td>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.green, verticalAlign: 'top' }}>
+                                {fmt(calcTaskCost(t))}
+                              </td>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
+                                <TblArea value={t.notes} onChange={e => updateRackTask(t.id, 'notes', e.target.value)} placeholder="Notes" />
+                              </td>
+                              <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
+                                <button onClick={() => dispatch({ type: 'REMOVE_RACK_TASK', id: t.id })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
               <div style={{ padding: '10px 16px', borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 12, color: colors.textDim }}>Rack Labor Total</span>
                 <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.yellow }}>{fmt(rackLaborTotal)}</span>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskCost, calcFieldTasksTotal, primaryCrew, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 
@@ -224,7 +224,7 @@ function FieldTasksSection() {
                   return (
                     <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : colors.surface + '40' }}>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, width: '40%' }}>
-                        <TblInput value={t.desc} onChange={e => updateTask(t.id, 'desc', e.target.value)} placeholder="Task description" />
+                        <TblArea value={t.desc} onChange={e => updateTask(t.id, 'desc', e.target.value)} placeholder="Task description" />
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <TblInput type="number" value={t.men} onChange={e => updateTask(t.id, 'men', e.target.value)} style={{ width: 44, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
@@ -234,7 +234,7 @@ function FieldTasksSection() {
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.green }}>{fmt(cost)}</td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <TblInput value={t.notes || ''} onChange={e => updateTask(t.id, 'notes', e.target.value)} placeholder="Notes" />
+                        <TblArea value={t.notes || ''} onChange={e => updateTask(t.id, 'notes', e.target.value)} placeholder="Notes" />
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <button onClick={() => removeTask(t.id)} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
