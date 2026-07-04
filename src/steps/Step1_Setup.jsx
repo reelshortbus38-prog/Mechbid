@@ -13,6 +13,7 @@ import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
+import { extractRackWorkSections, extractPartsList, normalizeDesc } from '../components/scopeText.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -208,6 +209,10 @@ export default function Step1_Setup({ onNext }) {
         // extracted document text, medium reliability), 'excel' (parsed cells directly,
         // most reliable — these auto-accept but are still visible for review).
         let sourceType = 'doctext';
+        // Rack work + parts already read deterministically from this file's text
+        // (normalized descs) — AI results matching these are skipped as duplicates.
+        const detRackDescs = new Set();
+        const detPartDescs = new Set();
 
         // HVAC jobs upload mechanical plan sheets (ductwork/piping plans,
         // equipment schedules), not refrigeration redlines/BPRs — route those to
@@ -341,6 +346,34 @@ export default function Step1_Setup({ onNext }) {
             const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
             const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`;
             const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
+
+          // Deterministic rack-work sections ("RACK A" heading + task lines) and
+          // PARTS LIST ("QTY - DESC" lines) — rigid enough to read exactly from
+          // the text. AI extraction over a long chunked doc has dropped most of
+          // these in practice (store 47: 1 of 13 parts survived, rack work
+          // misfiled as notes), so the direct read is authoritative and the AI's
+          // matching items are skipped as duplicates below.
+          {
+            const rackSections = extractRackWorkSections(docRes.text);
+            rackSections.forEach(sec => sec.tasks.forEach(t => {
+              detRackDescs.add(normalizeDesc(t));
+              pushPending('rackTask', sourceType, fileMeta.name, {
+                desc: `[Rack ${sec.rack}] ${t}`, rack: sec.rack, hrs: 0, notes: 'From scope doc rack work section',
+                crewAssignment: {}, rawDesc: t,
+              });
+            }));
+            const detParts = extractPartsList(docRes.text);
+            detParts.forEach(p => {
+              detPartDescs.add(normalizeDesc(p.desc));
+              pushPending('part', sourceType, fileMeta.name, {
+                partId: '', desc: p.desc, qty: p.qty, unit: 'ea', storeSupplied: true, unitCost: 0, total: 0,
+              });
+            });
+            if (rackSections.length || detParts.length) {
+              const taskCount = rackSections.reduce((s, r) => s + r.tasks.length, 0);
+              newResults.push(`🔩 ${fileMeta.name}: read directly — ${taskCount ? `${taskCount} rack work item(s) on rack ${rackSections.map(r => r.rack).join(', ')}` : ''}${taskCount && detParts.length ? ', ' : ''}${detParts.length ? `${detParts.length} part(s) from the parts list` : ''}`);
+            }
+          }
 
           // Legacy .doc fell back to the crude raw-text reader (LibreOffice not
           // present in the serverless runtime) — words run together, which hurts
@@ -479,20 +512,21 @@ export default function Step1_Setup({ onNext }) {
             }
           });
 
-          // Rack tasks — dated → schedule note; undated → rack labor or note.
+          // Rack tasks — dated → schedule note; undated → the Rack step's task
+          // list, always. taskBidMode only governs FIELD tasks (their labor can
+          // be bulk-estimated from the circuit takeoff); rack labor has no bulk
+          // estimator — the Rack step task table is its only source, so sending
+          // rack work to notes leaves the rack labor section empty.
           (parsed.rackTasks || []).forEach(t => {
             if (t.desc) {
+              if (detRackDescs.has(normalizeDesc(t.desc))) return; // already read directly from the text
               if (t.date) {
                 pushPending('note', sourceType, fileMeta.name, {
                   desc: t.desc, date: t.date, notes: t.notes || '', rawDesc: t.desc,
                 });
-              } else if (bidAsLineItems) {
-                pushPending('rackTask', sourceType, fileMeta.name, {
-                  desc: t.desc, hrs: 0, notes: t.notes || '', crewAssignment: {}, rawDesc: t.desc,
-                });
               } else {
-                pushPending('note', sourceType, fileMeta.name, {
-                  desc: t.desc, notes: t.notes || '', rawDesc: t.desc,
+                pushPending('rackTask', sourceType, fileMeta.name, {
+                  desc: t.desc, rack: t.rack || '', hrs: 0, notes: t.notes || '', crewAssignment: {}, rawDesc: t.desc,
                 });
               }
             }
@@ -501,6 +535,7 @@ export default function Step1_Setup({ onNext }) {
           // Parts → rack parts
           (parsed.parts || []).forEach(p => {
             if (p.description) {
+              if (detPartDescs.has(normalizeDesc(p.description))) return; // already read directly from the parts list
               pushPending('part', sourceType, fileMeta.name, {
                 partId: p.partId || '', desc: p.description, qty: p.qty || 0, unit: 'ea', storeSupplied: true, unitCost: 0, total: 0,
               });
@@ -655,7 +690,12 @@ export default function Step1_Setup({ onNext }) {
           }
         }
       } else if (item.kind === 'part') {
-        if (!newRackParts.find(x => x.partId === item.data.partId) && !state.rackParts.find(x => x.partId === item.data.partId)) {
+        // Dedupe by part number when there is one, else by description —
+        // extracted parts usually have NO part number, and keying on the empty
+        // partId collapsed every part into the first one (store 47: 13 parts
+        // in the list, only "CPC SENSORS" survived).
+        const partKey = p => p.partId || normalizeDesc(p.desc);
+        if (!newRackParts.find(x => partKey(x) === partKey(item.data)) && !state.rackParts.find(x => partKey(x) === partKey(item.data))) {
           newRackParts.push({ id: uid(), ...item.data });
         }
       } else if (item.kind === 'projectInfo') {
