@@ -347,6 +347,15 @@ function ProposalView({ company = {} }) {
         circuits.forEach(c => { scopeRows += `<tr><td>${c.circuitId}</td><td>${c.application || ''}</td><td>${c.isRiserOnly ? 'Riser only' : c.runLength + 'ft'}</td><td>${c.sucHoriz || '—'}</td><td>${c.liqHoriz || '—'}</td></tr>`; });
         scopeRows += `</tbody></table>`;
       }
+      // Contractor-supplied rack parts are in the bid total (markupBase), so
+      // itemize them on the printed proposal too — a priced line the customer
+      // can't see invites a dispute.
+      const contractorRackParts = (state.rackParts || []).filter(p => !p.storeSupplied && (p.total || 0) > 0);
+      if (contractorRackParts.length > 0) {
+        scopeRows += `<h2>Rack Parts (Contractor Supplied)</h2><table><thead><tr><th>Part #</th><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
+        contractorRackParts.forEach(p => { scopeRows += `<tr><td>${p.partId || '—'}</td><td>${p.desc}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+        scopeRows += `</tbody></table>`;
+      }
       const sections = [...new Set((state.lineItems || []).map(i => i.section))];
       if (sections.length > 0) {
         scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>`;

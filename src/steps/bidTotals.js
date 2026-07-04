@@ -1,4 +1,4 @@
-import { calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, primaryCrew } from '../state/store.js';
+import { calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal, primaryCrew } from '../state/store.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -28,7 +28,9 @@ export function computeBidTotals(state, markupPct) {
   if (mode === 'Residential HVAC') {
     const equipTotal = (state.resEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
     const partsTotal = (state.resParts || []).reduce((s, p) => s + (p.total || 0), 0);
-    const linesetTotal = parseFloat(state.resLinesetTotal) || 0;
+    // Shared helper: roll copper auto-prices from rates × length; pre-insulated
+    // is the manual quote total. Must match what the Materials step shows.
+    const linesetTotal = calcResLinesetTotal(state);
     const markupBase = equipTotal + partsTotal + linesetTotal;
     const markupAmt = equipTotal * (equipMarkupPct / 100) + (partsTotal + linesetTotal) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);

@@ -5,21 +5,28 @@ import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptySt
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 
-const DEFAULT_PERIOD_NAMES = [
+// Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
+// both Commercial Refrigeration and Commercial HVAC, and a rooftop-unit swap
+// has no "Frozen Food Nights". Roles/rates/days stay fully editable after
+// adding; days start at 0 so you set them from the schedule.
+const REFRIG_PERIOD_NAMES = [
   'Rack Prep', 'Medium Temp Cases', 'Frozen Food Nights',
   'Dairy Cases', 'Case Startup', 'Punch List / Day Tech',
 ];
+const HVAC_PERIOD_NAMES = [
+  'Demo / Tear-Out', 'Equipment Set (Crane Day)', 'Ductwork',
+  'Piping / Controls', 'Startup & Balance', 'Punch List / Day Tech',
+];
+function periodNamesForMode(mode) {
+  return mode === 'Commercial HVAC' ? HVAC_PERIOD_NAMES : REFRIG_PERIOD_NAMES;
+}
 
-// Preset crews for the quick-add buttons — a starting point so you don't build
-// each crew from scratch. Frozen-food case-move nights run a bigger crew (6),
-// other case nights ~4, rack/startup a small crew, day-tech punch just one.
-// Roles/rates/days stay fully editable after adding; days start at 0 so you set
-// them from the schedule (which the reference panel above shows).
 const T = { role: 'Technician', rate: 75 };
 const H = { role: 'Helper', rate: 50 };
 const F = { role: 'Foreman', rate: 100 };
-// Case-move crews run 1 foreman + 1 tech + the rest helpers — the skilled
-// disconnect/reconnect is a couple of guys; the extra hands move cases fast.
+// Refrigeration case-move crews run 1 foreman + 1 tech + the rest helpers —
+// the skilled disconnect/reconnect is a couple of guys; the extra hands move
+// cases fast. HVAC crews are day work: crane day runs heavy, balance runs lean.
 const PERIOD_PRESETS = {
   'Rack Prep':             { crew: [T, H], isNight: false },        // small skilled crew
   'Medium Temp Cases':     { crew: [F, T, H, H], isNight: true },   // 4: 1F 1T 2H
@@ -27,6 +34,11 @@ const PERIOD_PRESETS = {
   'Dairy Cases':           { crew: [F, T, H, H], isNight: true },   // 4: 1F 1T 2H
   'Case Startup':          { crew: [T, H], isNight: false },
   'Punch List / Day Tech': { crew: [T], isNight: false },
+  'Demo / Tear-Out':          { crew: [F, H, H], isNight: false },
+  'Equipment Set (Crane Day)': { crew: [F, T, H, H], isNight: false },
+  'Ductwork':                 { crew: [T, H, H], isNight: false },
+  'Piping / Controls':        { crew: [T, H], isNight: false },
+  'Startup & Balance':        { crew: [T], isNight: false },
 };
 
 // A period counts as "already set up" once it has a name, any crew, or days
@@ -39,7 +51,7 @@ function periodHasData(period) {
   return !!(period.name || (period.crew && period.crew.length > 0) || (parseFloat(period.days) || 0) > 0);
 }
 
-function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded }) {
+function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNames = REFRIG_PERIOD_NAMES }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { labor, oot, total } = calcLaborPeriodCost(period);
 
@@ -76,7 +88,7 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded }) {
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Period Name</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-              {DEFAULT_PERIOD_NAMES.map(name => (
+              {periodNames.map(name => (
                 <button
                   key={name}
                   onClick={() => onUpdate('name', name)}
@@ -378,7 +390,7 @@ export default function Step5_Labor({ onNext, onBack }) {
         {/* Quick add common periods */}
         {state.laborPeriods.length === 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-            {DEFAULT_PERIOD_NAMES.map(name => (
+            {periodNamesForMode(state.mode).map(name => (
               <Btn key={name} variant="surface" size="sm" onClick={() => addPeriod(name)}>+ {name}</Btn>
             ))}
           </div>
@@ -391,6 +403,7 @@ export default function Step5_Labor({ onNext, onBack }) {
             <LaborPeriodCard
               key={period.id}
               period={period}
+              periodNames={periodNamesForMode(state.mode)}
               onUpdate={(field, value) => updatePeriod(period.id, field, value)}
               onRemove={() => dispatch({ type: 'REMOVE_LABOR_PERIOD', id: period.id })}
               // A period that already has a name/crew/days starts collapsed — only

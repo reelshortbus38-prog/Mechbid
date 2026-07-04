@@ -84,6 +84,22 @@ describe('computeBidTotals reconciliation', () => {
     expect(round(sum)).toBe(round(t.total));
   });
 
+  it('Residential HVAC roll copper: auto-priced lineset lands in the bid total', () => {
+    // Roll copper has NO manual resLinesetTotal — the price comes from the
+    // copper rate table × length. Reading resLinesetTotal directly dropped it.
+    const state = {
+      mode: 'Residential HVAC',
+      resEquipment: [], resParts: [], laborPeriods: [],
+      resLinesetType: 'roll', resSucSize: '7/8', resLiqSize: '3/8', resLineLength: 50,
+      rates: { cu: { '7/8': 4.70, '3/8': 1.70 } },
+      markupPct: 0, equipMarkupPct: 0, materialsTaxPct: 0,
+      subcontractors: [], bondPct: 0, permitFee: 0,
+    };
+    const t = computeBidTotals(state, 0);
+    expect(round(t.linesetTotal)).toBe(round((4.70 + 1.70) * 50)); // $320
+    expect(round(t.total)).toBe(320);
+  });
+
   it('empty job: everything zero, no NaN', () => {
     const t = computeBidTotals({ mode: 'Commercial Refrigeration' }, 20);
     expect(t.total).toBe(0);
