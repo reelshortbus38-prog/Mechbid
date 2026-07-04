@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore, uid } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Row, EmptyState, Badge } from './UI.jsx';
+import { Btn, Card, SLabel, Input, TextArea, Row, EmptyState, Badge } from './UI.jsx';
 
 // ── CONFIDENCE BADGE ───────────────────────────────────────────────────────────
 // Source type determines how much we trust it by default.
@@ -86,7 +86,7 @@ function ReviewRow({ item, onChange, onToggle }) {
         {item.kind === 'fieldTask' && (
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Task Description</div>
-            <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            <TextArea value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
             {(item.data.desc || '').includes('[unclear]') && (
               <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                 ⚠️ The AI couldn't read part of this clearly — check the source document and fill in the [unclear] part before accepting.
@@ -100,7 +100,7 @@ function ReviewRow({ item, onChange, onToggle }) {
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>
               {item.data.date ? `Schedule Note · ${item.data.date}` : 'Redline Note'}{item.data.circuitRef ? ` · ${item.data.circuitRef}` : ''}{item.data.location ? ` · ${item.data.location}` : ''}
             </div>
-            <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            <TextArea value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
             {(item.data.desc || '').includes('[unclear]') && (
               <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700 }}>
                 ⚠️ Part of this callout was unclear — check the drawing before accepting.
@@ -111,8 +111,8 @@ function ReviewRow({ item, onChange, onToggle }) {
 
         {item.kind === 'rackTask' && (
           <div>
-            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rack Task Description</div>
-            <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rack Task Description{item.data.rack ? ` · Rack ${item.data.rack}` : ''}</div>
+            <TextArea value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
             {(item.data.desc || '').includes('[unclear]') && (
               <div style={{ marginTop: 6, fontSize: 11, color: colors.red, fontWeight: 700 }}>
                 ⚠️ The AI couldn't read part of this clearly — check the source document and fill in the [unclear] part before accepting.

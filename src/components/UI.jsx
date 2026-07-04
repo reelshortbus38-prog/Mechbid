@@ -174,3 +174,60 @@ export function TblInput({ value, onChange, type = 'text', style, ...props }) {
     />
   );
 }
+
+// Auto-growing textarea: wraps long text instead of clipping it, sized to fit
+// its content. Single-line <input> cells were cutting off extracted scope
+// tasks mid-sentence, which made them unreadable without clicking into each
+// one. The inline ref (identity changes per render) re-runs autoGrow after
+// every render, so height also tracks programmatic value changes.
+function autoGrow(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+// Table-cell flavor — transparent with a bottom rule, matches TblInput.
+export function TblArea({ value, onChange, style, ...props }) {
+  return (
+    <textarea
+      value={value ?? ''}
+      onChange={onChange}
+      rows={1}
+      ref={el => autoGrow(el)}
+      onInput={e => autoGrow(e.target)}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderBottom: `1px solid ${colors.border}`,
+        color: colors.text,
+        fontSize: 12,
+        fontFamily: "'DM Sans', sans-serif",
+        padding: '4px 6px',
+        outline: 'none',
+        width: '100%',
+        resize: 'none',
+        overflow: 'hidden',
+        lineHeight: 1.45,
+        display: 'block',
+        ...style,
+      }}
+      {...props}
+    />
+  );
+}
+
+// Form flavor — same chrome as Input, for review cards and long note fields.
+export function TextArea({ value, onChange, placeholder, style, ...props }) {
+  return (
+    <textarea
+      value={value ?? ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={1}
+      ref={el => autoGrow(el)}
+      onInput={e => autoGrow(e.target)}
+      style={{ ...inp, resize: 'none', overflow: 'hidden', lineHeight: 1.5, display: 'block', ...style }}
+      {...props}
+    />
+  );
+}
