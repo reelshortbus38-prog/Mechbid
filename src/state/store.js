@@ -377,6 +377,20 @@ export function calcMaterialsTotal(lineItems) {
   return (lineItems || []).reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
 }
 
+// Residential lineset total — the ONE definition shared by the Materials step
+// display and the bid-total engine. Roll copper prices automatically from the
+// copper rate table ((suction + liquid $/ft) × length); pre-insulated is the
+// manually entered supplier-quote total. Reading state.resLinesetTotal directly
+// in the bid engine dropped auto-priced roll copper out of the final bid.
+export function calcResLinesetTotal(state) {
+  if ((state.resLinesetType || 'preinsulated') === 'roll') {
+    const cu = state.rates?.cu || {};
+    const len = parseFloat(state.resLineLength) || 0;
+    return ((cu[state.resSucSize] || 0) + (cu[state.resLiqSize] || 0)) * len;
+  }
+  return parseFloat(state.resLinesetTotal) || 0;
+}
+
 // ── RACK & FIELD TASK LABOR ──────────────────────────────────────────────────
 // Rack tasks and field tasks are costed from the crew on the FIRST labor period
 // (that's the job's primary crew). These helpers are shared by the step views

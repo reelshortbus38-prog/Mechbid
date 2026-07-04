@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal } from '../state/store.js';
+import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
@@ -206,11 +207,11 @@ function ResidentialEquipment({ onNext, onBack }) {
   const liqSize = state.resLiqSize || '';
   const lineLength = parseFloat(state.resLineLength)||0;
   const manualLinesetTotal = parseFloat(state.resLinesetTotal)||0;
-  // Roll copper prices straight off the copper rate table (suction + liquid run)
-  // × length, so entering size + length yields a price with no manual entry.
+  // Shared with the bid-total engine (roll copper auto-prices from the copper
+  // rate table × length) so this screen and the proposal always agree.
   const cuRates = state.rates?.cu || {};
-  const rollCopperTotal = ((cuRates[sucSize]||0) + (cuRates[liqSize]||0)) * lineLength;
-  const linesetTotal = linesetType === 'roll' ? rollCopperTotal : manualLinesetTotal;
+  const linesetTotal = calcResLinesetTotal(state);
+  const rollCopperTotal = linesetType === 'roll' ? linesetTotal : 0;
 
   // Labor
   const laborPeriods = state.laborPeriods || [];
@@ -229,10 +230,13 @@ function ResidentialEquipment({ onNext, onBack }) {
   const equipTotal = equipment.reduce((s,e) => s+(e.cost||0), 0);
   const partsTotal = parts.reduce((s,p) => s+(p.total||0), 0);
   const markupPct = state.markupPct || 20;
-  const markupBase = equipTotal + partsTotal + linesetTotal;
-  const markupAmt = markupBase * (markupPct/100);
   const laborTotal = calcTotalLabor(laborPeriods);
-  const bidTotal = markupBase + markupAmt + laborTotal;
+  // One engine for the money: this preview previously did its own flat-markup
+  // math (no tax, no split equipment markup), so its "Total Bid" could disagree
+  // with the Proposal step's number for the same job.
+  const totals = computeBidTotals(state, markupPct);
+  const markupAmt = totals.markupAmt;
+  const bidTotal = totals.total;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -457,8 +461,12 @@ function ResidentialEquipment({ onNext, onBack }) {
           { label: 'Lineset', value: fmt(linesetTotal), color: colors.text },
           { label: 'Parts', value: fmt(partsTotal), color: colors.text },
           { label: `Markup (${markupPct}%)`, value: fmt(markupAmt), color: colors.green },
+          totals.taxAmt > 0 && { label: `Sales Tax (${totals.taxPct}%)`, value: fmt(totals.taxAmt), color: colors.text },
+          totals.subsTotal > 0 && { label: 'Subcontractors', value: fmt(totals.subsTotal), color: colors.text },
           { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
-        ].map(row => (
+          totals.bondAmt > 0 && { label: `P&P Bond (${totals.bondPct}%)`, value: fmt(totals.bondAmt), color: colors.text },
+          totals.permitFee > 0 && { label: 'Permits & Fees', value: fmt(totals.permitFee), color: colors.text },
+        ].filter(Boolean).map(row => (
           <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: `1px solid ${colors.border}` }}>
             <span style={{ fontSize: 13, color: colors.textDim }}>{row.label}</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: row.color }}>{row.value}</span>
