@@ -420,12 +420,16 @@ export default function Step1_Setup({ onNext }) {
             let sName = (parsed.storeName || '').replace(/NON\s*/gi, '').trim();
             const chainMatch = sName.match(/food\s*lion|publix|kroger|harris\s*teeter|winn.?dixie|aldi|walmart/i);
             if (chainMatch) sName = chainMatch[0];
-            const num = parsed.storeNumber ? String(parsed.storeNumber).padStart(4, '0') : '';
+            // The AI sometimes returns the store number WITH its own "#"
+            // ("#0047-A") — strip any leading #/whitespace before we add our
+            // own, or the name renders as "Food Lion ##0047-A".
+            const num = parsed.storeNumber ? String(parsed.storeNumber).replace(/^[#\s]+/, '').padStart(4, '0') : '';
             // Don't append the store number if the name already contains it
             // (e.g. storeName came back as "Food Lion #0047-A" — appending
             // " #0047-A" again would produce "Food Lion #0047-A #0047-A")
             const nameAlreadyHasNum = num && sName.includes(num);
-            const candidateName = sName ? sName + (num && !nameAlreadyHasNum ? ' #' + num : '') : '';
+            // Collapse doubled hashes as a final guard, whatever the source.
+            const candidateName = (sName ? sName + (num && !nameAlreadyHasNum ? ' #' + num : '') : '').replace(/#{2,}/g, '#');
             if (candidateName || parsed.address) {
               pushPending('projectInfo', sourceType, fileMeta.name, {
                 projName: candidateName, projAddr: parsed.address || '', storeNumber: num,
