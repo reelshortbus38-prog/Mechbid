@@ -100,6 +100,28 @@ describe('computeBidTotals reconciliation', () => {
     expect(round(t.total)).toBe(320);
   });
 
+  it('whole-job (flat) crew mode: 4 guys × weeks × days/week lands in the total', () => {
+    // "4 guys for 27 weeks" — the flat-bid style. 1F($100)+1T($75)+2H($50) at
+    // 8 hrs/day = $2,200/day × 27wk × 5d = $297,000. Rack tasks must price off
+    // the FLAT crew's average rate in this mode, not the (empty) periods.
+    const state = {
+      mode: 'Commercial Refrigeration',
+      laborMode: 'flat',
+      flatJob: { weeks: 27, daysPerWeek: 5, ootPerDay: 0, crew: [
+        { rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 },
+        { rate: 50, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 },
+      ] },
+      laborPeriods: [], lineItems: [], rackParts: [],
+      rackTasks: [{ men: 1, hrs: 4 }], // 4 hrs × avg rate $68.75 = $275
+      fieldTasks: [], markupPct: 0, materialsTaxPct: 0,
+      subcontractors: [], bondPct: 0, permitFee: 0,
+    };
+    const t = computeBidTotals(state, 0);
+    expect(round(t.laborTotal)).toBe(297000);
+    expect(round(t.rackLaborTotal)).toBe(275);
+    expect(round(t.total)).toBe(297275);
+  });
+
   it('empty job: everything zero, no NaN', () => {
     const t = computeBidTotals({ mode: 'Commercial Refrigeration' }, 20);
     expect(t.total).toBe(0);

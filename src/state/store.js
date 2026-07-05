@@ -70,6 +70,11 @@ export const initialState = {
     wasteFactor: 10,
   },
   laborPeriods: [],
+  // Two ways to bid commercial labor. 'periods' (default): phase-by-phase crews
+  // (rack prep, case-move nights, startup...). 'flat': one crew for the whole
+  // job length — "4 guys for 27 weeks" — the way many shops actually bid it.
+  laborMode: 'periods',
+  flatJob: { crew: [], weeks: 0, daysPerWeek: 5, ootPerDay: 0 },
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
@@ -371,6 +376,36 @@ export function calcTotalLabor(laborPeriods) {
     const { total } = calcLaborPeriodCost(p);
     return s + total;
   }, 0);
+}
+
+// ── WHOLE-JOB (FLAT) CREW ────────────────────────────────────────────────────
+// "4 guys for 27 weeks" — one crew carried for the full job length instead of
+// phase-by-phase periods. Cost = per-man day rate (rate × hrs/day) × total
+// days (weeks × days per week), plus out-of-town per day.
+export function calcFlatJobCost(flat) {
+  const f = flat || {};
+  const days = (parseFloat(f.weeks) || 0) * (parseFloat(f.daysPerWeek) || 5);
+  const crewDayRate = (f.crew || []).reduce(
+    (s, m) => s + (parseFloat(m.rate) || 0) * (parseFloat(m.hrsPerDay) || 8), 0);
+  const labor = crewDayRate * days;
+  const oot = (parseFloat(f.ootPerDay) || 0) * days;
+  return { days, labor, oot, total: labor + oot };
+}
+
+// Mode-aware labor total and crew — the ONE pair of accessors the bid engine
+// and the rack/field task costing use, so switching labor modes moves the
+// entire bid consistently (rack and field tasks price off whichever crew is
+// actually bid, flat or first-period).
+export function jobLaborTotal(state) {
+  return state?.laborMode === 'flat'
+    ? calcFlatJobCost(state.flatJob).total
+    : calcTotalLabor(state?.laborPeriods);
+}
+
+export function jobCrew(state) {
+  return state?.laborMode === 'flat'
+    ? (state.flatJob?.crew || [])
+    : primaryCrew(state?.laborPeriods);
 }
 
 export function calcMaterialsTotal(lineItems) {

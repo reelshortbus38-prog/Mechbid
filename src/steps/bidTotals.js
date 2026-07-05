@@ -1,4 +1,4 @@
-import { calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal, primaryCrew } from '../state/store.js';
+import { jobLaborTotal, jobCrew, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal } from '../state/store.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -8,8 +8,9 @@ import { calcTotalLabor, calcRackLaborTotal, calcFieldTasksTotal, calcResLineset
 // is a % of the running subtotal and the permit is a flat fee, both added last.
 export function computeBidTotals(state, markupPct) {
   const mode = state.mode;
-  const laborTotal = calcTotalLabor(state.laborPeriods || []);
-  const crew = primaryCrew(state.laborPeriods);
+  // Mode-aware: phased periods OR one whole-job crew ("4 guys × 27 weeks").
+  const laborTotal = jobLaborTotal(state);
+  const crew = jobCrew(state);
   const fieldTasksTotal = calcFieldTasksTotal(state.fieldTasks, crew);
   const taxPct = parseFloat(state.materialsTaxPct) || 0;
   const taxOf = sell => sell * (taxPct / 100);
