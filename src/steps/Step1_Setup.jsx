@@ -12,7 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc } from '../components/scopeText.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
@@ -342,10 +342,12 @@ export default function Step1_Setup({ onNext }) {
           // their own date headers, so this is exact (not guessed from tasks).
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
+            const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights;
+            // RC start: prefer the grouped schedule's first case-move night
+            // (handles every known format), then the raw-text scan, then the AI.
+            const n = firstCaseMoveNight(nights) || scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
             const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
-            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`;
-            const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
+            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
 
           // Deterministic rack-work sections ("RACK A" heading + task lines) and
           // PARTS LIST ("QTY - DESC" lines) — rigid enough to read exactly from

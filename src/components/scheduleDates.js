@@ -151,6 +151,21 @@ const RC_MOVE_ACTION_RE = /disconnect[^.\n]{0,20}relocat|relocat[^.\n]{0,25}(?:t
 // some write "case# 25", others "Case 36 (Circuit C1)" with no #.
 const CASE_NUM_RE = /\bcases?\s*#?\s*\d|\(\s*circuit\b/i;
 
+// First night the RC moves cases, derived from the grouped schedule that
+// extractRcSchedule builds — that extractor already handles every known
+// schedule format, so deriving from its output beats re-scanning the raw text
+// with a second regex set (which missed store 47's "Relocate: (1) 8' Meat #13"
+// night and let the AI's later Sep guess win over the real Jul 27 start).
+// Night-gated to match the field's meaning: "RC Start (Night Work / Case Moves)".
+const CASE_MOVE_TASK_RE = /relocat|temp\s*set|disconnect|\bremove\b|case\s*move|\breset\b/i;
+export function firstCaseMoveNight(nights) {
+  for (const n of nights || []) {
+    if (!n.isNight) continue;
+    if ((n.tasks || []).some(t => CASE_MOVE_TASK_RE.test(t))) return n.date || '';
+  }
+  return '';
+}
+
 // The RC's first case-move night: the first dated night on which an RC case-move
 // action is tied to a specific case number. NOT the store's "remove product and
 // wash cases" prep (store associates empty/clean the cases — not RC labor), NOT

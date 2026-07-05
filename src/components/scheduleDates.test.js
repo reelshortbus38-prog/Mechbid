@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -144,6 +144,21 @@ describe('schedule date span (year-wrap)', () => {
     expect(s[0].tasks[0]).toMatch(/Remove.*Bakery #34.*Deli Island #39/);
     // GC "Filler wedges" must not be captured as an RC task
     expect(s[0].tasks.join(' ')).not.toMatch(/Filler wedges/);
+  });
+
+  it('firstCaseMoveNight: first NIGHT with case-move work wins (store 47 → Jul 27)', () => {
+    // Mirrors the real store-47 grouped schedule: two early NON-night RC items
+    // (running lines, labeling cases — the labeling text even says "relocation
+    // or removal date" and must not count), then the true Jul 27 case-move night.
+    const nights = [
+      { date: 'Jun 22', isNight: false, tasks: ['RC to begin running new refrigeration lines early in the project.'] },
+      { date: 'Jun 23', isNight: false, tasks: ["Refrigeration Contractor is to label all cases with painter's tape with case # and relocation or removal date."] },
+      { date: 'Jul 27', isNight: true, tasks: ["Relocate: (1) 8' Meat #13 (to back room) NOTE: RC to provide case 14,15 (A7) in working order.", "Remove: (Product only): 20' Meat # 14, 15"] },
+      { date: 'Aug 3', isNight: true, tasks: ["Relocate: (1) 8' MX5HN Meat Promo #13 (A7) (from back room)"] },
+    ];
+    expect(firstCaseMoveNight(nights)).toBe('Jul 27');
+    expect(firstCaseMoveNight([])).toBe('');
+    expect(firstCaseMoveNight(null)).toBe('');
   });
 
   it('empty/undated schedule does not throw', () => {
