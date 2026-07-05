@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFieldTaskCost, calcFieldTasksTotal, primaryCrew, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -204,9 +204,10 @@ function FieldTasksSection() {
     dispatch({ type: 'SET', key: 'fieldTasks', value: fieldTasks.filter(t => t.id !== id) });
   }
 
-  // Cost field tasks from the primary crew's average man-hour rate (shared with
-  // the proposal so what's shown here is exactly what lands in the bid).
-  const crew = primaryCrew(state.laborPeriods);
+  // Cost field tasks from the bid crew's average man-hour rate (flat crew or
+  // first period, whichever mode is active — shared with the proposal so
+  // what's shown here is exactly what lands in the bid).
+  const crew = jobCrew(state);
 
   return (
     <div>
@@ -280,7 +281,7 @@ function CircuitLaborEstimator() {
   if (circuits.length === 0) return null;
 
   const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
-  const crew = primaryCrew(state.laborPeriods);
+  const crew = jobCrew(state);
   const rate = avgCrewRate(crew) || 100;
   const est = estimateCircuitLabor(circuits, units);
   const cost = est.totalHours * rate;
@@ -361,10 +362,31 @@ export default function Step5_Labor({ onNext, onBack }) {
     dispatch({ type: 'UPDATE_LABOR_PERIOD', id, updates: { [field]: value } });
   }
 
-  const totalLabor = calcTotalLabor(state.laborPeriods);
-  const totalDays = state.laborPeriods.reduce((s, p) => s + (parseFloat(p.days) || 0), 0);
-  const totalOOT = state.laborPeriods.reduce((s, p) => s + (parseFloat(p.ootPerDay) || 0) * (parseFloat(p.days) || 0), 0);
-  const totalPeople = Math.max(...state.laborPeriods.map(p => p.crew.length), 0);
+  const laborMode = state.laborMode || 'periods';
+  const flat = state.flatJob || { crew: [], weeks: 0, daysPerWeek: 5, ootPerDay: 0 };
+  const flatCost = calcFlatJobCost(flat);
+  const totalLabor = jobLaborTotal(state);
+  const totalDays = laborMode === 'flat' ? flatCost.days : state.laborPeriods.reduce((s, p) => s + (parseFloat(p.days) || 0), 0);
+  const totalOOT = laborMode === 'flat' ? flatCost.oot : state.laborPeriods.reduce((s, p) => s + (parseFloat(p.ootPerDay) || 0) * (parseFloat(p.days) || 0), 0);
+  const totalPeople = laborMode === 'flat' ? flat.crew.length : Math.max(...state.laborPeriods.map(p => p.crew.length), 0);
+
+  function setFlat(updates) {
+    dispatch({ type: 'SET', key: 'flatJob', value: { ...flat, ...updates } });
+  }
+
+  function switchLaborMode(mode) {
+    // First switch to flat: seed the standard 4-man crew (1F 1T 2H) and pull
+    // the job length off the schedule ("27 weeks") so the estimate is one
+    // rate-check away from done.
+    if (mode === 'flat' && !(state.flatJob?.crew?.length)) {
+      const weeks = parseInt((String(state.jobLength || '').match(/(\d+)/) || [])[1], 10) || 0;
+      dispatch({ type: 'SET', key: 'flatJob', value: {
+        crew: [F, T, H, H].map(m => ({ id: uid(), ...m, hrsPerDay: 8 })),
+        weeks, daysPerWeek: 5, ootPerDay: 0,
+      }});
+    }
+    dispatch({ type: 'SET', key: 'laborMode', value: mode });
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -377,7 +399,72 @@ export default function Step5_Labor({ onNext, onBack }) {
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
 
+      {/* How labor is bid: one crew for the whole job, or phase-by-phase. */}
+      <div>
+        <SLabel>How do you bid labor?</SLabel>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {[
+            { k: 'flat', label: '👥 Whole-Job Crew', desc: 'One crew for the full job — e.g. 4 guys × 27 weeks' },
+            { k: 'periods', label: '📅 Phased Periods', desc: 'Separate crews per phase — rack prep, case nights, startup' },
+          ].map(o => (
+            <button key={o.k} onClick={() => switchLaborMode(o.k)}
+              style={{ flex: 1, padding: '12px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                border: `2px solid ${laborMode === o.k ? colors.green : colors.border}`,
+                background: laborMode === o.k ? colors.greenFaint : colors.card2 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: laborMode === o.k ? colors.green : colors.text }}>{o.label}</div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3 }}>{o.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {laborMode === 'flat' && (
+        /* ── WHOLE-JOB CREW ─────────────────────────────────────────────── */
+        <Card>
+          <SLabel>Whole-Job Crew</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>
+            This crew is carried for the full job length. Job length prefills from the schedule — adjust anything.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Job Length (weeks)</div>
+              <Input type="number" value={flat.weeks || ''} onChange={e => setFlat({ weeks: parseFloat(e.target.value) || 0 })} placeholder="27" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Days / Week</div>
+              <Input type="number" value={flat.daysPerWeek || ''} onChange={e => setFlat({ daysPerWeek: parseFloat(e.target.value) || 0 })} placeholder="5" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
+              <Input type="number" value={flat.ootPerDay || ''} onChange={e => setFlat({ ootPerDay: parseFloat(e.target.value) || 0 })} placeholder="0" />
+            </div>
+          </div>
+
+          <SLabel>Crew ({flat.crew.length})</SLabel>
+          <CrewBuilder crew={flat.crew} onChange={crew => setFlat({ crew })} />
+
+          {flatCost.total > 0 && (
+            <>
+              <Divider />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                {[
+                  { label: 'On-Site Days', value: `${flatCost.days}`, color: colors.text },
+                  { label: 'Labor', value: fmt(flatCost.labor), color: colors.yellow },
+                  { label: 'Whole-Job Total', value: fmt(flatCost.total), color: colors.orange },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
       {/* Quick add */}
+      {laborMode === 'periods' && (
       <div>
         <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
@@ -416,6 +503,7 @@ export default function Step5_Labor({ onNext, onBack }) {
           ))
         )}
       </div>
+      )}
 
       <Divider />
 
@@ -424,12 +512,14 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Summary stats — moved down here next to the total, so the top of the
           page isn't cluttered with tiles before you've even looked at a period */}
-      {state.laborPeriods.length > 0 && (
+      {(laborMode === 'flat' ? flat.crew.length > 0 : state.laborPeriods.length > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
           {[
-            { label: 'Labor Periods', value: state.laborPeriods.length, color: colors.text },
+            laborMode === 'flat'
+              ? { label: 'Job Length', value: `${flat.weeks || 0} wks`, color: colors.text }
+              : { label: 'Labor Periods', value: state.laborPeriods.length, color: colors.text },
             { label: 'Total Days', value: totalDays, color: colors.text },
-            { label: 'Max Crew', value: totalPeople, color: colors.text },
+            { label: laborMode === 'flat' ? 'Crew Size' : 'Max Crew', value: totalPeople, color: colors.text },
             { label: 'Total Labor', value: fmt(totalLabor), color: colors.orange },
           ].map(s => (
             <div key={s.label} style={{ background: colors.card2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px' }}>
