@@ -18,9 +18,14 @@ export default function ScheduleRackReference() {
   const schedule = state.rcSchedule || [];
   const rackTasks = state.rackTasks || [];
   const rackParts = (state.rackParts || []).filter(p => !p.storeSupplied);
+  // Redline callouts and scope piping notes ("[C7] REPLACE 7/8 SUCTION LINE
+  // WITH 1 3/8...") — accepted notes land in flags with type 'note'. They're
+  // the field piping scope, so they belong here where crews get sized, not
+  // only back on Setup.
+  const fieldNotes = (state.flags || []).filter(f => f.type === 'note');
   const [open, setOpen] = useState(true);
 
-  if (schedule.length === 0 && rackTasks.length === 0 && rackParts.length === 0) return null;
+  if (schedule.length === 0 && rackTasks.length === 0 && rackParts.length === 0 && fieldNotes.length === 0) return null;
 
   const parse = buildDateParser(schedule);
   const sorted = [...schedule].sort((a, b) => {
@@ -39,6 +44,7 @@ export default function ScheduleRackReference() {
     nightDates ? `🌙 ${nightDates} night${nightDates !== 1 ? 's' : ''}` : '',
     frozenDates ? `❄️ ${frozenDates} frozen-food night${frozenDates !== 1 ? 's' : ''}` : '',
     (rackTasks.length || rackParts.length) ? `🔩 ${rackTasks.length} rack task${rackTasks.length !== 1 ? 's' : ''}` : '',
+    fieldNotes.length ? `📐 ${fieldNotes.length} field note${fieldNotes.length !== 1 ? 's' : ''}` : '',
   ].filter(Boolean).join(' · ');
 
   const badge = (icon, text, color) => (
@@ -112,6 +118,25 @@ export default function ScheduleRackReference() {
                 {rackTasks.length === 0 && rackParts.length > 0 && (
                   <div style={{ fontSize: 11, color: colors.textDim }}>{rackParts.length} contractor-supplied rack part{rackParts.length !== 1 ? 's' : ''} to install — size a small rack crew (typically 1–2).</div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Field notes — redline callouts & scope piping items. This is the
+              piping scope the field crews execute, so it's shown here where
+              crews are sized, not only on Setup. */}
+          {fieldNotes.length > 0 && (
+            <div style={{ marginTop: rackTasks.length || rackParts.length ? 14 : 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                Field notes / redline callouts ({fieldNotes.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 240, overflowY: 'auto' }}>
+                {fieldNotes.map((f, i) => (
+                  <div key={i} style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 7, padding: '6px 10px', fontSize: 12, color: colors.text, lineHeight: 1.45 }}>
+                    📐 {f.text}
+                    {f.source ? <span style={{ color: colors.textMuted, fontSize: 10 }}> — {f.source}</span> : null}
+                  </div>
+                ))}
               </div>
             </div>
           )}
