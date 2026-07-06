@@ -1,10 +1,54 @@
-// Text-extraction endpoint. Prefers Anthropic direct (current-generation
-// Claude — measurably better at document extraction than the older gpt-4o
-// this used to call, which matters most on unfamiliar chain formats where
-// there's no deterministic parser to lean on). Falls back to OpenRouter's
-// gpt-4o automatically if no ANTHROPIC_API_KEY is configured, so nothing
-// breaks on an env that only has the OpenRouter key.
+// Text-extraction endpoint. Primary: Anthropic direct with a current-generation
+// Claude model (stronger document extraction than the older gpt-4o path, which
+// matters most on unfamiliar chain formats with no deterministic parser).
+// Sonnet 5 is a reasoning model — it takes longer per call than gpt-4o did, so
+// vercel.json raises the function maxDuration to 60s to accommodate it.
+// If the Anthropic call fails for ANY reason (bad param, model change, outage),
+// the request automatically retries through OpenRouter/gpt-4o rather than
+// surfacing an error to the estimator mid-upload.
 const CLAUDE_MODEL = 'claude-sonnet-5';
+
+async function callAnthropic({ messages, system, max_tokens }) {
+  // Anthropic wants system top-level and no system-role messages inline.
+  const sysParts = [system, ...messages.filter(m => m.role === 'system').map(m => m.content)].filter(Boolean);
+  const chat = messages.filter(m => m.role !== 'system');
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens,
+      // No temperature: Sonnet 5 rejects the parameter outright
+      // ("`temperature` is deprecated for this model" → HTTP 400).
+      ...(sysParts.length ? { system: sysParts.join('\n\n') } : {}),
+      messages: chat,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `Anthropic error ${response.status}`);
+  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+async function callOpenRouter({ messages, system, max_tokens, temperature }) {
+  const orMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
+      'HTTP-Referer': 'https://mechbid.vercel.app',
+      'X-Title': 'MechBid'
+    },
+    body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `OpenRouter error ${response.status}`);
+  return data.choices?.[0]?.message?.content || '';
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -12,60 +56,36 @@ export default async function handler(req, res) {
     const messages = req.body.messages || [];
     const system = req.body.system;
     const max_tokens = req.body.max_tokens || 4000;
-    // Deterministic extraction: temperature 0 so the same document yields the
-    // same result every run (otherwise the model splits/merges callouts
-    // differently each time and the task count drifts, e.g. 8 vs 9 vs 12).
+    // Deterministic extraction on the fallback path: temperature 0 so the same
+    // document yields the same result every run.
     const temperature = typeof req.body.temperature === 'number' ? req.body.temperature : 0;
 
+    let text = null;
+    let lastError = null;
+
     if (process.env.ANTHROPIC_API_KEY) {
-      // Anthropic wants system top-level and no system-role messages inline.
-      const sysParts = [system, ...messages.filter(m => m.role === 'system').map(m => m.content)].filter(Boolean);
-      const chat = messages.filter(m => m.role !== 'system');
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: CLAUDE_MODEL,
-          max_tokens,
-          // No temperature: Sonnet 5 rejects the parameter outright
-          // ("`temperature` is deprecated for this model" → HTTP 400).
-          ...(sysParts.length ? { system: sysParts.join('\n\n') } : {}),
-          messages: chat,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) return res.status(response.status).json(data);
-      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-      return res.status(200).json({
-        content: [{ type: 'text', text }],
-        choices: [{ message: { content: text } }],
-      });
+      try {
+        text = await callAnthropic({ messages, system, max_tokens });
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    // Fallback: OpenRouter (original path)
-    const orMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-        'HTTP-Referer': 'https://mechbid.vercel.app',
-        'X-Title': 'MechBid'
-      },
-      body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages })
-    });
+    if (text == null && process.env.OPENROUTER_API_KEY) {
+      try {
+        text = await callOpenRouter({ messages, system, max_tokens, temperature });
+      } catch (e) {
+        lastError = e;
+      }
+    }
 
-    const data = await response.json();
-    if (!response.ok) return res.status(response.status).json(data);
+    if (text == null) {
+      return res.status(500).json({ error: lastError?.message || 'No AI provider configured (set ANTHROPIC_API_KEY or OPENROUTER_API_KEY)' });
+    }
 
-    const text = data.choices?.[0]?.message?.content || '';
     return res.status(200).json({
       content: [{ type: 'text', text }],
-      choices: data.choices,
+      choices: [{ message: { content: text } }],
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
