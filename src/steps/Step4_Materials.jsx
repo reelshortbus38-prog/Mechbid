@@ -857,10 +857,44 @@ export default function Step4_Materials({ onNext, onBack }) {
       .filter(c => !c.isRiserOnly)
       .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
     if (totalHorizRun > 0) items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: Math.ceil(totalHorizRun / 6), unit: 'ea', unitCost: 0, total: 0 });
+
+    // Pipe saddles (Insuguard-style cradles) — insulated lines ride in a
+    // saddle at every support point so the hanger/strut doesn't crush the
+    // insulation; many scopes require them on all refrigeration piping.
+    // Sized to the pipe: one per support @ 6ft over each insulated
+    // HORIZONTAL run (suction both temps + low-temp liquid). Risers are
+    // strapped, not saddled.
+    const saddleBySize = {};
+    state.circuits.forEach(c => {
+      if (c.isRiserOnly) return;
+      const run = parseFloat(c.runLength) || 0;
+      if (run <= 0) return;
+      const add = (size) => {
+        if (!size) return;
+        const k = normalizePipeSize(size);
+        saddleBySize[k] = (saddleBySize[k] || 0) + run;
+      };
+      add(c.sucHoriz);
+      if (c.tempType === 'low') add(c.liqHoriz);
+    });
+    Object.entries(saddleBySize).forEach(([size, ft]) => {
+      items.push({ id: uid(), section: 'Hardware', desc: `${size}" Pipe Saddles (Insuguard) @ 6ft spacing`, qty: Math.ceil(ft / 6), unit: 'ea', unitCost: 0, total: 0, pipeSize: size });
+    });
+
+    // Consumables an RC crew actually burns through on a remodel — quantities
+    // start at 0 so nothing is charged until you fill in what applies.
     items.push({id:uid(),section:'Consumables',desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Nitrogen — Pressure Testing & Purge',qty:0,unit:'cylinder',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Oxygen — Brazing',qty:0,unit:'cylinder',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Acetylene — Brazing',qty:0,unit:'cylinder',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Brazing Rod (15% silver)',qty:0,unit:'lb',unitCost:0,total:0});
-    items.push({id:uid(),section:'Consumables',desc:'Foam & Insulation Adhesive',qty:0,unit:'can',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Insulation Adhesive (glue)',qty:0,unit:'can',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Spray Foam / Gap Filler',qty:0,unit:'can',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Duct Tape',qty:0,unit:'roll',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'PVC / Insulation Tape',qty:0,unit:'roll',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Emery Cloth / Sand Cloth',qty:0,unit:'roll',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Fire Caulk — Wall/Ceiling Penetrations',qty:0,unit:'tube',unitCost:0,total:0});
+    items.push({id:uid(),section:'Consumables',desc:'Refrigerant Oil — verify POE grade',qty:0,unit:'gal',unitCost:0,total:0});
     if (isCO2) {
       // CO₂-specific items that are easy to forget and pressure-rating critical.
       items.push({id:uid(),section:'Consumables',desc:'High-pressure fittings (K65 / CO₂-rated, 1300+ psi) — verify ratings',qty:0,unit:'lot',unitCost:0,total:0});
