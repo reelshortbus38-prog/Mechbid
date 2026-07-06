@@ -797,6 +797,23 @@ export function isRCTask(desc) {
 const SCOPE_CHUNK_SIZE = 9000;
 const SCOPE_CHUNK_OVERLAP = 500;
 
+// Fire every chunk's extraction call in PARALLEL and contain failures to the
+// chunk they happened in. Sequential awaits made a 4-chunk scope doc take 4×
+// one call's latency, and a single thrown call marked the whole document
+// "Error" — losing the chunks that had already succeeded. Returns results in
+// chunk order: [{ i, parsed }] on success, [{ i, error }] on failure.
+async function runChunkCalls(chunks, buildContent, system) {
+  const results = await Promise.all(chunks.map(async (chunk, i) => {
+    try {
+      const resultText = await callClaude([{ role: 'user', content: buildContent(chunk, i) }], system);
+      return { i, parsed: parseAIJson(resultText) };
+    } catch (e) {
+      return { i, error: e?.message || 'request failed' };
+    }
+  }));
+  return results.sort((a, b) => a.i - b.i);
+}
+
 function chunkText(text, size, overlap) {
   if (text.length <= size) return [text];
   const chunks = [];
@@ -923,13 +940,21 @@ If this chunk contains no RC-relevant content at all, return the same JSON shape
     chunkSummaries: [],
   };
 
-  for (let i = 0; i < chunks.length; i++) {
+  // All chunks in PARALLEL, each failure contained to its own chunk: wall time
+  // is one call instead of N sequential, and one slow/failed part becomes a
+  // warning instead of killing the whole document's analysis.
+  const chunkResults = await runChunkCalls(chunks, (chunk, i) => {
     const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
-    const resultText = await callClaude(
-      [{ role: 'user', content: `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunks[i]}\n\n${prompt}` }],
-      'You are an expert commercial refrigeration estimator. Return only valid JSON.'
-    );
-    const parsed = parseAIJson(resultText);
+    return `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunk}\n\n${prompt}`;
+  }, 'You are an expert commercial refrigeration estimator. Return only valid JSON.');
+
+  for (const r of chunkResults) {
+    const i = r.i;
+    if (r.error) {
+      merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length} failed (${r.error}) — that section may be missing; re-run to fill it in`, source: fileName });
+      continue;
+    }
+    const parsed = r.parsed;
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName });
       continue;
@@ -1067,13 +1092,19 @@ If this chunk contains no relevant content, return the same shape with empty arr
   const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
   const merged = { rackTasks: [], fieldTasks: [], parts: [], flags: [], minimumCrew: '', chunkSummaries: [] };
 
-  for (let i = 0; i < chunks.length; i++) {
+  // Parallel + per-chunk containment — see analyzeScopeDoc for rationale.
+  const chunkResults = await runChunkCalls(chunks, (chunk, i) => {
     const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
-    const resultText = await callClaude(
-      [{ role: 'user', content: `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunks[i]}\n\n${prompt}` }],
-      'You are an expert commercial refrigeration estimator. Return only valid JSON.'
-    );
-    const parsed = parseAIJson(resultText);
+    return `File: ${fileName}${chunkLabel}\n\nDocument text:\n${chunk}\n\n${prompt}`;
+  }, 'You are an expert commercial refrigeration estimator. Return only valid JSON.');
+
+  for (const r of chunkResults) {
+    const i = r.i;
+    if (r.error) {
+      merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length} failed (${r.error}) — that section may be missing; re-run to fill it in`, source: fileName });
+      continue;
+    }
+    const parsed = r.parsed;
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Part ${i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName });
       continue;

@@ -8,12 +8,20 @@
 // surfacing an error to the estimator mid-upload.
 const CLAUDE_MODEL = 'claude-sonnet-5';
 
+// Hard cap on the primary model. Sonnet 5 reasons before answering and a long
+// chunk can run past a minute — but iOS Safari kills any request around the
+// 60s mark ("Load failed"), taking the whole document analysis with it. 40s
+// here + a ~10-15s gpt-4o fallback keeps every request comfortably inside
+// both Safari's limit and the 60s Vercel function budget.
+const PRIMARY_TIMEOUT_MS = 40_000;
+
 async function callAnthropic({ messages, system, max_tokens }) {
   // Anthropic wants system top-level and no system-role messages inline.
   const sysParts = [system, ...messages.filter(m => m.role === 'system').map(m => m.content)].filter(Boolean);
   const chat = messages.filter(m => m.role !== 'system');
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal: AbortSignal.timeout(PRIMARY_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': process.env.ANTHROPIC_API_KEY,
