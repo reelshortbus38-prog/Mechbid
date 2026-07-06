@@ -233,6 +233,29 @@ function sheetToText(ws, maxRows = 80, maxCols = 30) {
 // directly instead, matching the exact request shape api/claude.js uses, so
 // there's one less network hop and one less thing that can silently break.
 async function callOpenRouter(messages, system) {
+  // Prefer Anthropic direct with a current-generation Claude model — stronger
+  // document extraction than the older gpt-4o path, which matters most on
+  // unfamiliar spreadsheet formats. OpenRouter stays as the fallback when no
+  // ANTHROPIC_API_KEY is configured.
+  if (process.env.ANTHROPIC_API_KEY) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5', max_tokens: 4000, temperature: 0,
+        ...(system ? { system } : {}),
+        messages,
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `Anthropic error ${response.status}`);
+    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  }
+
   const fullMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',

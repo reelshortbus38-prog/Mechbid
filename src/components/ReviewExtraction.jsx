@@ -200,6 +200,37 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
   const [collapsed, setCollapsed] = useState({});
   const toggleCollapse = kind => setCollapsed(c => ({ ...c, [kind]: !c[kind] }));
 
+  // "Bad extraction" capture — every miss on an unfamiliar format (a Kroger
+  // schedule, a Hussmann legend) becomes tuning material instead of a lost
+  // complaint. Saves what was extracted + what the user says is wrong to
+  // localStorage AND downloads it as a file to send along with the source
+  // documents.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportText, setReportText] = useState('');
+  const [reportSaved, setReportSaved] = useState(false);
+
+  function saveReport() {
+    const report = {
+      app: 'mechbid', type: 'extraction-report', version: 1,
+      date: new Date().toISOString(),
+      note: reportText.trim(),
+      files: [...new Set(items.map(i => i.fileName).filter(Boolean))],
+      items: items.map(({ kind, sourceType, fileName, status, data }) => ({ kind, sourceType, fileName, status, data })),
+    };
+    try {
+      const key = 'mechbid_extraction_reports_v1';
+      const all = JSON.parse(localStorage.getItem(key) || '[]');
+      all.push(report);
+      localStorage.setItem(key, JSON.stringify(all));
+    } catch { /* storage full — the download below still captures it */ }
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mechbid-extraction-report-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setReportSaved(true);
+  }
+
   const grouped = {
     projectInfo: items.filter(i => i.kind === 'projectInfo'),
     circuit: items.filter(i => i.kind === 'circuit'),
@@ -284,6 +315,33 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
           );
         })
       )}
+
+      {/* Bad-extraction report */}
+      <Card style={{ background: colors.surface }}>
+        <div onClick={() => setReportOpen(o => !o)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>⚠️ Did the extraction get something wrong?</div>
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>
+              Report it — the report file plus your original documents are exactly what's needed to tune MechBid for a new format (Kroger, Walmart, Harris Teeter…).
+            </div>
+          </div>
+          <span style={{ color: colors.textDim, fontSize: 12 }}>{reportOpen ? '▾' : '▸'}</span>
+        </div>
+        {reportOpen && (
+          <div style={{ marginTop: 12 }}>
+            <TextArea
+              value={reportText}
+              onChange={e => { setReportText(e.target.value); setReportSaved(false); }}
+              placeholder="What did it miss or get wrong? e.g. 'Missed all the circuits on Rack B — this legend is a Hussmann format' "
+              style={{ fontSize: 12, marginBottom: 10 }}
+            />
+            <Row style={{ gap: 10, alignItems: 'center' }}>
+              <Btn variant="surface" size="sm" onClick={saveReport} disabled={!reportText.trim()}>💾 Save & Download Report</Btn>
+              {reportSaved && <span style={{ fontSize: 11, color: colors.green }}>✓ Saved — send the downloaded file together with the source documents</span>}
+            </Row>
+          </div>
+        )}
+      </Card>
 
       <Row style={{ justifyContent: 'space-between', marginTop: 10, flexWrap: 'wrap', gap: 10 }}>
         <Btn variant="ghost" onClick={onCancel}>Discard All</Btn>
