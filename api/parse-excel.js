@@ -241,6 +241,9 @@ async function callOpenRouter(messages, system) {
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        // 40s cap — past that we abort and use the faster fallback below,
+        // keeping the whole request inside Safari's ~60s client limit.
+        signal: AbortSignal.timeout(40_000),
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': process.env.ANTHROPIC_API_KEY,
