@@ -246,7 +246,8 @@ async function callOpenRouter(messages, system) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5', max_tokens: 4000, temperature: 0,
+        // No temperature: Sonnet 5 rejects the parameter (HTTP 400).
+        model: 'claude-sonnet-5', max_tokens: 4000,
         ...(system ? { system } : {}),
         messages,
       })
