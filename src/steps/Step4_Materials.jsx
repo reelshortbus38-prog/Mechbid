@@ -856,7 +856,19 @@ export default function Step4_Materials({ onNext, onBack }) {
     const totalHorizRun = state.circuits
       .filter(c => !c.isRiserOnly)
       .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
-    if (totalHorizRun > 0) items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: Math.ceil(totalHorizRun / 6), unit: 'ea', unitCost: 0, total: 0 });
+    if (totalHorizRun > 0) {
+      const supports = Math.ceil(totalHorizRun / 6);
+      items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: supports, unit: 'ea', unitCost: 0, total: 0 });
+      // Trapeze materials, in the 10' sticks they're actually bought in:
+      // each support is a trapeze — ~2 ft of strut across + two all-thread
+      // drops (~2 ft each). Quantities are estimates off the takeoff; adjust
+      // for ceiling height and shared trapezes where circuits run together.
+      const strutSticks = Math.ceil((supports * 2) / 10);
+      const rodSticks = Math.ceil((supports * 4) / 10);
+      items.push({ id: uid(), section: 'Hardware', desc: "Unistrut — trapeze @ 6ft (10' sticks, ~2 ft/support)", qty: strutSticks, unit: 'stick', unitCost: 0, total: 0 });
+      items.push({ id: uid(), section: 'Hardware', desc: "3/8\" All-Thread Rod — 2 drops/trapeze (10' sticks)", qty: rodSticks, unit: 'stick', unitCost: 0, total: 0 });
+      items.push({ id: uid(), section: 'Hardware', desc: 'Strut Nuts, Rod Couplings, Nuts & Washers', qty: 0, unit: 'lot', unitCost: 0, total: 0 });
+    }
 
     // Pipe saddles (Insuguard-style cradles) — insulated lines ride in a
     // saddle at every support point so the hanger/strut doesn't crush the
