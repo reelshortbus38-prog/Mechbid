@@ -28,8 +28,8 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         model: model || 'claude-sonnet-5',
         max_tokens: max_tokens || 4000,
-        // Deterministic extraction — same document, same result every run.
-        temperature: typeof temperature === 'number' ? temperature : 0,
+        // No temperature: Sonnet 5 rejects the parameter outright
+        // ("`temperature` is deprecated for this model" → HTTP 400).
         ...(system ? { system } : {}),
         messages,
       }),

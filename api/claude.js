@@ -31,7 +31,8 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: CLAUDE_MODEL,
           max_tokens,
-          temperature,
+          // No temperature: Sonnet 5 rejects the parameter outright
+          // ("`temperature` is deprecated for this model" → HTTP 400).
           ...(sysParts.length ? { system: sysParts.join('\n\n') } : {}),
           messages: chat,
         }),
