@@ -434,6 +434,13 @@ export function jobCrew(state) {
     : primaryCrew(state?.laborPeriods);
 }
 
+// Out-of-town expenses across the whole job, mode-aware. Food Lion bid
+// letters require OOT broken out as its own category, separate from labor.
+export function jobOOTTotal(state) {
+  if (state?.laborMode === 'flat') return calcFlatJobCost(state?.flatJob).oot;
+  return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p).oot, 0);
+}
+
 export function calcMaterialsTotal(lineItems) {
   return (lineItems || []).reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
 }

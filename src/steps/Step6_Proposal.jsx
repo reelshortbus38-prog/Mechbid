@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
-import { computeBidTotals } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
@@ -41,6 +41,56 @@ function CompanyProfileCard({ company, onChange }) {
               <Input value={company[f.k] || ''} onChange={e => set(f.k, e.target.value)} placeholder={f.ph} />
             </div>
           ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── BID-LETTER CATEGORY BREAKDOWN ────────────────────────────────────────────
+// Food Lion bid letters require the price submitted as Materials / Refrigerant
+// / Labor / Out of Town Expenses / Total Bid Price, with refrigerant pounds in
+// the portal notes. This card shows those exact numbers so submission is a
+// copy job, not a calculator session. The rows always sum to the Total Bid.
+function BidLetterCategories({ state, totals }) {
+  const [open, setOpen] = useState(true);
+  const b = bidLetterBreakdown(state, totals);
+  if (!b.total) return null;
+
+  const rows = [
+    { label: 'Materials', value: b.materials },
+    { label: `Refrigerant${b.refLbs > 0 ? ` (${b.refLbs} lb — put pounds in the portal notes)` : ''}`, value: b.refrigerant },
+    { label: 'Labor', value: b.labor },
+    { label: 'Out of Town Expenses', value: b.oot },
+    b.other > 0 && { label: 'Other (subs / bond / permits)', value: b.other },
+  ].filter(Boolean);
+
+  return (
+    <Card>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>📤 Bid Submission Breakdown</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>The categories Food Lion bid letters ask for — these rows sum to your Total Bid Price</div>
+        </div>
+        <span style={{ color: colors.textDim, fontSize: 13 }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {rows.map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: `1px solid ${colors.border}` }}>
+              <span style={{ fontSize: 13 }}>{r.label}: $</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700 }}>{fmt(r.value)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0 0' }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Total Bid Price: $</span>
+            <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>{fmt(b.total)}</span>
+          </div>
+          {b.refrigerant === 0 && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8 }}>
+              Refrigerant shows $0 until you put a quantity and price on the refrigerant line in Materials. If the store supplies the gas (check the bid letter), leave it at $0.
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -630,6 +680,9 @@ export default function Step6_Proposal({ onBack }) {
           <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(totals.total)}</span>
         </div>
       </Card>
+
+      {/* Bid-letter category breakdown — the numbers to type into the portal */}
+      {state.mode === 'Commercial Refrigeration' && <BidLetterCategories state={state} totals={totals} />}
 
       {/* Calibration — compare the estimate to actual job cost */}
       <Calibration totals={totals} />

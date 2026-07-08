@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBidTotals } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown } from './bidTotals.js';
 
 // The proposal shows these component lines and a grand total. If `total` ever
 // drifts from the sum of the lines, a customer's bid silently adds up wrong —
@@ -120,6 +120,33 @@ describe('computeBidTotals reconciliation', () => {
     expect(round(t.laborTotal)).toBe(297000);
     expect(round(t.rackLaborTotal)).toBe(275);
     expect(round(t.total)).toBe(297275);
+  });
+
+  it('bid-letter breakdown: Materials/Refrigerant/Labor/OOT sum to the total', () => {
+    // Food Lion portals require the bid in these categories. Refrigerant is
+    // broken out of materials (the store sometimes supplies the gas), OOT is
+    // broken out of labor, and everything must reconcile to the Total Bid.
+    const state = {
+      mode: 'Commercial Refrigeration',
+      lineItems: [
+        { desc: 'Refrigerant — verify type (R-448A / R-407A) & charge by lb', qty: 200, unit: 'lb', unitCost: 12, total: 2400 },
+        { desc: 'Refrigerant Oil — verify POE grade', qty: 2, unit: 'gal', unitCost: 60, total: 120 }, // NOT refrigerant gas
+        { desc: '7/8" ACR Copper', qty: 100, unit: 'ft', unitCost: 5, total: 500 },
+      ],
+      rackParts: [], rackTasks: [], fieldTasks: [],
+      laborPeriods: [{ id: 'p1', crew: [{ rate: 100, hrsPerDay: 8 }], days: 10, ootPerDay: 150 }],
+      markupPct: 20, materialsTaxPct: 0, subcontractors: [], bondPct: 0, permitFee: 0,
+    };
+    const t = computeBidTotals(state, 20);
+    const b = bidLetterBreakdown(state, t);
+    // Refrigerant: 2400 base × 1.2 markup = 2880 (oil stays in materials)
+    expect(round(b.refrigerant)).toBe(2880);
+    expect(b.refLbs).toBe(200);
+    // OOT: 150/day × 10 days, carved out of labor
+    expect(round(b.oot)).toBe(1500);
+    expect(round(b.labor)).toBe(100 * 8 * 10); // crew labor without OOT
+    // The invariant: categories reconcile exactly to the bid total
+    expect(round(b.materials + b.refrigerant + b.labor + b.oot + b.other)).toBe(round(t.total));
   });
 
   it('empty job: everything zero, no NaN', () => {
