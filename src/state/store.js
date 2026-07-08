@@ -10,6 +10,32 @@ export const DEFAULT_CU_RATES = {
   '1/4': 1.10, '3/8': 1.70, '1/2': 2.40, '5/8': 3.10, '7/8': 4.70,
   '1-1/8': 6.30, '1-3/8': 8.20, '1-5/8': 10.50, '2-1/8': 15.00, '2-5/8': 20.00, '3-1/8': 25.00,
 };
+// Ballpark national pricing for generated hardware & consumables — same idea
+// as the copper table: a fresh job prices itself without hand-entering every
+// line, and every number stays editable. The price book (the user's ACTUAL
+// prices, saved as they edit) always wins over these.
+const DEFAULT_HW_PRICES = [
+  [/pipe hangers?/i, 3.50],          // clevis/loop hanger, each
+  [/pipe saddles?|insuguard/i, 3.00], // insulation cradle, each
+  [/unistrut/i, 25.00],              // 1-5/8" 12ga, 10' stick
+  [/all-?thread/i, 8.00],            // 3/8" rod, 10' stick
+  [/oxygen/i, 60.00],                // cylinder swap
+  [/acetylene/i, 90.00],             // cylinder swap
+  [/nitrogen/i, 35.00],              // cylinder swap
+  [/brazing rod/i, 110.00],          // 15% silver, per lb
+  [/insulation adhesive/i, 22.00],   // per can
+  [/spray foam/i, 9.00],             // per can
+  [/duct tape/i, 8.00],              // per roll
+  [/pvc.*tape|insulation tape/i, 6.00], // per roll
+  [/emery cloth|sand cloth/i, 12.00],   // per roll
+  [/fire caulk/i, 14.00],            // per tube
+  [/refrigerant oil/i, 60.00],       // POE, per gal
+];
+export function defaultHardwarePrice(desc) {
+  const hit = DEFAULT_HW_PRICES.find(([re]) => re.test(desc || ''));
+  return hit ? hit[1] : 0;
+}
+
 export const DEFAULT_INSUL_RATES = {
   // 1/2" wall Armaflex, medium-temp suction.
   medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40 },
