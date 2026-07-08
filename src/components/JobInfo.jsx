@@ -48,7 +48,11 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
   const minWeek = weekNums.length ? Math.min(...weekNums) : null;
   const maxWeek = weekNums.length ? Math.max(...weekNums) : null;
 
-  const nightDates = new Set(schedule.filter(s => isNightDate(s.date)).map(s => s.date)).size;
+  // Grouped schedule items carry an explicit isNight flag; fall back to the
+  // "(Night)" text in the label for older items. Label-only detection missed
+  // every deterministic item (their short labels don't include "(Night)").
+  const itemIsNight = s => (s.isNight != null ? s.isNight : isNightDate(s.date));
+  const nightDates = new Set(schedule.filter(itemIsNight).map(s => s.date)).size;
 
   function removeItem(id) {
     dispatch({ type: 'REMOVE_RC_SCHEDULE_ITEM', id });
@@ -166,7 +170,7 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
                       <span style={{ fontSize: 10, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         {item.date}
                       </span>
-                      {isNightDate(item.date) && (
+                      {itemIsNight(item) && (
                         <span style={{ fontSize: 9, background: 'rgba(234,179,8,0.15)', color: colors.yellow, padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>🌙 NIGHT</span>
                       )}
                     </div>

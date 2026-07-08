@@ -6,10 +6,14 @@ const MONTHS = ['january','february','march','april','may','june','july','august
 export function extractMonthDay(label) {
   if (!label) return null;
   const s = String(label);
-  // Textual month + day: "October 20", "Monday, October 20th".
-  const match = s.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i);
+  // Textual month + day, full OR abbreviated: "October 20", "Monday, October
+  // 20th", "Oct 20", "Sep 10". The abbreviated form is what schedDateLabel
+  // itself EMITS — without it, our own schedule labels weren't re-parseable,
+  // so span/night stats silently ignored every deterministic schedule item.
+  const match = s.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})/i);
   if (match) {
-    const monthIdx = MONTHS.indexOf(match[1].toLowerCase());
+    const prefix = match[1].slice(0, 3).toLowerCase();
+    const monthIdx = MONTHS.findIndex(m => m.startsWith(prefix));
     const day = parseInt(match[2], 10);
     if (monthIdx >= 0 && day) return { monthIdx, day };
   }
