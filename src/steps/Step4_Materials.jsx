@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
-import { PriceMatchChip, SupplierSwitcher } from '../components/PriceBook.jsx';
+import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
@@ -523,6 +523,24 @@ function BidMaterials({ onGenerate }) {
       return updated;
     });
     dispatch({ type: 'SET', key: 'lineItems', value: items });
+
+    // Learning loop: pricing a hardware/consumable line saves that price to
+    // the cross-job price book, so the NEXT job's Generate autofills with
+    // YOUR number instead of the shipped ballpark default.
+    if (field === 'unitCost') {
+      const it = items.find(i => i.id === id);
+      const price = parseFloat(value) || 0;
+      if (it && price > 0 && (it.section === 'Hardware' || it.section === 'Consumables') && it.desc) {
+        const book = loadPriceBook();
+        const norm = it.desc.trim().toLowerCase();
+        const existing = book.find(e => (e.desc || '').trim().toLowerCase() === norm);
+        if (existing) {
+          if (existing.price !== price) savePriceBook(book.map(e => e === existing ? { ...e, price } : e));
+        } else {
+          savePriceBook([...book, { id: uid(), desc: it.desc, partId: '', category: it.section, unit: it.unit || 'ea', price }]);
+        }
+      }
+    }
   }
 
   function removeItem(id) {
@@ -923,6 +941,24 @@ export default function Step4_Materials({ onNext, onBack }) {
       const existingManualFittings = state.lineItems.filter(i => i.section === 'Fittings' && !i.isFittingsAllowance);
       items.push(...existingManualFittings);
     }
+
+    // ── Price autofill for hardware & consumables ─────────────────────────
+    // Copper and insulation price from the rate tables above; hangers,
+    // saddles, strut, rod, and consumables autofill here. Priority: the
+    // price book (YOUR real prices — kept current automatically whenever you
+    // edit a unit cost on one of these lines) → shipped ballpark defaults →
+    // $0. Every number stays editable per line.
+    const priceBook = loadPriceBook();
+    items.forEach(it => {
+      if (it.unitCost > 0) return;
+      if (it.section !== 'Hardware' && it.section !== 'Consumables') return;
+      const m = findPriceMatch(priceBook, { desc: it.desc });
+      const price = m ? (parseFloat(m.entry.price) || 0) : defaultHardwarePrice(it.desc);
+      if (price > 0) {
+        it.unitCost = price;
+        it.total = (it.qty || 0) * price;
+      }
+    });
 
     dispatch({ type:'SET', key:'lineItems', value:items });
   }
