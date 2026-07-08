@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, maxWeekNumber,
+import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, extractMonthDay, maxWeekNumber,
   scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
@@ -40,6 +40,21 @@ describe('schedule date span (year-wrap)', () => {
     ];
     expect(span(sched)).toBe('Apr 29 – Aug 5');
     expect(extractWeekNum('Week 3')).toBe(3); // "Week N" without a #
+  });
+
+  it('parses the SHORT labels schedDateLabel itself emits (store 701 "Sep 10")', () => {
+    // The deterministic schedule extractor emits abbreviated labels ("Sep 10");
+    // the parser only knew full month names, so our own output was unparseable
+    // and store 701 showed "RC Task Span: Sep 23 – Sep 23" for a Sep→Jan job.
+    const sched = [
+      { date: 'Sep 10' }, { date: 'Sep 30' }, { date: 'Oct 14' },
+      { date: 'Nov 25' }, { date: 'Dec 9' }, { date: 'Jan 7' },
+    ];
+    expect(span(sched)).toBe('Sep 10 – Jan 7');
+    expect(extractMonthDay('Sep 10')).toEqual({ monthIdx: 8, day: 10 });
+    expect(extractMonthDay('Sept 10')).toEqual({ monthIdx: 8, day: 10 });
+    expect(extractMonthDay('Jun 3')).toEqual({ monthIdx: 5, day: 3 });
+    expect(extractMonthDay('March 3')).toEqual({ monthIdx: 2, day: 3 }); // full names still work
   });
 
   it('non-wrapping job (store 47, Jun→Aug) is unchanged', () => {
