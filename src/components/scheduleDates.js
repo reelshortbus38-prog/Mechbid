@@ -196,9 +196,21 @@ export function scanRcFirstCaseNight(text) {
 // This replaces the AI's per-task schedule read, which drops items in the middle
 // of a long schedule and leaves gaps. Store/GC/EC lines are excluded; the store's
 // "remove product and wash cases" prep is not RC work.
-const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*\/\s*install\s*:[^.\n]*(?:refrigeration contractor|\brc\b)|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
+const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*(?:and|&)\s*install\s*:|^\s*-?\s*deliver\s*\/\s*install\s*:|^\s*-?\s*deliver[^.\n]{0,60}\brc\b|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
 const NON_RC_SECTION_RE = /^\s*-?\s*(?:general contractor|electrical contractor|plumbing contractor|hard tile|soft tile|store associates|market specialist|produce specialist|sas |these items|new note|note\s*:|deli\s*\/\s*bakery|reminder|vendor|energy)/i;
-const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|\d+\s*['’]|#\s*\d|\bN\d{2,3}\b/i;
+// Equipment-count lines ("(1) Deli cooler evap") count as section content too —
+// store 701's "Deliver and Hold for RC to schedule install: (RC to move to
+// Connex)" lists evaps that way, with no case numbers or footage marks.
+const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|\d+\s*['’]|#\s*\d|\bN\d{2,3}\b|\(\s*\d+\s*\)|\bevaps?\b/i;
+
+// Front-end fixture resets (kiosk, checkout lanes, shelving, customer service
+// counter) use the same "Remove:/Relocate:" section wording as refrigeration
+// case moves but belong to the GC/fixture crew, not the RC — store 701's
+// Sep 30 kiosk night was landing in the RC schedule AND being picked as the
+// RC start. A remove/relocate section is excluded when it talks about
+// front-end fixtures and carries NO real case reference (case#/circuit/N-tag).
+const FRONT_END_FIXTURE_RE = /kiosk|checkout|check\s*stand|checklane|customer\s*service|register|shelving|gondola/i;
+const REAL_CASE_REF_RE = /#\s*\d|\(\s*circuit|\bN\d{2,3}\b/i;
 
 // A date header line STARTS with a day of week, so a date mentioned mid-sentence
 // ("...by Monday 6/10") can't be mistaken for one. Works for the strict Food Lion
@@ -245,7 +257,11 @@ export function extractRcSchedule(text) {
     }
     if (action && CASE_CONTENT_RE.test(line)) action.cases.push(line);
   }
-  const usable = g => g.inline || g.cases.length > 0 || /temp cases? out/i.test(g.label);
+  const groupText = g => `${g.label} ${g.cases.join(' ')}`;
+  // Explicit "RC to…" inline lines are RC by definition; section groups that
+  // read as front-end fixture work with no case reference are not RC scope.
+  const frontEndOnly = g => !g.inline && FRONT_END_FIXTURE_RE.test(groupText(g)) && !REAL_CASE_REF_RE.test(groupText(g));
+  const usable = g => !frontEndOnly(g) && (g.inline || g.cases.length > 0 || /temp cases? out/i.test(g.label));
   return nights
     .filter(n => n.groups.some(usable))
     .map(n => {
