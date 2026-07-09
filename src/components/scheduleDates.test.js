@@ -176,6 +176,40 @@ describe('schedule date span (year-wrap)', () => {
     expect(firstCaseMoveNight(null)).toBe('');
   });
 
+  it('store 701: connex evap delivery captured, front-end kiosk night excluded', () => {
+    // Mirrors the real 701 draft. Sep 23 has three RC sections in wordings the
+    // parser previously missed ("Deliver and install:", "Deliver and Hold for
+    // RC...", inline "RC – to begin piping"). Sep 30 is the front-end reset —
+    // kiosk/shelving/service counter with NO case numbers — which is fixture
+    // crew work, not RC, and must not become the RC schedule or RC start.
+    const text = [
+      'Monday,  September 23rd     (Night)',
+      'Deliver and install:',
+      '2 - Rack A headers from Julian Rd.   Tag#40128 and #40643',
+      'Deliver and Hold for RC to schedule install:  (RC to move to Connex)',
+      '(1) Deli cooler evap',
+      '(2) Meat Cooler evaps',
+      'RC – to begin piping new headers',
+      'Monday, September 30th (Night)',
+      'Remove:',
+      "6' CSC Kiosk",
+      "24' Low shelving from kiosk",
+      'Relocate:',
+      "2 3' GNG coolers",
+      "6' New Customer Service Counter with Gates",
+      'Tuesday, October 1st (Night)',
+      'Remove:',
+      "2 (8') IL1 meat promos case# 20, 21",
+    ].join('\n');
+    const s = extractRcSchedule(text);
+    const sep23 = s.find(n => n.date === 'Sep 23');
+    expect(sep23.tasks.join(' | ')).toMatch(/Rack A headers/);
+    expect(sep23.tasks.join(' | ')).toMatch(/Connex.*Deli cooler evap/);
+    expect(sep23.tasks.join(' | ')).toMatch(/begin piping new headers/);
+    expect(s.find(n => n.date === 'Sep 30')).toBeUndefined();
+    expect(firstCaseMoveNight(s)).toBe('Oct 1');
+  });
+
   it('empty/undated schedule does not throw', () => {
     expect(anchorMonth([])).toBe(0);
     expect(buildDateParser([])({ })).toBe(null);
