@@ -218,6 +218,15 @@ const CASE_CONTENT_RE = /\bcases?\s*#?\s*\d|\(\s*circuit|\d+\s*['’]|#\s*\d|\bN
 const FRONT_END_FIXTURE_RE = /kiosk|checkout|check\s*stand|checklane|customer\s*service|register|shelving|gondola/i;
 const REAL_CASE_REF_RE = /#\s*\d|\(\s*circuit|\bN\d{2,3}\b/i;
 
+// "Deliver/Install:" sections cover BOTH RC equipment (case# N79, rack
+// headers, connex evaps) and GC/store fixtures (store 0348's Sep 24: bug
+// zappers, cart corrals, lounge lockers, a lounge refrigerator). A deliver
+// section is only RC scope when its contents are actually refrigeration —
+// note "refrigerator" alone is deliberately NOT a signal (a lounge fridge
+// is GC supply), while cases/coolers/evaps/headers/racks are.
+const DELIVER_SECTION_RE = /^\s*-?\s*deliver/i;
+const REFRIG_CONTENT_RE = /#\s*\d|\(\s*circuit|\bN\d{2,3}\b|\bevaps?\b|\bheaders?\b|\brack\b|compressor|condenser|\bcases?\b|refrigeration contractor|\brc\b|walk[-\s]?in|\bcoolers?\b|freezer/i;
+
 // A date header line STARTS with a day of week, so a date mentioned mid-sentence
 // ("...by Monday 6/10") can't be mistaken for one. Works for the strict Food Lion
 // form ("Tuesday, September 8th (Night) w12") and the looser rough-draft form
@@ -265,9 +274,11 @@ export function extractRcSchedule(text) {
   }
   const groupText = g => `${g.label} ${g.cases.join(' ')}`;
   // Explicit "RC to…" inline lines are RC by definition; section groups that
-  // read as front-end fixture work with no case reference are not RC scope.
+  // read as front-end fixture work with no case reference are not RC scope,
+  // and deliver-type sections must carry refrigeration content to count.
   const frontEndOnly = g => !g.inline && FRONT_END_FIXTURE_RE.test(groupText(g)) && !REAL_CASE_REF_RE.test(groupText(g));
-  const usable = g => !frontEndOnly(g) && (g.inline || g.cases.length > 0 || /temp cases? out/i.test(g.label));
+  const nonRefrigDelivery = g => !g.inline && DELIVER_SECTION_RE.test(g.label) && !REFRIG_CONTENT_RE.test(groupText(g));
+  const usable = g => !frontEndOnly(g) && !nonRefrigDelivery(g) && (g.inline || g.cases.length > 0 || /temp cases? out/i.test(g.label));
   return nights
     .filter(n => n.groups.some(usable))
     .map(n => {
