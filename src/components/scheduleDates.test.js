@@ -220,6 +220,27 @@ describe('schedule date span (year-wrap)', () => {
     expect(firstCaseMoveNight(s)).toBe('Oct 1');
   });
 
+  it('store 0348: GC fixture deliveries are not RC work (bug zappers, lounge furniture)', () => {
+    // "Deliver/Install:" covers both RC equipment and GC/store fixtures. The
+    // lounge refrigerator is the trap: "refrigerator" alone must NOT read as
+    // refrigeration scope, while case#/N-tag/evap/header content must.
+    const text = [
+      'Tuesday, September 24th (Day)',
+      'Deliver/Install:',
+      '(2) Bug Zappers',
+      '(3) New Shopping Cart Corrals',
+      '(8) Lounge Lockers',
+      '(1) New Refrigerator',
+      '(1) New K-Cup Coffee Maker',
+      'Monday, October 6th (Night)',
+      'Deliver/Install:',
+      "6' ONIZ meat promo case# N86",
+    ].join('\n');
+    const s = extractRcSchedule(text);
+    expect(s.find(n => n.date === 'Sep 24')).toBeUndefined();
+    expect(s.find(n => n.date === 'Oct 6')?.tasks.join(' ')).toMatch(/case# N86/);
+  });
+
   it('empty/undated schedule does not throw', () => {
     expect(anchorMonth([])).toBe(0);
     expect(buildDateParser([])({ })).toBe(null);
