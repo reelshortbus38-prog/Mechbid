@@ -5,6 +5,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
+import { estimateRefrigerantLbs, REFRIGERANTS } from '../components/refrigerant.js';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
@@ -503,6 +504,88 @@ function ResidentialEquipment({ onNext, onBack }) {
 }
 
 // ── BID MATERIALS (Commercial) ─────────────────────────────────────────────────
+// ── REFRIGERANT CALCULATOR ─────────────────────────────────────────────────
+// Estimates the pounds the remodel adds — liquid line (the big term) +
+// suction vapor + new case coils + top-off — straight from the circuit
+// takeoff, and applies the result to the refrigerant line item so the
+// bid-letter breakdown's "refrigerant pounds" fills itself.
+function RefrigerantCalc() {
+  const { state, dispatch } = useStore();
+  const [open, setOpen] = useState(false);
+  const refrigerant = state.refrigerantType || 'R-448A';
+  const newCases = state.refrigNewCases ?? '';
+  const topOffPct = state.refrigTopOffPct ?? 10;
+  const est = estimateRefrigerantLbs(state.circuits || [], { refrigerant, newCases, lbPerCase: 3, topOffPct });
+
+  function applyToLine() {
+    const items = (state.lineItems || []).map(i => {
+      if (i.section !== 'Consumables' || !/refrigerant/i.test(i.desc || '') || /oil/i.test(i.desc || '')) return i;
+      return { ...i, desc: `Refrigerant ${refrigerant} — charge by lb`, qty: est.total, total: est.total * (i.unitCost || 0) };
+    });
+    dispatch({ type: 'SET', key: 'lineItems', value: items });
+  }
+  const hasRefrigLine = (state.lineItems || []).some(i => i.section === 'Consumables' && /refrigerant/i.test(i.desc || '') && !/oil/i.test(i.desc || ''));
+
+  if (!(state.circuits || []).length) return null;
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>🧪 Refrigerant Calculator</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 3 }}>
+            ~{est.total} lb of {refrigerant} from the circuit takeoff — the pounds the bid letter asks for
+          </div>
+        </div>
+        <span style={{ color: colors.textDim, fontSize: 13 }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Refrigerant</div>
+              <Select value={refrigerant} onChange={e => dispatch({ type: 'SET', key: 'refrigerantType', value: e.target.value })}>
+                {Object.keys(REFRIGERANTS).map(r => <option key={r} value={r}>{r}</option>)}
+              </Select>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>New Case Coils (count)</div>
+              <Input type="number" value={newCases} onChange={e => dispatch({ type: 'SET', key: 'refrigNewCases', value: e.target.value })} placeholder="0" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Top-off / Trim (%)</div>
+              <Input type="number" value={topOffPct} onChange={e => dispatch({ type: 'SET', key: 'refrigTopOffPct', value: parseFloat(e.target.value) || 0 })} placeholder="10" />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>
+            {[
+              { label: 'Liquid Lines', v: `${est.liquidLbs} lb` },
+              { label: 'Suction Vapor', v: `${est.suctionLbs} lb` },
+              { label: `Case Coils (3 lb ea)`, v: `${est.casesLbs} lb` },
+              { label: `Top-off ${topOffPct}%`, v: `${est.topOffLbs} lb` },
+            ].map(s => (
+              <div key={s.label} style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px' }}>
+                <div style={{ fontSize: 9, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{s.label}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700 }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800 }}>
+              Total: <span style={{ color: colors.green }}>{est.total} lb {refrigerant}</span>
+            </div>
+            <Btn variant="green" size="sm" onClick={applyToLine} disabled={!hasRefrigLine}>
+              {hasRefrigLine ? `Apply ${est.total} lb to refrigerant line` : 'Generate materials first'}
+            </Btn>
+          </Row>
+          <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+            Bid estimate from pipe volume × liquid density (saturated ~100°F), suction vapor, 3 lb per new case coil, plus trim — not a commissioning charge sheet. Set the $/lb on the refrigerant line to price it.
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function BidMaterials({ onGenerate }) {
   const { state, dispatch } = useStore();
   const [showFittingPicker, setShowFittingPicker] = useState(false);
@@ -557,6 +640,7 @@ function BidMaterials({ onGenerate }) {
 
   return (
     <div>
+      <RefrigerantCalc />
       <Row style={{ justifyContent:'space-between', marginBottom:14, flexWrap:'wrap', gap:8 }}>
         <div>
           <SLabel>Bid Materials</SLabel>
