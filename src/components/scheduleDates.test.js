@@ -176,6 +176,16 @@ describe('schedule date span (year-wrap)', () => {
     expect(firstCaseMoveNight(null)).toBe('');
   });
 
+  it('firstCaseMoveNight: rough drafts with NO night markers use the first case move (1086 → Jun 3)', () => {
+    // Store 1086's rough draft has no "(Night)" headers anywhere, so the night
+    // gate found nothing and the AI's Jun 11 guess won over the real Jun 3.
+    const nights = [
+      { date: 'Jun 3', isNight: false, tasks: ["RC to accept and install N84- 6' QIL1 Promo (Monday 6/3)", 'RC to relocate and install Promos 26 and 28'] },
+      { date: 'Jun 10', isNight: false, tasks: ['RC to remove 1,2,3,4,5,6 and 8.  GC to salvage.'] },
+    ];
+    expect(firstCaseMoveNight(nights)).toBe('Jun 3');
+  });
+
   it('store 701: connex evap delivery captured, front-end kiosk night excluded', () => {
     // Mirrors the real 701 draft. Sep 23 has three RC sections in wordings the
     // parser previously missed ("Deliver and install:", "Deliver and Hold for
