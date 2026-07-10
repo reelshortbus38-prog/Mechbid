@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, extractMonthDay, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -239,6 +239,24 @@ describe('schedule date span (year-wrap)', () => {
     const s = extractRcSchedule(text);
     expect(s.find(n => n.date === 'Sep 24')).toBeUndefined();
     expect(s.find(n => n.date === 'Oct 6')?.tasks.join(' ')).toMatch(/case# N86/);
+  });
+
+  it('scheduleCrossCheck: AI dates missing from the direct read get flagged', () => {
+    // Mirrors the 701 miss before the deliver-and-install fix: the direct read
+    // had Sep 23/Oct 1 but the AI also saw Nov 5 install work. Same-date items
+    // (in any wording) and duplicates must NOT flag.
+    const det = [{ date: 'Sep 23' }, { date: 'Oct 1' }];
+    const ai = [
+      { date: 'Monday, September 23rd (Night)', desc: 'Rack A headers' },      // covered
+      { date: 'Tuesday, November 5th (Night)', desc: 'Deliver and Install: case# N80' }, // missed!
+      { date: '11/5', desc: 'duplicate wording of the same night' },           // deduped
+      { date: 'no date here', desc: 'unparseable' },                           // ignored
+    ];
+    const missed = scheduleCrossCheck(det, ai);
+    expect(missed.length).toBe(1);
+    expect(missed[0].date).toBe('Nov 5');
+    expect(missed[0].desc).toMatch(/case# N80/);
+    expect(scheduleCrossCheck(det, [])).toEqual([]);
   });
 
   it('empty/undated schedule does not throw', () => {
