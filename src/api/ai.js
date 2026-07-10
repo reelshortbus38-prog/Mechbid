@@ -77,6 +77,9 @@ Return ONLY valid JSON, no markdown:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        // Second-model cross-check on the full-image pass only (tiles would
+        // multiply the cost without adding much signal).
+        crossCheck: !tile || tile.tileNum === 1,
         messages: [{
           role: 'user',
           content: [
@@ -89,7 +92,8 @@ Return ONLY valid JSON, no markdown:
 
     if (!res.ok) return null;
     const data = await res.json();
-    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    return text ? { text, second: data.secondOpinion || null } : null;
   } catch (e) {
     console.warn('Vision error:', e.message);
     return null;
@@ -156,6 +160,7 @@ Return ONLY valid JSON, no markdown, no commentary:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        crossCheck: !tile || tile.tileNum === 1,
         messages: [{
           role: 'user',
           content: [
@@ -168,7 +173,8 @@ Return ONLY valid JSON, no markdown, no commentary:
 
     if (!res.ok) return null;
     const data = await res.json();
-    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    return text ? { text, second: data.secondOpinion || null } : null;
   } catch (e) {
     console.warn('Redline vision error:', e.message);
     return null;
@@ -286,13 +292,17 @@ export async function analyzeRedlinePdf(file, fileName) {
     for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
       if (!visionAll && !visionPageNums.includes(pageNum)) continue;
       const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
-      const raw = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
-      const parsed = raw ? parseAIJson(raw) : null;
+      const vres = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
+      const parsed = vres?.text ? parseAIJson(vres.text) : null;
       if (!parsed) {
         merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
         continue;
       }
       absorb(parsed, pageNum);
+      // Two-model cross-check: items the second model saw that the primary
+      // didn't become warnings to verify on the drawing, not silent misses.
+      crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+        merged.flags.push({ type: 'warn', text: `${tileLabel} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the drawing`, source: fileName }));
     }
     if (truncated) {
       merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
@@ -396,9 +406,12 @@ export async function analyzeImageDoc(file, fileName) {
   ];
 
   for (const { base64, tile } of passes) {
-    const raw = await callClaudeVision(base64, fileName, tile);
-    const parsed = raw ? parseAIJson(raw) : null;
+    const vres = await callClaudeVision(base64, fileName, tile);
+    const parsed = vres?.text ? parseAIJson(vres.text) : null;
     if (!parsed) continue;
+    // Two-model cross-check (full-image pass) — disagreements become warnings.
+    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+      merged.flags.push({ type: 'warn', text: `Photo cross-check: a second AI model also saw ${m} that the primary read didn't — verify against the document`, source: fileName }));
 
     if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
     if (parsed.storeName && !merged.storeName) merged.storeName = parsed.storeName;
@@ -492,6 +505,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        crossCheck: !tile || tile.tileNum === 1,
         messages: [{
           role: 'user',
           content: [
@@ -503,7 +517,8 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    return text ? { text, second: data.secondOpinion || null } : null;
   } catch (e) {
     console.warn('HVAC vision error:', e.message);
     return null;
@@ -575,8 +590,11 @@ export async function analyzeHvacPlanImage(file, fileName) {
   const seen = new Set();
   const passes = [{ base64: full, tile: null }, ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } }))];
   for (const { base64, tile } of passes) {
-    const raw = await callClaudeVisionHVAC(base64, fileName, tile);
-    absorbHvac(merged, raw ? parseAIJson(raw) : null, seen);
+    const vres = await callClaudeVisionHVAC(base64, fileName, tile);
+    const parsed = vres?.text ? parseAIJson(vres.text) : null;
+    absorbHvac(merged, parsed, seen);
+    if (parsed) crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+      merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
   return finishHvac(merged);
 }
@@ -590,13 +608,15 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   const seen = new Set();
   const { pages, truncated } = await renderPdfPagesToImages(file);
   for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
-    const raw = await callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage });
-    const parsed = raw ? parseAIJson(raw) : null;
+    const vres = await callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage });
+    const parsed = vres?.text ? parseAIJson(vres.text) : null;
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed`, source: fileName });
       continue;
     }
     absorbHvac(merged, parsed, seen);
+    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+      merged.flags.push({ type: 'warn', text: `Page ${pageNum} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
   if (truncated) merged.flags.push({ type: 'warn', text: 'Document has more pages than were analyzed (limit reached) — some sheets may be missing', source: fileName });
   return finishHvac(merged);
@@ -612,6 +632,41 @@ export function parseAIJson(text) {
   } catch {
     return null;
   }
+}
+
+// ── VISION CROSS-CHECK DIFFER ────────────────────────────────────────────────
+// Compares the primary (Claude) vision read against the second model's
+// (GPT-4o) raw text on the SAME image. Returns human-readable strings for
+// items the second model saw that the primary didn't — circuits, equipment
+// tags, air devices, and callout texts. Only used for documents with no
+// deterministic parser (photos/drawings), where a second model is the only
+// second opinion available. The primary read stays authoritative; these are
+// pointers for a human look, never merged into the takeoff.
+export function crossCheckVision(primaryParsed, secondRaw) {
+  const second = typeof secondRaw === 'string' ? parseAIJson(secondRaw) : secondRaw;
+  if (!second || !primaryParsed) return [];
+  const msgs = [];
+  const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const diffSet = (label, listA, listB, keyFn) => {
+    const a = new Set((listA || []).map(x => norm(keyFn(x))).filter(Boolean));
+    (listB || []).forEach(item => {
+      const k = norm(keyFn(item));
+      if (k && !a.has(k)) msgs.push(`${label} "${keyFn(item)}"`);
+    });
+  };
+  diffSet('circuit', primaryParsed.circuits, second.circuits, c => c.circuitId);
+  diffSet('equipment tag', primaryParsed.equipment, second.equipment, e => e.tag);
+  diffSet('air device', primaryParsed.airDevices, second.airDevices, d => d.tag);
+  // Callouts are free text — flag second-model callouts whose opening words
+  // don't appear anywhere in the primary's callouts.
+  const pTexts = (primaryParsed.fieldTasks || []).map(t => norm(t.desc));
+  (second.fieldTasks || []).forEach(t => {
+    const head = norm(t.desc).slice(0, 25);
+    if (head.length >= 10 && !pTexts.some(pt => pt.includes(head))) {
+      msgs.push(`callout "${String(t.desc || '').slice(0, 70)}"`);
+    }
+  });
+  return msgs;
 }
 
 export async function parseDocFile(base64, fileName) {

@@ -349,12 +349,16 @@ export default function Step1_Setup({ onNext }) {
           // their own date headers, so this is exact (not guessed from tasks).
           { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) { preconFromDoc = p; preconDet = true; }
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights;
-            // RC start: prefer the grouped schedule's first case-move night
-            // (handles every known format), then the raw-text scan, then the AI.
-            const n = firstCaseMoveNight(nights) || scanRcFirstCaseNight(docRes.text); if (n) { rcNightStart = n; rcStartDet = true; }
-            const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
-            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) { jobLengthFromDoc = `${wk} weeks`; jobLenDet = true; }}
+            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) { jobLengthFromDoc = `${wk} weeks`; jobLenDet = true; }
+            // RC schedule / RC start / RCC are refrigeration concepts — an HVAC
+            // job's construction schedule has no RC work to look for.
+            if (!isHvacMode) {
+              const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights;
+              // RC start: prefer the grouped schedule's first case-move night
+              // (handles every known format), then the raw-text scan, then the AI.
+              const n = firstCaseMoveNight(nights) || scanRcFirstCaseNight(docRes.text); if (n) { rcNightStart = n; rcStartDet = true; }
+              const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
+            }}
 
           // Deterministic rack-work sections ("RACK A" heading + task lines) and
           // PARTS LIST ("QTY - DESC" lines) — rigid enough to read exactly from
@@ -362,7 +366,8 @@ export default function Step1_Setup({ onNext }) {
           // these in practice (store 47: 1 of 13 parts survived, rack work
           // misfiled as notes), so the direct read is authoritative and the AI's
           // matching items are skipped as duplicates below.
-          {
+          // Rack-work sections and the rack parts list are refrigeration-only.
+          if (!isHvacMode) {
             const rackSections = extractRackWorkSections(docRes.text);
             rackSections.forEach(sec => sec.tasks.forEach(t => {
               detRackDescs.add(normalizeDesc(t));
@@ -491,7 +496,9 @@ export default function Step1_Setup({ onNext }) {
             }
           }
           (parsed.fieldTasks || []).forEach(t => {
-            if (t.desc && isRCTask(t.desc)) {
+            // The RC-work filter is refrigeration-only — on an HVAC job every
+            // extracted task is potential HVAC scope, there's no RC to filter for.
+            if (t.desc && (isHvacMode || isRCTask(t.desc))) {
               const extraContext = [
                 t.circuitRef ? `Circuit: ${t.circuitRef}` : '',
                 t.location ? `Location: ${t.location}` : '',
@@ -510,6 +517,14 @@ export default function Step1_Setup({ onNext }) {
                 // discarded, so a wording the direct read doesn't know becomes
                 // a visible warning rather than a silent miss.
                 if (rcNightSchedule.length) { aiDatedTasks.push({ date: t.date, desc: t.desc }); return; }
+                // HVAC jobs have no RC Schedule — keep the date readable in the
+                // note text instead of feeding the refrigeration schedule view.
+                if (isHvacMode) {
+                  pushPending('note', sourceType, fileMeta.name, {
+                    desc: `[${t.date}] ${t.desc}`, circuitRef: '', notes: combinedNotes, rawDesc: t.desc,
+                  });
+                  return;
+                }
                 pushPending('note', sourceType, fileMeta.name, {
                   desc: t.desc, date: t.date, circuitRef: t.circuitRef || '', notes: combinedNotes, rawDesc: t.desc,
                 });
@@ -534,6 +549,12 @@ export default function Step1_Setup({ onNext }) {
           // rack work to notes leaves the rack labor section empty.
           (parsed.rackTasks || []).forEach(t => {
             if (t.desc) {
+              // No Rack step on HVAC jobs — anything the AI called "rack work"
+              // on an HVAC document is just a note.
+              if (isHvacMode) {
+                pushPending('note', sourceType, fileMeta.name, { desc: t.desc, notes: t.notes || '', rawDesc: t.desc });
+                return;
+              }
               if (detRackDescs.has(normalizeDesc(t.desc))) return; // already read directly from the text
               if (t.date) {
                 pushPending('note', sourceType, fileMeta.name, {
@@ -547,9 +568,14 @@ export default function Step1_Setup({ onNext }) {
             }
           });
 
-          // Parts → rack parts
+          // Parts → rack parts (refrigeration only — HVAC jobs have no Rack
+          // step, so a parts list on an HVAC doc surfaces as notes instead)
           (parsed.parts || []).forEach(p => {
             if (p.description) {
+              if (isHvacMode) {
+                pushPending('note', sourceType, fileMeta.name, { desc: `Part: ${p.qty ? p.qty + ' × ' : ''}${p.description}`, notes: '', rawDesc: p.description });
+                return;
+              }
               if (detPartDescs.has(normalizeDesc(p.description))) return; // already read directly from the parts list
               pushPending('part', sourceType, fileMeta.name, {
                 partId: p.partId || '', desc: p.description, qty: p.qty || 0, unit: 'ea', storeSupplied: true, unitCost: 0, total: 0,
