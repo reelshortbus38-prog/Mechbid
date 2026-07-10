@@ -12,7 +12,7 @@ import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
-import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
+import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc } from '../components/scopeText.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
@@ -95,6 +95,7 @@ export default function Step1_Setup({ onNext }) {
     let preconTimeFromDoc = '';  // pre-con meeting time ("1:00 pm") from the doc
     let rccFromDoc = '';         // final store RCC date scanned from the schedule
     let rcNightSchedule = [];    // deterministic RC case-move nights (grouped)
+    let aiDatedTasks = [];       // the AI's dated RC tasks, kept for cross-check
     let jobLengthFromDoc = '';   // total job length inferred by the AI
     // Provenance per key date: a DETERMINISTIC read (regex/grouped-schedule
     // scan of the document text) is authoritative and OVERWRITES a stored
@@ -504,9 +505,11 @@ export default function Step1_Setup({ onNext }) {
               } else if (t.date) {
                 // Dated tasks feed the RC Schedule. When a deterministic RC night
                 // schedule was extracted from the doc (complete + grouped by
-                // night), skip the AI's per-task dated notes — the deterministic
-                // one is authoritative and avoids duplicate/partial items.
-                if (rcNightSchedule.length) return;
+                // night), the deterministic one is authoritative — but the AI's
+                // dated tasks are KEPT for the cross-check below instead of
+                // discarded, so a wording the direct read doesn't know becomes
+                // a visible warning rather than a silent miss.
+                if (rcNightSchedule.length) { aiDatedTasks.push({ date: t.date, desc: t.desc }); return; }
                 pushPending('note', sourceType, fileMeta.name, {
                   desc: t.desc, date: t.date, circuitRef: t.circuitRef || '', notes: combinedNotes, rawDesc: t.desc,
                 });
@@ -602,6 +605,22 @@ export default function Step1_Setup({ onNext }) {
         frozen: n.frozen, week: n.week, scheduleNight: true, rawDesc: n.header,
       }));
       newResults.push(`📅 RC schedule: ${rcNightSchedule.length} case-move night(s) read directly from the schedule`);
+    }
+
+    // Cross-check — second opinion on the schedule. The direct read is exact
+    // but literal; the AI reads loosely. Any date where the AI saw RC work
+    // but the direct read captured nothing becomes a visible warning to
+    // verify, instead of a silent miss.
+    if (rcNightSchedule.length && aiDatedTasks.length) {
+      const missed = scheduleCrossCheck(rcNightSchedule, aiDatedTasks);
+      missed.slice(0, 6).forEach(m => flags.push({
+        type: 'warn',
+        text: `Cross-check: the AI read RC work on ${m.date} that the direct schedule read didn't capture — check that date in the schedule: "${String(m.desc).slice(0, 140)}"`,
+        source: 'schedule cross-check',
+      }));
+      newResults.push(missed.length
+        ? `⚠️ Cross-check: AI found RC work on ${missed.length} date(s) the direct read didn't — see Flags`
+        : `✅ Cross-check: AI and the direct schedule read agree on RC dates`);
     }
 
     // Flags are low-risk (informational) — merge immediately.

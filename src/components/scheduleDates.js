@@ -288,6 +288,26 @@ export function extractRcSchedule(text) {
     });
 }
 
+// ── CROSS-CHECK: SECOND OPINION ON THE SCHEDULE ──────────────────────────────
+// The deterministic reader is exact but literal — a wording it hasn't seen
+// (701's "Deliver and Hold for RC...") is an invisible miss. The AI reads the
+// same document loosely. Comparing the two turns unknown misses into visible
+// warnings: any date where the AI saw RC work but the direct read captured
+// nothing gets flagged for a human look, instead of being silently discarded.
+// Returns [{ date, desc }] for each such date (deduped, in AI order).
+export function scheduleCrossCheck(detNights, aiDatedTasks) {
+  const detDates = new Set((detNights || []).map(n => n.date));
+  const missed = [];
+  const seen = new Set();
+  (aiDatedTasks || []).forEach(t => {
+    const label = schedDateLabel(t.date || '');
+    if (!label || detDates.has(label) || seen.has(label)) return;
+    seen.add(label);
+    missed.push({ date: label, desc: t.desc || '' });
+  });
+  return missed;
+}
+
 export function formatSpan(startMs, endMs) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtOne = ms => {
