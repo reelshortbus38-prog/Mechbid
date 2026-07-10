@@ -599,11 +599,73 @@ export async function analyzeHvacPlanImage(file, fileName) {
   return finishHvac(merged);
 }
 
-// PDF upload of an HVAC sheet (CAD/Bluebeam export, usually a flattened raster):
-// render each page + tiles to images and read via the HVAC vision prompt. These
-// sheets are graphics, not a text layer, so there's no deterministic shortcut.
+// ── HVAC SPEC / SCOPE TEXT ANALYZER ─────────────────────────────────────────
+// CSI spec sections (15700/23xx "HVAC Equipment") are TEXT documents a
+// commercial HVAC sub bids from — not drawings. The money is in the
+// FURNISHED-BY split: owner-furnished/contractor-installed (OFCI) equipment
+// means the sub prices install + receiving/storage labor but NOT the unit,
+// while contractor-furnished items carry the full purchase. Misreading that
+// split is a five-figure mistake in either direction.
+export async function analyzeHvacSpecText(text, fileName) {
+  const prompt = `You are an expert commercial HVAC estimator reading a specification/scope section (CSI 15700 / Division 23 style). This is a TEXT spec, not a drawing — extract what drives the bid:
+
+1. EQUIPMENT IN SCOPE — every equipment type this section covers (rooftop units, exhaust fans, unit heaters, kitchen hoods, AHUs, make-up air units, air curtains, etc.). One entry per TYPE (there are no unit tags in a spec).
+2. FURNISHED-BY SPLIT — the single most cost-critical fact. Owner-furnished/contractor-installed (OFCI) equipment: the contractor installs but does NOT buy it (but often must include receiving, storage, rigging, and startup labor). Contractor-furnished: full purchase in the bid. Read the "Products Installed But Not Supplied", "Owner Furnished" and similar clauses carefully and set furnishedBy per equipment type.
+3. COST-DRIVING RULES as flags (type "warn"), verbatim where short: receiving/storage/labor responsibilities for owner-furnished gear, startup and commissioning obligations, test & balance responsibility, warranty obligations, crane/rigging notes, "include in Contract Amount" statements.
+4. CONTACTS with role and phone (manufacturer national accounts, warranty contacts) as ONE info flag listing them.
+
+Do NOT invent tags, tonnages, or counts — a spec has none; the equipment schedule on the drawings carries those.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"hvac_spec","equipment":[{"tag":"","type":"","furnishedBy":"owner|contractor|","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence: what this spec section covers"}`;
+
+  const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
+  const merged = newHvacMerged();
+  merged.documentType = 'hvac_spec';
+  const seenType = new Set();
+
+  const results = await runChunkCalls(chunks, (chunk, i) => {
+    const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
+    return `File: ${fileName}${chunkLabel}\n\nSpec text:\n${chunk}\n\n${prompt}`;
+  }, 'You are an expert commercial HVAC estimator. Return only valid JSON.');
+
+  for (const r of results) {
+    if (r.error) { merged.flags.push({ type: 'warn', text: `Part ${r.i + 1} of ${chunks.length} failed (${r.error}) — re-run to fill it in`, source: fileName }); continue; }
+    const parsed = r.parsed;
+    if (!parsed) { merged.flags.push({ type: 'warn', text: `Part ${r.i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName }); continue; }
+    (parsed.equipment || []).forEach(e => {
+      const key = String(e.type || '').toLowerCase().trim();
+      if (!key || seenType.has(key)) return;
+      seenType.add(key);
+      const fb = e.furnishedBy === 'owner' ? 'OWNER-FURNISHED / contractor-installed'
+        : e.furnishedBy === 'contractor' ? 'contractor-furnished' : '';
+      merged.equipment.push({ tag: '', type: e.type, notes: [fb, e.notes].filter(Boolean).join(' · ') });
+    });
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.summaries.push(parsed.summary);
+  }
+  return finishHvac(merged);
+}
+
+// PDF upload of an HVAC document. Spec sections and scope letters are TEXT
+// (bid from the words); plan sheets are graphics (bid from the drawing). Try
+// the text layer first — a page-heavy text PDF routes to the spec analyzer,
+// otherwise render + tile to images and read via the HVAC vision prompt.
 export async function analyzeHvacPlanPdf(file, fileName) {
-  const { renderPdfPagesToImages } = await import('./pdfRender.js');
+  const { renderPdfPagesToImages, extractPdfPagesText } = await import('./pdfRender.js');
+
+  try {
+    const res = await extractPdfPagesText(file, { maxPages: 20 });
+    const pages = res?.pages || [];
+    const totalChars = pages.reduce((s, p) => s + (p.text || '').length, 0);
+    // A spec book runs thousands of chars/page; a CAD sheet's text layer is
+    // sparse labels at best. 600+ chars/page average = a text document.
+    if (pages.length && totalChars / pages.length > 600) {
+      const fullText = pages.map(p => p.text).join('\n\n');
+      return await analyzeHvacSpecText(fullText, fileName);
+    }
+  } catch { /* no text layer — fall through to vision */ }
+
   const merged = newHvacMerged();
   const seen = new Set();
   const { pages, truncated } = await renderPdfPagesToImages(file);
