@@ -163,8 +163,14 @@ const CASE_NUM_RE = /\bcases?\s*#?\s*\d|\(\s*circuit\b/i;
 // Night-gated to match the field's meaning: "RC Start (Night Work / Case Moves)".
 const CASE_MOVE_TASK_RE = /relocat|temp\s*set|disconnect|\bremove\b|case\s*move|\breset\b/i;
 export function firstCaseMoveNight(nights) {
+  // The night gate only applies when the schedule actually MARKS nights
+  // ("(Night)" headers — store 47/701/812 style, where early non-night RC
+  // prep must not count). Rough drafts (store 1086) carry no night markers
+  // at all — gating there returned nothing and let the AI's guess win, so
+  // for those the first case-move entry IS the RC start.
+  const marksNights = (nights || []).some(n => n.isNight);
   for (const n of nights || []) {
-    if (!n.isNight) continue;
+    if (marksNights && !n.isNight) continue;
     if ((n.tasks || []).some(t => CASE_MOVE_TASK_RE.test(t))) return n.date || '';
   }
   return '';
