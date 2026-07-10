@@ -96,6 +96,12 @@ export default function Step1_Setup({ onNext }) {
     let rccFromDoc = '';         // final store RCC date scanned from the schedule
     let rcNightSchedule = [];    // deterministic RC case-move nights (grouped)
     let jobLengthFromDoc = '';   // total job length inferred by the AI
+    // Provenance per key date: a DETERMINISTIC read (regex/grouped-schedule
+    // scan of the document text) is authoritative and OVERWRITES a stored
+    // value on re-upload — otherwise an early AI guess is cemented forever
+    // (store 1086 kept showing the AI's Jun 11 after the scanner learned the
+    // real Jun 3). AI-sourced dates still only fill blanks.
+    let rcStartDet = false, preconDet = false, rccDet = false, jobLenDet = false;
     let projName = '';
     let projAddr = '';
 
@@ -314,11 +320,11 @@ export default function Step1_Setup({ onNext }) {
           sourceType = 'doctext';
           const text = await emailFileToText(file);
           if (!text || text.trim().length < 20) throw new Error('Could not read email body — try pasting the text instead');
-          { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+          { const p = scanScheduleDate(text, PRECON_RE) || scanScheduleDate(text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) { preconFromDoc = p; preconDet = true; }
             const pt = scanScheduleTime(text, PRECON_RE) || scanScheduleTime(text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
-            const n = scanRcFirstCaseNight(text); if (n) rcNightStart = n;
-            const rcc = scanScheduleDate(text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
-            const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`;
+            const n = scanRcFirstCaseNight(text); if (n) { rcNightStart = n; rcStartDet = true; }
+            const rcc = scanScheduleDate(text, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
+            const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) { jobLengthFromDoc = `${wk} weeks`; jobLenDet = true; }
             const nights = extractRcSchedule(text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
           if (looksLikeBidLetter(text)) {
             parsed = await analyzeBidLetter(text, fileMeta.name);
@@ -340,14 +346,14 @@ export default function Step1_Setup({ onNext }) {
           // Deterministic key dates straight from the schedule text — the
           // "MOBILIZE & PRE-CON MEETING" and "NIGHT WORK BEGINS" lines carry
           // their own date headers, so this is exact (not guessed from tasks).
-          { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) preconFromDoc = p;
+          { const p = scanScheduleDate(docRes.text, PRECON_RE) || scanScheduleDate(docRes.text, PRECON_FALLBACK_RE); if (p && !preconFromDoc) { preconFromDoc = p; preconDet = true; }
             const pt = scanScheduleTime(docRes.text, PRECON_RE) || scanScheduleTime(docRes.text, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
             const nights = extractRcSchedule(docRes.text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights;
             // RC start: prefer the grouped schedule's first case-move night
             // (handles every known format), then the raw-text scan, then the AI.
-            const n = firstCaseMoveNight(nights) || scanRcFirstCaseNight(docRes.text); if (n) rcNightStart = n;
-            const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) rccFromDoc = rcc;
-            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) jobLengthFromDoc = `${wk} weeks`; }
+            const n = firstCaseMoveNight(nights) || scanRcFirstCaseNight(docRes.text); if (n) { rcNightStart = n; rcStartDet = true; }
+            const rcc = scanScheduleDate(docRes.text, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
+            const wk = maxWeekNumber(docRes.text); if (wk && !jobLengthFromDoc) { jobLengthFromDoc = `${wk} weeks`; jobLenDet = true; }}
 
           // Deterministic rack-work sections ("RACK A" heading + task lines) and
           // PARTS LIST ("QTY - DESC" lines) — rigid enough to read exactly from
@@ -604,12 +610,15 @@ export default function Step1_Setup({ onNext }) {
       extractionResults: [...state.extractionResults, ...newResults],
       flags: [...state.flags, ...flags],
       // Key dates — pre-con from the ERF or the schedule's pre-con line, job
-      // length from the ERF, RC night-work start from the schedule. Only fill
-      // blanks so a re-upload or manual entry isn't overwritten.
-      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && !state.preconDate ? { preconDate: (() => { const d = (keyDates && keyDates.preconDate) || preconFromDoc; return preconTimeFromDoc ? `${d} · ${preconTimeFromDoc}` : d; })() } : {}),
-      ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && !state.jobLength ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
-      ...(rcNightStart && !state.rcStartDate ? { rcStartDate: rcNightStart } : {}),
-      ...(rccFromDoc && !state.rccDate ? { rccDate: rccFromDoc } : {}),
+      // length from the ERF, RC night-work start from the schedule.
+      // DETERMINISTIC reads (regex/grouped-schedule scans, ERF date cells)
+      // overwrite what's stored — re-uploading a schedule refreshes the dates
+      // even if an earlier AI guess (or older parser) filled them wrong.
+      // AI-sourced dates still only fill blanks.
+      ...(((keyDates && keyDates.preconDate) || preconFromDoc) && (preconDet || (keyDates && keyDates.preconDate) || !state.preconDate) ? { preconDate: (() => { const d = (keyDates && keyDates.preconDate) || preconFromDoc; return preconTimeFromDoc ? `${d} · ${preconTimeFromDoc}` : d; })() } : {}),
+      ...(((keyDates && keyDates.jobLengthWeeks) || jobLengthFromDoc) && (jobLenDet || (keyDates && keyDates.jobLengthWeeks) || !state.jobLength) ? { jobLength: (keyDates && keyDates.jobLengthWeeks) ? `${keyDates.jobLengthWeeks} weeks` : jobLengthFromDoc } : {}),
+      ...(rcNightStart && (rcStartDet || !state.rcStartDate) ? { rcStartDate: rcNightStart } : {}),
+      ...(rccFromDoc && (rccDet || !state.rccDate) ? { rccDate: rccFromDoc } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
       ...(equipmentImports.length ? {
