@@ -946,7 +946,7 @@ export default function Step1_Setup({ onNext }) {
 
       {/* Next */}
       <Btn variant="green" onClick={onNext} style={{ width: '100%', justifyContent: 'center', padding: '16px', fontSize: 15 }}>
-        Next: {state.mode === 'Residential HVAC' ? 'Equipment & Materials' : 'Circuits'} →
+        Next: {state.mode === 'Residential HVAC' ? 'Equipment & Materials' : state.mode === 'Commercial HVAC' ? 'Equipment' : 'Circuits'} →
       </Btn>
     </div>
   );
