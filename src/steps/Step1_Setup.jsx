@@ -49,6 +49,7 @@ export default function Step1_Setup({ onNext }) {
     if (n.match(/\.(pdf)$/)) return 'pdf';
     if (n.match(/\.(eml)$/)) return 'email';
     if (n.match(/\.(jpe?g|png|gif|webp|heic)$/)) return 'image';
+    if (n.match(/\.(dwf|dwfx|dwg|dxf|rvt)$/)) return 'cad';
     return 'other';
   }
 
@@ -337,6 +338,18 @@ export default function Step1_Setup({ onNext }) {
             parsed = await analyzeScopeDoc(text, fileMeta.name);
             newResults.push(`✉️ ${fileMeta.name}: Email analyzed — ${parsed?.fieldTasks?.length || 0} field task(s)`);
           }
+
+        } else if (fileMeta.type === 'cad') {
+          // Native CAD/viewer formats (.dwf/.dwg/.rvt) wrap the drawing in
+          // proprietary binary streams no browser can read — the plan room
+          // that issued them always has a PDF export of the same sheets,
+          // and that's the readable version.
+          flags.push({
+            type: 'warn',
+            text: `${fileMeta.name} is a CAD/viewer format MechBid can't read directly. Get the PDF export of the same sheet (plan rooms and GCs always have one — or open it in a free viewer like Autodesk Design Review and print to PDF), then upload that.`,
+            source: fileMeta.name,
+          });
+          newResults.push(`📐 ${fileMeta.name}: CAD format — upload the PDF export of this sheet instead`);
 
         } else if (fileMeta.type === 'scope') {
           sourceType = 'doctext';
