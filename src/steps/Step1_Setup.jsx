@@ -6,7 +6,7 @@ import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc,
-  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf
+  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf, analyzeHvacSpecText
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher } from '../components/PriceBook.jsx';
@@ -412,6 +412,15 @@ export default function Step1_Setup({ onNext }) {
             const contactCount = parsed?.contacts?.length || 0;
             const flagCount = parsed?.flags?.length || 0;
             newResults.push(`📋 ${fileMeta.name}: Bid invitation letter analyzed — ${contactCount} contact(s), ${flagCount} flag(s) found`);
+          } else if (isHvacMode) {
+            // HVAC scope/spec text (Walmart CapX scopes, CSI spec sections
+            // saved as .doc) — the refrigeration scope analyzers would hunt
+            // for RC work that isn't there. Route to the HVAC spec analyzer
+            // and fold results through the same channel as plan extractions.
+            const hv = await analyzeHvacSpecText(docRes.text, fileMeta.name);
+            handleHvacResult(hv, fileMeta);
+            newResults.push(`📗 ${fileMeta.name}: HVAC scope/spec analyzed — ${(hv?.equipment || []).length} equipment type(s), ${(hv?.flags || []).length} flag(s)`);
+            parsed = null;
           } else if (looksLikeFlatScopeDoc(docRes.text)) {
             parsed = await analyzeFlatScopeDoc(docRes.text, fileMeta.name);
             const fieldCount = parsed?.fieldTasks?.length || 0;
