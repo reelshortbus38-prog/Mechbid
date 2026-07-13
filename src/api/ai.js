@@ -408,7 +408,10 @@ export async function analyzeImageDoc(file, fileName) {
   for (const { base64, tile } of passes) {
     const vres = await callClaudeVision(base64, fileName, tile);
     const parsed = vres?.text ? parseAIJson(vres.text) : null;
-    if (!parsed) continue;
+    if (!parsed) {
+      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (timeout or server error) — hit Analyze again to retry`, source: fileName });
+      continue;
+    }
     // Two-model cross-check (full-image pass) — disagreements become warnings.
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Photo cross-check: a second AI model also saw ${m} that the primary read didn't — verify against the document`, source: fileName }));
@@ -592,8 +595,14 @@ export async function analyzeHvacPlanImage(file, fileName) {
   for (const { base64, tile } of passes) {
     const vres = await callClaudeVisionHVAC(base64, fileName, tile);
     const parsed = vres?.text ? parseAIJson(vres.text) : null;
+    if (!parsed) {
+      // A failed pass must be VISIBLE — silent nulls read as "0 found",
+      // which looks like an empty sheet instead of a dead request.
+      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (timeout or server error) — hit Analyze again to retry`, source: fileName });
+      continue;
+    }
     absorbHvac(merged, parsed, seen);
-    if (parsed) crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
   return finishHvac(merged);
