@@ -9,7 +9,7 @@ import {
   emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf, analyzeHvacSpecText
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
-import { SupplierSwitcher } from '../components/PriceBook.jsx';
+import { SupplierSwitcher, loadPriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
@@ -153,25 +153,32 @@ export default function Step1_Setup({ onNext }) {
         });
       });
 
+      // Air devices and duct/pipe runs are MATERIALS, not notes — they stage
+      // as reviewable HVAC material lines that land in the Equipment step's
+      // parts table on accept (with price-book autofill). Diffusers/grilles
+      // carry their counted qty; duct and pipe stage at qty 0 because plans
+      // scale length off the drawing — the estimator enters footage/pounds.
       (hv.airDevices || []).forEach(d => {
-        const spec = [d.deviceType, d.faceSize ? `face ${d.faceSize}` : '', d.neckSize ? `neck ${d.neckSize}` : '', d.cfm ? `${d.cfm} CFM` : '', d.qty > 1 ? `× ${d.qty}` : '']
+        const desc = [`${d.tag ? d.tag + ' — ' : ''}${d.deviceType || 'Air device'}`, d.faceSize ? `${d.faceSize} face` : '', d.neckSize ? `${d.neckSize} neck` : '']
           .filter(Boolean).join(' · ');
-        pushPending('note', 'vision', fileMeta.name, {
-          desc: `Air device ${d.tag || ''}${spec ? ' — ' + spec : ''}`.trim(),
-          notes: drawing, rawDesc: d.tag || d.deviceType || 'air device',
+        pushPending('hvacPart', 'vision', fileMeta.name, {
+          desc, qty: Number(d.qty) || 1, unitCost: 0,
+          notes: [d.cfm ? `${d.cfm} CFM` : '', drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.ductRuns || []).forEach(r => {
         const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
-        pushPending('note', 'vision', fileMeta.name, {
-          desc: `${label}${r.service ? ` (${r.service})` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
-          notes: drawing, rawDesc: r.size,
+        pushPending('hvacPart', 'vision', fileMeta.name, {
+          desc: `Ductwork — ${label}${r.service ? ` (${r.service})` : ''}`,
+          qty: 0, unitCost: 0,
+          notes: ['enter footage or lbs — plans scale length off the drawing', r.notes, drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.pipeRuns || []).forEach(r => {
-        pushPending('note', 'vision', fileMeta.name, {
-          desc: `${r.size} pipe${r.service ? ` ${r.service}` : ''}${r.notes ? ` — ${r.notes}` : ''}`.trim(),
-          notes: drawing, rawDesc: r.size,
+        pushPending('hvacPart', 'vision', fileMeta.name, {
+          desc: `Pipe — ${r.size}${r.service ? ` ${r.service}` : ''}`,
+          qty: 0, unitCost: 0,
+          notes: ['enter footage', r.notes, drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.hydronicZones || []).forEach(z => {
@@ -235,6 +242,23 @@ export default function Step1_Setup({ onNext }) {
             : await analyzeHvacPlanImage(file, fileMeta.name);
           handleHvacResult(hv, fileMeta);
           parsed = null; // handled in-place; skip the refrigeration mapping below
+
+          // If the read came back EMPTY because the analysis pass timed out
+          // (not because the sheet genuinely has nothing), leave the file in
+          // 'error' so the next Analyze click retries it — 'done' files are
+          // filtered out of re-analysis and "hit Analyze again" would be a
+          // dead end otherwise.
+          const gotNothing = !hv || (
+            !(hv.equipment || []).length && !(hv.airDevices || []).length &&
+            !(hv.ductRuns || []).length && !(hv.pipeRuns || []).length &&
+            !(hv.hydronicZones || []).length
+          );
+          const analysisFailed = !hv || (hv.flags || []).some(f => /could not be analyzed/i.test(f.text || ''));
+          if (gotNothing && analysisFailed) {
+            newResults.push(`   ⚠ ${fileMeta.name}: analysis timed out — hit Analyze again to retry this file`);
+            setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'error' }));
+            continue;
+          }
 
         } else if (fileMeta.type === 'image') {
           sourceType = 'vision';
@@ -710,6 +734,7 @@ export default function Step1_Setup({ onNext }) {
     const newRackTasks = [];
     const newFieldTasks = [];
     const newRackParts = [];
+    const newHvacParts = []; // HVAC takeoff → Equipment step materials table
     const newScheduleItems = [];
     const newNotes = []; // redline scope notes → flags
     let projName = '';
@@ -784,6 +809,20 @@ export default function Step1_Setup({ onNext }) {
         if (!newRackParts.find(x => partKey(x) === partKey(item.data)) && !state.rackParts.find(x => partKey(x) === partKey(item.data))) {
           newRackParts.push({ id: uid(), ...item.data });
         }
+      } else if (item.kind === 'hvacPart') {
+        // HVAC takeoff line (air device, duct run, pipe run) → the materials
+        // table on the Equipment step. Autofill unit cost from the price book
+        // when the user hasn't typed one — same learning loop as refrigeration.
+        const hpKey = p => normalizeDesc(p.desc);
+        if (item.data.desc && !newHvacParts.find(x => hpKey(x) === hpKey(item.data)) && !(state.hvacParts || []).find(x => hpKey(x) === hpKey(item.data))) {
+          const qty = Number(item.data.qty) || 0;
+          let unitCost = Number(item.data.unitCost) || 0;
+          if (!unitCost) {
+            const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
+            if (match) unitCost = Number(match.entry.unitCost) || 0;
+          }
+          newHvacParts.push({ id: uid(), desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
+        }
       } else if (item.kind === 'projectInfo') {
         if (item.data.projName && !projName) projName = item.data.projName;
         if (item.data.projAddr && !projAddr) projAddr = item.data.projAddr;
@@ -796,6 +835,7 @@ export default function Step1_Setup({ onNext }) {
       rackTasks: [...state.rackTasks, ...newRackTasks],
       fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
       rackParts: [...state.rackParts, ...newRackParts],
+      hvacParts: [...(state.hvacParts || []), ...newHvacParts],
       rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
       flags: [...(state.flags || []), ...newNotes],
       ...(projName && !state.projName ? { projName } : {}),
