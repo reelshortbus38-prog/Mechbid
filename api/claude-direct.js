@@ -59,35 +59,52 @@ module.exports = async function handler(req, res) {
     const { messages, system, max_tokens, model, temperature, crossCheck } = req.body;
     if (!messages) return res.status(400).json({ error: 'No messages provided' });
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: model || 'claude-sonnet-5',
-        max_tokens: max_tokens || 4000,
-        // No temperature: Sonnet 5 rejects the parameter outright
-        // ("`temperature` is deprecated for this model" → HTTP 400).
-        ...(system ? { system } : {}),
-        messages,
-      }),
-    });
+    // Primary (Claude) and the cross-check second opinion (GPT-4o) run in
+    // PARALLEL, each with its own cap. Running them back-to-back with an
+    // uncapped primary blew Vercel's 60s budget on dense plan sheets — the
+    // function was killed mid-flight and every upload read "0 found" with no
+    // error surfaced. Worst case now ≈ max(40s, 35s), inside the budget.
+    const primaryPromise = (async () => {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: AbortSignal.timeout(40_000),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: model || 'claude-sonnet-5',
+          max_tokens: max_tokens || 4000,
+          // No temperature: Sonnet 5 rejects the parameter outright
+          // ("`temperature` is deprecated for this model" → HTTP 400).
+          ...(system ? { system } : {}),
+          messages,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || `Anthropic API error ${response.status}`);
+      return data.content;
+    })();
+    const secondPromise = crossCheck ? secondOpinion(messages, system, max_tokens) : Promise.resolve(null);
 
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data?.error?.message || `Anthropic API error ${response.status}`, raw: data });
+    let content = null, primaryErr = null;
+    try { content = await primaryPromise; } catch (e) { primaryErr = e; }
+    const second = await secondPromise;
+
+    if (content == null && second != null) {
+      // Primary timed out or errored but the second model answered — return
+      // ITS read (marked) instead of a dead request. Degrade, don't die.
+      return res.status(200).json({ content: [{ type: 'text', text: second }], fallbackModel: 'gpt-4o' });
+    }
+    if (content == null) {
+      return res.status(502).json({ error: primaryErr?.message || 'Vision analysis failed' });
     }
 
     // Normalize to the same { content: [{ type: 'text', text }] } shape
-    // api/claude.js returns, so client code doesn't need to branch on which
-    // endpoint it called. When crossCheck is requested, a second model
-    // (GPT-4o via OpenRouter) reads the same input and its raw text rides
-    // along for the client to diff — best-effort, null on any failure.
-    const second = crossCheck ? await secondOpinion(messages, system, max_tokens) : null;
-    return res.status(200).json({ content: data.content, ...(second ? { secondOpinion: second } : {}) });
+    // api/claude.js returns. The second opinion rides along for the client
+    // to diff — best-effort, absent on any failure.
+    return res.status(200).json({ content, ...(second ? { secondOpinion: second } : {}) });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
