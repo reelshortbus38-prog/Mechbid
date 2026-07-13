@@ -138,6 +138,26 @@ function ReviewRow({ item, onChange, onToggle }) {
           </div>
         )}
 
+        {item.kind === 'hvacPart' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Material Description</div>
+              <Input value={item.data.desc || ''} onChange={e => onChange({ ...item.data, desc: e.target.value })} style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Qty</div>
+              <Input type="number" value={item.data.qty || ''} onChange={e => onChange({ ...item.data, qty: e.target.value })} style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Unit Cost ($)</div>
+              <Input type="number" value={item.data.unitCost || ''} onChange={e => onChange({ ...item.data, unitCost: e.target.value })} style={{ fontSize: 12 }} />
+            </div>
+            {item.data.notes && (
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: colors.textDim }}>{item.data.notes}</div>
+            )}
+          </div>
+        )}
+
         {item.kind === 'projectInfo' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>
@@ -238,6 +258,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     rackTask: items.filter(i => i.kind === 'rackTask'),
     fieldTask: items.filter(i => i.kind === 'fieldTask'),
     part: items.filter(i => i.kind === 'part'),
+    hvacPart: items.filter(i => i.kind === 'hvacPart'),
   };
 
   const pendingCount = items.filter(i => i.status === 'pending').length;
@@ -251,6 +272,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     rackTask: { title: 'Rack Tasks', icon: '🔩' },
     fieldTask: { title: 'Field Tasks', icon: '🔨' },
     part: { title: 'Parts', icon: '🔧' },
+    hvacPart: { title: 'HVAC Materials (takeoff)', icon: '💨' },
   };
 
   return (
