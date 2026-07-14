@@ -6,7 +6,8 @@ import {
   parseAIJson, parseDocFile, parseExcelFile,
   fileToBase64, analyzeImageDoc, analyzeScopeDoc, isRCTask, analyzeRedlinePdf,
   looksLikeBidLetter, analyzeBidLetter, looksLikeFlatScopeDoc, analyzeFlatScopeDoc,
-  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf, analyzeHvacSpecText
+  emailFileToText, analyzeHvacPlanImage, analyzeHvacPlanPdf, analyzeHvacSpecText,
+  analyzeHvacPlanImagesCombined
 } from '../api/ai.js';
 import ReviewExtraction from '../components/ReviewExtraction.jsx';
 import { SupplierSwitcher, loadPriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -242,7 +243,40 @@ export default function Step1_Setup({ onNext }) {
       if (hv.summary) newResults.push(`   → ${hv.summary}`);
     }
 
+    // Multiple screenshots in an HVAC batch are almost always SECTIONS of one
+    // plan sheet, possibly overlapping. Analyzed one at a time, the model
+    // can't know an area appears in two shots — so they go to the model
+    // TOGETHER in a single request, where it can recognize the shared regions
+    // and count each device once. If the combined read fails, fall back to
+    // per-file passes (client sums counts and keeps the per-screenshot tally).
+    const hvacGroupIds = new Set();
+    if (/hvac/i.test(state.mode || '')) {
+      const groupEntries = modeFiles
+        .filter(f => f.type === 'image')
+        .map(f => ({ meta: f, file: fileObjects.current[f.id] }))
+        .filter(x => x.file);
+      if (groupEntries.length > 1) {
+        groupEntries.forEach(x => { hvacGroupIds.add(x.meta.id); });
+        setFileStatuses(prev => ({ ...prev, ...Object.fromEntries(groupEntries.map(x => [x.meta.id, 'analyzing'])) }));
+        const names = groupEntries.map(x => x.meta.name).join(' + ');
+        let hv = null;
+        try {
+          hv = await analyzeHvacPlanImagesCombined(groupEntries.map(x => ({ file: x.file, name: x.meta.name })));
+        } catch { /* fall back below */ }
+        if (hv) {
+          handleHvacResult(hv, { name: names });
+          setFileStatuses(prev => ({ ...prev, ...Object.fromEntries(groupEntries.map(x => [x.meta.id, 'done'])) }));
+        } else {
+          // Combined read failed both attempts — release the files to the
+          // normal per-file loop below so the batch still produces a takeoff.
+          groupEntries.forEach(x => hvacGroupIds.delete(x.meta.id));
+          newResults.push(`⚠ Reading the ${groupEntries.length} screenshots together failed — analyzing each separately. Same-item counts will be SUMMED; if the shots overlap, trim the double-count on the review screen.`);
+        }
+      }
+    }
+
     for (const fileMeta of modeFiles) {
+      if (hvacGroupIds.has(fileMeta.id)) continue;
       setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'analyzing' }));
 
       // Get actual File object from ref
