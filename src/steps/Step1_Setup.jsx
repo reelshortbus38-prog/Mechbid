@@ -134,6 +134,21 @@ export default function Step1_Setup({ onNext }) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
     }
 
+    // HVAC takeoff lines dedupe ACROSS files in the same batch: users upload
+    // several screenshots of the SAME plan sheet (zoomed crops of one M-102),
+    // and stacking three copies of every diffuser would triple the count. Same
+    // description = same item; keep the HIGHEST qty seen, since a cropped view
+    // undercounts what a full view caught.
+    function pushHvacPart(fileName, data) {
+      const key = normalizeDesc(data.desc);
+      const existing = pending.find(p => p.kind === 'hvacPart' && normalizeDesc(p.data.desc) === key);
+      if (existing) {
+        existing.data.qty = Math.max(Number(existing.data.qty) || 0, Number(data.qty) || 0);
+        return;
+      }
+      pushPending('hvacPart', 'vision', fileName, data);
+    }
+
     // Fold an HVAC mechanical-plan extraction into the same channels the rest of
     // the wizard uses: equipment units go to the Equipment step (via
     // equipmentImports), and air devices + duct/pipe runs become reviewable
@@ -145,6 +160,11 @@ export default function Step1_Setup({ onNext }) {
       if (hv.projectName && !projName) projName = hv.projectName;
 
       (hv.equipment || []).forEach(e => {
+        // Same-batch dedupe by tag: three screenshots of one sheet must not
+        // produce three RTU-1s. (The merge below already dedupes against
+        // units previously added to the Equipment step.)
+        const tag = (e.tag || '').trim().toUpperCase();
+        if (tag && equipmentImports.some(x => (x.tag || '').trim().toUpperCase() === tag)) return;
         equipmentImports.push({
           id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
           tons: '', brand: '', model: '', refrigerant: 'R-410A', mca: '', mop: '',
@@ -161,21 +181,21 @@ export default function Step1_Setup({ onNext }) {
       (hv.airDevices || []).forEach(d => {
         const desc = [`${d.tag ? d.tag + ' — ' : ''}${d.deviceType || 'Air device'}`, d.faceSize ? `${d.faceSize} face` : '', d.neckSize ? `${d.neckSize} neck` : '']
           .filter(Boolean).join(' · ');
-        pushPending('hvacPart', 'vision', fileMeta.name, {
+        pushHvacPart(fileMeta.name, {
           desc, qty: Number(d.qty) || 1, unitCost: 0,
           notes: [d.cfm ? `${d.cfm} CFM` : '', drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.ductRuns || []).forEach(r => {
         const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
-        pushPending('hvacPart', 'vision', fileMeta.name, {
+        pushHvacPart(fileMeta.name, {
           desc: `Ductwork — ${label}${r.service ? ` (${r.service})` : ''}`,
           qty: 0, unitCost: 0,
           notes: ['enter footage or lbs — plans scale length off the drawing', r.notes, drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.pipeRuns || []).forEach(r => {
-        pushPending('hvacPart', 'vision', fileMeta.name, {
+        pushHvacPart(fileMeta.name, {
           desc: `Pipe — ${r.size}${r.service ? ` ${r.service}` : ''}`,
           qty: 0, unitCost: 0,
           notes: ['enter footage', r.notes, drawing].filter(Boolean).join(' · '),
