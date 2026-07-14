@@ -3,7 +3,8 @@ import { useStore, uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
-import { PriceMatchChip, SupplierSwitcher } from '../components/PriceBook.jsx';
+import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
+import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -213,6 +214,22 @@ function MiscParts() {
       updated.total = (updated.qty || 0) * (updated.unitCost || 0);
       return updated;
     })});
+    // Same learning loop as the refrigeration materials table: a unit cost
+    // typed here goes into the price book, so the next job autofills it.
+    if (field === 'unitCost') {
+      const it = parts.find(p => p.id === id);
+      const price = parseFloat(value) || 0;
+      if (it && price > 0 && it.desc) {
+        const book = loadPriceBook();
+        const norm = it.desc.trim().toLowerCase();
+        const existing = book.find(e => (e.desc || '').trim().toLowerCase() === norm);
+        if (existing) {
+          if (existing.price !== price) savePriceBook(book.map(e => e === existing ? { ...e, price } : e));
+        } else {
+          savePriceBook([...book, { id: uid(), desc: it.desc, partId: '', category: 'HVAC', unit: 'ea', price }]);
+        }
+      }
+    }
   }
 
   const partsTotal = parts.reduce((s, p) => s + (p.total || 0), 0);
@@ -261,6 +278,101 @@ function MiscParts() {
         </Card>
       )}
     </div>
+  );
+}
+
+// ── DUCT PURCHASE CALCULATOR ───────────────────────────────────────────────────
+// Duct isn't bought the way it's measured. The takeoff is in feet per size,
+// but rectangular sheet metal is custom-fabricated and priced BY THE POUND,
+// spiral comes in 10' joints, flex in 25' boxes, and wrap insulation by the
+// ~100 sq ft roll. This card reads the "Ductwork — …" lines above (their Qty
+// column = linear feet scaled off the plan), shows the conversion live, and
+// one button adds the purchase lines — priced from the price book when it
+// knows the item, industry-ballpark defaults otherwise (always editable, and
+// edits are remembered).
+function DuctCalculator() {
+  const { state, dispatch } = useStore();
+  const parts = state.hvacParts || [];
+  const [wastePct, setWastePct] = useState(15);
+  const [insulate, setInsulate] = useState('supply');
+  const [added, setAdded] = useState(false);
+
+  const ductLines = parts.filter(p => !p.dgen && parseDuctDesc(p.desc));
+  if (ductLines.length === 0) return null;
+
+  const runs = ductLines.map(p => ({ desc: p.desc, lf: Number(p.qty) || 0 }));
+  const { lines } = ductPurchase(runs, { wastePct: Number(wastePct) || 0, insulate });
+  const missingFootage = ductLines.filter(p => !(Number(p.qty) > 0));
+
+  function addPurchaseLines() {
+    const book = loadPriceBook();
+    const newLines = lines.map(l => {
+      const match = findPriceMatch(book, { desc: l.desc });
+      const unitCost = match ? Number(match.entry.price) || 0 : (l.defaultPrice || 0);
+      return {
+        id: uid(), desc: `${l.desc}${l.notes ? ` (${l.notes})` : ''}`,
+        qty: l.qty, unitCost, total: l.qty * unitCost, dgen: true,
+      };
+    });
+    // Regenerating replaces the previously generated purchase lines, so
+    // changing footage or options never stacks duplicates.
+    dispatch({ type: 'SET', key: 'hvacParts', value: [...parts.filter(p => !p.dgen), ...newLines] });
+    setAdded(true);
+  }
+
+  return (
+    <Card style={{ background: colors.surface }}>
+      <SLabel>📐 Duct → Purchase Units</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
+        Enter each Ductwork line's <strong>linear feet</strong> in its Qty box above (scale it off the plan), then convert here.
+        Rectangular sheet metal is bought <strong>by the pound</strong> (fabricated — gauge set by duct size per SMACNA),
+        spiral in 10' joints, flex in 25' boxes, wrap insulation by the roll. Leave the $ on the footage lines at 0 —
+        the price belongs on the purchase lines this adds.
+      </div>
+
+      {missingFootage.length > 0 && (
+        <div style={{ fontSize: 11, color: colors.yellow, marginBottom: 10 }}>
+          ⚠ {missingFootage.length} duct line{missingFootage.length > 1 ? 's' : ''} still ha{missingFootage.length > 1 ? 've' : 's'} no footage entered — {missingFootage.map(p => (p.desc.match(/[\d"x×]+\s*(?:round|duct)?/i) || [p.desc])[0].trim()).join(', ')}
+        </div>
+      )}
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Waste/seams %</span>
+          <Input type="number" value={wastePct} onChange={e => { setWastePct(e.target.value); setAdded(false); }} style={{ width: 60, textAlign: 'center' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Insulate</span>
+          <Select value={insulate} onChange={e => { setInsulate(e.target.value); setAdded(false); }} style={{ width: 200 }}>
+            <option value="supply">Supply + OA duct (typical)</option>
+            <option value="all">All duct</option>
+            <option value="none">None</option>
+          </Select>
+        </div>
+      </Row>
+
+      {lines.length === 0 ? (
+        <div style={{ fontSize: 12, color: colors.textDim }}>Nothing to convert yet — enter footage on the duct lines above.</div>
+      ) : (
+        <>
+          <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+            {lines.map((l, i) => (
+              <div key={l.desc} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderBottom: i < lines.length - 1 ? `1px solid ${colors.border}` : 'none', fontSize: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{l.desc}</div>
+                  {l.notes && <div style={{ fontSize: 10, color: colors.textDim }}>{l.notes}</div>}
+                </div>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, whiteSpace: 'nowrap' }}>{l.qty.toLocaleString()} {l.unit}</span>
+              </div>
+            ))}
+          </div>
+          <Row style={{ gap: 10, alignItems: 'center' }}>
+            <Btn variant="green" size="sm" onClick={addPurchaseLines}>↓ Add purchase lines to Parts</Btn>
+            {added && <span style={{ fontSize: 11, color: colors.green }}>✓ Added — prices came from your price book where known, industry ballpark otherwise. Edit any $ and MechBid remembers it.</span>}
+          </Row>
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -378,6 +490,9 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
       {/* Misc parts */}
       <MiscParts />
+
+      {/* Duct footage → pounds / joints / rolls (only shows when duct lines exist) */}
+      <DuctCalculator />
 
       {/* Markup summary */}
       {(equipTotal + partsTotal) > 0 && (
