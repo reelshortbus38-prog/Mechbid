@@ -1,6 +1,19 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 
+// Pull the answer text out of either response shape (Anthropic content blocks
+// or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
+// can emit a thinking block first on hard inputs, and reading [0].text turned
+// perfectly good answers into "empty AI response" failures.
+function pickText(data) {
+  const blocks = data?.content;
+  if (Array.isArray(blocks)) {
+    const text = blocks.filter(b => b?.type === 'text' && b.text).map(b => b.text).join('');
+    if (text) return text;
+  }
+  return data?.choices?.[0]?.message?.content || null;
+}
+
 export async function callClaude(messages, system = '') {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -17,7 +30,7 @@ export async function callClaude(messages, system = '') {
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
   // Handle both OpenRouter and Anthropic response formats
-  return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+  return pickText(data) || '';
 }
 
 // Conversational assistant call — same OpenRouter endpoint, but a non-zero
@@ -36,7 +49,7 @@ export async function chatWithAI(messages, system = '') {
   }
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  return data.content?.[0]?.text || data.choices?.[0]?.message?.content || '';
+  return pickText(data) || '';
 }
 
 // Vision call - uses /api/claude with image support
@@ -98,7 +111,7 @@ Return ONLY valid JSON, no markdown:
       return { text: null, error: String(err?.error || `server error ${res.status}`) };
     }
     const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = pickText(data);
     return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Vision error:', e.message);
@@ -183,7 +196,7 @@ Return ONLY valid JSON, no markdown, no commentary:
       return { text: null, error: String(err?.error || `server error ${res.status}`) };
     }
     const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = pickText(data);
     return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Redline vision error:', e.message);
@@ -533,7 +546,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
       return { text: null, error: String(err?.error || `server error ${res.status}`) };
     }
     const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = pickText(data);
     return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC vision error:', e.message);
@@ -581,7 +594,7 @@ Return ONE combined JSON covering everything, counted correctly.`;
       return { text: null, error: String(err?.error || `server error ${res.status}`) };
     }
     const data = await res.json();
-    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    const text = pickText(data);
     return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC multi-image vision error:', e.message);

@@ -80,13 +80,24 @@ module.exports = async function handler(req, res) {
           max_tokens: max_tokens || 4000,
           // No temperature: Sonnet 5 rejects the parameter outright
           // ("`temperature` is deprecated for this model" → HTTP 400).
+          // Thinking DISABLED: Sonnet 5 runs adaptive thinking by default when
+          // the field is omitted. On dense plan sheets it would think first —
+          // a thinking block lands BEFORE the text block (clients reading
+          // content[0].text saw "empty" responses), thinking tokens eat the
+          // max_tokens budget, and the extra latency blew the time cap. This
+          // is structured extraction under a hard 60s budget — no thinking.
+          thinking: { type: 'disabled' },
           ...(system ? { system } : {}),
           messages,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || `Anthropic API error ${response.status}`);
-      return data.content;
+      // Normalize to text-only blocks: even with thinking disabled, never
+      // assume the text block is first — join every text block there is.
+      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      if (!text) throw new Error('Anthropic returned no text content');
+      return [{ type: 'text', text }];
     })();
     const secondPromise = crossCheck ? secondOpinion(messages, system, max_tokens) : Promise.resolve(null);
 
