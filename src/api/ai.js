@@ -526,6 +526,68 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
   }
 }
 
+// Several screenshots of ONE sheet, read TOGETHER in a single request. This
+// is the only way the model can actually handle OVERLAP between screenshots:
+// analyzed separately it has no idea the other images exist, so anything
+// visible in two shots gets counted twice (or naively summed by the client).
+// Seeing all sections at once, it can recognize the shared regions and count
+// each device a single time. Images are downscaled harder than the single-
+// image path (payload budget is shared), so per-file passes remain the
+// fallback when this fails.
+async function callClaudeVisionHVACMulti(images) {
+  try {
+    const intro = `The ${images.length} images below are screenshots of DIFFERENT PARTS of the SAME mechanical drawing sheet, and they may OVERLAP — the same area of the plan can appear in more than one screenshot.
+
+Treat them as ONE document. Count each unique device, duct run, and equipment unit exactly ONCE across all images: if the same diffuser, grille, or duct segment is visible in two screenshots (same location on the plan), it is one item, not two. Use room names, grid lines, and neighboring geometry to recognize the shared regions.
+
+Return ONE combined JSON for the whole sheet.`;
+    const content = [{ type: 'text', text: intro }];
+    images.forEach((img, i) => {
+      content.push({ type: 'text', text: `Screenshot ${i + 1} of ${images.length} (${img.name}):` });
+      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img.base64 } });
+    });
+    content.push({ type: 'text', text: HVAC_VISION_PROMPT });
+
+    const res = await fetch('/api/claude-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crossCheck: true, messages: [{ role: 'user', content }] }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
+    return text ? { text, second: data.secondOpinion || null } : null;
+  } catch (e) {
+    console.warn('HVAC multi-image vision error:', e.message);
+    return null;
+  }
+}
+
+// Batch entry point: [{ file, name }] screenshots of one sheet → one combined
+// takeoff. Falls back to per-file analysis (with the client-side sum + tally)
+// if the combined call fails both attempts — degraded counts beat none.
+export async function analyzeHvacPlanImagesCombined(entries) {
+  // Tighter downscale than the single-image path: the request carries every
+  // screenshot at once and the payload budget is shared.
+  const images = [];
+  for (const e of entries) {
+    const { full } = await imageToTiles(e.file, { maxSize: 2400 });
+    images.push({ base64: full, name: e.name });
+  }
+  const names = entries.map(e => e.name).join(', ');
+  const merged = newHvacMerged();
+  const seen = new Set();
+
+  const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVACMulti(images));
+  if (!parsed) return null; // caller falls back to per-file analysis
+
+  absorbHvac(merged, parsed, seen);
+  crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+    merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: names }));
+  merged.flags.push({ type: 'info', text: `${entries.length} screenshots read TOGETHER as one sheet — overlapping areas counted once`, source: names });
+  return finishHvac(merged);
+}
+
 // Fresh, empty HVAC takeoff accumulator + the dedupe keys used to merge passes.
 function newHvacMerged() {
   return {
