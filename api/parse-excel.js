@@ -251,7 +251,10 @@ async function callOpenRouter(messages, system) {
         },
         body: JSON.stringify({
           // No temperature: Sonnet 5 rejects the parameter (HTTP 400).
+          // Thinking disabled: omitting the field runs adaptive thinking by
+          // default, which adds latency this 40s-capped call can't afford.
           model: 'claude-sonnet-5', max_tokens: 4000,
+          thinking: { type: 'disabled' },
           ...(system ? { system } : {}),
           messages,
         })

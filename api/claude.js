@@ -32,6 +32,10 @@ async function callAnthropic({ messages, system, max_tokens }) {
       max_tokens,
       // No temperature: Sonnet 5 rejects the parameter outright
       // ("`temperature` is deprecated for this model" → HTTP 400).
+      // Thinking disabled: Sonnet 5 thinks by default when the field is
+      // omitted, and thinking latency was blowing the 40s cap on big chunks.
+      // These are structured-extraction calls — speed beats deliberation.
+      thinking: { type: 'disabled' },
       ...(sysParts.length ? { system: sysParts.join('\n\n') } : {}),
       messages: chat,
     }),
