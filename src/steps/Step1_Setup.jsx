@@ -855,7 +855,7 @@ export default function Step1_Setup({ onNext }) {
           let unitCost = Number(item.data.unitCost) || 0;
           if (!unitCost) {
             const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
-            if (match) unitCost = Number(match.entry.unitCost) || 0;
+            if (match) unitCost = Number(match.entry.price) || 0;
           }
           newHvacParts.push({ id: uid(), desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
         }
