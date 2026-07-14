@@ -292,8 +292,7 @@ export async function analyzeRedlinePdf(file, fileName) {
     for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
       if (!visionAll && !visionPageNums.includes(pageNum)) continue;
       const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
-      const vres = await callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage });
-      const parsed = vres?.text ? parseAIJson(vres.text) : null;
+      const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage }));
       if (!parsed) {
         merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
         continue;
@@ -406,8 +405,7 @@ export async function analyzeImageDoc(file, fileName) {
   ];
 
   for (const { base64, tile } of passes) {
-    const vres = await callClaudeVision(base64, fileName, tile);
-    const parsed = vres?.text ? parseAIJson(vres.text) : null;
+    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVision(base64, fileName, tile));
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (timeout or server error) — hit Analyze again to retry`, source: fileName });
       continue;
@@ -593,8 +591,7 @@ export async function analyzeHvacPlanImage(file, fileName) {
   const seen = new Set();
   const passes = [{ base64: full, tile: null }, ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } }))];
   for (const { base64, tile } of passes) {
-    const vres = await callClaudeVisionHVAC(base64, fileName, tile);
-    const parsed = vres?.text ? parseAIJson(vres.text) : null;
+    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, tile));
     if (!parsed) {
       // A failed pass must be VISIBLE — silent nulls read as "0 found",
       // which looks like an empty sheet instead of a dead request.
@@ -679,8 +676,7 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   const seen = new Set();
   const { pages, truncated } = await renderPdfPagesToImages(file);
   for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
-    const vres = await callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage });
-    const parsed = vres?.text ? parseAIJson(vres.text) : null;
+    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }));
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed`, source: fileName });
       continue;
@@ -691,6 +687,23 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   }
   if (truncated) merged.flags.push({ type: 'warn', text: 'Document has more pages than were analyzed (limit reached) — some sheets may be missing', source: fileName });
   return finishHvac(merged);
+}
+
+// A vision pass that times out or comes back as unparseable JSON usually
+// succeeds on the second try — dense sheets push the model right up against
+// the server-side time cap and the margin is luck, not the sheet. One
+// automatic re-attempt clears most failures without the user having to hit
+// Analyze again (which still works for the stubborn ones: failed files stay
+// in 'error' status and re-run on the next click).
+async function visionPassWithRetry(call) {
+  let vres = await call();
+  let parsed = vres?.text ? parseAIJson(vres.text) : null;
+  if (!parsed) {
+    await new Promise(r => setTimeout(r, 1200));
+    vres = await call();
+    parsed = vres?.text ? parseAIJson(vres.text) : null;
+  }
+  return { vres, parsed };
 }
 
 export function parseAIJson(text) {
