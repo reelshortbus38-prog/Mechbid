@@ -134,16 +134,32 @@ export default function Step1_Setup({ onNext }) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
     }
 
-    // HVAC takeoff lines dedupe ACROSS files in the same batch: users upload
-    // several screenshots of the SAME plan sheet (zoomed crops of one M-102),
-    // and stacking three copies of every diffuser would triple the count. Same
-    // description = same item; keep the HIGHEST qty seen, since a cropped view
-    // undercounts what a full view caught.
+    // HVAC takeoff lines merge ACROSS files in the same batch: users shoot ONE
+    // plan sheet in sections (left half, right half…), so the same device type
+    // appears in several screenshots, each with that section's partial count.
+    // Same description = same item, and the quantities SUM — the per-file
+    // tally goes into the notes so an overlap between shots (the same diffuser
+    // visible in two screenshots) is easy to spot and trim on review.
+    let hvacSumFlagged = false;
     function pushHvacPart(fileName, data) {
       const key = normalizeDesc(data.desc);
       const existing = pending.find(p => p.kind === 'hvacPart' && normalizeDesc(p.data.desc) === key);
+      const qty = Number(data.qty) || 0;
       if (existing) {
-        existing.data.qty = Math.max(Number(existing.data.qty) || 0, Number(data.qty) || 0);
+        const prev = Number(existing.data.qty) || 0;
+        existing.data.qty = prev + qty;
+        if (qty > 0) {
+          // Start the tally with the first file's count the first time a
+          // second file adds on — from then on each file appends its share.
+          if (!/counted per screenshot/.test(existing.data.notes || '')) {
+            existing.data.notes = [existing.data.notes, `counted per screenshot: ${existing.fileName}: ${prev}`].filter(Boolean).join(' · ');
+          }
+          existing.data.notes += `, ${fileName}: ${qty}`;
+        }
+        if (!hvacSumFlagged) {
+          hvacSumFlagged = true;
+          flags.push({ type: 'warn', text: 'Counts for repeated takeoff items were SUMMED across your screenshots (treated as different sections of one sheet). If any shots overlap, trim the double-counted qty on the review screen — each card lists the per-screenshot tally.', source: 'System' });
+        }
         return;
       }
       pushPending('hvacPart', 'vision', fileName, data);
