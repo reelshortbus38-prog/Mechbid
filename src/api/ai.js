@@ -93,13 +93,16 @@ Return ONLY valid JSON, no markdown:
       })
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { text: null, error: String(err?.error || `server error ${res.status}`) };
+    }
     const data = await res.json();
     const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
-    return text ? { text, second: data.secondOpinion || null } : null;
+    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Vision error:', e.message);
-    return null;
+    return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
   }
 }
 
@@ -175,13 +178,16 @@ Return ONLY valid JSON, no markdown, no commentary:
       })
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { text: null, error: String(err?.error || `server error ${res.status}`) };
+    }
     const data = await res.json();
     const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
-    return text ? { text, second: data.secondOpinion || null } : null;
+    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Redline vision error:', e.message);
-    return null;
+    return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
   }
 }
 
@@ -296,9 +302,9 @@ export async function analyzeRedlinePdf(file, fileName) {
     for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
       if (!visionAll && !visionPageNums.includes(pageNum)) continue;
       const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
-      const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage }));
+      const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage }));
       if (!parsed) {
-        merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed`, source: fileName });
+        merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed (${error})`, source: fileName });
         continue;
       }
       absorb(parsed, pageNum);
@@ -410,9 +416,9 @@ export async function analyzeImageDoc(file, fileName) {
   ];
 
   for (const { base64, tile } of passes) {
-    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVision(base64, fileName, tile));
+    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVision(base64, fileName, tile));
     if (!parsed) {
-      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (timeout or server error) — hit Analyze again to retry`, source: fileName });
+      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (${error}) — hit Analyze again to retry`, source: fileName });
       continue;
     }
     // Two-model cross-check (full-image pass) — disagreements become warnings.
@@ -522,13 +528,16 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
         }]
       })
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { text: null, error: String(err?.error || `server error ${res.status}`) };
+    }
     const data = await res.json();
     const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
-    return text ? { text, second: data.secondOpinion || null } : null;
+    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC vision error:', e.message);
-    return null;
+    return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
   }
 }
 
@@ -567,13 +576,16 @@ Return ONE combined JSON covering everything, counted correctly.`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crossCheck: true, messages: [{ role: 'user', content }] }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { text: null, error: String(err?.error || `server error ${res.status}`) };
+    }
     const data = await res.json();
     const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || null;
-    return text ? { text, second: data.secondOpinion || null } : null;
+    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC multi-image vision error:', e.message);
-    return null;
+    return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
   }
 }
 
@@ -683,11 +695,11 @@ export async function analyzeHvacPlanImage(file, fileName) {
   const seen = new Set();
   const passes = [{ base64: full, tile: null }, ...tiles.map(t => ({ base64: t.base64, tile: { tileNum: t.tileNum, tilesTotal: t.tilesTotal } }))];
   for (const { base64, tile } of passes) {
-    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, tile));
+    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, tile));
     if (!parsed) {
       // A failed pass must be VISIBLE — silent nulls read as "0 found",
       // which looks like an empty sheet instead of a dead request.
-      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (timeout or server error) — hit Analyze again to retry`, source: fileName });
+      merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (${error}) — hit Analyze again to retry`, source: fileName });
       continue;
     }
     absorbHvac(merged, parsed, seen);
@@ -768,9 +780,9 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   const seen = new Set();
   const { pages, truncated } = await renderPdfPagesToImages(file);
   for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
-    const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }));
+    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }));
     if (!parsed) {
-      merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed`, source: fileName });
+      merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed (${error})`, source: fileName });
       continue;
     }
     absorbHvac(merged, parsed, seen);
@@ -795,7 +807,11 @@ async function visionPassWithRetry(call) {
     vres = await call();
     parsed = vres?.text ? parseAIJson(vres.text) : null;
   }
-  return { vres, parsed };
+  // Carry WHY it failed into the flag — "timeout or server error" told us
+  // nothing when a batch kept failing (rate limit? payload too big? real
+  // timeout?), and the reason is the difference between fixes.
+  const error = parsed ? null : (vres?.error || (vres?.text ? 'AI response could not be parsed' : 'no response'));
+  return { vres, parsed, error };
 }
 
 export function parseAIJson(text) {

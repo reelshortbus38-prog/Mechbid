@@ -35,7 +35,7 @@ async function secondOpinion(messages, system, max_tokens) {
     const orMessages = system ? [{ role: 'system', content: system }, ...toOpenAiMessages(messages)] : toOpenAiMessages(messages);
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      signal: AbortSignal.timeout(35_000),
+      signal: AbortSignal.timeout(45_000),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
@@ -63,11 +63,13 @@ module.exports = async function handler(req, res) {
     // PARALLEL, each with its own cap. Running them back-to-back with an
     // uncapped primary blew Vercel's 60s budget on dense plan sheets — the
     // function was killed mid-flight and every upload read "0 found" with no
-    // error surfaced. Worst case now ≈ max(40s, 35s), inside the budget.
+    // error surfaced. Worst case now ≈ max(50s, 45s), inside the 60s budget —
+    // dense M-series sheets kept blowing a 40s cap, so the caps run as close
+    // to the budget as response overhead allows.
     const primaryPromise = (async () => {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        signal: AbortSignal.timeout(40_000),
+        signal: AbortSignal.timeout(50_000),
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': process.env.ANTHROPIC_API_KEY,
