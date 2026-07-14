@@ -205,10 +205,18 @@ export default function Step1_Setup({ onNext }) {
       });
       (hv.ductRuns || []).forEach(r => {
         const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
+        // Sanity check the read: no real rectangular duct has a 1"–3" side.
+        // "19x1" is the AI dropping a digit off "19x17" — flag it loudly so
+        // the misread gets fixed before footage (and pounds) ride on it.
+        const dims = String(r.size || '').match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/);
+        const suspect = dims && Math.min(parseFloat(dims[1]), parseFloat(dims[2])) <= 3;
+        if (suspect) {
+          flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name });
+        }
         pushHvacPart(fileMeta.name, {
           desc: `Ductwork — ${label}${r.service ? ` (${r.service})` : ''}`,
           qty: 0, unitCost: 0,
-          notes: ['enter footage or lbs — plans scale length off the drawing', r.notes, drawing].filter(Boolean).join(' · '),
+          notes: [suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '', 'enter footage or lbs — plans scale length off the drawing', r.notes, drawing].filter(Boolean).join(' · '),
         });
       });
       (hv.pipeRuns || []).forEach(r => {
