@@ -75,6 +75,9 @@ Return ONLY valid JSON, no markdown:
     // OpenRouter ('/api/claude') is a one-line change.
     const res = await fetch('/api/claude-direct', {
       method: 'POST',
+      // Never let a hung request hang the UI — the server caps its own model
+      // calls at ~40s, so anything past 70s is dead weight.
+      signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         // Second-model cross-check on the full-image pass only (tiles would
@@ -158,6 +161,7 @@ Return ONLY valid JSON, no markdown, no commentary:
     // not OpenRouter's {type:"image_url", image_url:{url:"data:..."}}.
     const res = await fetch('/api/claude-direct', {
       method: 'POST',
+      signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         crossCheck: !tile || tile.tileNum === 1,
@@ -324,6 +328,7 @@ export function imageToTiles(file, {
   tileTargetPx = 2600,
   tileOverlap = 0.12,
   maxTiles = 4,
+  quality = 0.95,
 } = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -343,7 +348,7 @@ export function imageToTiles(file, {
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
 
-      const full = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+      const full = canvas.toDataURL('image/jpeg', quality).split(',')[1];
 
       let cols = Math.max(1, Math.round(w / tileTargetPx));
       let rows = Math.max(1, Math.round(h / tileTargetPx));
@@ -371,7 +376,7 @@ export function imageToTiles(file, {
             const tctx = tc.getContext('2d');
             tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, tc.width, tc.height);
             tctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, tc.width, tc.height);
-            tiles.push({ tileNum, tilesTotal, base64: tc.toDataURL('image/jpeg', 0.95).split(',')[1] });
+            tiles.push({ tileNum, tilesTotal, base64: tc.toDataURL('image/jpeg', quality).split(',')[1] });
           }
         }
       }
@@ -504,6 +509,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
       : '';
     const res = await fetch('/api/claude-direct', {
       method: 'POST',
+      signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         crossCheck: !tile || tile.tileNum === 1,
@@ -536,11 +542,16 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
 // fallback when this fails.
 async function callClaudeVisionHVACMulti(images) {
   try {
-    const intro = `The ${images.length} images below are screenshots of DIFFERENT PARTS of the SAME mechanical drawing sheet, and they may OVERLAP — the same area of the plan can appear in more than one screenshot.
+    // The model DECIDES which images belong together — a batch can be three
+    // sections of one M-102 OR two different sheets, and asserting "same
+    // sheet" in the prompt would merge items from genuinely different prints.
+    const intro = `The ${images.length} images below were uploaded together as one batch. They are screenshots of mechanical drawings. Some or all of them may be DIFFERENT PARTS of the SAME drawing sheet (possibly OVERLAPPING — the same area of the plan can appear in more than one screenshot), or they may be different sheets entirely.
 
-Treat them as ONE document. Count each unique device, duct run, and equipment unit exactly ONCE across all images: if the same diffuser, grille, or duct segment is visible in two screenshots (same location on the plan), it is one item, not two. Use room names, grid lines, and neighboring geometry to recognize the shared regions.
+FIRST determine which images show the same sheet: compare title blocks, drawing numbers, room names, grid lines, and neighboring geometry.
+- For images showing the SAME sheet: count each unique device, duct run, and equipment unit exactly ONCE across them — if the same diffuser, grille, or duct segment is visible in two screenshots (same location on the plan), it is one item, not two.
+- For images that are DIFFERENT sheets: include all of their items.
 
-Return ONE combined JSON for the whole sheet.`;
+Return ONE combined JSON covering everything, counted correctly.`;
     const content = [{ type: 'text', text: intro }];
     images.forEach((img, i) => {
       content.push({ type: 'text', text: `Screenshot ${i + 1} of ${images.length} (${img.name}):` });
@@ -550,6 +561,9 @@ Return ONE combined JSON for the whole sheet.`;
 
     const res = await fetch('/api/claude-direct', {
       method: 'POST',
+      // A hung request must not hang the UI — the server caps its own model
+      // calls at ~40s, so anything past 70s is dead weight, not progress.
+      signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crossCheck: true, messages: [{ role: 'user', content }] }),
     });
@@ -563,28 +577,44 @@ Return ONE combined JSON for the whole sheet.`;
   }
 }
 
-// Batch entry point: [{ file, name }] screenshots of one sheet → one combined
-// takeoff. Falls back to per-file analysis (with the client-side sum + tally)
-// if the combined call fails both attempts — degraded counts beat none.
+// Batch entry point: [{ file, name }] screenshots uploaded together → one
+// combined takeoff with overlap counted once. Falls back to per-file analysis
+// (client-side sum + per-screenshot tally) if the combined call fails.
 export async function analyzeHvacPlanImagesCombined(entries) {
-  // Tighter downscale than the single-image path: the request carries every
-  // screenshot at once and the payload budget is shared.
-  const images = [];
+  // The request carries every screenshot at once and the serverless body
+  // limit is ~4.5 MB, so encode tight and re-encode tighter if the batch
+  // still doesn't fit. Base64 inflates bytes ×1.33; keep total under ~3.2 MB.
+  const BUDGET = 3_200_000;
+  let images = [];
   for (const e of entries) {
-    const { full } = await imageToTiles(e.file, { maxSize: 2400 });
+    const { full } = await imageToTiles(e.file, { maxSize: 1600, quality: 0.8 });
     images.push({ base64: full, name: e.name });
+  }
+  let totalLen = images.reduce((s, i) => s + i.base64.length, 0);
+  if (totalLen > BUDGET) {
+    images = [];
+    for (const e of entries) {
+      const { full } = await imageToTiles(e.file, { maxSize: 1200, quality: 0.7 });
+      images.push({ base64: full, name: e.name });
+    }
+    totalLen = images.reduce((s, i) => s + i.base64.length, 0);
+    if (totalLen > BUDGET) return null; // too many/too big — per-file handles it
   }
   const names = entries.map(e => e.name).join(', ');
   const merged = newHvacMerged();
   const seen = new Set();
 
-  const { vres, parsed } = await visionPassWithRetry(() => callClaudeVisionHVACMulti(images));
+  // ONE attempt only — this path's retry IS the per-file fallback. Wrapping
+  // it in visionPassWithRetry too made a bad batch grind for 10+ minutes
+  // (combined ×2 attempts, then every file ×2 attempts).
+  const vres = await callClaudeVisionHVACMulti(images);
+  const parsed = vres?.text ? parseAIJson(vres.text) : null;
   if (!parsed) return null; // caller falls back to per-file analysis
 
   absorbHvac(merged, parsed, seen);
   crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
     merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: names }));
-  merged.flags.push({ type: 'info', text: `${entries.length} screenshots read TOGETHER as one sheet — overlapping areas counted once`, source: names });
+  merged.flags.push({ type: 'info', text: `${entries.length} screenshots read TOGETHER — same-sheet overlap counted once, distinct sheets kept separate`, source: names });
   return finishHvac(merged);
 }
 
