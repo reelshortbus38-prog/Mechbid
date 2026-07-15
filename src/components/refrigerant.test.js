@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateRefrigerantLbs, REFRIGERANTS } from './refrigerant.js';
+import { estimateRefrigerantLbs, REFRIGERANTS, estimateChargeAdder, CHARGE_OZ_PER_FT } from './refrigerant.js';
 
 // Guards the refrigerant-pounds estimate the Food Lion bid letters require.
 // The liquid line dominates: internal volume × liquid density. Reference
@@ -50,5 +50,42 @@ describe('estimateRefrigerantLbs', () => {
 
   it('every refrigerant in the table has a usable liquid density', () => {
     Object.values(REFRIGERANTS).forEach(r => expect(r.liquid).toBeGreaterThan(30));
+  });
+});
+
+// Split-system charge adder: factory charge covers 15 ft; a 40 ft lineset on
+// 3/8" liquid at the standard R-410A 0.6 oz/ft adds 25 × 0.6 = 15 oz.
+describe('estimateChargeAdder', () => {
+  it('matches the nameplate math: 40 ft on 3/8" R-410A = 15 oz', () => {
+    const r = estimateChargeAdder({ liqSize: '3/8', linesetFt: 40, refrigerant: 'R-410A' });
+    expect(r.extraFt).toBe(25);
+    expect(r.addOz).toBe(15);
+    expect(r.addLbs).toBeCloseTo(0.9, 1);
+  });
+
+  it('no adder when the lineset is within the factory charge', () => {
+    const r = estimateChargeAdder({ liqSize: '3/8', linesetFt: 12 });
+    expect(r.extraFt).toBe(0);
+    expect(r.addOz).toBe(0);
+  });
+
+  it('scales with liquid size, refrigerant factor, and system count', () => {
+    const half = estimateChargeAdder({ liqSize: '1/2', linesetFt: 25 });
+    expect(half.ozPerFt).toBeCloseTo(1.15, 2);
+    const r32 = estimateChargeAdder({ liqSize: '3/8', linesetFt: 40, refrigerant: 'R-32' });
+    expect(r32.addOz).toBeCloseTo(15 * 0.9, 1);
+    const two = estimateChargeAdder({ liqSize: '3/8', linesetFt: 40, systems: 2 });
+    expect(two.addOz).toBe(30);
+  });
+
+  it('respects a custom factory-included length and handles junk input', () => {
+    const r = estimateChargeAdder({ liqSize: '3/8', linesetFt: 40, includedFt: 25 });
+    expect(r.extraFt).toBe(15);
+    expect(estimateChargeAdder({}).addOz).toBe(0);
+    expect(Number.isNaN(estimateChargeAdder({ liqSize: '9/9', linesetFt: 'abc' }).addOz)).toBe(false);
+  });
+
+  it('covers the common residential liquid sizes', () => {
+    ['1/4', '5/16', '3/8', '1/2', '5/8'].forEach(s => expect(CHARGE_OZ_PER_FT[s]).toBeGreaterThan(0));
   });
 });

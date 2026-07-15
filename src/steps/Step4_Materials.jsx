@@ -7,6 +7,7 @@ import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { estimateRefrigerantLbs, REFRIGERANTS } from '../components/refrigerant.js';
 import CrewBuilder from '../components/CrewBuilder.jsx';
+import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
 const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
 const FITTING_TYPES = ['Coupling','Elbow 90°','Elbow 45°','Tee','Bushing','Reducer','P-Trap','Wye','Cap','Union','Street Ell','Sweat Adapter'];
@@ -376,6 +377,16 @@ function ResidentialEquipment({ onNext, onBack }) {
           </Btn>
         </Card>
       </div>
+
+      {/* Charge adder — factory charge covers ~15 ft; longer linesets add
+          refrigerant by the foot of liquid line. Pre-filled from the lineset
+          fields above; key remounts it when they change. */}
+      <ChargeAdderCalc
+        key={`${liqSize}|${lineLength}`}
+        defaultLiqSize={liqSize || '3/8'}
+        defaultLengthFt={lineLength}
+        onAdd={line => dispatch({ type: 'SET', key: 'resParts', value: [...parts, { id: uid(), ...line }] })}
+      />
 
       {/* Parts & misc */}
       <div>

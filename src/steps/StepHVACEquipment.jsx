@@ -5,6 +5,7 @@ import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
+import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -493,6 +494,12 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
       {/* Duct footage → pounds / joints / rolls (only shows when duct lines exist) */}
       <DuctCalculator />
+
+      {/* Split-system charge adder — run once per split/mini-split; each Add
+          appends its own line to the parts table above. */}
+      <ChargeAdderCalc
+        onAdd={line => dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), ...line }] })}
+      />
 
       {/* Markup summary */}
       {(equipTotal + partsTotal) > 0 && (
