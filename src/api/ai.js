@@ -523,7 +523,7 @@ If you cannot actually read a value, leave it empty — do not guess tags, sizes
 Return ONLY valid JSON, no markdown:
 {"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","faceSize":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","estLengthFt":0,"lengthBasis":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
 
-export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
+export async function callClaudeVisionHVAC(base64Image, fileName, tile = null, scaleNote = '') {
   try {
     const tileContext = tile && tile.tilesTotal > 1
       ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger sheet — read only tags/labels fully legible within this crop; another tile and the full-sheet pass cover the rest, and the merge dedups overlap.`
@@ -538,7 +538,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null) {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
-            { type: 'text', text: HVAC_VISION_PROMPT + tileContext }
+            { type: 'text', text: HVAC_VISION_PROMPT + tileContext + scaleNote }
           ]
         }]
       })
@@ -777,25 +777,44 @@ Return ONLY valid JSON, no markdown:
 // the text layer first — a page-heavy text PDF routes to the spec analyzer,
 // otherwise render + tile to images and read via the HVAC vision prompt.
 export async function analyzeHvacPlanPdf(file, fileName) {
-  const { renderPdfPagesToImages, extractPdfPagesText } = await import('./pdfRender.js');
+  const { renderPdfPagesToImages, extractPdfPagesText, detectDrawingScale } = await import('./pdfRender.js');
 
+  // Per-page drawing scale from the text layer ("SCALE: 1/4\" = 1'-0\"").
+  // With a stated scale + the PDF's exact page geometry, the renders get a
+  // calibrated scale bar stamped on — the model MEASURES duct lengths
+  // against it instead of estimating off reference objects.
+  const scaleByPage = {};
   try {
     const res = await extractPdfPagesText(file, { maxPages: 20 });
     const pages = res?.pages || [];
-    const totalChars = pages.reduce((s, p) => s + (p.text || '').length, 0);
+    const fullText = pages.map(p => p.text).join('\n\n');
+    for (const p of pages) {
+      const s = detectDrawingScale(p.text);
+      if (s) scaleByPage[p.pageNum] = s;
+    }
     // A spec book runs thousands of chars/page; a CAD sheet's text layer is
-    // sparse labels at best. 600+ chars/page average = a text document.
-    if (pages.length && totalChars / pages.length > 600) {
-      const fullText = pages.map(p => p.text).join('\n\n');
+    // sparse labels at best. 600+ chars/page average = a text document —
+    // UNLESS it reads like a plan sheet (stated scale, or duct sizes all
+    // over it): CAD exports can carry dense text layers of notes/schedules,
+    // and routing an M-sheet to the spec analyzer loses the whole drawing.
+    const looksLikePlanSheet = Object.keys(scaleByPage).length > 0
+      || /\bSCALE\s*:/i.test(fullText)
+      || (fullText.match(/\b\d{1,2}\s*[xX×]\s*\d{1,2}\b/g) || []).length >= 8;
+    const totalChars = pages.reduce((s, p) => s + (p.text || '').length, 0);
+    if (pages.length && totalChars / pages.length > 600 && !looksLikePlanSheet) {
       return await analyzeHvacSpecText(fullText, fileName);
     }
   } catch { /* no text layer — fall through to vision */ }
 
   const merged = newHvacMerged();
   const seen = new Set();
-  const { pages, truncated } = await renderPdfPagesToImages(file);
-  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
-    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }));
+  const { pages, truncated } = await renderPdfPagesToImages(file, { scaleFtPerInchByPage: scaleByPage });
+  if (Object.keys(scaleByPage).length) {
+    merged.flags.push({ type: 'info', text: `Drawing scale detected (${Object.entries(scaleByPage).map(([p, s]) => `page ${p}: ${s} ft/in`).join(', ')}) — a calibrated scale bar was stamped on the renders and duct lengths were MEASURED against it. Verify before final pricing.`, source: fileName });
+  }
+  const SCALE_NOTE = `\n\nIMPORTANT — CALIBRATED SCALE BAR: a black/white segmented bar labeled in FEET (inside a white box, lower-left) has been stamped onto this image, computed exactly from the drawing's stated scale and the PDF's page geometry. For estLengthFt, MEASURE each duct size's total run length against this bar — these measurements are dependable, not guesses. Set lengthBasis to "calibrated scale bar".`;
+  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64, scaled } of pages) {
+    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }, scaled ? SCALE_NOTE : ''));
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed (${error})`, source: fileName });
       continue;
