@@ -45,6 +45,49 @@ function lbPerFt(size, density) {
   return areaFt2 * density;
 }
 
+// ── SPLIT-SYSTEM CHARGE ADDER (residential + commercial HVAC) ─────────────────
+// A condenser ships with a FACTORY CHARGE that covers a standard lineset —
+// almost always 15 ft. Past that, the manufacturer's charge adder applies:
+// ounces of refrigerant per foot of LIQUID line (the suction line's vapor is
+// negligible; the nameplate says something like "add 0.6 oz/ft over 15 ft").
+// The adder depends on the liquid line size; the standard R-410A numbers:
+export const CHARGE_OZ_PER_FT = {
+  '1/4': 0.3,
+  '5/16': 0.4,
+  '3/8': 0.6,
+  '1/2': 1.15,
+  '5/8': 1.8,
+};
+
+// Liquid-density factor relative to R-410A, plus a default contractor $/lb —
+// price book / user edits override the default.
+export const CHARGE_REFRIGERANTS = {
+  'R-410A': { factor: 1.0, price: 18 },
+  'R-32': { factor: 0.9, price: 20 },
+  'R-454B': { factor: 0.95, price: 24 },
+  'R-22 (service)': { factor: 1.1, price: 50 },
+};
+
+// One system's charge adder. { liqSize, linesetFt, includedFt=15,
+// refrigerant='R-410A', systems=1 } → { addOz, addLbs, ozPerFt, extraFt }.
+export function estimateChargeAdder(opts = {}) {
+  const liq = normalizePipeSize(opts.liqSize || '3/8');
+  const ozPerFtBase = CHARGE_OZ_PER_FT[liq] || 0;
+  const ref = CHARGE_REFRIGERANTS[opts.refrigerant] || CHARGE_REFRIGERANTS['R-410A'];
+  const ozPerFt = ozPerFtBase * ref.factor;
+  const linesetFt = parseFloat(opts.linesetFt) || 0;
+  const includedFt = opts.includedFt != null ? (parseFloat(opts.includedFt) || 0) : 15;
+  const systems = Math.max(1, parseInt(opts.systems, 10) || 1);
+  const extraFt = Math.max(0, linesetFt - includedFt);
+  const addOz = extraFt * ozPerFt * systems;
+  return {
+    ozPerFt: Math.round(ozPerFt * 100) / 100,
+    extraFt,
+    addOz: Math.round(addOz * 10) / 10,
+    addLbs: Math.round((addOz / 16) * 10) / 10,
+  };
+}
+
 // circuits: the takeoff rows (runLength, riserLength, liqHoriz, sucHoriz,
 // sucRiser, tempType, isRiserOnly). opts: { refrigerant, newCases, lbPerCase,
 // topOffPct }. Returns per-component pounds + total, rounded to 1 lb.
