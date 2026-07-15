@@ -213,10 +213,18 @@ export default function Step1_Setup({ onNext }) {
         if (suspect) {
           flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name });
         }
+        // AI-estimated footage (measured against on-sheet references like
+        // grid spacing or diffuser sizes) pre-fills qty as a BUDGET number —
+        // clearly labeled so the estimator verifies it before it prices.
+        const estLf = Math.max(0, Math.round(Number(r.estLengthFt) || 0));
         pushHvacPart(fileMeta.name, {
           desc: `Ductwork — ${label}${r.service ? ` (${r.service})` : ''}`,
-          qty: 0, unitCost: 0,
-          notes: [suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '', 'enter footage or lbs — plans scale length off the drawing', r.notes, drawing].filter(Boolean).join(' · '),
+          qty: estLf, unitCost: 0,
+          notes: [
+            suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '',
+            estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing` : 'enter footage or lbs — plans scale length off the drawing',
+            r.notes, drawing,
+          ].filter(Boolean).join(' · '),
         });
       });
       (hv.pipeRuns || []).forEach(r => {
