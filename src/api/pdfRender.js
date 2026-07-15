@@ -69,6 +69,67 @@ export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
   return { pages, totalPages: pdf.numPages };
 }
 
+// ── DRAWING SCALE DETECTION ────────────────────────────────────────────────────
+// A CAD-exported PDF preserves true page geometry, and the title block states
+// the drawing scale ("SCALE: 1/4\" = 1'-0\"", "1\" = 20'"). Stated scale +
+// known page size means we can compute exactly how many FEET one rendered
+// pixel represents — which turns "guess the duct length" into "measure it".
+// Returns feet-per-paper-inch, or null when no scale (or MORE than one
+// distinct scale — plan + details sheets) is found; ambiguity must not
+// silently pick a ruler.
+export function detectDrawingScale(text) {
+  const t = String(text || '').replace(/[”″]/g, '"').replace(/[’′]/g, "'");
+  const vals = new Set();
+  // Matches architectural ( 1/4" = 1'-0", 3/16"=1', 1 1/2" = 1'-0" ) and
+  // engineering ( 1" = 20' ) notations: X" = Y'
+  const re = /((?:\d+\s+)?\d+\/\d+|\d+(?:\.\d+)?)\s*"\s*=\s*(\d+)\s*'/g;
+  for (const m of t.matchAll(re)) {
+    let x = 0;
+    for (const part of m[1].trim().split(/\s+/)) {
+      if (part.includes('/')) { const [n, d] = part.split('/').map(Number); if (d) x += n / d; }
+      else x += Number(part);
+    }
+    const y = Number(m[2]);
+    if (x > 0 && y > 0) vals.add(Math.round((y / x) * 1000) / 1000);
+  }
+  return vals.size === 1 ? [...vals][0] : null;
+}
+
+// Stamp a calibrated scale bar (alternating black/white segments, labeled in
+// feet, on a boxed white backdrop) onto the bottom-left of a rendered canvas.
+// The vision model measures duct runs against it — an exact ruler beats
+// inferring lengths from diffuser widths.
+function stampScaleBar(ctx, w, h, ftPerPx) {
+  const candidates = [1, 2, 5, 10, 20, 25, 50, 100];
+  const segFt = candidates.find(f => f / ftPerPx >= 80) || 100;
+  const segPx = segFt / ftPerPx;
+  let segments = Math.floor((w * 0.4) / segPx);
+  segments = Math.max(2, Math.min(6, segments));
+  if (segPx * segments > w * 0.8) return; // scale too coarse for this crop — skip
+  const barW = segPx * segments;
+  const barH = Math.max(12, Math.round(h * 0.01));
+  const fontPx = Math.max(16, Math.round(barH * 1.6));
+  const margin = Math.round(Math.min(w, h) * 0.02) + fontPx;
+  const x0 = margin, y0 = h - margin;
+
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x0 - 10, y0 - fontPx - 14, barW + fontPx * 5, barH + fontPx + 24);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x0 - 10, y0 - fontPx - 14, barW + fontPx * 5, barH + fontPx + 24);
+  for (let i = 0; i < segments; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#000' : '#fff';
+    ctx.fillRect(x0 + i * segPx, y0, segPx, barH);
+  }
+  ctx.strokeRect(x0, y0, barW, barH);
+  ctx.fillStyle = '#000';
+  ctx.font = `bold ${fontPx}px Arial`;
+  ctx.fillText('0', x0 - 4, y0 - 6);
+  ctx.fillText(`${segFt * segments} FT — SCALE BAR`, x0 + barW + 8, y0 + barH);
+  ctx.restore();
+}
+
 // Renders every page of a PDF File to JPEG data URLs (base64, no prefix).
 //
 // TILING — the key to reading dense blueprints: vision models internally
@@ -93,6 +154,10 @@ export async function renderPdfPagesToImages(file, {
   tileOverlap = 0.12,   // 12% overlap so edge callouts survive in one tile
   maxTilesPerPage = 4,
   maxCanvasPx = 6000,   // clamp source canvas long edge for memory safety
+  // { [pageNum]: feetPerPaperInch } from detectDrawingScale — when present
+  // for a page, a calibrated scale bar is stamped onto that page's renders
+  // (each tile gets its own bar, since tiles crop 1:1 from the source canvas).
+  scaleFtPerInchByPage = null,
 } = {}) {
   const lib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
@@ -121,6 +186,12 @@ export async function renderPdfPagesToImages(file, {
 
     await page.render({ canvasContext: ctx, viewport }).promise;
 
+    // Feet per rendered pixel: 72 PDF points per paper inch × effective
+    // render scale (post-clamp), then the drawing's stated feet-per-inch.
+    const ftPerIn = scaleFtPerInchByPage?.[pageNum] || null;
+    const effScale = viewport.width / page.getViewport({ scale: 1 }).width;
+    const ftPerPx = ftPerIn ? ftPerIn / (72 * effScale) : null;
+
     // Decide the tile grid for this page.
     let cols = 1, rows = 1;
     if (tile) {
@@ -136,7 +207,8 @@ export async function renderPdfPagesToImages(file, {
     }
 
     if (cols === 1 && rows === 1) {
-      results.push({ pageNum, tileNum: 1, tilesOnPage: 1, base64: canvas.toDataURL('image/jpeg', 0.95).split(',')[1] });
+      if (ftPerPx) stampScaleBar(ctx, canvas.width, canvas.height, ftPerPx);
+      results.push({ pageNum, tileNum: 1, tilesOnPage: 1, scaled: !!ftPerPx, base64: canvas.toDataURL('image/jpeg', 0.95).split(',')[1] });
       continue;
     }
 
@@ -160,7 +232,10 @@ export async function renderPdfPagesToImages(file, {
         tctx.fillStyle = '#fff';
         tctx.fillRect(0, 0, tcanvas.width, tcanvas.height);
         tctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, tcanvas.width, tcanvas.height);
-        results.push({ pageNum, tileNum, tilesOnPage, base64: tcanvas.toDataURL('image/jpeg', 0.95).split(',')[1] });
+        // Tiles crop 1:1 from the source canvas, so feet-per-pixel is
+        // unchanged — every tile carries its own ruler.
+        if (ftPerPx) stampScaleBar(tctx, tcanvas.width, tcanvas.height, ftPerPx);
+        results.push({ pageNum, tileNum, tilesOnPage, scaled: !!ftPerPx, base64: tcanvas.toDataURL('image/jpeg', 0.95).split(',')[1] });
       }
     }
   }
