@@ -786,8 +786,7 @@ function SupplyHouseList() {
     state.circuits.forEach(c => {
       const run = parseFloat(c.runLength)||0, riser = parseFloat(c.riserLength)||0;
       if (c.isRiserOnly) {
-        addCu(c.sucRiser, riser);
-        addCu(c.liqHoriz, riser);
+        addCu(c.sucRiser, riser); // suction only — no liquid on riser-only drops
         return;
       }
       addCu(c.sucHoriz, run);
@@ -908,12 +907,9 @@ export default function Step4_Materials({ onNext, onBack }) {
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
       const total=c.isRiserOnly?riser:run+riser;
-      // Riser-only drops carry BOTH lines down the chase — the liquid riser
-      // was silently dropped before (suction alone feeds nothing).
-      if(c.isRiserOnly){
-        if(c.sucRiser){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}
-        if(c.liqHoriz){const k=normalizePipeSize(c.liqHoriz);copperBySize[k]=(copperBySize[k]||0)+riser;}
-      }
+      // Riser-only = the SUCTION line only (estimator-confirmed: the liquid
+      // doesn't get a riser on these drops).
+      if(c.isRiserOnly){if(c.sucRiser){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}}
       else{
         if(c.sucHoriz&&run>0){const k=normalizePipeSize(c.sucHoriz);copperBySize[k]=(copperBySize[k]||0)+run;}
         if(c.sucRiser&&riser>0){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}
@@ -955,11 +951,7 @@ export default function Step4_Materials({ onNext, onBack }) {
         sucTarget[k] = (sucTarget[k]||0) + ft;
       };
       if (c.isRiserOnly) {
-        addSuc(c.sucRiser, riser);
-        if (isLow && c.liqHoriz) {
-          const k = normalizePipeSize(c.liqHoriz);
-          lowLiqBySize[k] = (lowLiqBySize[k]||0) + riser;
-        }
+        addSuc(c.sucRiser, riser); // suction only — no liquid on riser-only drops
         return;
       }
       addSuc(c.sucHoriz, run);

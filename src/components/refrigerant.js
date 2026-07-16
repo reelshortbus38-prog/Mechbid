@@ -104,7 +104,8 @@ export function estimateRefrigerantLbs(circuits, opts = {}) {
     const riser = parseFloat(c.riserLength) || 0;
     const vapor = SUCTION_VAPOR[c.tempType === 'low' ? 'low' : 'medium'];
     if (c.isRiserOnly) {
-      if (c.liqHoriz) liquidLbs += riser * lbPerFt(c.liqHoriz, liqDensity);
+      // Riser-only = suction line only (the liquid doesn't get a riser),
+      // so no liquid-line refrigerant rides on these drops.
       if (c.sucRiser) suctionLbs += riser * lbPerFt(c.sucRiser, vapor);
       return;
     }
