@@ -14,13 +14,14 @@ function pickText(data) {
   return data?.choices?.[0]?.message?.content || null;
 }
 
-export async function callClaude(messages, system = '') {
+export async function callClaude(messages, system = '', opts = {}) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system,
       messages,
+      ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}),
     }),
   });
   if (!res.ok) {
@@ -849,15 +850,55 @@ async function visionPassWithRetry(call) {
 }
 
 export function parseAIJson(text) {
+  let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const first = clean.indexOf('{');
+  const last = clean.lastIndexOf('}');
+  if (first >= 0 && last > first) clean = clean.slice(first, last + 1);
   try {
-    let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    const first = clean.indexOf('{');
-    const last = clean.lastIndexOf('}');
-    if (first >= 0 && last > first) clean = clean.slice(first, last + 1);
     return JSON.parse(clean);
   } catch {
+    // A dense scope chunk can exceed the output-token cap and get cut off
+    // mid-object, so the whole response fails to parse and every task in it
+    // is lost. Salvage the completed items: close the JSON at the last
+    // element that finished, drop the truncated tail.
+    const repaired = repairTruncatedJson(clean);
+    if (repaired) { try { return JSON.parse(repaired); } catch { /* give up */ } }
     return null;
   }
+}
+
+// Best-effort repair of JSON truncated mid-value (token-cap cutoff). Scans
+// bracket/string state, finds the last point where a top-level array element
+// or object property fully closed, truncates there, and appends the closers
+// still open at that point. Returns null if nothing usefully closed.
+function repairTruncatedJson(raw) {
+  let inStr = false, esc = false;
+  const stack = [];
+  let cutAt = -1;
+  let cutStack = null;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') {
+      if (stack.length) stack.pop();
+      // We just closed a value; everything up to here is well-formed and we
+      // know exactly what's still open — a safe truncation point.
+      cutAt = i + 1;
+      cutStack = stack.slice();
+    }
+  }
+  if (cutAt === -1 || !cutStack) return null;
+  let out = raw.slice(0, cutAt).replace(/[,\s]+$/, '');
+  for (let j = cutStack.length - 1; j >= 0; j--) out += cutStack[j];
+  return out;
 }
 
 // ── VISION CROSS-CHECK DIFFER ────────────────────────────────────────────────
@@ -1085,9 +1126,17 @@ const SCOPE_CHUNK_OVERLAP = 500;
 // chunk order: [{ i, parsed }] on success, [{ i, error }] on failure.
 async function runChunkCalls(chunks, buildContent, system) {
   const results = await Promise.all(chunks.map(async (chunk, i) => {
+    const once = async () => {
+      // 8000-token cap: a dense CO2/spec chunk was overrunning the 4000
+      // default and getting truncated mid-JSON — every task in the chunk
+      // lost. Give scope extraction real headroom.
+      const resultText = await callClaude([{ role: 'user', content: buildContent(chunk, i) }], system, { max_tokens: 8000 });
+      return parseAIJson(resultText);
+    };
     try {
-      const resultText = await callClaude([{ role: 'user', content: buildContent(chunk, i) }], system);
-      return { i, parsed: parseAIJson(resultText) };
+      let parsed = await once();
+      if (!parsed) { await new Promise(r => setTimeout(r, 800)); parsed = await once(); }
+      return { i, parsed };
     } catch (e) {
       return { i, error: e?.message || 'request failed' };
     }
