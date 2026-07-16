@@ -774,14 +774,25 @@ function SupplyHouseList() {
   function autoFill() {
     const items = [];
     const wasteFactor = 1+((state.rates?.wasteFactor||10)/100);
+    // Same bucketing as the Bid Materials generator — each line size gets its
+    // OWN geometry. The old version added the full run+riser to every size,
+    // so a 20 ft suction riser was ordered at 295 ft on a 275 ft circuit.
     const copperBySize = {};
+    const addCu = (size, ft) => {
+      if (!size || ft <= 0) return;
+      const k = normalizePipeSize(size);
+      copperBySize[k] = (copperBySize[k]||0) + ft;
+    };
     state.circuits.forEach(c => {
-      const run=(parseFloat(c.runLength)||0)+(parseFloat(c.riserLength)||0);
-      [c.sucHoriz,c.sucRiser,c.liqHoriz].forEach(size => {
-        if(!size||run<=0) return;
-        const k=normalizePipeSize(size);
-        copperBySize[k]=(copperBySize[k]||0)+run;
-      });
+      const run = parseFloat(c.runLength)||0, riser = parseFloat(c.riserLength)||0;
+      if (c.isRiserOnly) {
+        addCu(c.sucRiser, riser);
+        addCu(c.liqHoriz, riser);
+        return;
+      }
+      addCu(c.sucHoriz, run);
+      addCu(c.sucRiser, riser);
+      addCu(c.liqHoriz, run + riser);
     });
     const isCO2 = state.systemType === 'CO2';
     Object.entries(copperBySize).forEach(([size,footage]) => {
@@ -897,7 +908,12 @@ export default function Step4_Materials({ onNext, onBack }) {
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
       const total=c.isRiserOnly?riser:run+riser;
-      if(c.isRiserOnly){if(c.sucRiser){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}}
+      // Riser-only drops carry BOTH lines down the chase — the liquid riser
+      // was silently dropped before (suction alone feeds nothing).
+      if(c.isRiserOnly){
+        if(c.sucRiser){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}
+        if(c.liqHoriz){const k=normalizePipeSize(c.liqHoriz);copperBySize[k]=(copperBySize[k]||0)+riser;}
+      }
       else{
         if(c.sucHoriz&&run>0){const k=normalizePipeSize(c.sucHoriz);copperBySize[k]=(copperBySize[k]||0)+run;}
         if(c.sucRiser&&riser>0){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}
@@ -940,6 +956,10 @@ export default function Step4_Materials({ onNext, onBack }) {
       };
       if (c.isRiserOnly) {
         addSuc(c.sucRiser, riser);
+        if (isLow && c.liqHoriz) {
+          const k = normalizePipeSize(c.liqHoriz);
+          lowLiqBySize[k] = (lowLiqBySize[k]||0) + riser;
+        }
         return;
       }
       addSuc(c.sucHoriz, run);
