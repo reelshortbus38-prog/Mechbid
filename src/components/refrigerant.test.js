@@ -28,10 +28,13 @@ describe('estimateRefrigerantLbs', () => {
     expect(r.suctionLbs).toBeLessThan(r.liquidLbs / 10); // vapor ≪ liquid
   });
 
-  it('liquid line runs the full path (run + riser); riser-only uses riser', () => {
+  it('liquid line runs the full path (run + riser); riser-only carries NO liquid', () => {
     const full = estimateRefrigerantLbs([{ runLength: 80, riserLength: 20, liqHoriz: '5/8', tempType: 'medium' }], { topOffPct: 0 });
+    expect(full.liquidLbs).toBeGreaterThan(0); // 100 ft of 5/8" liquid
+    // Riser-only = suction only (estimator-confirmed: liquid doesn't get a
+    // riser) — even a stale liqHoriz value on the row must not count.
     const riserOnly = estimateRefrigerantLbs([{ runLength: 500, riserLength: 20, liqHoriz: '5/8', isRiserOnly: true, tempType: 'medium' }], { topOffPct: 0 });
-    expect(full.liquidLbs).toBeCloseTo(5 * riserOnly.liquidLbs, 0); // 100 ft vs 20 ft
+    expect(riserOnly.liquidLbs).toBe(0);
   });
 
   it('case allowance and top-off add on; total rounds to whole pounds', () => {
