@@ -86,7 +86,17 @@ function CircuitRow({ circuit, onUpdate, onRemove }) {
           </Select>
         </div>
 
-        {/* Liq Horiz */}
+        {/* Liquid line — a riser-only drop still needs its liquid line down
+            the same chase (suction alone feeds nothing). Same field either
+            way; the label says which geometry it rides. */}
+        {circuit.isRiserOnly && (
+          <div style={{ flex: '0 0 100px' }}>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Liq Riser</div>
+            <Select value={circuit.liqHoriz || ''} onChange={e => onUpdate('liqHoriz', e.target.value)}>
+              {PIPE_SIZES.map(s => <option key={s} value={s}>{s || '--'}</option>)}
+            </Select>
+          </div>
+        )}
         {!circuit.isRiserOnly && (
           <div style={{ flex: '0 0 100px' }}>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Liq Horiz</div>
