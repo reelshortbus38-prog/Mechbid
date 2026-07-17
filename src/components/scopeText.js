@@ -101,3 +101,17 @@ export function extractPartsList(text) {
 export function normalizeDesc(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
+
+// Food Lion (and most grocery) remodel scope docs now carry a boilerplate
+// CO₂/transcritical addendum because most new remodels are CO₂ — but a store
+// running standard HFC (R-448A/R-407A) never does that work, and pulling the
+// addendum's tasks/parts into an HFC bid is pure clutter. This flags text
+// that is specifically CO₂/transcritical, so it can be filtered on HFC jobs.
+// Deliberately NARROW: only unmistakable CO₂ signals, never a bare "CO2" that
+// could appear in an unrelated sentence — the addendum content is dense with
+// R-744, transcritical, K65, gas cooler, and booster-rack language.
+const CO2_SIGNAL_RE = /\bR-?744\b|\btrans[\s-]?critical\b|\bsub[\s-]?critical\b|\bK[\s-]?65\b|\bgas\s*cool(?:er|ing)\b|\bbooster\s*(?:rack|system|group|compressor)\b|\bCO2\s*(?:rack|system|remodel|addend|refriger|charge|line|pip|store)|\bCO₂\b|\bcarbon\s*dioxide\b|\b1[,.]?300\+?\s*psi\b|\bflash\s*gas\b/i;
+
+export function isCO2Content(text) {
+  return CO2_SIGNAL_RE.test(String(text || ''));
+}
