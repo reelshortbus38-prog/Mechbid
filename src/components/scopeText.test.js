@@ -20,6 +20,9 @@ describe('isCO2Content', () => {
     expect(isCO2Content('Pipe new header for Rack A, R-448A charge')).toBe(false);
     expect(isCO2Content('Terminate both ends of case sensor cable')).toBe(false);
     expect(isCO2Content('Replace oil separator float on Rack D')).toBe(false);
+    // Cradles are universal line support — a plain cradle line is not CO₂
+    // content (and Step1 keeps cradle items even if worded near the addendum).
+    expect(isCO2Content('Install cradles for all refrigeration line runs')).toBe(false);
     expect(isCO2Content('')).toBe(false);
   });
 });
