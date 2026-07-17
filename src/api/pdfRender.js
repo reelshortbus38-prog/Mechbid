@@ -158,15 +158,21 @@ export async function renderPdfPagesToImages(file, {
   // for a page, a calibrated scale bar is stamped onto that page's renders
   // (each tile gets its own bar, since tiles crop 1:1 from the source canvas).
   scaleFtPerInchByPage = null,
+  // Optional explicit page list — render ONLY these pages (in order), instead
+  // of 1..maxPages. Used to vision-read the drawing sheets a mixed set carries
+  // (sparse graphics) while its dense spec pages go to the text analyzer.
+  pageNums = null,
 } = {}) {
   const lib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
 
-  const pageCount = Math.min(pdf.numPages, maxPages);
+  const selected = (pageNums && pageNums.length)
+    ? pageNums.filter(n => n >= 1 && n <= pdf.numPages).slice(0, maxPages)
+    : Array.from({ length: Math.min(pdf.numPages, maxPages) }, (_, k) => k + 1);
   const results = [];
 
-  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+  for (const pageNum of selected) {
     const page = await pdf.getPage(pageNum);
     let viewport = page.getViewport({ scale });
     // Clamp the source canvas so a huge sheet at scale 3 doesn't blow up memory.
@@ -240,5 +246,6 @@ export async function renderPdfPagesToImages(file, {
     }
   }
 
-  return { pages: results, totalPages: pdf.numPages, truncated: pdf.numPages > maxPages };
+  const requested = (pageNums && pageNums.length) ? pageNums.length : pdf.numPages;
+  return { pages: results, totalPages: pdf.numPages, truncated: requested > selected.length };
 }

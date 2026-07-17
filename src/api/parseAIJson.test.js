@@ -1,5 +1,36 @@
 import { describe, it, expect } from 'vitest';
-import { parseAIJson } from './ai.js';
+import { parseAIJson, isSpecPage } from './ai.js';
+
+// Per-page routing for mechanical-set PDFs: dense general-notes / spec pages
+// go to the text analyzer, sparse drawing sheets go to vision. Mirrors the
+// real 5-page mechanical set that was failing (p2 = 5.7k-char notes → text;
+// p1/p3/p4/p5 = sparse sheets → vision).
+describe('isSpecPage', () => {
+  const notes = 'GENERAL MECHANICAL NOTES. ' + Array(30).fill(
+    'The contractor shall provide a minimum of insulation per the approved drawings and comply with SMACNA.'
+  ).join(' ');
+
+  it('routes a dense general-notes page to text', () => {
+    expect(notes.length).toBeGreaterThan(1800);
+    expect(isSpecPage(notes)).toBe(true);
+  });
+
+  it('routes sparse drawing-sheet label text to vision', () => {
+    expect(isSpecPage('CD-1 8" 100 CFM  24x12 duct  RG-1', false)).toBe(false);
+    expect(isSpecPage('HVAC SCHEDULE', false)).toBe(false);
+    expect(isSpecPage('', false)).toBe(false);
+  });
+
+  it('never treats a scaled drawing page as a spec, however dense', () => {
+    expect(isSpecPage(notes, true)).toBe(false);
+  });
+
+  it('needs real spec verbs, not just length', () => {
+    const longButNotSpec = Array(400).fill('duct diffuser grille tag').join(' ');
+    expect(longButNotSpec.length).toBeGreaterThan(1800);
+    expect(isSpecPage(longButNotSpec)).toBe(false);
+  });
+});
 
 // Guards the truncated-JSON salvage: a dense scope chunk can overrun the
 // output-token cap and get cut off mid-object. Rather than lose every task in
