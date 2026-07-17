@@ -773,48 +773,75 @@ Return ONLY valid JSON, no markdown:
   return finishHvac(merged);
 }
 
-// PDF upload of an HVAC document. Spec sections and scope letters are TEXT
-// (bid from the words); plan sheets are graphics (bid from the drawing). Try
-// the text layer first — a page-heavy text PDF routes to the spec analyzer,
-// otherwise render + tile to images and read via the HVAC vision prompt.
+// PDF upload of an HVAC document. A mechanical set MIXES page types: dense
+// general-notes / spec pages (bid from the words) and sparse drawing sheets
+// (bid from the graphics). We classify EACH page from its text layer and route
+// per page — spec pages to the text analyzer, drawing sheets to vision — then
+// merge. Classifying the whole document from its average text density sent a
+// mixed set where the notes page is dense straight to the spec analyzer, and
+// every drawing sheet (the ducts/diffusers) was lost.
+const SPEC_PAGE_MIN_CHARS = 1800; // dense enough that it's prose, not a sheet
+const MAX_VISION_PAGES = 10;      // cap vision pages so a big set stays in budget
+
+// A PDF page is a spec/notes page (→ text analyzer) when it's dense prose full
+// of specification verbs. Anything else (sparse label text, or a page with a
+// stated drawing scale) is a drawing sheet (→ vision). A page carrying a real
+// drawing scale is never a spec page, no matter how much text it holds.
+export function isSpecPage(text, hasScale = false) {
+  const len = (text || '').length;
+  if (len < SPEC_PAGE_MIN_CHARS || hasScale) return false;
+  return (text.match(/\b(shall|provide|minimum|per\s|approved|comply)\b/gi) || []).length >= 4;
+}
+
 export async function analyzeHvacPlanPdf(file, fileName) {
   const { renderPdfPagesToImages, extractPdfPagesText, detectDrawingScale } = await import('./pdfRender.js');
 
-  // Per-page drawing scale from the text layer ("SCALE: 1/4\" = 1'-0\"").
-  // With a stated scale + the PDF's exact page geometry, the renders get a
-  // calibrated scale bar stamped on — the model MEASURES duct lengths
-  // against it instead of estimating off reference objects.
+  const merged = newHvacMerged();
+  const seen = new Set();
   const scaleByPage = {};
+  let pages = [];
   try {
-    const res = await extractPdfPagesText(file, { maxPages: 20 });
-    const pages = res?.pages || [];
-    const fullText = pages.map(p => p.text).join('\n\n');
+    const res = await extractPdfPagesText(file, { maxPages: 40 });
+    pages = res?.pages || [];
     for (const p of pages) {
       const s = detectDrawingScale(p.text);
       if (s) scaleByPage[p.pageNum] = s;
     }
-    // A spec book runs thousands of chars/page; a CAD sheet's text layer is
-    // sparse labels at best. 600+ chars/page average = a text document —
-    // UNLESS it reads like a plan sheet (stated scale, or duct sizes all
-    // over it): CAD exports can carry dense text layers of notes/schedules,
-    // and routing an M-sheet to the spec analyzer loses the whole drawing.
-    const looksLikePlanSheet = Object.keys(scaleByPage).length > 0
-      || /\bSCALE\s*:/i.test(fullText)
-      || (fullText.match(/\b\d{1,2}\s*[xX×]\s*\d{1,2}\b/g) || []).length >= 8;
-    const totalChars = pages.reduce((s, p) => s + (p.text || '').length, 0);
-    if (pages.length && totalChars / pages.length > 600 && !looksLikePlanSheet) {
-      return await analyzeHvacSpecText(fullText, fileName);
-    }
-  } catch { /* no text layer — fall through to vision */ }
+  } catch { /* no text layer — every page goes to vision below */ }
 
-  const merged = newHvacMerged();
-  const seen = new Set();
-  const { pages, truncated } = await renderPdfPagesToImages(file, { scaleFtPerInchByPage: scaleByPage });
+  // Classify each page. Dense prose (general notes, CSI spec sections) → text;
+  // everything else (sparse label text = a drawing/schedule sheet) → vision.
+  const specPages = [], drawingPageNums = [];
+  if (pages.length) {
+    for (const p of pages) {
+      if (isSpecPage(p.text, !!scaleByPage[p.pageNum])) specPages.push(p.text);
+      else drawingPageNums.push(p.pageNum);
+    }
+  }
+
+  // Text-only set (all pages dense prose, no drawings) → spec analyzer, done.
+  if (pages.length && drawingPageNums.length === 0) {
+    return await analyzeHvacSpecText(specPages.join('\n\n'), fileName);
+  }
+
+  // Spec pages first (cheap, batched), then vision the drawing sheets.
+  if (specPages.length) {
+    const specResult = await analyzeHvacSpecText(specPages.join('\n\n'), fileName);
+    absorbHvac(merged, specResult, seen);
+    (specResult.flags || []).forEach(f => merged.flags.push({ ...f, source: fileName }));
+    if (specResult.summary) merged.summaries.push(specResult.summary);
+  }
+
+  const { pages: rendered, truncated } = await renderPdfPagesToImages(file, {
+    scaleFtPerInchByPage: scaleByPage,
+    ...(pages.length ? { pageNums: drawingPageNums } : {}),
+    maxPages: MAX_VISION_PAGES,
+  });
   if (Object.keys(scaleByPage).length) {
     merged.flags.push({ type: 'info', text: `Drawing scale detected (${Object.entries(scaleByPage).map(([p, s]) => `page ${p}: ${s} ft/in`).join(', ')}) — a calibrated scale bar was stamped on the renders and duct lengths were MEASURED against it. Verify before final pricing.`, source: fileName });
   }
   const SCALE_NOTE = `\n\nIMPORTANT — CALIBRATED SCALE BAR: a black/white segmented bar labeled in FEET (inside a white box, lower-left) has been stamped onto this image, computed exactly from the drawing's stated scale and the PDF's page geometry. For estLengthFt, MEASURE each duct size's total run length against this bar — these measurements are dependable, not guesses. Set lengthBasis to "calibrated scale bar".`;
-  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64, scaled } of pages) {
+  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64, scaled } of rendered) {
     const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }, scaled ? SCALE_NOTE : ''));
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed (${error})`, source: fileName });
@@ -824,7 +851,12 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Page ${pageNum} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
-  if (truncated) merged.flags.push({ type: 'warn', text: 'Document has more pages than were analyzed (limit reached) — some sheets may be missing', source: fileName });
+  // Tell the estimator how the set was split so a missed sheet is visible.
+  if (pages.length) {
+    const drawnPages = [...new Set(rendered.map(r => r.pageNum))];
+    merged.flags.push({ type: 'info', text: `Read as a mechanical set: ${specPages.length} spec/notes page(s) analyzed as text, ${drawnPages.length} drawing sheet(s) read by vision (page${drawnPages.length === 1 ? '' : 's'} ${drawnPages.join(', ')}).`, source: fileName });
+  }
+  if (truncated) merged.flags.push({ type: 'warn', text: `More drawing sheets than the ${MAX_VISION_PAGES}-page vision limit — some sheets weren't read. Split the set and upload the mechanical plan sheets separately for a full takeoff.`, source: fileName });
   return finishHvac(merged);
 }
 
