@@ -14,7 +14,7 @@ import { SupplierSwitcher, loadPriceBook, findPriceMatch } from '../components/P
 import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
-import { extractRackWorkSections, extractPartsList, normalizeDesc } from '../components/scopeText.js';
+import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from '../components/scopeText.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -627,7 +627,16 @@ export default function Step1_Setup({ onNext }) {
               }
             }
           }
+          // A CO₂/transcritical addendum is boilerplate in most Food Lion
+          // scope docs now, but an HFC store never does that work — filter its
+          // items out so they don't clutter the bid. Gated on the job's system
+          // type: only skip CO₂ content when the store is HFC (the default).
+          const filterCO2 = !isHvacMode && state.systemType !== 'CO2';
+          let co2Skipped = 0;
+          const isCO2Item = (...parts) => filterCO2 && isCO2Content(parts.filter(Boolean).join(' '));
+
           (parsed.fieldTasks || []).forEach(t => {
+            if (isCO2Item(t.desc, t.notes)) { co2Skipped++; return; }
             // The RC-work filter is refrigeration-only — on an HVAC job every
             // extracted task is potential HVAC scope, there's no RC to filter for.
             if (t.desc && (isHvacMode || isRCTask(t.desc))) {
@@ -680,6 +689,7 @@ export default function Step1_Setup({ onNext }) {
           // estimator — the Rack step task table is its only source, so sending
           // rack work to notes leaves the rack labor section empty.
           (parsed.rackTasks || []).forEach(t => {
+            if (isCO2Item(t.desc, t.notes)) { co2Skipped++; return; }
             if (t.desc) {
               // No Rack step on HVAC jobs — anything the AI called "rack work"
               // on an HVAC document is just a note.
@@ -703,6 +713,7 @@ export default function Step1_Setup({ onNext }) {
           // Parts → rack parts (refrigeration only — HVAC jobs have no Rack
           // step, so a parts list on an HVAC doc surfaces as notes instead)
           (parsed.parts || []).forEach(p => {
+            if (isCO2Item(p.description)) { co2Skipped++; return; }
             if (p.description) {
               if (isHvacMode) {
                 pushPending('note', sourceType, fileMeta.name, { desc: `Part: ${p.qty ? p.qty + ' × ' : ''}${p.description}`, notes: '', rawDesc: p.description });
@@ -715,8 +726,16 @@ export default function Step1_Setup({ onNext }) {
             }
           });
 
-          // Flags — these are informational, not bid data, so they pass through directly
-          (parsed.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
+          // Flags — informational, pass through directly. On an HFC job, the
+          // CO₂ addendum's own flags (K65, gas cooler, charge tables…) are
+          // dropped and rolled into the one summary flag below.
+          (parsed.flags || []).forEach(f => {
+            if (filterCO2 && isCO2Content(f.text)) { co2Skipped++; return; }
+            flags.push({ ...f, source: fileMeta.name });
+          });
+          if (co2Skipped > 0) {
+            flags.push({ type: 'info', text: `Skipped ${co2Skipped} CO₂/transcritical addendum item${co2Skipped > 1 ? 's' : ''} — this scope carries the standard CO₂ addendum, but the job is set to HFC so it wasn't added to your bid. If this IS a CO₂ store, switch the system type on the Materials step and re-analyze.`, source: fileMeta.name });
+          }
           if (parsed.nightWorkRequired) {
             flags.push({ type: 'warn', text: `NIGHT WORK REQUIRED: ${parsed.nightWorkDetails || 'See scope doc'}`, source: fileMeta.name });
           }

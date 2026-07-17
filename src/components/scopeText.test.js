@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { extractRackWorkSections, extractPartsList, normalizeDesc } from './scopeText.js';
+import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from './scopeText.js';
+
+// The CO₂ addendum filter: HFC stores never do transcritical CO₂ work, but
+// the scope docs carry the addendum as boilerplate. isCO2Content flags the
+// unmistakable CO₂ lines so they can be dropped on an HFC bid — without
+// catching ordinary refrigeration text.
+describe('isCO2Content', () => {
+  it('catches unmistakable CO₂/transcritical addendum lines', () => {
+    expect(isCO2Content('CO2 (R744) refrigerant charge per manufacturer')).toBe(true);
+    expect(isCO2Content('K65 copper for transcritical high-pressure side')).toBe(true);
+    expect(isCO2Content('Gas cooler piping and flash gas bypass')).toBe(true);
+    expect(isCO2Content('Booster rack compressor connections')).toBe(true);
+    expect(isCO2Content('fittings rated to 1300 psi')).toBe(true);
+    expect(isCO2Content('carbon dioxide leak detection')).toBe(true);
+  });
+
+  it('leaves ordinary HFC refrigeration scope alone', () => {
+    expect(isCO2Content('Remove 40\' DX6XN Lunch Meat #16, 17, 18, 19 (A6)')).toBe(false);
+    expect(isCO2Content('Pipe new header for Rack A, R-448A charge')).toBe(false);
+    expect(isCO2Content('Terminate both ends of case sensor cable')).toBe(false);
+    expect(isCO2Content('Replace oil separator float on Rack D')).toBe(false);
+    expect(isCO2Content('')).toBe(false);
+  });
+});
 
 // Mirrors the real store-47 flat scope of work: per-rack store-specific work
 // followed by PARTS LIST, followed by a numbered field-item clause list. The
