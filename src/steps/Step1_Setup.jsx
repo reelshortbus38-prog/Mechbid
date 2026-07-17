@@ -999,6 +999,33 @@ export default function Step1_Setup({ onNext }) {
         </div>
       </div>
 
+      {/* Refrigeration system type — set BEFORE analyzing so the CO₂ addendum
+          filter behaves right at analyze time. On an HFC store the boilerplate
+          CO₂ addendum is skipped; a CO₂ store must be chosen here first, or
+          the addendum gets filtered and you'd have to re-analyze. Mirrors the
+          same state.systemType the Materials step edits. */}
+      {state.mode === 'Commercial Refrigeration' && (
+        <div>
+          <SLabel>Refrigeration System</SLabel>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+            {(state.systemType || 'HFC') === 'CO2'
+              ? 'CO₂ transcritical — K65 copper & high-pressure fittings; the scope’s CO₂ addendum WILL be included.'
+              : 'Standard HFC (R-448A / R-407A) — ACR copper. The boilerplate CO₂ addendum in the scope is skipped. Set CO₂ here BEFORE analyzing if this is a CO₂ store.'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[{ k: 'HFC', label: '❄️ HFC' }, { k: 'CO2', label: '🌱 CO₂ Transcritical' }].map(o => (
+              <div key={o.k} onClick={() => setField('systemType', o.k)} style={{
+                border: `2px solid ${(state.systemType || 'HFC') === o.k ? colors.green : colors.border}`,
+                background: (state.systemType || 'HFC') === o.k ? colors.greenFaint : colors.card2,
+                borderRadius: 10, padding: '12px', cursor: 'pointer', textAlign: 'center',
+                fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700,
+                color: (state.systemType || 'HFC') === o.k ? colors.green : colors.text,
+              }}>{o.label}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Project info */}
       <div>
         <SLabel>Project Info</SLabel>
