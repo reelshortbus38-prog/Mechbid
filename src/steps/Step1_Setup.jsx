@@ -633,7 +633,16 @@ export default function Step1_Setup({ onNext }) {
           // type: only skip CO₂ content when the store is HFC (the default).
           const filterCO2 = !isHvacMode && state.systemType !== 'CO2';
           let co2Skipped = 0;
-          const isCO2Item = (...parts) => filterCO2 && isCO2Content(parts.filter(Boolean).join(' '));
+          // Cradles are used on EVERY refrigeration job, CO₂ or HFC — never
+          // drop a cradle/line-support item even if the addendum happens to
+          // mention it alongside CO₂ language.
+          const CO2_KEEP_RE = /\bcradle/i;
+          const isCO2Item = (...parts) => {
+            if (!filterCO2) return false;
+            const text = parts.filter(Boolean).join(' ');
+            if (CO2_KEEP_RE.test(text)) return false;
+            return isCO2Content(text);
+          };
 
           (parsed.fieldTasks || []).forEach(t => {
             if (isCO2Item(t.desc, t.notes)) { co2Skipped++; return; }
