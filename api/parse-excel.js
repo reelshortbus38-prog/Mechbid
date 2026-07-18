@@ -497,7 +497,7 @@ function extractRowValues(row) {
 }
 
 // ── W&R BPR PARSER ────────────────────────────────────────────────────────────
-function parseBPR(wb, circuits, meta) {
+function parseBPR(wb, circuits, meta, allNew) {
   wb.eachSheet((ws) => {
     const sName = ws.name;
     if(sName.includes('Module') || sName.includes('Chart')) return;
@@ -538,9 +538,11 @@ function parseBPR(wb, circuits, meta) {
       const heatExchangerText = String(row.getCell(4).value||'');
       const newWorkText = looksLikeNewWorkText(heatExchangerText);
       const isNewCircuit = lineSizeHighlighted || lineSizeShaded || newWorkText;
-      if(!isNewCircuit) continue;
+      // New store: every circuit is new work — take them all (the run/size data
+      // guard below still rejects blank rows). Remodel: only the marked ones.
+      if(!allNew && !isNewCircuit) continue;
 
-      const newWorkSignal = lineSizeHighlighted ? 'highlighted' : lineSizeShaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
+      const newWorkSignal = allNew ? 'new store' : lineSizeHighlighted ? 'highlighted' : lineSizeShaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
 
       const run = parseFloat(row.getCell(21).value)||0;
       const sh  = sizeToFraction(row.getCell(22).value);
@@ -563,7 +565,7 @@ function parseBPR(wb, circuits, meta) {
 }
 
 // ── KYSOR WARREN PARSER ────────────────────────────────────────────────────────
-function parseKysorWarren(wb, circuits, meta) {
+function parseKysorWarren(wb, circuits, meta, allNew) {
   wb.eachSheet((ws, sheetId) => {
     const sName = ws.name;
     if(!sName.match(/^Rack\s+[A-Za-z]/i)) return;
@@ -600,15 +602,21 @@ function parseKysorWarren(wb, circuits, meta) {
       const sucHorzM = marked(23), liqHorzM = marked(25), sucRiserM = marked(24), vRiserM = marked(22);
       const horizMarked = sucHorzM || liqHorzM;   // a new horizontal run → new circuit
       const riserMarked = sucRiserM || vRiserM;   // a new riser drop
-      if(!horizMarked && !riserMarked) continue;  // pipe not marked → no new copper here
-      const riserOnly = riserMarked && !horizMarked;
-      const colorType = [22,23,24,25].some(c => isHighlighted(getCellColor(row.getCell(c)))) ? 'cyan' : 'shaded';
+      // New store: every circuit runs, so take them all (the pipe-data guard
+      // below rejects blank rows) and treat each as a full run, not riser-only.
+      // Remodel: only circuits whose pipe cells are marked are new copper.
+      if(!allNew && !horizMarked && !riserMarked) continue;
+      const riserOnly = allNew ? false : (riserMarked && !horizMarked);
+      const colorType = allNew ? 'new-store' : ([22,23,24,25].some(c => isHighlighted(getCellColor(row.getCell(c)))) ? 'cyan' : 'shaded');
 
       const run   = parseFloat(row.getCell(21).value)||0;
       const riser = parseFloat(row.getCell(22).value)||20;
       const sh    = sizeToFraction(row.getCell(23).value);
       const sr    = sizeToFraction(row.getCell(24).value);
       const lh    = sizeToFraction(row.getCell(25).value);
+      // New-store data guard: a valid circuit ID with no pipe size and no run is
+      // a blank/template row, not a circuit — skip it.
+      if(allNew && !sh && !lh && !sr && !run) continue;
       const evap  = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
       const app   = String(row.getCell(7).value||row.getCell(5).value||'');
       const note  = String(row.getCell(4).value||'');
@@ -621,14 +629,14 @@ function parseKysorWarren(wb, circuits, meta) {
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly: riserOnly,
-        colorType, notes: [riserOnly ? 'RISER — new riser drop' : 'NEW CIRCUIT — new copper run', note].filter(Boolean).join(' — ')
+        colorType, notes: [riserOnly ? 'RISER — new riser drop' : allNew ? 'NEW STORE — new circuit' : 'NEW CIRCUIT — new copper run', note].filter(Boolean).join(' — ')
       });
     }
   });
 }
 
 // ── XLS FALLBACK PARSER ────────────────────────────────────────────────────────
-function parseXLS(xlsBuffer, circuits, meta) {
+function parseXLS(xlsBuffer, circuits, meta, allNew) {
   // cellStyles:true so we can read fills — KWRS legends mark new copper by
   // highlighting the pipe-size cells, and without this every circuit in the
   // schedule (existing included) gets extracted (the "35 circuits" bug).
@@ -756,14 +764,16 @@ function parseXLS(xlsBuffer, circuits, meta) {
   }
 
   // If highlighting exists anywhere, it's the new-work signal — keep only marked
-  // circuits. Otherwise keep everything (no color info to filter on).
-  const hasHighlightInfo = candidates.some(c => c.horizMarked || c.riserMarked);
+  // circuits. Otherwise keep everything (no color info to filter on). A NEW store
+  // forces the keep-everything path: every circuit is run, highlighting or not.
+  const hasHighlightInfo = !allNew && candidates.some(c => c.horizMarked || c.riserMarked);
 
   for(const c of candidates) {
     const marked = c.horizMarked || c.riserMarked;
     if(hasHighlightInfo && !marked) continue;
-    // No-highlight fallback keeps the old stricter guards (run + suction size)
-    // to avoid dragging in stray non-circuit rows.
+    // Keep-everything path (new store, or an .xls with no color info) keeps the
+    // stricter data guards (run + suction size) so stray non-circuit rows don't
+    // slip in.
     if(!hasHighlightInfo && (!c.run || !c.sh)) continue;
 
     const riserOnly = hasHighlightInfo && c.riserMarked && !c.horizMarked;
@@ -839,8 +849,14 @@ module.exports = async function handler(req, res) {
   if(req.method !== 'POST') return res.status(405).json({error:'Method not allowed'});
 
   try {
-    const {fileData, fileName} = req.body;
+    const {fileData, fileName, projectType} = req.body;
     if(!fileData) return res.status(400).json({error:'No file data'});
+    // NEW STORE vs REMODEL. On a remodel, only the highlighted/shaded pipe-size
+    // cells mark new copper — the parsers filter to those. On a NEW store every
+    // circuit is run, and the legend isn't highlighted (there's no existing work
+    // to distinguish from), so that filter would drop every new circuit. allNew
+    // tells the parsers to take every circuit as new work.
+    const allNew = projectType === 'new';
 
     const name   = (fileName||'').toLowerCase();
     const buffer = Buffer.from(fileData, 'base64');
@@ -900,7 +916,7 @@ module.exports = async function handler(req, res) {
       } catch(e) { /* fall through to normal circuit parsing below */ }
 
       try {
-        parseXLS(buffer, circuits, meta);
+        parseXLS(buffer, circuits, meta, allNew);
         format = 'xls';
         if(circuits.length === 0) {
           warning = `${fileName} is an older .xls format. Save as .xlsx for full AI extraction.`;
@@ -978,9 +994,9 @@ module.exports = async function handler(req, res) {
 
       // 3. Run known parsers first (fast, free, accurate for known formats)
       if(format === 'bpr') {
-        parseBPR(wb, circuits, meta);
+        parseBPR(wb, circuits, meta, allNew);
       } else if(format === 'kysor') {
-        parseKysorWarren(wb, circuits, meta);
+        parseKysorWarren(wb, circuits, meta, allNew);
       }
 
       // 4. If known parser found circuits, done. If not, use AI.

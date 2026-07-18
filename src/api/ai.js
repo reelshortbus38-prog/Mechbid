@@ -996,11 +996,11 @@ export async function parseDocFile(base64, fileName) {
   return res.json();
 }
 
-export async function parseExcelFile(base64, fileName) {
+export async function parseExcelFile(base64, fileName, projectType = 'remodel') {
   const res = await fetch('/api/parse-excel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileData: base64, fileName }),
+    body: JSON.stringify({ fileData: base64, fileName, projectType }),
   });
   if (!res.ok) {
     const text = await res.text();
