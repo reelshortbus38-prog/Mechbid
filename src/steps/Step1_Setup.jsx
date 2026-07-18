@@ -369,7 +369,7 @@ export default function Step1_Setup({ onNext }) {
         } else if (fileMeta.type === 'excel' || fileMeta.type === 'xls') {
           sourceType = 'excel';
           const b64 = await fileToBase64(file);
-          const res = await parseExcelFile(b64, fileMeta.name);
+          const res = await parseExcelFile(b64, fileMeta.name, state.projectType || 'remodel');
 
           if (res.format === 'parts-order-form') {
             // These are typically store/GC-supplied parts (Food Lion supplies
@@ -1020,6 +1020,32 @@ export default function Step1_Setup({ onNext }) {
                 borderRadius: 10, padding: '12px', cursor: 'pointer', textAlign: 'center',
                 fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700,
                 color: (state.systemType || 'HFC') === o.k ? colors.green : colors.text,
+              }}>{o.label}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* New store vs remodel — set BEFORE analyzing. On a remodel only the
+          highlighted circuits on the legend are new work; on a new store the
+          legend isn't highlighted because EVERYTHING runs, so the excel parser
+          must take every circuit. This drives that. */}
+      {state.mode === 'Commercial Refrigeration' && (
+        <div>
+          <SLabel>Project Type</SLabel>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+            {(state.projectType || 'remodel') === 'new'
+              ? 'New store — EVERY circuit on the legend is run. The parser takes all circuits (no highlighting needed).'
+              : 'Remodel — only the highlighted/shaded circuits on the legend are new copper. The parser filters to those.'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[{ k: 'remodel', label: '🔧 Remodel' }, { k: 'new', label: '🏗️ New Store' }].map(o => (
+              <div key={o.k} onClick={() => setField('projectType', o.k)} style={{
+                border: `2px solid ${(state.projectType || 'remodel') === o.k ? colors.green : colors.border}`,
+                background: (state.projectType || 'remodel') === o.k ? colors.greenFaint : colors.card2,
+                borderRadius: 10, padding: '12px', cursor: 'pointer', textAlign: 'center',
+                fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700,
+                color: (state.projectType || 'remodel') === o.k ? colors.green : colors.text,
               }}>{o.label}</div>
             ))}
           </div>

@@ -159,7 +159,7 @@ export default function Step2_Circuits({ onNext, onBack }) {
       {/* Header */}
       <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SLabel>Circuits — New Work Only</SLabel>
+          <SLabel>{(state.projectType || 'remodel') === 'new' ? 'Circuits — All New (New Store)' : 'Circuits — New Work Only'}</SLabel>
           <div style={{ fontSize: 12, color: colors.textDim }}>
             {state.circuits.length > 0 ? `${state.circuits.length} circuit${state.circuits.length !== 1 ? 's' : ''} — verify run lengths and line sizes` : 'Add circuits manually or upload a BPR schedule'}
           </div>
