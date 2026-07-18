@@ -69,6 +69,33 @@ export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
   return { pages, totalPages: pdf.numPages };
 }
 
+// ── VECTOR DUCT MEASUREMENT ─────────────────────────────────────────────────────
+// Read the CAD vector layer of specific pages and measure duct linework by
+// colour, as an exact cross-check against the vision takeoff. Only run on pages
+// with a known drawing scale (so the feet conversion is valid) and a sane
+// operator count. Returns { [pageNum]: { outlineFt, centerlineFt, usedDuctColor } }.
+export async function measureVectorDucts(file, { pageNums, scaleFtPerInchByPage }) {
+  const lib = await loadPdfJs();
+  const { tallyStrokeLengthByColor, ductFootageFromTally } = await import('./ductVectors.js');
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+  const out = {};
+  for (const pageNum of pageNums || []) {
+    const fpi = scaleFtPerInchByPage?.[pageNum];
+    if (!fpi || pageNum < 1 || pageNum > pdf.numPages) continue;
+    try {
+      const page = await pdf.getPage(pageNum);
+      const ol = await page.getOperatorList();
+      // A dense sheet is fine (fast JS walk); guard only against pathological size.
+      if (ol.fnArray.length > 500_000) continue;
+      const tally = tallyStrokeLengthByColor(ol, lib.OPS);
+      const ft = ductFootageFromTally(tally, fpi);
+      if (ft) out[pageNum] = ft;
+    } catch { /* skip a page that won't parse — vision still covers it */ }
+  }
+  return out;
+}
+
 // ── DRAWING SCALE DETECTION ────────────────────────────────────────────────────
 // A CAD-exported PDF preserves true page geometry, and the title block states
 // the drawing scale ("SCALE: 1/4\" = 1'-0\"", "1\" = 20'"). Stated scale +
