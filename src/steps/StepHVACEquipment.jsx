@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt } from '../state/store.js';
+import { useStore, uid, fmt, defaultHvacPrice } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
@@ -244,13 +244,36 @@ function MiscParts() {
     'Filter rack & filters', 'Duct connection / flex / transitions',
     'Refrigerant (R-410A / R-454B) by lb', 'Lineset (split)', 'Refrigerant line insulation',
   ];
-  const addNamed = desc => dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc, qty: 1, unitCost: 0, total: 0 }] });
+  const addNamed = desc => {
+    const uc = defaultHvacPrice(desc);
+    dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc, qty: 1, unitCost: uc, total: uc }] });
+  };
+
+  // Backfill ballpark prices onto any line still at $0 — the takeoff's air
+  // devices land unpriced, and one tap gets a close number on all of them.
+  // Duct FOOTAGE lines are left alone (priced by the Duct calculator); their
+  // generated purchase lines and everything else get a default.
+  function fillDefaults() {
+    let filled = 0;
+    const next = parts.map(p => {
+      if ((p.unitCost || 0) > 0) return p;
+      const uc = defaultHvacPrice(p.desc);
+      if (!uc) return p;
+      filled++;
+      return { ...p, unitCost: uc, total: (p.qty || 0) * uc };
+    });
+    if (filled) dispatch({ type: 'SET', key: 'hvacParts', value: next });
+  }
+  const unpricedCount = parts.filter(p => (p.unitCost || 0) === 0 && defaultHvacPrice(p.desc) > 0).length;
 
   return (
     <div>
       <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <SLabel>Parts & Misc Materials</SLabel>
-        <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
+        <Row style={{ gap: 8 }}>
+          {unpricedCount > 0 && <Btn variant="green" size="sm" onClick={fillDefaults}>💲 Fill default prices ({unpricedCount})</Btn>}
+          <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
+        </Row>
       </Row>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {COMMON.map(c => (

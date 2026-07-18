@@ -36,6 +36,51 @@ export function defaultHardwarePrice(desc) {
   return hit ? hit[1] : 0;
 }
 
+// ── HVAC DEFAULT PRICES ─────────────────────────────────────────────────────────
+// Ballpark US contractor-cost defaults so an HVAC takeoff isn't all $0 — close
+// enough to rough a number, always editable, and the price book learns the real
+// number the first time you correct one. Air devices are per-EACH; the misc
+// items match the quick-add chips on the Equipment step.
+//
+// Duct FOOTAGE lines are deliberately NOT priced here — their cost comes from
+// the Duct → Purchase Units calculator (pounds of sheet metal, spiral joints,
+// flex boxes, insulation rolls), which carries its own defaults. Pricing the
+// footage line too would double-count.
+const DEFAULT_HVAC_PRICES = [
+  // Air devices — per each. Bigger face = a bit more; keep it simple by type.
+  [/transfer\s*grille|(?:^|\W)TG-?\d/i, 40],
+  [/return\s*grille|(?:^|\W)RG-?\d/i, 45],
+  [/(?:supply\s*)?grille|register|(?:^|\W)SG-?\d/i, 40],
+  [/linear\s*(?:slot\s*)?diffuser|(?:^|\W)LD-?\d/i, 120], // per section
+  [/ceiling\s*diffuser|diffuser|(?:^|\W)CD-?\d/i, 55],
+  // Common misc / quick-add HVAC items.
+  [/curb\s*adapter/i, 450],
+  [/roof\s*curb|curb\s*\/\s*rails|rails/i, 350],
+  [/crane|rigging/i, 1200],
+  [/disconnect|whip/i, 85],
+  [/thermostat|bms|controls?/i, 180],
+  [/economizer/i, 400],
+  [/low[-\s]?ambient/i, 250],
+  [/hail\s*guard/i, 150],
+  [/condensate|p[-\s]?trap|drain/i, 40],
+  [/smoke\s*detector/i, 220],
+  [/vibration\s*isolation|isolator/i, 120],
+  [/filter\s*rack|filters?/i, 90],
+  [/flex(?:ible)?\s*(?:duct\s*)?connection|transitions?|flex\s*connector/i, 60],
+  [/refrigerant\s*line\s*insulation|line\s*insulation/i, 1.5], // per ft
+  [/refrigerant\b/i, 18],  // per lb
+  [/lineset/i, 120],
+  // Duct purchase-unit lines (from the calculator) — sane fallbacks if unpriced.
+  [/galvanized.*duct|rectangular\s*duct/i, 4.5], // per lb, fabricated
+  [/spiral.*duct/i, 9],    // per ft
+  [/flex\s*duct/i, 95],    // per 25' box
+  [/duct\s*wrap|wrap\s*insulation/i, 115], // per roll
+];
+export function defaultHvacPrice(desc) {
+  const hit = DEFAULT_HVAC_PRICES.find(([re]) => re.test(desc || ''));
+  return hit ? hit[1] : 0;
+}
+
 export const DEFAULT_INSUL_RATES = {
   // 1/2" wall Armaflex, medium-temp suction.
   medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40 },
