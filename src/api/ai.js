@@ -794,7 +794,7 @@ export function isSpecPage(text, hasScale = false) {
 }
 
 export async function analyzeHvacPlanPdf(file, fileName) {
-  const { renderPdfPagesToImages, extractPdfPagesText, detectDrawingScale } = await import('./pdfRender.js');
+  const { renderPdfPagesToImages, extractPdfPagesText, detectDrawingScale, measureVectorDucts } = await import('./pdfRender.js');
 
   const merged = newHvacMerged();
   const seen = new Set();
@@ -850,6 +850,21 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     absorbHvac(merged, parsed, seen);
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Page ${pageNum} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
+  }
+  // Independent geometry cross-check: measure duct linework straight off the
+  // CAD vector layer of the scaled drawing pages. Gives the estimator an exact
+  // second number to check the vision takeoff against — something the generic
+  // takeoff tools don't offer. Only runs on pages with a known scale.
+  if (Object.keys(scaleByPage).length) {
+    try {
+      const vecByPage = await measureVectorDucts(file, { pageNums: Object.keys(scaleByPage).map(Number), scaleFtPerInchByPage: scaleByPage });
+      const entries = Object.entries(vecByPage);
+      if (entries.length) {
+        const totalCenter = entries.reduce((s, [, v]) => s + v.centerlineFt, 0);
+        const perPage = entries.map(([p, v]) => `page ${p}: ~${v.centerlineFt} ft`).join(', ');
+        merged.flags.push({ type: 'info', text: `CAD geometry cross-check: measured ~${totalCenter} ft of ductwork run directly off the vector linework (${perPage}) — an EXACT read of the drawing, independent of the vision takeoff above. Compare the two; if they disagree, trust the drawing and check what vision missed. (Duct is drawn as two parallel lines, so this is the centerline estimate = colored outline ÷ 2.)`, source: fileName });
+      }
+    } catch { /* geometry cross-check is best-effort — never fail the takeoff */ }
   }
   // Tell the estimator how the set was split so a missed sheet is visible.
   if (pages.length) {
