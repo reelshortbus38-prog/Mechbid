@@ -3,7 +3,7 @@ import {
   normalizePipeSize, pipeSizeBucket,
   calcLaborPeriodCost, calcRackTaskCost, calcRackLaborTotal,
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
-  estimateCircuitLabor, DEFAULT_LABOR_UNITS,
+  estimateCircuitLabor, DEFAULT_LABOR_UNITS, defaultHvacPrice,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -145,5 +145,35 @@ describe('emlToText', () => {
       '',
     ].join('\n');
     expect(emlToText(eml)).toContain('Relocate cases 20,21');
+  });
+});
+
+describe('defaultHvacPrice', () => {
+  it('gives ballpark defaults for air devices by type', () => {
+    expect(defaultHvacPrice('CD-1 — Ceiling Diffuser · 24x24 face · 8"ø neck')).toBe(55);
+    expect(defaultHvacPrice('RG-1 — Return Grille · 24x24 face')).toBe(45);
+    expect(defaultHvacPrice('TG-2 — Transfer Grille · 18x12 face')).toBe(40);
+  });
+
+  it('prices common misc HVAC items', () => {
+    expect(defaultHvacPrice('Curb adapter')).toBe(450);
+    expect(defaultHvacPrice('Programmable / BMS thermostat')).toBe(180);
+    expect(defaultHvacPrice('Disconnect & whip')).toBe(85);
+    expect(defaultHvacPrice('Refrigerant (R-410A / R-454B) by lb')).toBe(18);
+  });
+
+  it('leaves duct FOOTAGE lines at 0 (priced by the duct calculator)', () => {
+    expect(defaultHvacPrice('Ductwork — 21x13 duct (supply)')).toBe(0);
+    expect(defaultHvacPrice('Ductwork — 12x5 round duct (supply/exhaust)')).toBe(0);
+  });
+
+  it('does price the duct calculator’s purchase-unit lines', () => {
+    expect(defaultHvacPrice('Galvanized rectangular duct, 24 ga — fabricated')).toBe(4.5);
+    expect(defaultHvacPrice('Duct wrap insulation, 1-1/2" FSK — 100 sq ft rolls')).toBe(115);
+  });
+
+  it('returns 0 for anything unknown', () => {
+    expect(defaultHvacPrice('some random line')).toBe(0);
+    expect(defaultHvacPrice('')).toBe(0);
   });
 });

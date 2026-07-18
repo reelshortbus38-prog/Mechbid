@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useStore, uid } from '../state/store.js';
+import { useStore, uid, defaultHvacPrice } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
@@ -935,6 +935,9 @@ export default function Step1_Setup({ onNext }) {
             const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
             if (match) unitCost = Number(match.entry.price) || 0;
           }
+          // Ballpark default so the line isn't $0 (skips duct FOOTAGE lines,
+          // which are priced by the Duct → Purchase Units calculator instead).
+          if (!unitCost) unitCost = defaultHvacPrice(item.data.desc);
           newHvacParts.push({ id: uid(), desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
         }
       } else if (item.kind === 'projectInfo') {
