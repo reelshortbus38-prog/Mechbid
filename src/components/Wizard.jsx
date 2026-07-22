@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useStore, saveJob, loadAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
+import { useStore, saveJob, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
+import { useAuth } from '../lib/auth.jsx';
+import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
+import AuthButton from './AuthModal.jsx';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
 import Step1_Setup from '../steps/Step1_Setup.jsx';
@@ -51,6 +54,7 @@ function getStepComponent(stepId, mode, onNext, onBack) {
 
 export default function Wizard() {
   const { state, dispatch } = useStore();
+  const { user } = useAuth();
   const [stepIndex, setStepIndex] = useState(0);
   const [showJobs, setShowJobs] = useState(false);
   const [showPriceBook, setShowPriceBook] = useState(false);
@@ -91,6 +95,21 @@ export default function Wizard() {
     setJobs(loadAllJobs());
   }, [showJobs]);
 
+  // On sign-in (or landing with an existing session on a new device), pull the
+  // user's cloud jobs, merge newest-wins with whatever's local, and push local-
+  // only jobs up. No-op when logged out or Supabase isn't configured.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    syncOnLogin(user.id, loadAllJobs, saveAllJobs).then(() => { if (active) setJobs(loadAllJobs()); });
+    return () => { active = false; };
+  }, [user]);
+
+  // Mirror a just-saved job to the cloud (best-effort; localStorage already has it).
+  function cloudPush(id) {
+    if (user && id) { const j = loadAllJobs()[id]; if (j) pushCloudJob(user.id, j); }
+  }
+
   // Apply the global default supplier once on first mount, if this is a fresh
   // session that hasn't had a supplier explicitly set yet (covers the very first
   // load before any job/save has happened).
@@ -109,6 +128,7 @@ export default function Wizard() {
     const t = setTimeout(() => {
       const id = saveJob(state);
       if (id && id !== state.jobId) dispatch({ type: 'MERGE', payload: { jobId: id } });
+      cloudPush(id);
       setSaveIndicator('✓ Saved');
       setTimeout(() => setSaveIndicator(''), 1000);
     }, 1500);
@@ -120,7 +140,8 @@ export default function Wizard() {
     const id = saveJob(state);
     if (id) {
       dispatch({ type: 'MERGE', payload: { jobId: id } });
-      setSaveIndicator('✅ Saved');
+      cloudPush(id);
+      setSaveIndicator(user ? '✅ Saved · synced' : '✅ Saved');
       setTimeout(() => setSaveIndicator(''), 2000);
     }
   }
@@ -203,6 +224,7 @@ export default function Wizard() {
             <Btn variant="surface" size="sm" onClick={() => setShowPriceBook(true)}>📖 Prices</Btn>
             <Btn variant="surface" size="sm" onClick={() => { setJobs(loadAllJobs()); setShowJobs(true); }}>💾 Jobs</Btn>
             <Btn variant="surface" size="sm" onClick={() => setShowDocs(true)}>📁 Docs</Btn>
+            <AuthButton onSignedIn={() => setJobs(loadAllJobs())} />
             <Btn variant="green" size="sm" onClick={handleSave}>Save</Btn>
             {saveIndicator && <span style={{ fontSize: 11, color: colors.green }}>{saveIndicator}</span>}
           </Row>
@@ -301,7 +323,7 @@ export default function Wizard() {
                       </div>
                       <Row style={{ gap: 8, flexShrink: 0 }}>
                         <Btn variant="green" size="sm" onClick={() => handleLoadJob(job)}>Open</Btn>
-                        <Btn variant="red" size="sm" onClick={() => { deleteJob(job.id); setJobs(loadAllJobs()); }}>Delete</Btn>
+                        <Btn variant="red" size="sm" onClick={() => { deleteJob(job.id); if (user) deleteCloudJob(user.id, job.id); setJobs(loadAllJobs()); }}>Delete</Btn>
                       </Row>
                     </div>
                   ))

@@ -10,6 +10,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
     "exceljs": "^4.4.0",
     "mammoth": "^1.8.0",
     "node-fetch": "^2.7.0",
