@@ -24,10 +24,23 @@ const HVAC_EQUIP_TYPES = [
   'Cooling Tower',
   'Exhaust Fan',
   'Make-Up Air Unit (MAU)',
+  // ── Data center / central plant ──
+  'Chiller — Water-Cooled',
+  'Chiller — Air-Cooled',
+  'CRAC Unit (DX)',
+  'CRAH Unit (Chilled Water)',
+  'Coolant Distribution Unit (CDU)',
+  'Rear-Door Heat Exchanger',
+  'Chilled Water Pump',
+  'Condenser Water Pump',
+  'Dry Cooler / Fluid Cooler',
+  'Air Handling Unit — Computer Room',
   'Other',
 ];
 
-const REFRIGERANTS = ['R-410A', 'R-32', 'R-454B', 'R-407C', 'R-22 (existing)', 'R-134a', 'Other'];
+// R-134a and the low-GWP chiller refrigerants (R-513A/R-1233zd/R-514A) are the
+// ones on data-center chiller schedules; the split-system gases stay for comfort HVAC.
+const REFRIGERANTS = ['R-410A', 'R-32', 'R-454B', 'R-407C', 'R-22 (existing)', 'R-134a', 'R-513A', 'R-1233zd(E)', 'R-514A', 'R-123 (legacy)', 'Other'];
 
 const TASK_TYPES = [
   'New Installation',

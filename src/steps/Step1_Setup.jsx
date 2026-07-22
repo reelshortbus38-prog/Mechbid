@@ -15,6 +15,7 @@ import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from '../components/scopeText.js';
+import { mapHvacType } from '../components/hvacTypes.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -112,24 +113,7 @@ export default function Step1_Setup({ onNext }) {
     // Maps a free-text type OR a bare equipment tag (AHU-1, EF-3, CU-1…) onto the
     // HVAC type dropdown. Plan sheets give a tag, not a spelled-out type, so the
     // tag prefix is often all we have to go on.
-    function mapHvacType(t) {
-      const s = String(t || '').toLowerCase();
-      if (/rtu|rooftop/.test(s)) return 'Rooftop Unit (RTU)';
-      if (/ahu|air handl/.test(s)) return 'Air Handling Unit (AHU)';
-      if (/fcu|fan coil/.test(s)) return 'Fan Coil Unit (FCU)';
-      if (/vav/.test(s)) return 'VAV Box';
-      if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
-      if (/ashp|air.?source|heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
-      if (/condens|^cu\b|\bcu-|^ac\b|\bac-/.test(s)) return 'Split System — Condenser';
-      if (/split/.test(s)) return 'Split System — Air Handler';
-      if (/chiller|^ch\b|\bch-/.test(s)) return 'Chiller';
-      if (/boiler|^b-\d|^bh\b|\bbh-/.test(s)) return 'Boiler';
-      if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
-      if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
-      if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
-      if (/exhaust|^ef\b|\bef-|^tf\b|\btf-/.test(s)) return 'Exhaust Fan';
-      return 'Other';
-    }
+    // mapHvacType is imported from components/hvacTypes.js (unit-tested there).
 
     function pushPending(kind, sourceType, fileName, data) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
