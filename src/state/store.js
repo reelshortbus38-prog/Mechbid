@@ -390,6 +390,19 @@ export function deleteJob(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
 
+// Write the whole jobs map at once — used by the cloud-sync layer to land the
+// merged local+cloud set after a login.
+export function saveAllJobs(jobs) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs || {})); return true; }
+  catch (e) { console.warn('saveAllJobs failed:', e); return false; }
+}
+
+// Look up one saved job's full state for loading into the wizard.
+export function loadJob(id) {
+  const jobs = loadAllJobs();
+  return jobs[id]?.data || null;
+}
+
 // ── BACKUP / RESTORE ───────────────────────────────────────────────────────────
 // Jobs live in this browser's localStorage. Until there's a cloud account,
 // export/import is the safety net against data loss and the way to move bids
