@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAIJson, isSpecPage } from './ai.js';
+import { parseAIJson, isSpecPage, isScheduleSheet } from './ai.js';
 
 // Per-page routing for mechanical-set PDFs: dense general-notes / spec pages
 // go to the text analyzer, sparse drawing sheets go to vision. Mirrors the
@@ -29,6 +29,37 @@ describe('isSpecPage', () => {
     const longButNotSpec = Array(400).fill('duct diffuser grille tag').join(' ');
     expect(longButNotSpec.length).toBeGreaterThan(1800);
     expect(isSpecPage(longButNotSpec)).toBe(false);
+  });
+});
+
+// A real VAV schedule sheet: the word SCHEDULE + many tagged units. Must route
+// to the schedule extractor (which keeps tags/sizes/counts), NOT the spec
+// analyzer (which is told a spec has none and would drop every unit).
+describe('isScheduleSheet', () => {
+  const vavSchedule = 'VARIABLE AIR VOLUME UNIT SCHEDULE MARK AREA SERVED MANUFACTURER MODEL CFM ' +
+    'VAV-M101 CLASSROOM NAILOR 3001 350 175 VAV-M102 OFFICE NAILOR 3001 175 88 ' +
+    'VAV-M119 WORKROOM NAILOR 3001 300 150 VAV-M133 CLASSROOM NAILOR 3001 630 315 ' +
+    'VAV-M135 CLASSROOM NAILOR 3001 630 315 VAV-M201 CLASSROOM NAILOR 3001 630 315';
+
+  it('routes a tagged schedule table to the schedule extractor', () => {
+    expect(isScheduleSheet(vavSchedule)).toBe(true);
+  });
+
+  it('takes priority over the spec analyzer for a schedule sheet', () => {
+    // Schedule is checked before isSpecPage in the router; the sheet itself
+    // must be recognized as a schedule regardless of any spec verbs on it.
+    expect(isScheduleSheet(vavSchedule)).toBe(true);
+  });
+
+  it('is not fooled by prose that merely says "schedule"', () => {
+    const prose = 'The contractor shall provide equipment per the schedule and comply with the approved submittals. ' +
+      'Provide a minimum clearance per manufacturer. ' + Array(20).fill('The work shall comply.').join(' ');
+    expect(isScheduleSheet(prose)).toBe(false); // no tagged units
+  });
+
+  it('needs both the word SCHEDULE and enough distinct tags', () => {
+    expect(isScheduleSheet('VAV-1 VAV-2 VAV-3 VAV-4 VAV-5 VAV-6')).toBe(false); // no "schedule"
+    expect(isScheduleSheet('EQUIPMENT SCHEDULE RTU-1 RTU-2')).toBe(false);      // too few tags
   });
 });
 
