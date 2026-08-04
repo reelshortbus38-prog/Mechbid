@@ -863,6 +863,12 @@ export async function analyzeHvacPlanPdf(file, fileName) {
         const totalCenter = entries.reduce((s, [, v]) => s + v.centerlineFt, 0);
         const perPage = entries.map(([p, v]) => `page ${p}: ~${v.centerlineFt} ft`).join(', ');
         merged.flags.push({ type: 'info', text: `CAD geometry cross-check: measured ~${totalCenter} ft of ductwork run directly off the vector linework (${perPage}) — an EXACT read of the drawing, independent of the vision takeoff above. Compare the two; if they disagree, trust the drawing and check what vision missed. (Duct is drawn as two parallel lines, so this is the centerline estimate = colored outline ÷ 2.)`, source: fileName });
+      } else {
+        // Vector pages, but no color-coded ductwork to measure — the set is drawn
+        // in grayscale (ducts distinguished by lineweight/layer, not a duct color).
+        // Say so, so the empty cross-check reads as "not applicable here," not
+        // "found zero duct." The vision footage above stands on its own.
+        merged.flags.push({ type: 'info', text: `CAD geometry cross-check: not available for this set — the drawings are grayscale (ducts aren't drawn in a distinct duct color), so there's no color layer to measure. Duct footage above is the vision read against the calibrated scale bar; verify the runs on the plan.`, source: fileName });
       }
     } catch { /* geometry cross-check is best-effort — never fail the takeoff */ }
   }

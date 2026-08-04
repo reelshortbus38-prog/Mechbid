@@ -36,7 +36,14 @@ describe('color classification', () => {
     expect(isColored([0, 0, 0])).toBe(false);       // black
     expect(isColored([128, 128, 128])).toBe(false); // gray
     expect(isDuctColor([0, 255, 255])).toBe(true);
+    expect(isDuctColor([127, 191, 255])).toBe(true); // light blue
     expect(isDuctColor([255, 0, 0])).toBe(false);   // red is not a duct color
+    // Mid-tone neutral grays must NOT read as duct — a real grayscale plan set
+    // draws ducts by lineweight/layer, not color, and these would otherwise be
+    // miscounted as thousands of feet of duct (the gray architectural background).
+    expect(isDuctColor([164, 164, 164])).toBe(false);
+    expect(isDuctColor([176, 176, 176])).toBe(false);
+    expect(isDuctColor([128, 128, 128])).toBe(false);
   });
 });
 
