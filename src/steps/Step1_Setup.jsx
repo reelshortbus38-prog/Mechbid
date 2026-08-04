@@ -160,17 +160,41 @@ export default function Step1_Setup({ onNext }) {
       const drawing = [hv.drawingNumber, hv.drawingTitle].filter(Boolean).join(' — ');
       if (hv.projectName && !projName) projName = hv.projectName;
 
+      // Terminal units (VAV / fan-powered boxes) come off a schedule by the
+      // dozen — a school wing has 100+. Pricing them as 100 individual
+      // Equipment cards would bury the big-ticket units, so group them by
+      // model+size into one counted material line each (the estimator prices a
+      // VAV box per-each). Major units (AHU/RTU/split systems/condensers) stay
+      // individual Equipment-step cards.
+      const termGroups = new Map(); // "model|size" → { desc, qty, cfmSet }
       (hv.equipment || []).forEach(e => {
+        if (e.category === 'terminal') {
+          const size = e.size || '';
+          const model = e.model || '';
+          const key = `${e.type || 'VAV box'}|${model}|${size}`;
+          const g = termGroups.get(key) || { type: e.type || 'VAV box', model, size, qty: 0 };
+          g.qty += 1;
+          termGroups.set(key, g);
+          return;
+        }
         // Same-batch dedupe by tag: three screenshots of one sheet must not
         // produce three RTU-1s. (The merge below already dedupes against
         // units previously added to the Equipment step.)
         const tag = (e.tag || '').trim().toUpperCase();
         if (tag && equipmentImports.some(x => (x.tag || '').trim().toUpperCase() === tag)) return;
+        const model = [e.model, e.size && `${e.size}`].filter(Boolean).join(' ');
         equipmentImports.push({
           id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
-          tons: '', brand: '', model: '', refrigerant: 'R-410A', mca: '', mop: '',
-          voltage: '', location: '', cost: 0, task: 'New Installation',
-          notes: [e.type, e.notes].filter(Boolean).join(' · '),
+          tons: '', brand: '', model, refrigerant: 'R-410A', mca: '', mop: '',
+          voltage: e.electrical || '', location: '', cost: 0, task: 'New Installation',
+          notes: [e.type, e.cfm && `${e.cfm} CFM`, e.notes].filter(Boolean).join(' · '),
+        });
+      });
+      termGroups.forEach((g) => {
+        const desc = [g.type, g.size, g.model].filter(Boolean).join(' · ');
+        pushHvacPart(fileMeta.name, {
+          desc, qty: g.qty, unitCost: 0,
+          notes: [drawing].filter(Boolean).join(' · '),
         });
       });
 
@@ -229,8 +253,11 @@ export default function Step1_Setup({ onNext }) {
 
       const totalCfm = (hv.airDevices || []).reduce((s, d) => s + (Number(d.cfm) || 0) * (Number(d.qty) || 1), 0);
       const totalMbh = (hv.hydronicZones || []).reduce((s, z) => s + (Number(z.loadMBH) || 0), 0);
+      const majorUnits = (hv.equipment || []).filter(e => e.category !== 'terminal').length;
+      const termUnits = (hv.equipment || []).filter(e => e.category === 'terminal').length;
       const bits = [
-        `${(hv.equipment || []).length} unit(s)`,
+        `${majorUnits} unit(s)`,
+        termUnits ? `${termUnits} terminal box(es)` : '',
         `${(hv.airDevices || []).length} air device type(s)`,
         totalCfm ? `${totalCfm.toLocaleString()} CFM total` : '',
         `${(hv.ductRuns || []).length} duct size(s)`,

@@ -773,13 +773,81 @@ Return ONLY valid JSON, no markdown:
   return finishHvac(merged);
 }
 
+// Equipment SCHEDULE sheet (a table of tagged units), read from the PDF text
+// layer. This is where the equipment takeoff actually lives — every VAV box,
+// AHU, RTU, exhaust fan tagged with its model, size, and airflow. The spec
+// analyzer is explicitly told a spec has no tags/counts/sizes; a schedule is
+// the opposite, so it gets its own extractor that pulls exactly those.
+//
+// MAJOR units (AHU/RTU/DOAS/MUA/split-system condensers/fans/pumps) come back
+// one entry per tag → they become individual Equipment-step units. TERMINAL
+// units that repeat by the dozen (VAV/CV/fan-powered boxes) also come back one
+// entry per tag so the COUNT is exact and overlap-safe (tag dedup), and the UI
+// groups them by size for a clean line. Never sum grouped counts across chunks
+// — the 500-char chunk overlap would double-count; per-tag dedup can't.
+export async function analyzeHvacScheduleText(text, fileName) {
+  const prompt = `You are an expert commercial HVAC estimator reading EQUIPMENT SCHEDULE tables off a mechanical drawing set (VAV unit schedule, AHU schedule, RTU schedule, exhaust fan schedule, split-system/condensing-unit schedule, pump schedule, etc.). Every row is a real unit to price. Extract them.
+
+For EACH scheduled unit return one entry with:
+- tag: the unit mark exactly as shown (VAV-M101, AHU-M-01, RTU-1, EF-3, CU-2…). Every row has one — never blank it, never invent one.
+- category: "terminal" for VAV / CV / fan-powered / PIU terminal boxes (they repeat many times), otherwise "major".
+- type: plain-English equipment type (VAV box, Air Handling Unit, Rooftop Unit, Exhaust Fan, Condensing Unit, Split System, Pump…).
+- model: manufacturer / model no. if given (e.g. "Nailor 3001"), else "".
+- size: the defining size — VAV inlet (e.g. "6Ø"), tonnage ("5 ton"), or nominal size. "" if none.
+- cfm: airflow if given — for VAV give "max/min" (e.g. "350/175"); else "".
+- electrical: volts/phase or MCA/MOP if given, else "".
+- notes: anything cost-relevant (associated AHU, acoustic lining, mounting), short.
+
+RULES:
+- One entry PER TAG. Do NOT pre-total or group — list every tagged row; counting is done downstream. Getting every tag is what makes the count exact.
+- Read ONLY what the table states. Do not invent sizes or models.
+- Schedule-wide notes (basis-of-design, "or approved equal", substitution rules, furnished-by) → flags.
+
+Return ONLY valid JSON, no markdown:
+{"documentType":"hvac_schedule","equipment":[{"tag":"","category":"major|terminal","type":"","model":"","size":"","cfm":"","electrical":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence: which schedules this sheet carries and roughly how many units"}`;
+
+  const chunks = chunkText(text, SCOPE_CHUNK_SIZE, SCOPE_CHUNK_OVERLAP);
+  const merged = newHvacMerged();
+  merged.documentType = 'hvac_schedule';
+  const seenTag = new Set();
+
+  const results = await runChunkCalls(chunks, (chunk, i) => {
+    const chunkLabel = chunks.length > 1 ? ` (part ${i + 1} of ${chunks.length})` : '';
+    return `File: ${fileName}${chunkLabel}\n\nSchedule text:\n${chunk}\n\n${prompt}`;
+  }, 'You are an expert commercial HVAC estimator. Return only valid JSON.');
+
+  for (const r of results) {
+    if (r.error) { merged.flags.push({ type: 'warn', text: `Schedule part ${r.i + 1} of ${chunks.length} failed (${r.error}) — re-run to fill it in`, source: fileName }); continue; }
+    const parsed = r.parsed;
+    if (!parsed) { merged.flags.push({ type: 'warn', text: `Schedule part ${r.i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName }); continue; }
+    (parsed.equipment || []).forEach(e => {
+      const tag = String(e.tag || '').toUpperCase().trim();
+      // No tag → key on the unit's identity so a stray row still counts once,
+      // but a tagged row is deduped by tag (overlap-safe across chunks).
+      const key = tag || `${e.type || ''}|${e.size || ''}|${e.cfm || ''}`.toUpperCase();
+      if (!key.replace(/\|/g, '').trim() || seenTag.has(key)) return;
+      seenTag.add(key);
+      merged.equipment.push({
+        tag: e.tag || '', category: e.category === 'terminal' ? 'terminal' : 'major',
+        type: e.type || '', model: e.model || '', size: e.size || '',
+        cfm: e.cfm || '', electrical: e.electrical || '', notes: e.notes || '',
+      });
+    });
+    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    if (parsed.summary) merged.summaries.push(parsed.summary);
+  }
+  return finishHvac(merged);
+}
+
 // PDF upload of an HVAC document. A mechanical set MIXES page types: dense
-// general-notes / spec pages (bid from the words) and sparse drawing sheets
-// (bid from the graphics). We classify EACH page from its text layer and route
-// per page — spec pages to the text analyzer, drawing sheets to vision — then
-// merge. Classifying the whole document from its average text density sent a
-// mixed set where the notes page is dense straight to the spec analyzer, and
-// every drawing sheet (the ducts/diffusers) was lost.
+// general-notes / spec pages (bid from the words), equipment SCHEDULE tables
+// (bid from the tagged rows), and sparse drawing sheets (bid from the
+// graphics). We classify EACH page from its text layer and route per page —
+// schedules to the schedule extractor, spec pages to the text analyzer,
+// drawing sheets to vision — then merge. Classifying the whole document from
+// its average text density sent a mixed set where the notes page is dense
+// straight to the spec analyzer, and every drawing sheet (the ducts/diffusers)
+// was lost.
 const SPEC_PAGE_MIN_CHARS = 1800; // dense enough that it's prose, not a sheet
 const MAX_VISION_PAGES = 10;      // cap vision pages so a big set stays in budget
 
@@ -791,6 +859,26 @@ export function isSpecPage(text, hasScale = false) {
   const len = (text || '').length;
   if (len < SPEC_PAGE_MIN_CHARS || hasScale) return false;
   return (text.match(/\b(shall|provide|minimum|per\s|approved|comply)\b/gi) || []).length >= 4;
+}
+
+// Equipment/unit tags as they appear in a mechanical schedule table: a
+// discipline prefix + optional area letter + number (VAV-M101, AHU-E-01,
+// RTU-1, EF-3, CU-2, DOAS-1…). Shared by the detector and the extractor.
+const UNIT_TAG_RE = /\b(VAV|CV|FPB|PIU|RTU|AHU|DOAS|MAU|MUA|ERV|HRV|EF|SF|RF|TF|KEF|GEF|CU|ACCU|CUH|UH|FCU|HP|WSHP|PTAC|FC|AC|B|CH|CT|P|VRF)-?[A-Z]?-?\d+[A-Z]?\b/gi;
+
+// A schedule sheet is a TABLE of tagged equipment (VAV boxes, AHUs, RTUs,
+// exhaust fans…), not prose. It routes to the schedule extractor, which pulls
+// tags + sizes + counts — the exact opposite of the spec analyzer, which is
+// told a spec has none of those. Signature: the word SCHEDULE plus a healthy
+// crop of distinct unit tags. Checked BEFORE isSpecPage so a schedule sheet
+// carrying a few notes doesn't get misrouted to the prose analyzer (which
+// would throw away every count and size on the sheet).
+export function isScheduleSheet(text) {
+  const t = text || '';
+  if (t.length < 120) return false;
+  if (!/\bSCHEDULE\b/i.test(t)) return false;
+  const tags = new Set((t.match(UNIT_TAG_RE) || []).map(s => s.toUpperCase()));
+  return tags.size >= 5;
 }
 
 export async function analyzeHvacPlanPdf(file, fileName) {
@@ -809,28 +897,47 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     }
   } catch { /* no text layer — every page goes to vision below */ }
 
-  // Classify each page. Dense prose (general notes, CSI spec sections) → text;
-  // everything else (sparse label text = a drawing/schedule sheet) → vision.
-  const specPages = [], drawingPageNums = [];
+  // Classify each page from its text layer. Schedule table (tagged units) →
+  // schedule extractor; dense prose (general notes, spec sections) → spec text;
+  // everything else (sparse label text = a drawing sheet) → vision. Schedule is
+  // checked FIRST so a schedule sheet with a few notes isn't misrouted to the
+  // prose analyzer, which is told a spec has no counts and would drop them all.
+  const schedulePages = [], specPages = [], drawingPageNums = [];
   if (pages.length) {
     for (const p of pages) {
-      if (isSpecPage(p.text, !!scaleByPage[p.pageNum])) specPages.push(p.text);
+      const hasScale = !!scaleByPage[p.pageNum];
+      // A page with a real drawing scale is a plan sheet → vision, even if it
+      // lists a few tags. Schedule/spec routing is for the scale-less text pages.
+      if (!hasScale && isScheduleSheet(p.text)) schedulePages.push(p.text);
+      else if (isSpecPage(p.text, hasScale)) specPages.push(p.text);
       else drawingPageNums.push(p.pageNum);
     }
   }
 
-  // Text-only set (all pages dense prose, no drawings) → spec analyzer, done.
+  // Pull an analyzer's finished result into the page-level merge: equipment
+  // (tag-deduped, carrying schedule fields), flags, and summary.
+  const absorbResult = (res) => {
+    (res.equipment || []).forEach(e => {
+      const tag = String(e.tag || '').toUpperCase().trim();
+      const key = 'eq|' + (tag || `${e.type || ''}|${e.size || ''}|${e.cfm || ''}`.toUpperCase());
+      if (seen.has(key)) return; seen.add(key);
+      merged.equipment.push({ ...e, tag: e.tag || '' });
+    });
+    (res.flags || []).forEach(f => merged.flags.push({ ...f, source: fileName }));
+    if (res.summary) merged.summaries.push(res.summary);
+  };
+
+  // Text-only set (schedules + specs, no drawing sheets) → run the text
+  // analyzers and return; there's nothing for vision to read.
   if (pages.length && drawingPageNums.length === 0) {
-    return await analyzeHvacSpecText(specPages.join('\n\n'), fileName);
+    if (schedulePages.length) absorbResult(await analyzeHvacScheduleText(schedulePages.join('\n\n'), fileName));
+    if (specPages.length) absorbResult(await analyzeHvacSpecText(specPages.join('\n\n'), fileName));
+    return finishHvac(merged);
   }
 
-  // Spec pages first (cheap, batched), then vision the drawing sheets.
-  if (specPages.length) {
-    const specResult = await analyzeHvacSpecText(specPages.join('\n\n'), fileName);
-    absorbHvac(merged, specResult, seen);
-    (specResult.flags || []).forEach(f => merged.flags.push({ ...f, source: fileName }));
-    if (specResult.summary) merged.summaries.push(specResult.summary);
-  }
+  // Schedules and spec pages first (cheap, batched), then vision the drawings.
+  if (schedulePages.length) absorbResult(await analyzeHvacScheduleText(schedulePages.join('\n\n'), fileName));
+  if (specPages.length) absorbResult(await analyzeHvacSpecText(specPages.join('\n\n'), fileName));
 
   const { pages: rendered, truncated } = await renderPdfPagesToImages(file, {
     scaleFtPerInchByPage: scaleByPage,
@@ -875,7 +982,7 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   // Tell the estimator how the set was split so a missed sheet is visible.
   if (pages.length) {
     const drawnPages = [...new Set(rendered.map(r => r.pageNum))];
-    merged.flags.push({ type: 'info', text: `Read as a mechanical set: ${specPages.length} spec/notes page(s) analyzed as text, ${drawnPages.length} drawing sheet(s) read by vision (page${drawnPages.length === 1 ? '' : 's'} ${drawnPages.join(', ')}).`, source: fileName });
+    merged.flags.push({ type: 'info', text: `Read as a mechanical set: ${schedulePages.length} schedule sheet(s) + ${specPages.length} spec/notes page(s) analyzed as text, ${drawnPages.length} drawing sheet(s) read by vision (page${drawnPages.length === 1 ? '' : 's'} ${drawnPages.join(', ')}).`, source: fileName });
   }
   if (truncated) merged.flags.push({ type: 'warn', text: `More drawing sheets than the ${MAX_VISION_PAGES}-page vision limit — some sheets weren't read. Split the set and upload the mechanical plan sheets separately for a full takeoff.`, source: fileName });
   return finishHvac(merged);
