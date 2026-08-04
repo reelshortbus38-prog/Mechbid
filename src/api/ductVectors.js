@@ -39,9 +39,14 @@ export function isColored([r, g, b]) {
   return (mx - mn) > 40 && mx > 25;
 }
 
-// Cyan / blue are the conventional duct colors on a mechanical plan.
-export function isDuctColor([r, g, b]) {
-  return b > 150 && g > 120 && r < 180 && b >= r; // cyan (0,255,255) & light blues
+// Cyan / blue are the conventional duct colors on a mechanical plan. A duct
+// color must be SATURATED (isColored) and blue-dominant — a neutral gray with
+// r=g=b in the 151–179 band would otherwise sneak through, and on a grayscale
+// set (ducts distinguished by lineweight/layer, not color) that misreads the
+// gray architectural background as thousands of feet of duct.
+export function isDuctColor(rgb) {
+  const [r, , b] = rgb;
+  return isColored(rgb) && b >= r && b > 100 && (b - r) > 25; // cyan / light blues, never gray
 }
 
 // Walk a pdf.js operator list ({ fnArray, argsArray }) and sum stroked segment
