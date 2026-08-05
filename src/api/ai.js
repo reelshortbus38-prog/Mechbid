@@ -831,6 +831,7 @@ Return ONLY valid JSON, no markdown:
         tag: e.tag || '', category: e.category === 'terminal' ? 'terminal' : 'major',
         type: e.type || '', model: e.model || '', size: e.size || '',
         cfm: e.cfm || '', electrical: e.electrical || '', notes: e.notes || '',
+        source: 'schedule', // authoritative — suppresses plan-read duplicates in the batch
       });
     });
     (parsed.flags || []).forEach(f => merged.flags.push(f));
