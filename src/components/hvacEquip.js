@@ -31,12 +31,24 @@ export function isTerminalUnit(e = {}) {
   return TERMINAL_RE.test(`${e.type || ''} ${e.tag || ''}`);
 }
 
+// A cross-reference, not a real scheduled unit. In a VAV schedule every row
+// names the AHU it's "served by" (the Associated Unit column), and the
+// extractor sometimes turns that reference into its own AHU entry — inflating
+// the count (24 AHUs when the schedule lists 20). A REAL major schedule row
+// always carries at least a model or a capacity (CFM / tonnage / kW / voltage);
+// a bare tag with none of that is the give-away. Only applied to SCHEDULE
+// sources — a plan/vision read legitimately gives just a bare tag, so those
+// pass through.
+export function isPhantomScheduleUnit(e = {}) {
+  return e.source === 'schedule' && !e.model && !e.size && !e.cfm && !e.electrical;
+}
+
 export function partitionHvacEquipment(collected = []) {
   const hasSchedule = collected.some(c => c?.e?.source === 'schedule');
   const major = [];
   const seenTag = new Set();
   const termGroups = new Map(); // "type|model|size" → grouped line
-  let suppressed = 0;
+  let suppressed = 0, crossRefs = 0;
 
   for (const c of collected) {
     const e = c?.e;
@@ -53,6 +65,10 @@ export function partitionHvacEquipment(collected = []) {
       continue;
     }
 
+    // Bare schedule tag (no model/capacity) = an Associated-Unit cross-reference,
+    // not a real row. Drop it so a VAV schedule's AHU references don't inflate.
+    if (isPhantomScheduleUnit(e)) { crossRefs++; continue; }
+
     // Major unit — dedupe by tag across the whole batch (three shots of one
     // sheet must not make three RTU-1s). Tagless units always pass through.
     const tag = String(e.tag || '').trim().toUpperCase();
@@ -61,5 +77,5 @@ export function partitionHvacEquipment(collected = []) {
     major.push({ e, fileName: c.fileName, drawing: c.drawing });
   }
 
-  return { hasSchedule, suppressed, major, terminals: [...termGroups.values()] };
+  return { hasSchedule, suppressed, crossRefs, major, terminals: [...termGroups.values()] };
 }

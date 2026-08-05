@@ -801,6 +801,7 @@ For EACH scheduled unit return one entry with:
 RULES:
 - One entry PER TAG. Do NOT pre-total or group — list every tagged row; counting is done downstream. Getting every tag is what makes the count exact.
 - Read ONLY what the table states. Do not invent sizes or models.
+- A unit named only as ANOTHER unit's "Associated Unit" / "Served By" reference (e.g. the AHU a VAV row points to) is NOT its own scheduled unit — do not emit an entry for it. Only extract a unit that has its OWN schedule row with its own model/size/data.
 - Schedule-wide notes (basis-of-design, "or approved equal", substitution rules, furnished-by) → flags.
 
 Return ONLY valid JSON, no markdown:

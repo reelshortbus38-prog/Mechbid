@@ -253,7 +253,7 @@ export default function Step1_Setup({ onNext }) {
     // aside here. With no schedule in the batch, every plan unit maps through
     // as before.
     function mapCollectedEquipment() {
-      const { suppressed, major, terminals } = partitionHvacEquipment(hvacEquipCollected);
+      const { suppressed, crossRefs, major, terminals } = partitionHvacEquipment(hvacEquipCollected);
       major.forEach(({ e }) => {
         const model = [e.model, e.size].filter(Boolean).join(' ');
         equipmentImports.push({
@@ -269,6 +269,9 @@ export default function Step1_Setup({ onNext }) {
       });
       if (suppressed > 0) {
         flags.push({ type: 'info', text: `${suppressed} equipment tag(s) that vision read off the plan sheets were set aside — an equipment SCHEDULE in this batch is the authoritative source, so the same unit isn't counted twice (once on the plan, once in the schedule). If a unit is shown on a plan but missing from the schedules, add it manually on the Equipment step.`, source: 'System' });
+      }
+      if (crossRefs > 0) {
+        flags.push({ type: 'info', text: `${crossRefs} bare tag(s) with no model or capacity were dropped as cross-references — a VAV schedule names the AHU each box serves, and those "associated unit" references were being counted as their own AHUs. Real scheduled units (with a model or CFM/tonnage) are unaffected.`, source: 'System' });
       }
     }
 
