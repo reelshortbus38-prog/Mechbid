@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { partitionHvacEquipment, isTerminalUnit } from './hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit } from './hvacEquip.js';
 
 // The load-bearing rule: when a batch has an equipment SCHEDULE, the schedule
 // owns the count and plan-read duplicates are dropped — so the same VAV isn't
 // billed twice (once off the plan, once off the schedule). Bid-critical.
 
-const unit = (over = {}) => ({ tag: '', category: 'major', type: 'Unit', model: '', size: '', cfm: '', electrical: '', notes: '', ...over });
+// Default carries a model so a helper-built unit is a REAL scheduled row, not a
+// bare cross-reference — tests that exercise the phantom rule set fields inline.
+const unit = (over = {}) => ({ tag: '', category: 'major', type: 'Unit', model: 'GEN-100', size: '', cfm: '', electrical: '', notes: '', ...over });
 const c = (e, fileName = 'f.pdf', drawing = '') => ({ e, fileName, drawing });
 
 describe('partitionHvacEquipment', () => {
@@ -74,12 +76,33 @@ describe('partitionHvacEquipment', () => {
     const collected = [
       { e: { tag: 'VAV-1', category: 'major', type: 'VAV box', model: 'Nailor 3001', size: '6Ø', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
       { e: { tag: 'VAV-2', category: 'major', type: 'VAV box', model: 'Nailor 3001', size: '6Ø', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
-      { e: { tag: 'AHU-M-01', category: 'major', type: 'Air Handling Unit', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
+      { e: { tag: 'AHU-M-01', category: 'major', type: 'Air Handling Unit', cfm: '5000', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
     ];
     const { major, terminals } = partitionHvacEquipment(collected);
     expect(major.map(m => m.e.tag)).toEqual(['AHU-M-01']); // only the real major unit
     expect(terminals).toHaveLength(1);
     expect(terminals[0].qty).toBe(2);                       // both VAVs grouped
+  });
+
+  it('drops a bare schedule tag (AHU cross-reference) but keeps real scheduled units', () => {
+    // A real AHU row carries a model/CFM; the VAV schedule's "served by AHU-M-01"
+    // reference comes back as a bare tag — that one must not count as an AHU.
+    expect(isPhantomScheduleUnit({ tag: 'AHU-M-01', type: 'Air Handling Unit', source: 'schedule' })).toBe(true);
+    expect(isPhantomScheduleUnit({ tag: 'AHU-M-01', type: 'Air Handling Unit', cfm: '5000', source: 'schedule' })).toBe(false);
+    expect(isPhantomScheduleUnit({ tag: 'RTU-1', model: 'Trane', source: 'schedule' })).toBe(false);
+    // A bare tag from a PLAN (vision) is legitimate — that's all vision gives.
+    expect(isPhantomScheduleUnit({ tag: 'AHU-M-01', type: 'Air Handling Unit' })).toBe(false);
+  });
+
+  it('a bare associated-unit reference does not inflate the AHU count', () => {
+    const collected = [
+      { e: { tag: 'AHU-M-01', type: 'Air Handling Unit', cfm: '5000', model: 'Xetex', source: 'schedule' }, fileName: 's.pdf', drawing: '' }, // real row
+      { e: { tag: 'AHU-M-02', type: 'Air Handling Unit', source: 'schedule' }, fileName: 's.pdf', drawing: '' }, // bare cross-ref
+      { e: { tag: 'VAV-1', category: 'terminal', type: 'VAV box', size: '6Ø', cfm: '350/175', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
+    ];
+    const { major, crossRefs } = partitionHvacEquipment(collected);
+    expect(crossRefs).toBe(1);
+    expect(major.map(m => m.e.tag)).toEqual(['AHU-M-01']); // only the real AHU
   });
 
   it('a mixed PDF (schedule + vision in one result) suppresses only the vision units', () => {
