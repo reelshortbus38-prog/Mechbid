@@ -16,7 +16,7 @@ import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from '../components/scopeText.js';
 import { mapHvacType } from '../components/hvacTypes.js';
-import { partitionHvacEquipment } from '../components/hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -226,8 +226,8 @@ export default function Step1_Setup({ onNext }) {
 
       const totalCfm = (hv.airDevices || []).reduce((s, d) => s + (Number(d.cfm) || 0) * (Number(d.qty) || 1), 0);
       const totalMbh = (hv.hydronicZones || []).reduce((s, z) => s + (Number(z.loadMBH) || 0), 0);
-      const majorUnits = (hv.equipment || []).filter(e => e.category !== 'terminal').length;
-      const termUnits = (hv.equipment || []).filter(e => e.category === 'terminal').length;
+      const majorUnits = (hv.equipment || []).filter(e => !isTerminalUnit(e)).length;
+      const termUnits = (hv.equipment || []).filter(e => isTerminalUnit(e)).length;
       const bits = [
         `${majorUnits} unit(s)`,
         termUnits ? `${termUnits} terminal box(es)` : '',
