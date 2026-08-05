@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partitionHvacEquipment } from './hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit } from './hvacEquip.js';
 
 // The load-bearing rule: when a batch has an equipment SCHEDULE, the schedule
 // owns the count and plan-read duplicates are dropped — so the same VAV isn't
@@ -56,6 +56,30 @@ describe('partitionHvacEquipment', () => {
     ];
     const { major } = partitionHvacEquipment(collected);
     expect(major).toHaveLength(1);
+  });
+
+  it('classifies terminal-vs-major from the type, ignoring the flaky category field', () => {
+    // The whole point: an AI read that labels a VAV box "major" must STILL
+    // group as a terminal line — the type name is authoritative, category isn't.
+    expect(isTerminalUnit({ type: 'VAV box', category: 'major' })).toBe(true);
+    expect(isTerminalUnit({ type: '', tag: 'VAV-M101', category: 'major' })).toBe(true);
+    expect(isTerminalUnit({ type: 'Fan Powered Box', tag: 'FPB-1' })).toBe(true);
+    expect(isTerminalUnit({ type: 'CV terminal unit' })).toBe(true);
+    expect(isTerminalUnit({ type: 'Air Handling Unit', tag: 'AHU-M-01', category: 'terminal' })).toBe(false);
+    expect(isTerminalUnit({ type: 'Rooftop Unit', tag: 'RTU-1' })).toBe(false);
+    expect(isTerminalUnit({ type: 'Condensing Unit', tag: 'CU-2' })).toBe(false);
+  });
+
+  it('groups VAVs the AI mislabeled "major" as terminal lines, not equipment cards', () => {
+    const collected = [
+      { e: { tag: 'VAV-1', category: 'major', type: 'VAV box', model: 'Nailor 3001', size: '6Ø', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
+      { e: { tag: 'VAV-2', category: 'major', type: 'VAV box', model: 'Nailor 3001', size: '6Ø', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
+      { e: { tag: 'AHU-M-01', category: 'major', type: 'Air Handling Unit', source: 'schedule' }, fileName: 's.pdf', drawing: '' },
+    ];
+    const { major, terminals } = partitionHvacEquipment(collected);
+    expect(major.map(m => m.e.tag)).toEqual(['AHU-M-01']); // only the real major unit
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0].qty).toBe(2);                       // both VAVs grouped
   });
 
   it('a mixed PDF (schedule + vision in one result) suppresses only the vision units', () => {
