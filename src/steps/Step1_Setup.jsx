@@ -16,6 +16,7 @@ import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from '../components/scopeText.js';
 import { mapHvacType } from '../components/hvacTypes.js';
+import { partitionHvacEquipment } from '../components/hvacEquip.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -92,6 +93,7 @@ export default function Step1_Setup({ onNext }) {
     const flags = [];
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
+    const hvacEquipCollected = []; // raw HVAC units {e, fileName, drawing}, mapped after all files (see mapCollectedEquipment)
     let keyDates = null;         // pre-con / completion / job length from an ERF
     let rcNightStart = '';       // night-work start date from a schedule
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
@@ -160,43 +162,14 @@ export default function Step1_Setup({ onNext }) {
       const drawing = [hv.drawingNumber, hv.drawingTitle].filter(Boolean).join(' — ');
       if (hv.projectName && !projName) projName = hv.projectName;
 
-      // Terminal units (VAV / fan-powered boxes) come off a schedule by the
-      // dozen — a school wing has 100+. Pricing them as 100 individual
-      // Equipment cards would bury the big-ticket units, so group them by
-      // model+size into one counted material line each (the estimator prices a
-      // VAV box per-each). Major units (AHU/RTU/split systems/condensers) stay
-      // individual Equipment-step cards.
-      const termGroups = new Map(); // "model|size" → { desc, qty, cfmSet }
-      (hv.equipment || []).forEach(e => {
-        if (e.category === 'terminal') {
-          const size = e.size || '';
-          const model = e.model || '';
-          const key = `${e.type || 'VAV box'}|${model}|${size}`;
-          const g = termGroups.get(key) || { type: e.type || 'VAV box', model, size, qty: 0 };
-          g.qty += 1;
-          termGroups.set(key, g);
-          return;
-        }
-        // Same-batch dedupe by tag: three screenshots of one sheet must not
-        // produce three RTU-1s. (The merge below already dedupes against
-        // units previously added to the Equipment step.)
-        const tag = (e.tag || '').trim().toUpperCase();
-        if (tag && equipmentImports.some(x => (x.tag || '').trim().toUpperCase() === tag)) return;
-        const model = [e.model, e.size && `${e.size}`].filter(Boolean).join(' ');
-        equipmentImports.push({
-          id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
-          tons: '', brand: '', model, refrigerant: 'R-410A', mca: '', mop: '',
-          voltage: e.electrical || '', location: '', cost: 0, task: 'New Installation',
-          notes: [e.type, e.cfm && `${e.cfm} CFM`, e.notes].filter(Boolean).join(' · '),
-        });
-      });
-      termGroups.forEach((g) => {
-        const desc = [g.type, g.size, g.model].filter(Boolean).join(' · ');
-        pushHvacPart(fileMeta.name, {
-          desc, qty: g.qty, unitCost: 0,
-          notes: [drawing].filter(Boolean).join(' · '),
-        });
-      });
+      // Equipment mapping is DEFERRED to after every file is analyzed (see
+      // mapCollectedEquipment). We can't decide here whether to keep a plan's
+      // equipment tags, because that depends on whether ANOTHER file in the
+      // batch carries the authoritative schedule — and it may not have been
+      // read yet. Just collect the raw units + which file/drawing they came
+      // from; the post-pass suppresses plan-read duplicates once it knows the
+      // whole batch.
+      (hv.equipment || []).forEach(e => hvacEquipCollected.push({ e, fileName: fileMeta.name, drawing }));
 
       // Air devices and duct/pipe runs are MATERIALS, not notes — they stage
       // as reviewable HVAC material lines that land in the Equipment step's
@@ -268,6 +241,35 @@ export default function Step1_Setup({ onNext }) {
       (hv.flags || []).forEach(f => flags.push({ ...f, source: fileMeta.name }));
       newResults.push(`🌀 ${fileMeta.name}: HVAC plan read — ${bits} (review on the Equipment step & Review screen)`);
       if (hv.summary) newResults.push(`   → ${hv.summary}`);
+    }
+
+    // Map the batch's collected HVAC equipment once every file is analyzed.
+    // When ANY file carries a real equipment SCHEDULE, the schedule OWNS the
+    // equipment count and we drop the units vision read off the plan sheets:
+    // the same VAV-M101 sits on both the plan and the schedule, and counting
+    // it twice (once as a plan "unit", once as a schedule box) silently
+    // inflates the bid. Plans still contribute their ducts and air devices
+    // (mapped immediately above); only their duplicate equipment tags are set
+    // aside here. With no schedule in the batch, every plan unit maps through
+    // as before.
+    function mapCollectedEquipment() {
+      const { suppressed, major, terminals } = partitionHvacEquipment(hvacEquipCollected);
+      major.forEach(({ e }) => {
+        const model = [e.model, e.size].filter(Boolean).join(' ');
+        equipmentImports.push({
+          id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
+          tons: '', brand: '', model, refrigerant: 'R-410A', mca: '', mop: '',
+          voltage: e.electrical || '', location: '', cost: 0, task: 'New Installation',
+          notes: [e.type, e.cfm && `${e.cfm} CFM`, e.notes].filter(Boolean).join(' · '),
+        });
+      });
+      terminals.forEach((g) => {
+        const desc = [g.type, g.size, g.model].filter(Boolean).join(' · ');
+        pushHvacPart(g.fileName, { desc, qty: g.qty, unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') });
+      });
+      if (suppressed > 0) {
+        flags.push({ type: 'info', text: `${suppressed} equipment tag(s) that vision read off the plan sheets were set aside — an equipment SCHEDULE in this batch is the authoritative source, so the same unit isn't counted twice (once on the plan, once in the schedule). If a unit is shown on a plan but missing from the schedules, add it manually on the Equipment step.`, source: 'System' });
+      }
     }
 
     // Multiple screenshots in an HVAC batch are almost always SECTIONS of one
@@ -819,6 +821,10 @@ export default function Step1_Setup({ onNext }) {
         ? `⚠️ Cross-check: AI found RC work on ${missed.length} date(s) the direct read didn't — see Flags`
         : `✅ Cross-check: AI and the direct schedule read agree on RC dates`);
     }
+
+    // Now that every file in the batch is analyzed, map the collected HVAC
+    // equipment — dropping plan-read units the schedules already own.
+    mapCollectedEquipment();
 
     // Flags are low-risk (informational) — merge immediately.
     // Everything else waits in pendingReview until the user confirms it.
