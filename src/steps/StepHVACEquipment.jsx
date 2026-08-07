@@ -24,6 +24,7 @@ const HVAC_EQUIP_TYPES = [
   'Boiler',
   'Cooling Tower',
   'Exhaust Fan',
+  'Roof Hood / Gravity Vent',
   'Make-Up Air Unit (MAU)',
   // ── Data center / central plant ──
   'Chiller — Water-Cooled',
