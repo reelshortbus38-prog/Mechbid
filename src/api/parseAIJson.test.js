@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAIJson, isSpecPage, isScheduleSheet } from './ai.js';
+import { parseAIJson, isSpecPage, isScheduleSheet, isStrongSchedulePage } from './ai.js';
 
 // Per-page routing for mechanical-set PDFs: dense general-notes / spec pages
 // go to the text analyzer, sparse drawing sheets go to vision. Mirrors the
@@ -60,6 +60,20 @@ describe('isScheduleSheet', () => {
   it('needs both the word SCHEDULE and enough distinct tags', () => {
     expect(isScheduleSheet('VAV-1 VAV-2 VAV-3 VAV-4 VAV-5 VAV-6')).toBe(false); // no "schedule"
     expect(isScheduleSheet('EQUIPMENT SCHEDULE RTU-1 RTU-2')).toBe(false);      // too few tags
+  });
+
+  it('a dense schedule outranks a corner detail\'s scale note (strong page)', () => {
+    // Real failure: the primary equipment schedule sheet carried a detail with
+    // a "SCALE:" note, and the scale veto rerouted the WHOLE sheet to vision —
+    // the RTU/DHU/VRF rows were lost. A 14k+ char schedule table must qualify
+    // as "strong" so the router keeps it on the text path; sparse plan-sheet
+    // label text (2–8k chars) must not.
+    const denseSchedule = 'ROOFTOP UNIT SCHEDULE MARK MODEL CFM ' +
+      Array(300).fill('RTU-01 CAR-48 5000 RTU-02 CAR-48 5000 RTU-03 TR-60 6000 RTU-04 TR-60 6000 RTU-05 Y-72 7200 DHU-01 MUN-9 900').join(' ');
+    expect(denseSchedule.length).toBeGreaterThan(9000);
+    expect(isStrongSchedulePage(denseSchedule)).toBe(true);
+    const sparsePlanText = 'FLOOR PLAN SCHEDULE NOTE RTU-1 RTU-2 RTU-3 RTU-4 RTU-5 supply 24x12 up';
+    expect(isStrongSchedulePage(sparsePlanText)).toBe(false); // short → scale veto stands
   });
 });
 

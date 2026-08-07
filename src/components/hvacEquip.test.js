@@ -22,21 +22,48 @@ describe('partitionHvacEquipment', () => {
     expect(major.map(m => m.e.tag).sort()).toEqual(['AHU-1', 'RTU-1']);
   });
 
-  it('drops plan-read units once a schedule owns the count', () => {
+  it('drops plan-read units whose tag has a schedule row (the double-count)', () => {
     const collected = [
       // vision read these off the plan (no source)
       c(unit({ tag: 'VAV-M101', type: 'VAV box' }), 'plan.pdf'),
       c(unit({ tag: 'AHU-M-01', type: 'Air Handler' }), 'plan.pdf'),
-      // the schedule is authoritative
+      // the schedule carries the same tags — its copies win
       c(unit({ tag: 'AHU-M-01', type: 'Air Handling Unit', source: 'schedule' }), 'sched.pdf'),
       c(unit({ tag: 'VAV-M101', category: 'terminal', type: 'VAV box', model: 'Nailor 3001', size: '6Ø', source: 'schedule' }), 'sched.pdf'),
     ];
     const { hasSchedule, suppressed, major, terminals } = partitionHvacEquipment(collected);
     expect(hasSchedule).toBe(true);
-    expect(suppressed).toBe(2);              // both plan-read units set aside
+    expect(suppressed).toBe(2);              // both plan-read duplicates set aside
     expect(major.map(m => m.e.tag)).toEqual(['AHU-M-01']); // only the schedule's
     expect(terminals).toHaveLength(1);
     expect(terminals[0].qty).toBe(1);
+  });
+
+  it('keeps units that live ONLY on the drawings even when schedules exist', () => {
+    // The industrial-set regression: a small MAU/louver schedule must not wipe
+    // out the RTUs, VRF system, and fans that only appear on schematic sheets.
+    // (The wholesale version of the rule kept 10 of 96 real units.)
+    const collected = [
+      c(unit({ tag: 'MAU-01', type: 'Make-Up Air Unit', cfm: '30000', source: 'schedule' }), 'sched.pdf'),
+      c(unit({ tag: 'RTU-08', type: 'Rooftop Unit' }), 'diagram.pdf'),   // vision-only
+      c(unit({ tag: 'VRF-01', type: 'VRF Indoor Unit' }), 'diagram.pdf'),
+      c(unit({ tag: 'DHU-01', type: 'Desiccant Dehumidifier' }), 'diagram.pdf'),
+    ];
+    const { suppressed, major } = partitionHvacEquipment(collected);
+    expect(suppressed).toBe(0);
+    expect(major.map(m => m.e.tag).sort()).toEqual(['DHU-01', 'MAU-01', 'RTU-08', 'VRF-01']);
+  });
+
+  it('counts the same terminal tag once across plan sheets and schedules', () => {
+    const collected = [
+      c(unit({ tag: 'VAV-22', category: 'terminal', type: 'VAV box', size: '6Ø', source: 'schedule' }), 'sched.pdf'),
+      c(unit({ tag: 'VAV-22', category: 'terminal', type: 'VAV box' }), 'plan-left.png'),
+      c(unit({ tag: 'VAV-22', category: 'terminal', type: 'VAV box' }), 'plan-right.png'),
+      c(unit({ tag: 'VAV-23', category: 'terminal', type: 'VAV box' }), 'plan-left.png'), // plan-only VAV
+    ];
+    const { terminals } = partitionHvacEquipment(collected);
+    const total = terminals.reduce((s, t) => s + t.qty, 0);
+    expect(total).toBe(2); // VAV-22 once (schedule copy), VAV-23 once
   });
 
   it('groups repeated terminal boxes by type+model+size with a summed qty', () => {
@@ -105,16 +132,18 @@ describe('partitionHvacEquipment', () => {
     expect(major.map(m => m.e.tag)).toEqual(['AHU-M-01']); // only the real AHU
   });
 
-  it('a mixed PDF (schedule + vision in one result) suppresses only the vision units', () => {
+  it('a mixed PDF (schedule + vision in one result) suppresses only tag duplicates', () => {
     // analyzeHvacPlanPdf merges schedule rows (source) and vision reads (none)
-    // into one equipment array — suppression must work per-item, not per-file.
+    // into one equipment array — the vision copy of a scheduled tag is dropped,
+    // but a vision-only unit (EF-9 has no schedule row) survives.
     const collected = [
       c(unit({ tag: 'RTU-1', source: 'schedule' }), 'set.pdf'),
       c(unit({ tag: 'RTU-1', type: 'Rooftop' }), 'set.pdf'), // vision saw it on a plan page of the same PDF
       c(unit({ tag: 'EF-9', type: 'Exhaust Fan' }), 'set.pdf'), // vision-only, not scheduled
     ];
     const { suppressed, major } = partitionHvacEquipment(collected);
-    expect(suppressed).toBe(2);
-    expect(major.map(m => m.e.tag)).toEqual(['RTU-1']);
+    expect(suppressed).toBe(1);
+    expect(major.map(m => m.e.tag).sort()).toEqual(['EF-9', 'RTU-1']);
+    expect(major.find(m => m.e.tag === 'RTU-1').e.source).toBe('schedule'); // the schedule's copy won
   });
 });

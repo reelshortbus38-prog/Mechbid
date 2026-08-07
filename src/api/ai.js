@@ -883,6 +883,17 @@ export function isScheduleSheet(text) {
   return tags.size >= 5;
 }
 
+// A schedule sheet so text-dense it outranks a stated drawing scale. Schedule
+// sheets often carry a detail in one corner whose "SCALE: …" note made the
+// scale veto reroute the ENTIRE sheet to vision — on a real industrial set the
+// primary equipment schedule (RTU-01..08, DHU, VRF) was lost that way. A
+// scaled floor plan's label text runs 2–8k chars; a full schedule table runs
+// 14k+. The 9k floor keeps every plan sheet we've seen safely below the line.
+const SCHEDULE_OVERRIDES_SCALE_CHARS = 9000;
+export function isStrongSchedulePage(text) {
+  return (text || '').length >= SCHEDULE_OVERRIDES_SCALE_CHARS && isScheduleSheet(text);
+}
+
 export async function analyzeHvacPlanPdf(file, fileName) {
   const { renderPdfPagesToImages, extractPdfPagesText, detectDrawingScale, measureVectorDucts } = await import('./pdfRender.js');
 
@@ -909,8 +920,9 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     for (const p of pages) {
       const hasScale = !!scaleByPage[p.pageNum];
       // A page with a real drawing scale is a plan sheet → vision, even if it
-      // lists a few tags. Schedule/spec routing is for the scale-less text pages.
-      if (!hasScale && isScheduleSheet(p.text)) schedulePages.push(p.text);
+      // lists a few tags — UNLESS it's a dense schedule table (a corner detail's
+      // scale note must not reroute the primary equipment schedule to vision).
+      if (isScheduleSheet(p.text) && (!hasScale || isStrongSchedulePage(p.text))) schedulePages.push(p.text);
       else if (isSpecPage(p.text, hasScale)) specPages.push(p.text);
       else drawingPageNums.push(p.pageNum);
     }
