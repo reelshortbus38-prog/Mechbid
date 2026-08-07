@@ -30,6 +30,12 @@ export function mapHvacType(t) {
   if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
   if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
   if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
+  // Roof hoods (RH- series: intake/relief/exhaust/gravity hoods). A school set
+  // carries 40+, and without their own type they all pool into "Other". Kitchen
+  // hoods (Type I/II grease hoods, KH-) are a different animal — checked first
+  // so they never land in the roof-hood bucket.
+  if (/kitchen\s*hood|grease\s*hood|type\s*[i1l]{1,2}\s*hood|\bkh-/.test(s)) return 'Other';
+  if (/roof\s*hood|gravity\s*(hood|vent(ilator)?)|(intake|relief)\s*hood|^rh\b|\brh-/.test(s)) return 'Roof Hood / Gravity Vent';
   if (/exhaust|^ef\b|\bef-|^tf\b|\btf-/.test(s)) return 'Exhaust Fan';
   if (/\bpump\b|^p-?\d/.test(s)) return 'Chilled Water Pump'; // generic pump default
   return 'Other';

@@ -34,4 +34,17 @@ describe('mapHvacType — data center / central plant', () => {
     expect(mapHvacType('EF-3')).toBe('Exhaust Fan');
     expect(mapHvacType('something odd')).toBe('Other');
   });
+
+  it('gives roof hoods their own type — a school set carries 40+', () => {
+    expect(mapHvacType('RH-D-01')).toBe('Roof Hood / Gravity Vent');
+    expect(mapHvacType('Roof Hood')).toBe('Roof Hood / Gravity Vent');
+    expect(mapHvacType('Gravity ventilator')).toBe('Roof Hood / Gravity Vent');
+    expect(mapHvacType('Intake hood, Area C')).toBe('Roof Hood / Gravity Vent');
+    expect(mapHvacType('Relief hood')).toBe('Roof Hood / Gravity Vent');
+    // Kitchen grease hoods are NOT roof hoods — different scope entirely
+    expect(mapHvacType('Kitchen hood KH-1')).toBe('Other');
+    expect(mapHvacType('Type I grease hood')).toBe('Other');
+    // and the RH- rule must not swallow HRVs or anything containing "rh"
+    expect(mapHvacType('HRV-2')).toBe('Heat Recovery Ventilator (HRV)');
+  });
 });
