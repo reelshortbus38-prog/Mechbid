@@ -1001,8 +1001,31 @@ export default function Step1_Setup({ onNext }) {
   const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode);
   const hasFiles = modeFiles.length > 0 || emailText.trim().length > 0;
 
+  // Fresh session (nothing named, saved, or uploaded) → lead with the pitch.
+  // The claim that separates MechBid from the HVAC-only takeoff tools is the
+  // TWO-TRADE coverage, so that's the headline — not generic AI promises.
+  const showHero = !state.projName && !state.jobId && state.uploadedFiles.length === 0;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {showHero && (
+        <div style={{ padding: '22px 20px 18px', borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.card2 }}>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+            One estimator. <span style={{ color: colors.green }}>Both trades.</span>
+          </div>
+          <div style={{ fontSize: 13, color: colors.textDim, marginTop: 8, lineHeight: 1.55, maxWidth: 640 }}>
+            MechBid is built for mechanical contractors who do <b style={{ color: colors.text }}>commercial refrigeration and HVAC</b> —
+            not one or the other. Upload the plans, schedules, and scope docs; the AI reads them and builds the
+            takeoff, then cross-checks its own numbers and shows you the flags.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+            {['❄️ Rack remodels & case moves', '🌀 VAV & equipment schedules', '📐 Ductwork measured to scale', '🧾 Materials → labor → proposal'].map(t => (
+              <span key={t} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, border: `1px solid ${colors.border}`, color: colors.textDim, whiteSpace: 'nowrap' }}>{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mode selector */}
       <div>
