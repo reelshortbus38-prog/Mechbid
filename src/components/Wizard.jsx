@@ -208,7 +208,7 @@ export default function Wizard() {
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1 }}>
                 MECH<span style={{ color: colors.green }}>BID</span>
               </div>
-              <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.05em' }}>REFRIGERATION & HVAC</div>
+              <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.05em' }}>REFRIGERATION + HVAC · ONE ESTIMATOR</div>
             </div>
           </div>
 
