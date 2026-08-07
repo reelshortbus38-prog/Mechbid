@@ -5,6 +5,7 @@ import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
+import { groupHvacParts } from '../components/partGroups.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
 const HVAC_EQUIP_TYPES = [
@@ -42,6 +43,29 @@ const HVAC_EQUIP_TYPES = [
 // ones on data-center chiller schedules; the split-system gases stay for comfort HVAC.
 const REFRIGERANTS = ['R-410A', 'R-32', 'R-454B', 'R-407C', 'R-22 (existing)', 'R-134a', 'R-513A', 'R-1233zd(E)', 'R-514A', 'R-123 (legacy)', 'Other'];
 
+// A schedule-heavy job imports 100+ units. Past this count the flat card list
+// switches to collapsible per-type groups (AHUs together, roof fans together…),
+// each with a count, priced tally, and cost subtotal on the header. Cards keep
+// their tag order within a group and sort by tag so AHU-E-01…AHU-M-12 read in
+// sequence.
+const EQUIP_GROUP_THRESHOLD = 5;
+function groupEquipmentByType(equipment) {
+  const buckets = new Map();
+  for (const e of equipment) {
+    const t = e.type || 'Other';
+    if (!buckets.has(t)) buckets.set(t, []);
+    buckets.get(t).push(e);
+  }
+  // Fixed dropdown order first (RTUs before fans before pumps), unknowns last.
+  const rank = t => { const i = HVAC_EQUIP_TYPES.indexOf(t); return i === -1 ? HVAC_EQUIP_TYPES.length : i; };
+  return [...buckets.entries()]
+    .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
+    .map(([type, units]) => ({
+      type,
+      units: [...units].sort((a, b) => String(a.tag || '').localeCompare(String(b.tag || ''), undefined, { numeric: true })),
+    }));
+}
+
 const TASK_TYPES = [
   'New Installation',
   'Replacement',
@@ -57,8 +81,10 @@ const TASK_TYPES = [
 ];
 
 // ── EQUIPMENT CARD ─────────────────────────────────────────────────────────────
-function EquipmentCard({ equip, onUpdate, onRemove, supplier }) {
-  const [expanded, setExpanded] = useState(true);
+function EquipmentCard({ equip, onUpdate, onRemove, supplier, startCollapsed = false }) {
+  // Inside a type group (a 175-unit school set) cards start collapsed — the
+  // header row carries tag/type/cost, tap to edit. Flat lists open as before.
+  const [expanded, setExpanded] = useState(!startCollapsed);
 
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -212,10 +238,17 @@ function EquipmentCard({ equip, onUpdate, onRemove, supplier }) {
 }
 
 // ── MISC PARTS ─────────────────────────────────────────────────────────────────
+// Above this many lines the flat list becomes a scroll marathon (a real school
+// set lands ~100), so it switches to collapsible sections with subtotals.
+const GROUPED_THRESHOLD = 8;
+
 function MiscParts() {
   const { state, dispatch } = useStore();
   const supplier = state.preferredSupplier || 'RE Michel';
   const parts = state.hvacParts || [];
+  // Per-section expand/collapse. Unset = default: small sections open, big
+  // ones collapsed — the header's count/footage/subtotal still tells the story.
+  const [openGroups, setOpenGroups] = useState({});
 
   function addPart() {
     dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc: '', qty: 1, unitCost: 0, total: 0 }] });
@@ -279,6 +312,20 @@ function MiscParts() {
   }
   const unpricedCount = parts.filter(p => (p.unitCost || 0) === 0 && defaultHvacPrice(p.desc) > 0).length;
 
+  // One row, used by both the flat list and the grouped sections. Tighter
+  // padding than the old rows — on a 100-line table that alone halves the scroll.
+  const renderPartRow = (p, i) => (
+    <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 10px', borderBottom: `1px solid ${colors.border}`, background: i % 2 === 0 ? 'transparent' : colors.surface + '30' }}>
+      <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
+      {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
+      <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+      <TblInput type="number" value={p.unitCost || ''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
+      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
+      <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
+      <button onClick={() => dispatch({ type: 'SET', key: 'hvacParts', value: parts.filter(x => x.id !== p.id) })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+    </div>
+  );
+
   return (
     <div>
       <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
@@ -297,17 +344,33 @@ function MiscParts() {
         <Card><EmptyState icon="🔧" title="No parts yet" subtitle="Add thermostats, controls, refrigerant, filters, curb adapters, etc." /></Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          {parts.map((p, i) => (
-            <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, background: i % 2 === 0 ? 'transparent' : colors.surface + '30' }}>
-              <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
-              {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
-              <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
-              <TblInput type="number" value={p.unitCost || ''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
-              <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
-              <button onClick={() => dispatch({ type: 'SET', key: 'hvacParts', value: parts.filter(x => x.id !== p.id) })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
-            </div>
-          ))}
+          {parts.length <= GROUPED_THRESHOLD
+            ? parts.map((p, i) => renderPartRow(p, i))
+            : groupHvacParts(parts).map(g => {
+              const open = openGroups[g.key] ?? (g.count <= 6);
+              return (
+                <div key={g.key}>
+                  <div
+                    onClick={() => setOpenGroups({ ...openGroups, [g.key]: !open })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', cursor: 'pointer', userSelect: 'none', background: colors.surface, borderBottom: `1px solid ${colors.border}` }}
+                  >
+                    <span style={{ fontSize: 13 }}>{g.icon}</span>
+                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700 }}>{g.label}</span>
+                    <span style={{ fontSize: 11, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
+                      {g.count} line{g.count === 1 ? '' : 's'}{g.qtyUnit && g.qtySum > 0 ? ` · ${g.qtySum.toLocaleString()} ${g.qtyUnit}` : ''}
+                    </span>
+                    {/* Where the pricing work remains, at a glance — green when done */}
+                    <span style={{ fontSize: 10, color: g.pricedCount === g.count ? colors.green : colors.yellow, fontFamily: "'DM Mono', monospace" }}>
+                      {g.pricedCount}/{g.count} priced
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green }}>{fmt(g.subtotal)}</span>
+                    <span style={{ color: colors.textDim, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+                  </div>
+                  {open && g.parts.map((p, i) => renderPartRow(p, i))}
+                </div>
+              );
+            })}
           <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 12, color: colors.textDim }}>Parts Total</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: colors.green }}>{fmt(partsTotal)}</span>
@@ -417,6 +480,7 @@ function DuctCalculator() {
 export default function StepHVACEquipment({ onNext, onBack }) {
   const { state, dispatch } = useStore();
   const [supplierSearch, setSupplierSearch] = useState('');
+  const [openEquipGroups, setOpenEquipGroups] = useState({}); // per-type expand state (grouped view)
   const supplier = state.preferredSupplier || 'RE Michel';
 
   const equipment = state.hvacEquipment || [];
@@ -512,7 +576,7 @@ export default function StepHVACEquipment({ onNext, onBack }) {
               subtitle="Add each HVAC unit to be installed or replaced — RTUs, split systems, AHUs, VAV boxes"
             />
           </Card>
-        ) : (
+        ) : equipment.length <= EQUIP_GROUP_THRESHOLD ? (
           equipment.map(e => (
             <EquipmentCard
               key={e.id}
@@ -522,6 +586,44 @@ export default function StepHVACEquipment({ onNext, onBack }) {
               supplier={supplier}
             />
           ))
+        ) : (
+          groupEquipmentByType(equipment).map(g => {
+            const open = openEquipGroups[g.type] ?? false;
+            const priced = g.units.filter(u => (u.cost || 0) > 0).length;
+            const subtotal = g.units.reduce((s, u) => s + (u.cost || 0), 0);
+            return (
+              <div key={g.type} style={{ marginBottom: 10 }}>
+                <div
+                  onClick={() => setOpenEquipGroups({ ...openEquipGroups, [g.type]: !open })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', userSelect: 'none', background: colors.card2, border: `1px solid ${colors.border}`, borderRadius: 10 }}
+                >
+                  <span style={{ fontSize: 15 }}>🌀</span>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700 }}>{g.type}</span>
+                  <span style={{ fontSize: 11, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>× {g.units.length}</span>
+                  <span style={{ fontSize: 10, color: priced === g.units.length ? colors.green : colors.yellow, fontFamily: "'DM Mono', monospace" }}>
+                    {priced}/{g.units.length} priced
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  {subtotal > 0 && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green }}>{fmt(subtotal)}</span>}
+                  <span style={{ color: colors.textDim, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+                </div>
+                {open && (
+                  <div style={{ paddingLeft: 10, marginTop: 8 }}>
+                    {g.units.map(e => (
+                      <EquipmentCard
+                        key={e.id}
+                        equip={e}
+                        onUpdate={(field, value) => updateEquipment(e.id, field, value)}
+                        onRemove={() => removeEquipment(e.id)}
+                        supplier={supplier}
+                        startCollapsed
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
