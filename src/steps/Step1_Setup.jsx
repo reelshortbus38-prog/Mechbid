@@ -268,7 +268,7 @@ export default function Step1_Setup({ onNext }) {
         pushHvacPart(g.fileName, { desc, qty: g.qty, unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') });
       });
       if (suppressed > 0) {
-        flags.push({ type: 'info', text: `${suppressed} equipment tag(s) that vision read off the plan sheets were set aside — an equipment SCHEDULE in this batch is the authoritative source, so the same unit isn't counted twice (once on the plan, once in the schedule). If a unit is shown on a plan but missing from the schedules, add it manually on the Equipment step.`, source: 'System' });
+        flags.push({ type: 'info', text: `${suppressed} plan-read duplicate(s) suppressed — these tags also have a schedule row, and the schedule's copy (with model/size data) is the one kept. Units that appear ONLY on the drawings are still included.`, source: 'System' });
       }
       if (crossRefs > 0) {
         flags.push({ type: 'info', text: `${crossRefs} bare tag(s) with no model or capacity were dropped as cross-references — a VAV schedule names the AHU each box serves, and those "associated unit" references were being counted as their own AHUs. Real scheduled units (with a model or CFM/tonnage) are unaffected.`, source: 'System' });

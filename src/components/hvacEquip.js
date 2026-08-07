@@ -47,16 +47,39 @@ export function partitionHvacEquipment(collected = []) {
   const hasSchedule = collected.some(c => c?.e?.source === 'schedule');
   const major = [];
   const seenTag = new Set();
+  const seenTermTag = new Set();
   const termGroups = new Map(); // "type|model|size" → grouped line
   let suppressed = 0, crossRefs = 0;
 
-  for (const c of collected) {
-    const e = c?.e;
-    if (!e) continue;
-    // Schedule owns the equipment count — drop plan-read units when one exists.
-    if (hasSchedule && e.source !== 'schedule') { suppressed++; continue; }
+  // Suppression is PER-TAG, not wholesale: a plan-read unit is dropped only
+  // when the SAME tag has a schedule row (that's the double-count). A unit
+  // that lives only on the drawings — an industrial set carries whole VRF
+  // systems and fan lineups on schematic sheets with no schedule row at all —
+  // must survive, or the takeoff loses most of its equipment. (The wholesale
+  // "schedule owns everything" version of this rule did exactly that: 96 read,
+  // 10 kept.) Schedule rows are processed FIRST so the schedule's copy is the
+  // one that wins whenever both exist.
+  const tagOf = (e) => String(e?.tag || '').trim().toUpperCase();
+  const scheduleTags = new Set(
+    collected.filter(c => c?.e?.source === 'schedule').map(c => tagOf(c.e)).filter(Boolean)
+  );
+  const ordered = [
+    ...collected.filter(c => c?.e?.source === 'schedule'),
+    ...collected.filter(c => c?.e && c.e.source !== 'schedule'),
+  ];
+
+  for (const c of ordered) {
+    const e = c.e;
+    const tag = tagOf(e);
+    if (e.source !== 'schedule' && tag && scheduleTags.has(tag)) { suppressed++; continue; }
 
     if (isTerminalUnit(e)) {
+      // Tag-dedupe terminals across the batch too: the same VAV drawn on two
+      // plan sheets (or on a plan AND in a schedule) is one box, not two.
+      if (tag) {
+        if (seenTermTag.has(tag)) continue;
+        seenTermTag.add(tag);
+      }
       const type = e.type || 'VAV box', model = e.model || '', size = e.size || '';
       const key = `${type}|${model}|${size}`;
       const g = termGroups.get(key) || { type, model, size, qty: 0, fileName: c.fileName, drawing: c.drawing };
@@ -71,7 +94,6 @@ export function partitionHvacEquipment(collected = []) {
 
     // Major unit — dedupe by tag across the whole batch (three shots of one
     // sheet must not make three RTU-1s). Tagless units always pass through.
-    const tag = String(e.tag || '').trim().toUpperCase();
     if (tag && seenTag.has(tag)) continue;
     if (tag) seenTag.add(tag);
     major.push({ e, fileName: c.fileName, drawing: c.drawing });
