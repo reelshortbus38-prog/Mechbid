@@ -59,7 +59,14 @@ export function partitionHvacEquipment(collected = []) {
   // "schedule owns everything" version of this rule did exactly that: 96 read,
   // 10 kept.) Schedule rows are processed FIRST so the schedule's copy is the
   // one that wins whenever both exist.
-  const tagOf = (e) => String(e?.tag || '').trim().toUpperCase();
+  // Canonical tag for COMPARISON (display keeps the original): uppercase,
+  // punctuation/spacing stripped, and leading zeros dropped from digit runs —
+  // the schedule writes RTU-01..08 while the airflow diagrams label the same
+  // units RTU-4, RTU-5, and exact matching counted them twice (12 RTUs on a
+  // set that has 8).
+  // (Only LEADING zeros of a digit run are stripped — RTU-100 must stay
+  // distinct from RTU-10, so zeros after a digit are untouched.)
+  const tagOf = (e) => String(e?.tag || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').replace(/(?<![0-9])0+(?=[0-9])/g, '');
   const scheduleTags = new Set(
     collected.filter(c => c?.e?.source === 'schedule').map(c => tagOf(c.e)).filter(Boolean)
   );
