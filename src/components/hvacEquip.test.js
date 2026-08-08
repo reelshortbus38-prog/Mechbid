@@ -87,6 +87,29 @@ describe('partitionHvacEquipment', () => {
     expect(major).toHaveLength(1);
   });
 
+  it('matches RTU-04 (schedule) with RTU-4 (diagram label) as ONE unit', () => {
+    // The industrial set's schedule pads tags (RTU-01..08) but its airflow
+    // diagrams don't (RTU-4, RTU-5) — exact matching counted 12 RTUs on a set
+    // with 8. Zero-padding and punctuation must not defeat the dedupe.
+    const collected = [
+      c(unit({ tag: 'RTU-04', type: 'Rooftop Unit', cfm: '5000', source: 'schedule' }), 'sched.pdf'),
+      c(unit({ tag: 'RTU-4', type: 'Rooftop Unit' }), 'diagram.pdf'),   // same unit, unpadded
+      c(unit({ tag: 'RTU 4', type: 'Rooftop Unit' }), 'diagram2.pdf'),  // same unit, spaced
+      c(unit({ tag: 'RTU-40', type: 'Rooftop Unit' }), 'diagram.pdf'),  // DIFFERENT unit
+    ];
+    const { suppressed, major } = partitionHvacEquipment(collected);
+    expect(suppressed).toBe(2); // both diagram spellings of RTU-4 fold into the schedule row
+    expect(major.map(m => m.e.tag).sort()).toEqual(['RTU-04', 'RTU-40']);
+  });
+
+  it('strips only LEADING zeros — RTU-100 stays distinct from RTU-10', () => {
+    const collected = [
+      c(unit({ tag: 'RTU-100', type: 'Rooftop Unit' })),
+      c(unit({ tag: 'RTU-10', type: 'Rooftop Unit' })),
+    ];
+    expect(partitionHvacEquipment(collected).major).toHaveLength(2);
+  });
+
   it('classifies terminal-vs-major from the type, ignoring the flaky category field', () => {
     // The whole point: an AI read that labels a VAV box "major" must STILL
     // group as a terminal line — the type name is authoritative, category isn't.
