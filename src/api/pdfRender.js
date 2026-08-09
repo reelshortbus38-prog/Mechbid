@@ -119,7 +119,16 @@ export function detectDrawingScale(text) {
     const y = Number(m[2]);
     if (x > 0 && y > 0) vals.add(Math.round((y / x) * 1000) / 1000);
   }
-  return vals.size === 1 ? [...vals][0] : null;
+  if (vals.size !== 1) return null;
+  const ftPerInch = [...vals][0];
+  // Sanity range: real plan-measurement scales run from 1/2"=1' (2 ft/in) up
+  // to 1"=60' site plans. Anything below 2 is a DETAIL scale (3"=1'-0",
+  // 1"=1'-0") picked up from a detail drawing's title — measuring duct runs
+  // against one produced garbage footage on a real set (a "0.323 ft/in" plan
+  // page measured runs at ~1/30 of their true length). No scale is safer than
+  // a wrong one: the page still gets vision-read, just without a stamped bar.
+  if (ftPerInch < 2 || ftPerInch > 60) return null;
+  return ftPerInch;
 }
 
 // Stamp a calibrated scale bar (alternating black/white segments, labeled in
