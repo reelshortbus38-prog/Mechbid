@@ -158,6 +158,24 @@ function ReviewRow({ item, onChange, onToggle }) {
           </div>
         )}
 
+        {item.kind === 'hvacEquip' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Tag</div>
+              <Input value={item.data.tag || ''} onChange={e => onChange({ ...item.data, tag: e.target.value })} style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Type</div>
+              <Input value={item.data.type || ''} onChange={e => onChange({ ...item.data, type: e.target.value })} style={{ fontSize: 12 }} />
+            </div>
+            {(item.data.notes || item.data.cfm) && (
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: colors.textDim }}>
+                {[item.data.cfm && `${item.data.cfm} CFM`, item.data.notes].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
+
         {item.kind === 'projectInfo' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>
@@ -259,6 +277,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     fieldTask: items.filter(i => i.kind === 'fieldTask'),
     part: items.filter(i => i.kind === 'part'),
     hvacPart: items.filter(i => i.kind === 'hvacPart'),
+    hvacEquip: items.filter(i => i.kind === 'hvacEquip'),
   };
 
   const pendingCount = items.filter(i => i.status === 'pending').length;
@@ -273,6 +292,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     fieldTask: { title: 'Field Tasks', icon: '🔨' },
     part: { title: 'Parts', icon: '🔧' },
     hvacPart: { title: 'HVAC Materials (takeoff)', icon: '💨' },
+    hvacEquip: { title: 'HVAC Equipment — needs confirmation', icon: '🌀' },
   };
 
   return (

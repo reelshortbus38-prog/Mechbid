@@ -253,7 +253,18 @@ export default function Step1_Setup({ onNext }) {
     // aside here. With no schedule in the batch, every plan unit maps through
     // as before.
     function mapCollectedEquipment() {
-      const { suppressed, crossRefs, major, terminals } = partitionHvacEquipment(hvacEquipCollected);
+      const { suppressed, crossRefs, major, review, terminals } = partitionHvacEquipment(hvacEquipCollected);
+      // Family-closure suspects (an RTU-09 the schedule doesn't know, an
+      // untagged "make-up air unit" mention) go to the Accept/Skip review
+      // screen instead of silently onto the Equipment step — the user
+      // confirms real drawing-only gear and skips misreads in one pass.
+      review.forEach(({ e, fileName, reason }) => {
+        pushPending('hvacEquip', 'vision', fileName, {
+          tag: e.tag || '', type: e.type || '', model: e.model || '', size: e.size || '',
+          cfm: e.cfm || '', electrical: e.electrical || '',
+          notes: [reason && `⚠ ${reason}`, e.notes].filter(Boolean).join(' · '),
+        });
+      });
       major.forEach(({ e }) => {
         const model = [e.model, e.size].filter(Boolean).join(' ');
         equipmentImports.push({
@@ -869,6 +880,7 @@ export default function Step1_Setup({ onNext }) {
     const newFieldTasks = [];
     const newRackParts = [];
     const newHvacParts = []; // HVAC takeoff → Equipment step materials table
+    const newHvacEquipment = []; // confirmed family-closure units → Equipment step
     const newScheduleItems = [];
     const newNotes = []; // redline scope notes → flags
     let projName = '';
@@ -960,6 +972,19 @@ export default function Step1_Setup({ onNext }) {
           if (!unitCost) unitCost = defaultHvacPrice(item.data.desc);
           newHvacParts.push({ id: uid(), desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
         }
+      } else if (item.kind === 'hvacEquip') {
+        // Confirmed family-closure unit → the Equipment step, mapped the same
+        // way schedule imports are. Dedupe by tag against everything present.
+        const tag = (item.data.tag || '').trim().toUpperCase();
+        if (tag && ((state.hvacEquipment || []).some(x => (x.tag || '').trim().toUpperCase() === tag)
+          || newHvacEquipment.some(x => (x.tag || '').trim().toUpperCase() === tag))) return;
+        newHvacEquipment.push({
+          id: uid(), tag: item.data.tag || '', type: mapHvacType(item.data.type || item.data.tag),
+          tons: '', brand: '', model: [item.data.model, item.data.size].filter(Boolean).join(' '),
+          refrigerant: 'R-410A', mca: '', mop: '', voltage: item.data.electrical || '', location: '',
+          cost: 0, task: 'New Installation',
+          notes: [item.data.type, item.data.cfm && `${item.data.cfm} CFM`, item.data.notes].filter(Boolean).join(' · '),
+        });
       } else if (item.kind === 'projectInfo') {
         if (item.data.projName && !projName) projName = item.data.projName;
         if (item.data.projAddr && !projAddr) projAddr = item.data.projAddr;
@@ -973,6 +998,7 @@ export default function Step1_Setup({ onNext }) {
       fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
       rackParts: [...state.rackParts, ...newRackParts],
       hvacParts: [...(state.hvacParts || []), ...newHvacParts],
+      ...(newHvacEquipment.length ? { hvacEquipment: [...(state.hvacEquipment || []), ...newHvacEquipment] } : {}),
       rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
       flags: [...(state.flags || []), ...newNotes],
       ...(projName && !state.projName ? { projName } : {}),

@@ -43,6 +43,55 @@ export function isPhantomScheduleUnit(e = {}) {
   return e.source === 'schedule' && !e.model && !e.size && !e.cfm && !e.electrical;
 }
 
+// A narrative or diagram sometimes hands the extractor a RANGE or LIST as one
+// unit's tag — "RTU-01 THRU RTU-08" from a sequence-of-operations paragraph,
+// "EF-12, EF-13, EF-14" from a callout. Left alone, that phrase matches no
+// schedule tag and survives as a phantom 13th RTU. Expanding it into the
+// individual tags lets per-tag dedupe fold every one into its schedule row.
+// Returns an array of entries (clones with individual tags); a normal tag
+// passes through as [e]. Expansion is capped so a misparse can't explode.
+const RANGE_RE = /^\s*([A-Z][A-Z-]*-?)(\d{1,3})\s*(?:THRU|THROUGH|TO)\s*(?:[A-Z][A-Z-]*-?)?(\d{1,3})\s*$/i;
+const LOOKS_LIKE_TAG = /^[A-Z][A-Z-]*-?\d{1,3}[A-Z]?$/i;
+export function expandEquipTags(e = {}) {
+  const tag = String(e.tag || '').trim();
+  if (!tag) return [e];
+  // Range: "RTU-01 THRU RTU-08" (separator must be a WORD — a bare dash is
+  // indistinguishable from the dashes inside tags).
+  const r = tag.match(RANGE_RE);
+  if (r) {
+    const [, prefix, a, b] = r;
+    const n1 = parseInt(a, 10), n2 = parseInt(b, 10);
+    const pad = a.startsWith('0') ? a.length : 0; // keep the zero-padding style of the start tag
+    if (n2 > n1 && n2 - n1 <= 40) {
+      return Array.from({ length: n2 - n1 + 1 }, (_, k) => {
+        const num = String(n1 + k);
+        return { ...e, tag: `${prefix}${pad ? num.padStart(pad, '0') : num}` };
+      });
+    }
+  }
+  // List: "EF-12, EF-13 & EF-14" / "EF-12/EF-13" — every token must look like
+  // a tag (or a bare number inheriting the previous token's prefix).
+  if (/[,/&]/.test(tag)) {
+    const tokens = tag.split(/\s*[,/&]\s*|\s+AND\s+/i).map(s => s.trim()).filter(Boolean);
+    if (tokens.length >= 2 && tokens.length <= 40) {
+      const out = [];
+      let lastPrefix = '';
+      for (const tok of tokens) {
+        if (LOOKS_LIKE_TAG.test(tok)) {
+          lastPrefix = (tok.match(/^[A-Z-]+-?/i) || [''])[0];
+          out.push({ ...e, tag: tok });
+        } else if (/^\d{1,3}[A-Z]?$/i.test(tok) && lastPrefix) {
+          out.push({ ...e, tag: `${lastPrefix}${tok}` });
+        } else {
+          return [e]; // one non-tag token → treat the whole thing as a single odd tag
+        }
+      }
+      return out;
+    }
+  }
+  return [e];
+}
+
 export function partitionHvacEquipment(collected = []) {
   const hasSchedule = collected.some(c => c?.e?.source === 'schedule');
   const major = [];
@@ -67,12 +116,27 @@ export function partitionHvacEquipment(collected = []) {
   // (Only LEADING zeros of a digit run are stripped — RTU-100 must stay
   // distinct from RTU-10, so zeros after a digit are untouched.)
   const tagOf = (e) => String(e?.tag || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').replace(/(?<![0-9])0+(?=[0-9])/g, '');
+  // Expand range/list tags FIRST so "RTU-01 THRU RTU-08" becomes eight real
+  // tags that fold into their schedule rows instead of one phantom unit.
+  const flat = [];
+  for (const c of collected) {
+    if (!c?.e) continue;
+    for (const e of expandEquipTags(c.e)) flat.push({ ...c, e });
+  }
   const scheduleTags = new Set(
-    collected.filter(c => c?.e?.source === 'schedule').map(c => tagOf(c.e)).filter(Boolean)
+    flat.filter(c => c.e.source === 'schedule').map(c => tagOf(c.e)).filter(Boolean)
   );
+  // Family closure: the letter prefixes the schedules enumerate (RTU, EF, MAU…).
+  // A non-schedule unit claiming a NEW member of a scheduled family (RTU-09 on
+  // a set whose schedule lists RTU-01..08) is almost always a misread — but not
+  // certainly, so it goes to REVIEW rather than silently in or out.
+  const familyOf = (canon) => (canon.match(/^[A-Z]+/) || [''])[0];
+  const scheduleFamilies = new Set([...scheduleTags].map(familyOf).filter(Boolean));
+  const hasScheduleRows = scheduleTags.size > 0;
+  const review = [];
   const ordered = [
-    ...collected.filter(c => c?.e?.source === 'schedule'),
-    ...collected.filter(c => c?.e && c.e.source !== 'schedule'),
+    ...flat.filter(c => c.e.source === 'schedule'),
+    ...flat.filter(c => c.e.source !== 'schedule'),
   ];
 
   for (const c of ordered) {
@@ -99,6 +163,22 @@ export function partitionHvacEquipment(collected = []) {
     // not a real row. Drop it so a VAV schedule's AHU references don't inflate.
     if (isPhantomScheduleUnit(e)) { crossRefs++; continue; }
 
+    // Family closure → review, not straight onto the Equipment step:
+    //  • a plan/narrative unit claiming a NEW member of a scheduled family
+    //    (RTU-09 when the schedule lists RTU-01..08) is usually a misread;
+    //  • a TAGLESS non-schedule unit, when real schedules exist, is usually a
+    //    narrative mention ("provide make-up air unit") of gear already counted.
+    // Both are "usually" — so the user confirms via the Accept/Skip review
+    // screen. A unit from a family the schedules DON'T cover (the VRF system
+    // that lives only on diagrams) still passes straight through.
+    if (e.source !== 'schedule' && hasScheduleRows) {
+      if (tag && scheduleFamilies.has(familyOf(tag)) && !scheduleTags.has(tag)) {
+        if (!seenTag.has(tag)) { seenTag.add(tag); review.push({ e, fileName: c.fileName, drawing: c.drawing, reason: `not in the ${familyOf(tag)} schedule` }); }
+        continue;
+      }
+      if (!tag) { review.push({ e, fileName: c.fileName, drawing: c.drawing, reason: 'untagged mention' }); continue; }
+    }
+
     // Major unit — dedupe by tag across the whole batch (three shots of one
     // sheet must not make three RTU-1s). Tagless units always pass through.
     if (tag && seenTag.has(tag)) continue;
@@ -106,5 +186,5 @@ export function partitionHvacEquipment(collected = []) {
     major.push({ e, fileName: c.fileName, drawing: c.drawing });
   }
 
-  return { hasSchedule, suppressed, crossRefs, major, terminals: [...termGroups.values()] };
+  return { hasSchedule, suppressed, crossRefs, major, review, terminals: [...termGroups.values()] };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit } from './hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit, expandEquipTags } from './hvacEquip.js';
 
 // The load-bearing rule: when a batch has an equipment SCHEDULE, the schedule
 // owns the count and plan-read duplicates are dropped — so the same VAV isn't
@@ -97,9 +97,11 @@ describe('partitionHvacEquipment', () => {
       c(unit({ tag: 'RTU 4', type: 'Rooftop Unit' }), 'diagram2.pdf'),  // same unit, spaced
       c(unit({ tag: 'RTU-40', type: 'Rooftop Unit' }), 'diagram.pdf'),  // DIFFERENT unit
     ];
-    const { suppressed, major } = partitionHvacEquipment(collected);
+    const { suppressed, major, review } = partitionHvacEquipment(collected);
     expect(suppressed).toBe(2); // both diagram spellings of RTU-4 fold into the schedule row
-    expect(major.map(m => m.e.tag).sort()).toEqual(['RTU-04', 'RTU-40']);
+    expect(major.map(m => m.e.tag)).toEqual(['RTU-04']);
+    // RTU-40 is an unknown member of a scheduled family → asks for confirmation
+    expect(review.map(r => r.e.tag)).toEqual(['RTU-40']);
   });
 
   it('strips only LEADING zeros — RTU-100 stays distinct from RTU-10', () => {
@@ -168,5 +170,61 @@ describe('partitionHvacEquipment', () => {
     expect(suppressed).toBe(1);
     expect(major.map(m => m.e.tag).sort()).toEqual(['EF-9', 'RTU-1']);
     expect(major.find(m => m.e.tag === 'RTU-1').e.source).toBe('schedule'); // the schedule's copy won
+  });
+});
+
+describe('expandEquipTags', () => {
+  it('expands THRU ranges into individual tags, keeping padding style', () => {
+    const out = expandEquipTags({ tag: 'RTU-01 THRU RTU-08', type: 'Rooftop Unit' });
+    expect(out).toHaveLength(8);
+    expect(out[0].tag).toBe('RTU-01');
+    expect(out[7].tag).toBe('RTU-08');
+    expect(out.every(e => e.type === 'Rooftop Unit')).toBe(true);
+  });
+
+  it('expands comma/ampersand lists, with bare numbers inheriting the prefix', () => {
+    expect(expandEquipTags({ tag: 'EF-12, EF-13 & EF-14' }).map(e => e.tag)).toEqual(['EF-12', 'EF-13', 'EF-14']);
+    expect(expandEquipTags({ tag: 'EF-12, 13, 14' }).map(e => e.tag)).toEqual(['EF-12', 'EF-13', 'EF-14']);
+  });
+
+  it('leaves normal tags, odd strings, and absurd ranges alone', () => {
+    expect(expandEquipTags({ tag: 'RTU-04' })).toHaveLength(1);
+    expect(expandEquipTags({ tag: 'RTU-01 THRU RTU-900' })).toHaveLength(1); // cap
+    expect(expandEquipTags({ tag: 'SEE SCHEDULE, NOTE 3' })).toHaveLength(1); // non-tag token
+    expect(expandEquipTags({ tag: '' })).toHaveLength(1);
+  });
+});
+
+describe('family closure → review', () => {
+  const sched = (tag, over = {}) => ({ e: { tag, type: 'x', cfm: '1000', source: 'schedule', ...over }, fileName: 's.pdf', drawing: '' });
+  const plan = (tag, over = {}) => ({ e: { tag, type: 'x', ...over }, fileName: 'p.pdf', drawing: '' });
+
+  it('routes an unknown member of a scheduled family to review, not equipment', () => {
+    const { major, review } = partitionHvacEquipment([sched('RTU-01'), sched('RTU-02'), plan('RTU-09')]);
+    expect(major.map(m => m.e.tag)).toEqual(['RTU-01', 'RTU-02']);
+    expect(review.map(r => r.e.tag)).toEqual(['RTU-09']);
+  });
+
+  it('a THRU-range mention folds into schedule rows instead of surviving as a unit', () => {
+    const collected = [sched('RTU-01'), sched('RTU-02'), plan('RTU-01 THRU RTU-02', { notes: 'BMS narrative' })];
+    const { major, review, suppressed } = partitionHvacEquipment(collected);
+    expect(major).toHaveLength(2);
+    expect(review).toHaveLength(0);
+    expect(suppressed).toBe(2); // both expanded tags matched schedule rows
+  });
+
+  it('keeps drawing-only families (VRF) without review noise', () => {
+    const { major, review } = partitionHvacEquipment([sched('MAU-01'), plan('VRF-01'), plan('VRF-02')]);
+    expect(major.map(m => m.e.tag).sort()).toEqual(['MAU-01', 'VRF-01', 'VRF-02']);
+    expect(review).toHaveLength(0);
+  });
+
+  it('sends tagless mentions to review only when schedules exist', () => {
+    const withSched = partitionHvacEquipment([sched('MAU-01'), plan('', { type: 'Make-Up Air Unit' })]);
+    expect(withSched.review).toHaveLength(1);
+    expect(withSched.major.map(m => m.e.tag)).toEqual(['MAU-01']);
+    const noSched = partitionHvacEquipment([plan('', { type: 'Make-Up Air Unit' })]);
+    expect(noSched.review).toHaveLength(0);
+    expect(noSched.major).toHaveLength(1); // vision-only job keeps tagless units
   });
 });
