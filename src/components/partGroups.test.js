@@ -86,3 +86,29 @@ describe('groupHvacParts', () => {
     expect(groups.map(g => g.key)).toEqual(['other']);
   });
 });
+
+// The proposal itemizes HVAC materials from these groups. Every priced part in
+// the bid total must land in exactly one group, or the customer sees a total
+// they can't reconcile from the printed lines — the same dispute the
+// refrigeration proposal avoids by itemizing its materials.
+describe('proposal coverage', () => {
+  it('every priced part lands in exactly one group and subtotals reconcile', () => {
+    const parts = [
+      p('Ductwork — 22x16 duct (supply trunk)', { qty: 20, unitCost: 4, total: 80 }),
+      p('Ductwork — 8"ø round duct', { qty: 6, unitCost: 5, total: 30 }),
+      p('Ductwork — 1"ø round duct (drain)', { qty: 10, unitCost: 3, total: 30 }),
+      p('VAV Box · 6Ø · Nailor 3001', { qty: 26, unitCost: 850, total: 22100 }),
+      p('Galvanized sheet metal — 24 ga', { dgen: true, qty: 900, unitCost: 2.1, total: 1890 }),
+      p('Programmable / BMS thermostat', { qty: 4, unitCost: 180, total: 720 }),
+      p('Curb adapter', { qty: 2, unitCost: 450, total: 900 }),
+    ];
+    const groups = groupHvacParts(parts);
+    const lineCount = groups.reduce((s, g) => s + g.count, 0);
+    expect(lineCount).toBe(parts.length);                       // nothing dropped
+    const grandTotal = groups.reduce((s, g) => s + g.subtotal, 0);
+    expect(grandTotal).toBe(parts.reduce((s, x) => s + x.total, 0)); // dollars reconcile
+    // and no part appears twice
+    const ids = groups.flatMap(g => g.parts.map(x => x.id));
+    expect(new Set(ids).size).toBe(parts.length);
+  });
+});
