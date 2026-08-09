@@ -6,6 +6,7 @@ import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { groupHvacParts } from '../components/partGroups.js';
 import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
+import { checkBidReadiness } from '../components/bidReadiness.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
 // produces an ESTIMATE — the contractor is responsible for verifying takeoff,
@@ -711,6 +712,52 @@ function BidRisks() {
   );
 }
 
+// ── BID READINESS (PRE-FLIGHT) ─────────────────────────────────────────────────
+// Deterministic checks that the printed number is actually a bid: everything
+// priced, footage entered, labor present. A live set imported 95 units at $0
+// and nothing in the app objected — this is what objects. Blockers are red and
+// specific; warnings are things an estimator may do deliberately. Never blocks
+// the Print button, just refuses to let a wrong number leave quietly.
+function BidReadiness({ totals }) {
+  const { state } = useStore();
+  const { blockers, warnings, ready } = checkBidReadiness(state, totals);
+
+  if (ready && warnings.length === 0) {
+    return (
+      <Card style={{ background: colors.greenFaint, border: `1px solid ${colors.green}55` }}>
+        <Row style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 16 }}>✅</span>
+          <div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700 }}>Bid checks passed</div>
+            <div style={{ fontSize: 11, color: colors.textDim }}>Everything is priced, footage is entered, and labor is in. Ready to send.</div>
+          </div>
+        </Row>
+      </Card>
+    );
+  }
+
+  const tone = blockers.length ? colors.red : colors.yellow;
+  return (
+    <Card style={{ background: tone + '10', border: `1px solid ${tone}55` }}>
+      <SLabel style={{ margin: 0 }}>{blockers.length ? '🛑 Before you send this bid' : '⚠️ Worth a look before you send'}</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, margin: '6px 0 14px', lineHeight: 1.6 }}>
+        {blockers.length
+          ? `${blockers.length} thing${blockers.length === 1 ? '' : 's'} would make the printed number wrong.`
+          : 'Nothing is broken — these are just judgment calls worth confirming.'}
+      </div>
+      {[...blockers, ...warnings].map(i => (
+        <div key={i.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: 13, flexShrink: 0 }}>{i.severity === 'blocker' ? '🛑' : '⚠️'}</span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: i.severity === 'blocker' ? colors.red : colors.yellow }}>{i.title}</div>
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2, lineHeight: 1.5 }}>{i.detail}</div>
+          </div>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 // ── MAIN STEP 6 ────────────────────────────────────────────────────────────────
 export default function Step6_Proposal({ onBack }) {
   const { state, dispatch } = useStore();
@@ -722,8 +769,10 @@ export default function Step6_Proposal({ onBack }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Scope gaps first — they change what's being bid, so they come before
-          markup, scenarios, and the number the customer sees. */}
+          markup, scenarios, and the number the customer sees. Then the
+          pre-flight: is this number even finished? */}
       <BidRisks />
+      <BidReadiness totals={totals} />
 
       {/* Store details & RC schedule — refrigeration-only (RC case-move
           schedule, pre-con/RCC dates don't apply to HVAC jobs) */}
