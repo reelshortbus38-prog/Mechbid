@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useStore, saveJob, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
+import { useStore, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import AuthButton from './AuthModal.jsx';
@@ -60,6 +60,7 @@ export default function Wizard() {
   const [showPriceBook, setShowPriceBook] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('');
+  const [saveFailed, setSaveFailed] = useState(''); // sticky: work isn't on disk
   const [jobs, setJobs] = useState({});
   const importInputRef = useRef(null);
 
@@ -127,7 +128,12 @@ export default function Wizard() {
     if (!state.projName && !state.jobId) return;
     const t = setTimeout(() => {
       const id = saveJob(state);
-      if (id && id !== state.jobId) dispatch({ type: 'MERGE', payload: { jobId: id } });
+      // A failed save must never read as "✓ Saved" — that's how an estimator
+      // loses an afternoon's work believing it was on disk. The warning stays
+      // up (no auto-clear) until a later save succeeds.
+      if (!id) { setSaveFailed(getLastSaveError()); return; }
+      setSaveFailed('');
+      if (id !== state.jobId) dispatch({ type: 'MERGE', payload: { jobId: id } });
       cloudPush(id);
       setSaveIndicator('✓ Saved');
       setTimeout(() => setSaveIndicator(''), 1000);
@@ -139,10 +145,13 @@ export default function Wizard() {
   function handleSave() {
     const id = saveJob(state);
     if (id) {
+      setSaveFailed('');
       dispatch({ type: 'MERGE', payload: { jobId: id } });
       cloudPush(id);
       setSaveIndicator(user ? '✅ Saved · synced' : '✅ Saved');
       setTimeout(() => setSaveIndicator(''), 2000);
+    } else {
+      setSaveFailed(getLastSaveError());
     }
   }
 
@@ -230,6 +239,14 @@ export default function Wizard() {
           </Row>
         </div>
       </div>
+
+      {/* Save failure — sticky and loud. The estimator has to know the bid
+          they're building is NOT on disk; it clears when a save succeeds. */}
+      {saveFailed && (
+        <div style={{ background: colors.red, color: '#fff', padding: '10px 16px', fontSize: 12, lineHeight: 1.5 }}>
+          <strong>⚠️ NOT SAVED — your work is only in this tab.</strong> {saveFailed}
+        </div>
+      )}
 
       {/* Progress bar */}
       <div style={{ background: colors.surface, borderBottom: `1px solid ${colors.border}`, overflowX: 'auto' }}>
