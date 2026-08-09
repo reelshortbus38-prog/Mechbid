@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
+  saveJob, getLastSaveError,
   normalizePipeSize, pipeSizeBucket,
   calcLaborPeriodCost, calcRackTaskCost, calcRackLaborTotal,
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
@@ -175,5 +176,47 @@ describe('defaultHvacPrice', () => {
   it('returns 0 for anything unknown', () => {
     expect(defaultHvacPrice('some random line')).toBe(0);
     expect(defaultHvacPrice('')).toBe(0);
+  });
+});
+
+// A silent save failure is the worst bug an estimating tool can have — the
+// estimator keeps building a bid that isn't being persisted. saveJob must
+// report failure (return null + a reason) instead of swallowing it.
+describe('saveJob failure reporting', () => {
+  const realLS = globalThis.localStorage;
+  afterEach(() => { globalThis.localStorage = realLS; });
+
+  function stubStorage(setItem) {
+    globalThis.localStorage = { getItem: () => '{}', setItem, removeItem() {} };
+  }
+
+  it('returns an id and clears the error on success', () => {
+    let written = null;
+    stubStorage((k, v) => { written = v; });
+    const id = saveJob({ projName: 'Store 47', mode: 'Commercial Refrigeration' });
+    expect(id).toBeTruthy();
+    expect(getLastSaveError()).toBe('');
+    expect(written).toContain('Store 47');
+  });
+
+  it('returns null and names the quota problem when storage is full', () => {
+    stubStorage(() => { const e = new Error('full'); e.name = 'QuotaExceededError'; throw e; });
+    expect(saveJob({ projName: 'Big Job' })).toBeNull();
+    expect(getLastSaveError()).toMatch(/storage is full/i);
+    expect(getLastSaveError()).toMatch(/delete old jobs|sign in/i); // tells them the fix
+  });
+
+  it('reports other failures too, without pretending they succeeded', () => {
+    stubStorage(() => { throw new Error('boom'); });
+    expect(saveJob({ projName: 'X' })).toBeNull();
+    expect(getLastSaveError()).toMatch(/boom/);
+  });
+
+  it('strips session-scoped blob preview URLs so dead links are not persisted', () => {
+    let written = '';
+    stubStorage((k, v) => { written = v; });
+    saveJob({ projName: 'J', uploadedFiles: [{ id: '1', name: 'plan.pdf', previewUrl: 'blob:http://x/y' }] });
+    expect(written).toContain('plan.pdf');
+    expect(written).not.toContain('blob:');
   });
 });

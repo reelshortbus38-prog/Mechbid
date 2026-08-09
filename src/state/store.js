@@ -357,20 +357,44 @@ export function fmtDec(n) {
 // ── LOCAL STORAGE ──────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mechbid_jobs_v2';
 
+// Why the last saveJob failed, for the UI to show. A silent save failure is
+// the worst bug an estimating tool can have — the estimator keeps working on a
+// bid that isn't being persisted — so failures are reported, never swallowed.
+let lastSaveError = '';
+export function getLastSaveError() { return lastSaveError; }
+
+// Browsers signal a full localStorage with QuotaExceededError (code 22) or, on
+// Safari/iPad, the legacy name below. Worth naming exactly: the fix the user
+// needs (delete old jobs / sign in to sync) is different from a generic error.
+function isQuotaError(e) {
+  return e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+}
+
 export function saveJob(state) {
   try {
     const jobs = loadAllJobs();
     const id = state.jobId || uid();
+    // Blob URLs (uploadedFiles[].previewUrl) are session-scoped — they're dead
+    // links after a reload, so storing them wastes quota and leaves a "View"
+    // button that opens nothing. Drop them on the way to disk.
+    const data = { ...state, jobId: id };
+    if (Array.isArray(data.uploadedFiles)) {
+      data.uploadedFiles = data.uploadedFiles.map(({ previewUrl, ...f }) => f);
+    }
     jobs[id] = {
       id,
       name: state.projName || 'Untitled',
       mode: state.mode,
       lastEdited: new Date().toISOString(),
-      data: { ...state, jobId: id },
+      data,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+    lastSaveError = '';
     return id;
   } catch (e) {
+    lastSaveError = isQuotaError(e)
+      ? 'Browser storage is full. Delete old jobs under 💾 Jobs (or sign in, so jobs sync to the cloud) — then save again.'
+      : `Save failed: ${e?.message || 'unknown error'}`;
     console.warn('Save failed:', e);
     return null;
   }
