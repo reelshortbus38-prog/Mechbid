@@ -14,10 +14,19 @@ describe('detectDrawingScale', () => {
     expect(detectDrawingScale('1/2" = 1\'-0"')).toBe(2);
   });
 
-  it('parses mixed-number and engineering scales', () => {
-    expect(detectDrawingScale('SCALE: 1 1/2" = 1\'-0"')).toBeCloseTo(0.667, 2);
+  it('parses engineering scales', () => {
     expect(detectDrawingScale('SCALE: 1" = 20\'')).toBe(20);
-    expect(detectDrawingScale('1" = 1\'-0"')).toBe(1);
+  });
+
+  it('rejects DETAIL scales — measuring duct runs against one is garbage', () => {
+    // A detail's title ("3" = 1'-0"", "1" = 1'-0"", "1 1/2" = 1'-0"") is a
+    // real scale but not a plan-measurement scale: on a real set a misparsed
+    // 0.323 ft/in page measured duct runs at ~1/30 of their true length.
+    // Below 2 ft/in (or above 60) return null — no ruler beats a wrong ruler.
+    expect(detectDrawingScale('SCALE: 1 1/2" = 1\'-0"')).toBeNull();
+    expect(detectDrawingScale('1" = 1\'-0"')).toBeNull();
+    expect(detectDrawingScale('SCALE: 3" = 1\'-0"')).toBeNull();
+    expect(detectDrawingScale('SCALE: 1" = 100\'')).toBeNull(); // beyond site-plan range
   });
 
   it('tolerates unicode quotes from PDF text layers', () => {
