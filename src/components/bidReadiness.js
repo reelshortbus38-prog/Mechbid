@@ -1,0 +1,113 @@
+// ── BID READINESS (PRE-FLIGHT) ───────────────────────────────────────────────
+// The takeoff can be perfect and the bid still catastrophically wrong, because
+// nothing stopped the estimator from printing before the numbers were filled
+// in. A real case from a live set: 95 units imported, every one at $0, Equipment
+// Cost $0 — print that and you've bid a two-school mechanical package for the
+// price of the labor. Nothing in the app said a word.
+//
+// These are deterministic pre-send checks over the job state. BLOCKERS are
+// things that make the printed number wrong (unpriced gear, no labor, duct with
+// no footage). WARNINGS are things a competent estimator might do on purpose
+// (zero markup on a cost-plus job, no project name yet), so they inform without
+// crying wolf. Nothing here ever blocks printing — an estimator sometimes sends
+// an intentionally partial number — it just refuses to let it happen silently.
+//
+// Pure over (state, totals); unit-tested with no React or network.
+import { partGroupOf } from './partGroups.js';
+
+const isDuctLine = (p) => ['duct-rect', 'duct-round'].includes(partGroupOf(p));
+const num = (v) => Number(v) || 0;
+
+// Equipment lists and material lists differ per mode; everything downstream is
+// the same, so normalize once here.
+function jobLists(state) {
+  switch (state.mode) {
+    case 'Commercial HVAC':
+      return { equip: state.hvacEquipment || [], parts: state.hvacParts || [], equipLabel: 'equipment unit' };
+    case 'Residential HVAC':
+      return { equip: state.resEquipment || [], parts: state.resParts || [], equipLabel: 'equipment unit' };
+    default: // Commercial Refrigeration — materials list, plus contractor-supplied rack parts
+      return {
+        equip: [],
+        parts: [...(state.lineItems || []), ...(state.rackParts || []).filter(p => !p.storeSupplied)],
+        equipLabel: 'equipment unit',
+      };
+  }
+}
+
+export function checkBidReadiness(state = {}, totals = {}) {
+  const issues = [];
+  const { equip, parts } = jobLists(state);
+
+  // 1. Unpriced equipment — the single most expensive mistake available.
+  const unpricedEquip = equip.filter(e => num(e.cost) <= 0);
+  if (unpricedEquip.length > 0) {
+    const tags = unpricedEquip.map(e => e.tag).filter(Boolean).slice(0, 6);
+    issues.push({
+      key: 'unpricedEquipment', severity: 'blocker',
+      title: `${unpricedEquip.length} of ${equip.length} equipment units have no cost`,
+      detail: `They contribute $0 to the bid${tags.length ? ` — e.g. ${tags.join(', ')}` : ''}. Price them on the Equipment step, or delete the ones that aren't in your scope.`,
+      count: unpricedEquip.length,
+    });
+  }
+
+  // 2. Duct lines with no footage — you'll buy this metal; at qty 0 it costs
+  //    nothing in the bid and converts to nothing in the purchase units.
+  const ductNoFootage = parts.filter(p => isDuctLine(p) && !p.dgen && num(p.qty) <= 0);
+  if (ductNoFootage.length > 0) {
+    issues.push({
+      key: 'ductNoFootage', severity: 'blocker',
+      title: `${ductNoFootage.length} duct line${ductNoFootage.length === 1 ? '' : 's'} still have no footage`,
+      detail: 'Scale the run lengths off the plan and enter them in the Qty box, then re-run Duct → Purchase Units. Until then this ductwork is free in your bid.',
+      count: ductNoFootage.length,
+    });
+  }
+
+  // 3. Priced-at-zero material lines that DO have a quantity — a real counted
+  //    item nobody costed. (Duct footage lines are excluded: they're priced by
+  //    the purchase-unit conversion, not per foot.)
+  const unpricedParts = parts.filter(p => num(p.qty) > 0 && num(p.unitCost) <= 0 && num(p.total) <= 0 && !isDuctLine(p));
+  if (unpricedParts.length > 0) {
+    issues.push({
+      key: 'unpricedParts', severity: 'blocker',
+      title: `${unpricedParts.length} material line${unpricedParts.length === 1 ? '' : 's'} have a quantity but no price`,
+      detail: 'Use “Fill default prices” for a ballpark, or price them from the supply house. Counted items at $0 quietly shrink the bid.',
+      count: unpricedParts.length,
+    });
+  }
+
+  // 4. No labor at all. Every one of these jobs is installed by somebody.
+  const labor = num(totals.laborTotal) + num(totals.rackLaborTotal) + num(totals.fieldTasksTotal);
+  if (labor <= 0) {
+    issues.push({
+      key: 'noLabor', severity: 'blocker',
+      title: 'No labor in the bid',
+      detail: 'Set the crew and periods on the Labor step. A materials-only number is not a bid.',
+      count: 0,
+    });
+  }
+
+  // 5. Selling at cost. Legitimate on a cost-plus or T&M job, so: warning.
+  if (num(totals.markupAmt) <= 0 && num(totals.markupBase) > 0) {
+    issues.push({
+      key: 'noMarkup', severity: 'warn',
+      title: 'Markup is zero — this bid sells material and equipment at cost',
+      detail: 'Intentional on a cost-plus job. Otherwise set a markup on this step.',
+      count: 0,
+    });
+  }
+
+  // 6. The proposal prints a header; an untitled one looks unfinished.
+  if (!String(state.projName || '').trim()) {
+    issues.push({
+      key: 'noProjectName', severity: 'warn',
+      title: 'No project name',
+      detail: 'The printed proposal will just say “Project”. Set it on the Setup step.',
+      count: 0,
+    });
+  }
+
+  const blockers = issues.filter(i => i.severity === 'blocker');
+  const warnings = issues.filter(i => i.severity === 'warn');
+  return { issues, blockers, warnings, ready: blockers.length === 0 };
+}
