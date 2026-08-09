@@ -127,7 +127,16 @@ export function Flag({ flag }) {
       <span style={{ fontSize: 14, flexShrink: 0 }}>{s.icon}</span>
       <div>
         {flag.source && <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 2 }}>{flag.source}</div>}
-        <div style={{ fontSize: 12, color: colors.text, lineHeight: 1.5 }}>{flag.text}</div>
+        <div style={{ fontSize: 12, color: colors.text, lineHeight: 1.5 }}>
+          {flag.text}
+          {/* A general note printed on every sheet collapses to one entry —
+              the count is itself information ("this applies set-wide"). */}
+          {flag.count > 1 && (
+            <span style={{ marginLeft: 6, fontSize: 10, fontFamily: "'DM Mono', monospace", color: colors.textDim, whiteSpace: 'nowrap' }}>
+              ×{flag.count}{flag.sources?.length > 1 ? ` sheets` : ''}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

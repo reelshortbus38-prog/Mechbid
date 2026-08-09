@@ -43,6 +43,16 @@ export function isPhantomScheduleUnit(e = {}) {
   return e.source === 'schedule' && !e.model && !e.size && !e.cfm && !e.electrical;
 }
 
+// The comparison form of a unit tag: uppercase, separators stripped, and
+// LEADING zeros dropped from digit runs — so the schedule's RTU-04, a diagram's
+// RTU-4, and "RTU 4" are one unit. Only leading zeros go: RTU-100 must stay
+// distinct from RTU-10. Shared by the equipment partition and the two-model
+// cross-check, which otherwise reported RTU-1 as "missing from the primary
+// read" on a set whose schedule spells it RTU-01.
+export function canonicalTag(tag) {
+  return String(tag || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').replace(/(?<![0-9])0+(?=[0-9])/g, '');
+}
+
 // A narrative or diagram sometimes hands the extractor a RANGE or LIST as one
 // unit's tag — "RTU-01 THRU RTU-08" from a sequence-of-operations paragraph,
 // "EF-12, EF-13, EF-14" from a callout. Left alone, that phrase matches no
@@ -113,9 +123,7 @@ export function partitionHvacEquipment(collected = []) {
   // the schedule writes RTU-01..08 while the airflow diagrams label the same
   // units RTU-4, RTU-5, and exact matching counted them twice (12 RTUs on a
   // set that has 8).
-  // (Only LEADING zeros of a digit run are stripped — RTU-100 must stay
-  // distinct from RTU-10, so zeros after a digit are untouched.)
-  const tagOf = (e) => String(e?.tag || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').replace(/(?<![0-9])0+(?=[0-9])/g, '');
+  const tagOf = (e) => canonicalTag(e?.tag);
   // Expand range/list tags FIRST so "RTU-01 THRU RTU-08" becomes eight real
   // tags that fold into their schedule rows instead of one phantom unit.
   const flat = [];

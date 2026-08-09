@@ -1,5 +1,6 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
+import { canonicalTag } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -1089,16 +1090,19 @@ export function crossCheckVision(primaryParsed, secondRaw) {
   if (!second || !primaryParsed) return [];
   const msgs = [];
   const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
-  const diffSet = (label, listA, listB, keyFn) => {
-    const a = new Set((listA || []).map(x => norm(keyFn(x))).filter(Boolean));
+  const diffSet = (label, listA, listB, keyFn, keyNorm = norm) => {
+    const a = new Set((listA || []).map(x => keyNorm(keyFn(x))).filter(Boolean));
     (listB || []).forEach(item => {
-      const k = norm(keyFn(item));
+      const k = keyNorm(keyFn(item));
       if (k && !a.has(k)) msgs.push(`${label} "${keyFn(item)}"`);
     });
   };
   diffSet('circuit', primaryParsed.circuits, second.circuits, c => c.circuitId);
-  diffSet('equipment tag', primaryParsed.equipment, second.equipment, e => e.tag);
-  diffSet('air device', primaryParsed.airDevices, second.airDevices, d => d.tag);
+  // TAGS compare in canonical form (RTU-1 === RTU-01). Comparing raw strings
+  // made the second model's unpadded tags look like finds the primary missed,
+  // and a full set flooded the flag list with those false alarms.
+  diffSet('equipment tag', primaryParsed.equipment, second.equipment, e => e.tag, canonicalTag);
+  diffSet('air device', primaryParsed.airDevices, second.airDevices, d => d.tag, canonicalTag);
   // Callouts are free text — flag second-model callouts whose opening words
   // don't appear anywhere in the primary's callouts.
   const pTexts = (primaryParsed.fieldTasks || []).map(t => norm(t.desc));
