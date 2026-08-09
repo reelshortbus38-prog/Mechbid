@@ -5,6 +5,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { groupHvacParts } from '../components/partGroups.js';
+import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
 // produces an ESTIMATE — the contractor is responsible for verifying takeoff,
@@ -657,6 +658,59 @@ function ProposalView({ company = {} }) {
   );
 }
 
+// ── BID RISKS / SCOPE GAPS ─────────────────────────────────────────────────────
+// The handful of extracted notes that change WHAT THE BID IS — equipment
+// furnished by someone else, work that belongs to an alternate rather than the
+// base bid, allowances, trade splits, a drawing set that isn't final. These
+// arrive mixed into a long informational flag list where they're easy to scroll
+// past, and missing one is a five-figure error in either direction. They get
+// their own panel at the top of the proposal step, before any pricing decision,
+// and each category can be dropped into the printed Exclusions in one tap.
+function BidRisks() {
+  const { state, dispatch } = useStore();
+  const risks = collectBidRisks(state.flags || []);
+  if (risks.length === 0) return null;
+  const exclusions = state.exclusions || [];
+
+  const addExclusion = (line) => {
+    if (!line || exclusions.some(x => (x || '').trim() === line)) return;
+    dispatch({ type: 'SET', key: 'exclusions', value: [...exclusions, line] });
+  };
+
+  return (
+    <Card style={{ background: colors.yellow + '10', border: `1px solid ${colors.yellow}55` }}>
+      <SLabel style={{ margin: 0 }}>⚠️ Bid Risks & Scope Gaps</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, margin: '6px 0 14px', lineHeight: 1.6 }}>
+        Pulled out of the extraction notes because these change <strong>what the bid is</strong> — not how it's priced.
+        Check each one before you send. “Add as exclusion” writes the qualification onto the printed proposal.
+      </div>
+      {risks.map(r => {
+        const line = riskToExclusion(r.key);
+        const already = exclusions.some(x => (x || '').trim() === line);
+        return (
+          <div key={r.key} style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${colors.border}` }}>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700 }}>
+                {r.icon} {r.label} <span style={{ color: colors.textDim, fontWeight: 400, fontFamily: "'DM Mono', monospace", fontSize: 11 }}>({r.items.length})</span>
+              </div>
+              <Btn variant={already ? 'surface' : 'green'} size="sm" disabled={already} onClick={() => addExclusion(line)} style={{ flexShrink: 0 }}>
+                {already ? '✓ In exclusions' : '+ Add as exclusion'}
+              </Btn>
+            </Row>
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>{r.why}</div>
+            {r.items.map((it, i) => (
+              <div key={i} style={{ fontSize: 11, color: colors.text, padding: '4px 0 4px 10px', borderLeft: `2px solid ${colors.yellow}66`, marginBottom: 4 }}>
+                {it.text}
+                {it.source && <span style={{ color: colors.textDim }}> — {it.source}</span>}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </Card>
+  );
+}
+
 // ── MAIN STEP 6 ────────────────────────────────────────────────────────────────
 export default function Step6_Proposal({ onBack }) {
   const { state, dispatch } = useStore();
@@ -666,6 +720,10 @@ export default function Step6_Proposal({ onBack }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Scope gaps first — they change what's being bid, so they come before
+          markup, scenarios, and the number the customer sees. */}
+      <BidRisks />
 
       {/* Store details & RC schedule — refrigeration-only (RC case-move
           schedule, pre-con/RCC dates don't apply to HVAC jobs) */}
