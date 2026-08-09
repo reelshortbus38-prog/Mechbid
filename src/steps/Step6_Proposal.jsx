@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
+import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal } from '../state/store.js';
 import { computeBidTotals, bidLetterBreakdown } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
+import { groupHvacParts } from '../components/partGroups.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
 // produces an ESTIMATE — the contractor is responsible for verifying takeoff,
@@ -382,11 +383,38 @@ function ProposalView({ company = {} }) {
         equip.forEach(e => { scopeRows += `<tr><td>${e.type}</td><td>${[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td><td>${e.tons || '—'}</td><td>${fmt(e.cost)}</td></tr>`; });
         scopeRows += `</tbody></table>`;
       }
+      // Parts and the lineset are in the bid total — itemize them or the
+      // customer sees a total they can't reconcile.
+      const parts = (state.resParts || []).filter(p => (p.total || 0) > 0 || p.desc);
+      const linesetTotal = calcResLinesetTotal(state);
+      if (parts.length > 0 || linesetTotal > 0) {
+        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
+        parts.forEach(p => { scopeRows += `<tr><td>${p.desc || ''}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+        if (linesetTotal > 0) {
+          const lsDesc = (state.resLinesetType || 'preinsulated') === 'roll'
+            ? `Lineset — roll copper ${state.resSucSize || ''} / ${state.resLiqSize || ''}${state.resLineLength ? ` × ${state.resLineLength} ft` : ''}`
+            : 'Lineset — pre-insulated';
+          scopeRows += `<tr><td>${lsDesc}</td><td style="text-align:center">—</td><td style="text-align:right">${fmt(linesetTotal)}</td></tr>`;
+        }
+        scopeRows += `</tbody></table>`;
+      }
     } else if (mode === 'Commercial HVAC') {
       const equip = state.hvacEquipment || [];
       if (equip.length > 0) {
         scopeRows += `<h2>Equipment Schedule</h2><table><thead><tr><th>Tag</th><th>Type</th><th>Brand/Model</th><th>Capacity</th><th>Task</th><th>Cost</th></tr></thead><tbody>`;
         equip.forEach(e => { scopeRows += `<tr><td>${e.tag || '—'}</td><td>${e.type}</td><td>${[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td><td>${e.tons || '—'}</td><td>${e.task || '—'}</td><td>${fmt(e.cost)}</td></tr>`; });
+        scopeRows += `</tbody></table>`;
+      }
+      // Ductwork, VAV boxes, sheet metal, insulation — every dollar of this is
+      // inside the bid total, so it prints. Grouped by category with subtotals
+      // (the same sections the Equipment step shows) rather than 100 loose rows.
+      const partGroups = groupHvacParts((state.hvacParts || []).filter(p => p.desc));
+      if (partGroups.length > 0) {
+        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
+        partGroups.forEach(g => {
+          scopeRows += `<tr style="background:#f3f4f6"><td colspan="3" style="padding:6px 10px;font-weight:700;color:#1f4e79;font-size:11px;text-transform:uppercase">${g.label} — ${fmt(g.subtotal)}</td></tr>`;
+          g.parts.forEach(p => { scopeRows += `<tr><td>${p.desc}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+        });
         scopeRows += `</tbody></table>`;
       }
     } else {
@@ -477,6 +505,7 @@ function ProposalView({ company = {} }) {
   const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
   const markedUpMats = markupBase + markupAmt;
   const exclusions = (state.exclusions || []).filter(x => x && x.trim());
+  const hvacPartGroups = mode === 'Commercial HVAC' ? groupHvacParts((state.hvacParts || []).filter(p => p.desc)) : [];
   const markupLabel = equipMarkupPct !== scenario.markupPct
     ? `Markup (mat ${scenario.markupPct}% · equip ${equipMarkupPct}%)`
     : `Markup (${scenario.markupPct}%)`;
@@ -538,6 +567,20 @@ function ProposalView({ company = {} }) {
           {state.resEquipment.map(e => (
             <div key={e.id} style={{ fontSize: 11, color: colors.textDim, padding: '3px 0', borderBottom: `1px solid ${colors.border}40` }}>
               {e.type}{e.tons ? ` — ${e.tons}` : ''}{e.brand ? ` · ${e.brand}` : ''}{e.model ? ` ${e.model}` : ''} — <span style={{ color: colors.green }}>{fmt(e.cost)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Materials — grouped with subtotals. Every dollar here is inside the
+          bid total below, so it belongs on the proposal the customer reads. */}
+      {mode === 'Commercial HVAC' && hvacPartGroups.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Materials</div>
+          {hvacPartGroups.map(g => (
+            <div key={g.key} style={{ fontSize: 11, color: colors.textDim, padding: '3px 0', borderBottom: `1px solid ${colors.border}40`, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <span>{g.icon} {g.label} <span style={{ fontFamily: "'DM Mono', monospace" }}>({g.count} line{g.count === 1 ? '' : 's'}{g.qtyUnit && g.qtySum > 0 ? ` · ${g.qtySum.toLocaleString()} ${g.qtyUnit}` : ''})</span></span>
+              <span style={{ color: colors.green, fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{fmt(g.subtotal)}</span>
             </div>
           ))}
         </div>
