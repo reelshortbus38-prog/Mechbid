@@ -25,6 +25,16 @@ describe('partGroupOf', () => {
     expect(partGroupOf(p('Ductwork — 12x12 duct', { dgen: true }))).toBe('purchase');
   });
 
+  it('drain/condensate lines are PIPE even when labeled as duct', () => {
+    // Real extraction labeled condensate drains "1 1/4"ø round duct (drain)" —
+    // grouping them as duct would let the purchase converter price drain pipe
+    // as pounds of sheet metal.
+    expect(partGroupOf(p('Ductwork — 1 1/4"ø round duct (drain)'))).toBe('pipe');
+    expect(partGroupOf(p('Ductwork — 1"ø round duct (drain)'))).toBe('pipe');
+    expect(partGroupOf(p('Condensate drain — 3/4" PVC'))).toBe('pipe');
+    expect(partGroupOf(p('Ductwork — 8"ø round duct (exhaust air)'))).toBe('duct-round'); // real duct untouched
+  });
+
   it('a VAV-with-oval-size line is terminal, never rect duct', () => {
     // "13x10 oval" could parse as a rect size; the VAV wording must win.
     expect(partGroupOf(p('VAV box · 13x10 oval · Nailor 3001'))).toBe('terminal');

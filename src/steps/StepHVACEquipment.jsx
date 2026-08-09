@@ -5,7 +5,7 @@ import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
-import { groupHvacParts } from '../components/partGroups.js';
+import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
 const HVAC_EQUIP_TYPES = [
@@ -398,7 +398,10 @@ function DuctCalculator() {
   const [insulate, setInsulate] = useState('supply');
   const [added, setAdded] = useState(false);
 
-  const ductLines = parts.filter(p => !p.dgen && parseDuctDesc(p.desc));
+  // Route through the classifier, not parseDuctDesc directly — a condensate
+  // line labeled "round duct (drain)" parses as duct but is PIPING, and
+  // converting it here would price drain pipe as pounds of sheet metal.
+  const ductLines = parts.filter(p => !p.dgen && ['duct-rect', 'duct-round'].includes(partGroupOf(p)));
   if (ductLines.length === 0) return null;
 
   const runs = ductLines.map(p => ({ desc: p.desc, lf: Number(p.qty) || 0 }));
