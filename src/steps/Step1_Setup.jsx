@@ -18,6 +18,7 @@ import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content 
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
+import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc } from '../components/ductwork.js';
 
@@ -864,9 +865,16 @@ export default function Step1_Setup({ onNext }) {
     // Everything else waits in pendingReview until the user confirms it.
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
-      // Collapse notes repeated on every sheet of a set (a 40-page set emits
-      // the same general note a dozen times) — signal, and smaller saved jobs.
-      flags: dedupeFlags([...state.flags, ...flags]),
+      // Resolve "these tags are only in the narrative, not a schedule row"
+      // page-notes against what the batch actually extracted BEFORE collapsing
+      // repeats — a tag the schedule sheet carried needs no warning, and one
+      // no sheet carried needs a real one. Then collapse notes repeated on
+      // every sheet of a set (a 40-page set emits the same general note a
+      // dozen times) — signal, and smaller saved jobs.
+      flags: dedupeFlags(resolveCoverageFlags(
+        [...state.flags, ...flags],
+        [...hvacEquipCollected.map(x => x.e), ...(state.hvacEquipment || [])],
+      )),
       // Key dates — pre-con from the ERF or the schedule's pre-con line, job
       // length from the ERF, RC night-work start from the schedule.
       // DETERMINISTIC reads (regex/grouped-schedule scans, ERF date cells)

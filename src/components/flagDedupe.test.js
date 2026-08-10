@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeFlags, flagKey, dedupeSavings } from './flagDedupe.js';
+import { dedupeFlags, flagKey, dedupeSavings, textSimilarity, mergeNearDuplicates } from './flagDedupe.js';
 
 // Analyzing a full 40-page set repeated the same general notes once per sheet
 // and the same cross-check once per page, burying the flags that mattered.
@@ -61,6 +61,54 @@ describe('dedupeFlags', () => {
     expect(dedupeFlags(['a note', 'a note', 'other'])).toHaveLength(2);
     expect(dedupeFlags([null, { text: '' }, undefined])).toEqual([]);
     expect(dedupeFlags()).toEqual([]);
+  });
+});
+
+describe('near-duplicates — the same note the AI re-worded per sheet', () => {
+  // Both verbatim from one run, from two different sheets. One requirement.
+  const SLEEVE_A = 'FOR DUCTWORK AND PIPING PENETRATING PARTITIONS ABOVE THE CEILING, THE CONTRACTOR IS TO PROVIDE SLEEVE AND SEAL THE OPENING BACK TO DISTRIBUTION. IN THE EVENT THAT A FIRE RATING IS CROSSED, PROVIDE FIRE DAMPERS AND FIRE CAULK AS REQUIRED.';
+  const SLEEVE_B = 'CONTRACTOR IS TO PROVIDE SLEEVE AND SEAL THE OPENING FOR DUCTWORK AND PIPING PENETRATING PARTITIONS ABOVE THE CEILING; IN THE EVENT THAT A FIRE RATING IS CROSSED, PROVIDE FIRE DAMPERS AND FIRE CAULK AS REQUIRED.';
+
+  it('folds a re-worded note into one entry and keeps the fuller wording', () => {
+    const out = dedupeFlags([
+      { type: 'warn', text: SLEEVE_A, source: 'M0.03' },
+      { type: 'warn', text: SLEEVE_B, source: 'M1.01' },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].count).toBe(2);
+    expect(out[0].sources).toEqual(['M0.03', 'M1.01']);
+    expect(out[0].text).toBe(SLEEVE_A); // the longer one carries more detail
+  });
+
+  it('keeps scope notes that merely rhyme APART — different work, different money', () => {
+    // Same verbs, same nouns, different ducts and different elevations. Merging
+    // these would drop a requirement from the bid.
+    const out = dedupeFlags([
+      { text: "PROVIDE WIRE MESH SCREEN AND BALANCING DAMPER AT THE END OF EXHAUST AIR DUCT AT 18' FROM FFL." },
+      { text: "PROVIDE WIRE MESH SCREEN AT THE END OF THE RETURN DUCT, LOCATED 5' BELOW THE ROOF." },
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('never merges on short notes, where overlap means little', () => {
+    expect(mergeNearDuplicates([
+      { text: 'Provide fire caulk', count: 1, sources: [] },
+      { text: 'Provide fire dampers', count: 1, sources: [] },
+    ])).toHaveLength(2);
+  });
+
+  it('scores identical text 1 and unrelated text near 0', () => {
+    expect(textSimilarity(SLEEVE_A, SLEEVE_A)).toBe(1);
+    expect(textSimilarity(SLEEVE_A, 'ALL CONDENSATE PIPING SHALL BE SET AT ONE QUARTER INCH PER FOOT SLOPE IN THE DIRECTION OF FLOW')).toBeLessThan(0.2);
+  });
+
+  it('promotes severity when the re-worded copy is the warning', () => {
+    const out = dedupeFlags([
+      { type: 'info', text: SLEEVE_B },
+      { type: 'warn', text: SLEEVE_A },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].type).toBe('warn');
   });
 });
 

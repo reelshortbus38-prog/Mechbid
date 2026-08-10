@@ -28,9 +28,16 @@ const DIAGNOSTIC_RE = [
   /\bno (?:equipment|units?|rows?)\b[^.]*\bcould (?:be )?(?:extracted|captured)\b/i,
   /\bzero (?:scheduled )?units? could be extracted\b/i,
   /\bnot itemized as (?:equipment|tagged units)\b/i,
-  /\bnot (?:a|an) (?:full |dedicated |traditional |standard )?(?:specification|spec|equipment specification) (?:section|sheet)\b/i,
+  /\bnot (?:a |an )?(?:full |dedicated |traditional |standard )?(?:specification|spec|equipment specification)(?: section| sheet| text| language)\b/i,
   /\bthis (?:sheet|page|document|section|excerpt)\b.{0,40}?\bcontains only\b/i,
-  /\bthis (?:is|document is|sheet is)\b.{0,80}?\b(?:floor plan|drawing sheet|schematic|diagram|legend)\b.{0,80}?\bnot (?:a|an)\b/i,
+  // "This document is a drawing sheet (…), not spec text" — the trailing noun
+  // is not always preceded by an article, and the parenthetical between the
+  // two halves can run long.
+  /\bthis (?:is|document is|sheet is)\b.{0,80}?\b(?:floor plan|drawing sheet|schematic|diagram|legend)\b.{0,80}?\bnot\b/i,
+  // "No furnished-by, warranty, T&B, or contact information present in
+  // extracted text" — the analyzer listing what a sheet didn't carry.
+  /\bpresent in (?:the )?extracted text\b/i,
+  /\bin this text (?:extract|segment|excerpt)\b/i,
   // tags mentioned in narrative rather than scheduled
   /\breferenced (?:equipment )?tags? found in\b|\breferenced only within a sequence\b/i,
   /\bare (?:referenced|inferred) (?:as associated units|from narrative|only)\b/i,
@@ -54,6 +61,11 @@ const NEVER_DIAGNOSTIC_RE = /\btruncated\b|\bcut off\b|\bmay exist beyond\b|\bga
 const SCOPE_RE = /\b(?:provide|install|furnish|coordinate|connect|route|seal|support|coordinate with|coordinate all)\b/i;
 
 export function flagCategory(flag) {
+  // An upstream pass that RESOLVED the flag against the takeoff knows more
+  // than any regex can — coverage resolution can tell "these tags are already
+  // priced" (bookkeeping) from "these tags were never scheduled" (a hole in
+  // the bid), and those two read identically as text. Its call wins.
+  if (flag && typeof flag === 'object' && flag.category) return flag.category;
   const text = String((typeof flag === 'string' ? flag : flag?.text) || '');
   if (!text.trim()) return 'note';
   if (NEVER_DIAGNOSTIC_RE.test(text)) return 'scope';
