@@ -19,6 +19,7 @@ import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
+import { resolveHvacPartCounts, tallyNote } from '../components/sheetOverlap.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc } from '../components/ductwork.js';
 
@@ -126,42 +127,40 @@ export default function Step1_Setup({ onNext }) {
       pending.push({ id: uid(), kind, sourceType, fileName, data, status: sourceType === 'excel' ? 'accepted' : 'pending' });
     }
 
-    // HVAC takeoff lines merge ACROSS files in the same batch: users shoot ONE
-    // plan sheet in sections (left half, right half…), so the same device type
-    // appears in several screenshots, each with that section's partial count.
-    // Same description = same item, and the quantities SUM — the per-file
-    // tally goes into the notes so an overlap between shots (the same diffuser
-    // visible in two screenshots) is easy to spot and trim on review.
-    let hvacSumFlagged = false;
-    function pushHvacPart(fileName, data) {
-      const key = normalizeDesc(data.desc);
-      const existing = pending.find(p => p.kind === 'hvacPart' && normalizeDesc(p.data.desc) === key);
-      const qty = Number(data.qty) || 0;
-      if (existing) {
-        const prev = Number(existing.data.qty) || 0;
-        existing.data.qty = prev + qty;
-        if (qty > 0) {
-          // Start the tally with the first file's count the first time a
-          // second file adds on — from then on each file appends its share.
-          if (!/counted per source/.test(existing.data.notes || '')) {
-            existing.data.notes = [existing.data.notes, `counted per source: ${existing.fileName}: ${prev}`].filter(Boolean).join(' · ');
-          }
-          existing.data.notes += `, ${fileName}: ${qty}`;
-        }
-        if (!hvacSumFlagged) {
-          hvacSumFlagged = true;
-          // Wording follows what was actually uploaded — telling someone who
-          // uploaded one PDF to check their "screenshots" reads like the app
-          // doesn't know what it just did.
-          const shotCount = modeFiles.filter(f => f.type === 'image').length;
-          flags.push({ type: 'warn', text: shotCount > 1
-            ? 'Counts for repeated takeoff items were SUMMED across your screenshots (treated as different sections of one sheet). If any shots overlap, trim the double-counted qty on the review screen — each card lists the per-source tally.'
-            : 'The same takeoff item appeared on more than one sheet and the counts were SUMMED. If a sheet repeats another one\'s devices (an enlarged plan of the same area), trim the double-counted qty on the review screen — each card lists the per-sheet tally.',
-            source: 'System' });
-        }
-        return;
+    // HVAC takeoff lines merge ACROSS every sheet in the batch, so they are
+    // COLLECTED here and resolved in flushHvacParts() once the whole batch has
+    // been read — the same deferral the equipment list uses, and for the same
+    // reason: whether two sheets' counts should be added depends on sheets
+    // that may not have been analyzed yet.
+    const hvacPartContribs = [];
+    function pushHvacPart(fileName, data, drawing = '') {
+      hvacPartContribs.push({ ...data, fileName, drawing });
+    }
+
+    // Resolve the collected lines into one entry per item. An ENLARGED or
+    // PARTIAL plan re-draws devices that the overall plan already showed, so
+    // adding both double-counts them — see components/sheetOverlap.js for the
+    // pooling rule. Previously the app summed everything and told the
+    // estimator to "trim the double-counted qty on the review screen", which
+    // is both the manual work the tool exists to remove and impossible to do
+    // honestly without reopening the sheets and recounting.
+    function flushHvacParts() {
+      let trimmed = 0;
+      resolveHvacPartCounts(hvacPartContribs).forEach(entry => {
+        if (entry.overlapTrimmed) trimmed += 1;
+        pushPending('hvacPart', 'vision', entry.fileName, {
+          desc: entry.desc,
+          qty: entry.qty,
+          unitCost: entry.unitCost || 0,
+          // The per-sheet tally stays on the card: a resolved number nobody
+          // can trace back to a sheet is a number nobody will bid on.
+          notes: [entry.notes, tallyNote(entry)].filter(Boolean).join(' · '),
+        });
+      });
+      if (trimmed > 0) {
+        flags.push({ type: 'info', source: 'System',
+          text: `${trimmed} takeoff item(s) appeared on both an overall plan and an enlarged/partial plan of the same area — counted ONCE, not added. Each card shows the per-sheet tally and the number that was trimmed.` });
       }
-      pushPending('hvacPart', 'vision', fileName, data);
     }
 
     // Fold an HVAC mechanical-plan extraction into the same channels the rest of
@@ -194,7 +193,7 @@ export default function Step1_Setup({ onNext }) {
         pushHvacPart(fileMeta.name, {
           desc, qty: Number(d.qty) || 1, unitCost: 0,
           notes: [d.cfm ? `${d.cfm} CFM` : '', drawing].filter(Boolean).join(' · '),
-        });
+        }, drawing);
       });
       (hv.ductRuns || []).forEach(r => {
         const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
@@ -227,14 +226,14 @@ export default function Step1_Setup({ onNext }) {
             estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing` : 'enter footage or lbs — plans scale length off the drawing',
             r.notes, drawing,
           ].filter(Boolean).join(' · '),
-        });
+        }, drawing);
       });
       (hv.pipeRuns || []).forEach(r => {
         pushHvacPart(fileMeta.name, {
           desc: `Pipe — ${r.size}${r.service ? ` ${r.service}` : ''}`,
           qty: 0, unitCost: 0,
           notes: ['enter footage', r.notes, drawing].filter(Boolean).join(' · '),
-        });
+        }, drawing);
       });
       (hv.hydronicZones || []).forEach(z => {
         const spec = [z.room, z.loadMBH ? `${z.loadMBH} MBH` : '', z.area ? `${z.area} sq ft` : '', z.loops ? `${z.loops} loop(s)` : '']
@@ -297,7 +296,7 @@ export default function Step1_Setup({ onNext }) {
       });
       terminals.forEach((g) => {
         const desc = [g.type, g.size, g.model].filter(Boolean).join(' · ');
-        pushHvacPart(g.fileName, { desc, qty: g.qty, unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') });
+        pushHvacPart(g.fileName, { desc, qty: g.qty, unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') }, g.drawing);
       });
       if (suppressed > 0) {
         flags.push({ type: 'info', text: `${suppressed} plan-read duplicate(s) suppressed — these tags also have a schedule row, and the schedule's copy (with model/size data) is the one kept. Units that appear ONLY on the drawings are still included.`, source: 'System' });
@@ -334,7 +333,12 @@ export default function Step1_Setup({ onNext }) {
           // Combined read failed both attempts — release the files to the
           // normal per-file loop below so the batch still produces a takeoff.
           groupEntries.forEach(x => hvacGroupIds.delete(x.meta.id));
-          newResults.push(`⚠ Reading the ${groupEntries.length} screenshots together failed — analyzing each separately. Same-item counts will be SUMMED; if the shots overlap, trim the double-count on the review screen.`);
+          // Genuinely unresolvable: separate passes can't tell whether two
+          // shots of one sheet show the same diffuser twice, and there is no
+          // sheet title to pool by. Say so plainly instead of implying the
+          // number is trustworthy — re-uploading gets the combined read back,
+          // which counts overlap correctly.
+          newResults.push(`⚠ Reading the ${groupEntries.length} screenshots together failed, so each was read on its own and same-item counts were ADDED. Sections of one sheet that overlap will be counted twice — upload again to get the combined read, which counts the shared area once.`);
         }
       }
     }
@@ -860,6 +864,10 @@ export default function Step1_Setup({ onNext }) {
     // Now that every file in the batch is analyzed, map the collected HVAC
     // equipment — dropping plan-read units the schedules already own.
     mapCollectedEquipment();
+    // Terminals are pushed by mapCollectedEquipment, so the takeoff lines can
+    // only be resolved after it — an enlarged sheet's VAV boxes have to be in
+    // the pool before the overlap rule can see them.
+    flushHvacParts();
 
     // Flags are low-risk (informational) — merge immediately.
     // Everything else waits in pendingReview until the user confirms it.
