@@ -34,6 +34,40 @@ describe('flagCategory — diagnostics (the analyzer describing itself)', () => 
   });
 });
 
+describe('flagCategory — the structural rule, not a phrase list', () => {
+  // Every string here is verbatim from ONE run, and every one of them slipped
+  // past a pattern list built from the run before it. The model re-words the
+  // same thought each time, so these are pinned to prove the rule generalizes:
+  // describes the document + demands nothing of the contractor = transcript.
+  it('demotes phrasings that no pattern list anticipated', () => {
+    const d = [
+      'Referenced tags EF-10, EF-11, RTU-01 through RTU-08 (excluding RTU-04/05 grouping noted separately), SSAU-01 through SSAU-03, and SSCU-01 through SSCU-03 appear in sequence-of-operation text only, not in a schedule table with sizing/model data, so no equipment rows can be extracted per the rules.',
+      'This appears to be a specifications/sequence-of-operation narrative page (part 2 of 4) rather than an equipment schedule page; actual schedule tables with tag/model/size/cfm data likely appear on other pages of this document.',
+      'LEL room sensors mentioned as life-safety devices tied to BMS alarms, not schedule equipment with tags.',
+      'This appears to be sequence of operations narrative text rather than an equipment schedule table; tag/size/model data is largely absent.',
+      'No furnished-by, warranty, T&B, or receiving/rigging clauses are present in this excerpt to extract; equipment counts, tags, and sizes shown (e.g., VRF 01, VRF 05, VRF 06, sound attenuators, wire mesh screens) are drawing-schedule items, not spec-defined scope.',
+      'This sheet is an overall plan/index sheet showing room layout, general notes, code summary, mechanical legend, abbreviations, and drawing list - no equipment tags, air devices, duct sizes, or pipe sizes are shown on this sheet.',
+    ];
+    d.forEach(t => expect(flagCategory(t), t.slice(0, 50)).toBe('diagnostic'));
+  });
+
+  it('keeps a sheet-referencing note that DOES ask for work', () => {
+    // Mentions keynotes and drawings, but names real ductwork accessories the
+    // estimator has to price. The requirement is what saves it.
+    expect(flagCategory('Numerous keynotes call for wire mesh screens at duct terminations, motorized dampers, sound attenuators in supply/return ducts, and coordination with architectural for wall/roof penetrations and transfer grilles - these affect ductwork accessory pricing but are drawing keynotes, not spec equipment.')).not.toBe('diagnostic');
+  });
+
+  it('does not read "furnished-by" as an instruction to furnish something', () => {
+    // "no furnished-by clauses are present" is a noun phrase about who BUYS
+    // the gear. Treating it as a requirement kept it on screen.
+    expect(flagCategory('No furnished-by or warranty clauses are present in this excerpt.')).toBe('diagnostic');
+    expect(flagCategory('ALL DUCTWORK ELBOWS SHALL BE FURNISHED IN TYPES AND AT LOCATIONS INDICATED.')).toBe('note');
+    // "owner-furnished" stays protected even in a sentence shaped like the
+    // ones above — who BUYS the equipment is worth a false positive.
+    expect(flagCategory('No owner-furnished equipment is identified on this sheet.')).toBe('scope');
+  });
+});
+
 describe('flagCategory — what must stay visible', () => {
   it('keeps scope: work the contractor prices or performs', () => {
     const scope = [

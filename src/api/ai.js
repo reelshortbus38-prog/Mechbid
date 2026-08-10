@@ -506,6 +506,17 @@ export async function analyzeImageDoc(file, fileName) {
 // LENGTH is almost never labeled on these plans (it's scaled off the drawing),
 // so the prompt is told NOT to invent lengths — sizes, counts and CFM are what's
 // actually on the page.
+// Shared by every HVAC analyzer. All three were emitting notes ABOUT the
+// sheet — "these tags appear in sequence-of-operation text, not a schedule
+// table", "this appears to be a narrative page rather than a schedule page" —
+// which are true, useless once the takeoff exists, and numerous enough to bury
+// the notes that cost money. Triage demotes them downstream, but the cheaper
+// and more reliable fix is to stop generating them: a model told that finding
+// nothing is a normal outcome stops explaining itself. The model re-words
+// these endlessly, so the downstream rule stays as the backstop.
+const NO_SELF_DESCRIPTION_RULE = `
+FLAGS ARE FOR THE ESTIMATOR, NOT A RECORD OF WHAT YOU DID. Never emit a flag describing this sheet, this excerpt, or what you could not extract. Do NOT write flags like "this page contains only a control narrative", "these tags appear in sequence-of-operation text, not a schedule table", "no equipment schedule is present on this sheet", "this appears to be a narrative page rather than a schedule page", or "no furnished-by clauses are present in this excerpt". A sheet with nothing to extract is a NORMAL, EXPECTED outcome — return empty arrays and say nothing about it. Flag only what changes what the contractor buys, builds, or is responsible for.`;
+
 const HVAC_VISION_PROMPT = `You are an expert commercial HVAC estimator reading a mechanical drawing sheet — a ductwork plan, a hydronic/refrigerant piping plan, or an equipment schedule. The image may be rotated; read ALL text regardless of orientation.
 
 Extract the following EXACTLY as written — never round, simplify, or invent:
@@ -527,6 +538,7 @@ For estLengthFt: duct length is scaled off the drawing, not labeled — so ESTIM
 7) COST-AFFECTING GENERAL NOTES — capture as flags (type "warn") any standing note that changes the price of the work, verbatim. Common ones: duct lining/insulation requirements ("ALL SUPPLY AND RETURN DUCTWORK SHALL BE PROVIDED WITH 1.5\" THICK LINING"), flex connections at diffusers, double-wall duct, welded fittings, seismic bracing, or anything that says it "shall be" provided/installed a certain way. These drive material and labor cost even though they aren't a tag.
 
 If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, loads, or counts.
+${NO_SELF_DESCRIPTION_RULE}
 
 Return ONLY valid JSON, no markdown:
 {"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","faceSize":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","estLengthFt":0,"lengthBasis":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
@@ -751,6 +763,7 @@ export async function analyzeHvacSpecText(text, fileName) {
 
 Do NOT invent tags, tonnages, or counts — a spec has none; the equipment schedule on the drawings carries those.
 Units referenced in sequence-of-operations / BMS / controls narrative ("RTU-01 shall start when…") are MENTIONS of equipment scheduled elsewhere — do NOT emit equipment entries for them. Never put a range or list in a tag field.
+${NO_SELF_DESCRIPTION_RULE}
 
 Return ONLY valid JSON, no markdown:
 {"documentType":"hvac_spec","equipment":[{"tag":"","type":"","furnishedBy":"owner|contractor|","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence: what this spec section covers"}`;
@@ -814,6 +827,7 @@ RULES:
 - Read ONLY what the table states. Do not invent sizes or models.
 - A unit named only as ANOTHER unit's "Associated Unit" / "Served By" reference (e.g. the AHU a VAV row points to) is NOT its own scheduled unit — do not emit an entry for it. Only extract a unit that has its OWN schedule row with its own model/size/data.
 - Schedule-wide notes (basis-of-design, "or approved equal", substitution rules, furnished-by) → flags.
+${NO_SELF_DESCRIPTION_RULE}
 
 Return ONLY valid JSON, no markdown:
 {"documentType":"hvac_schedule","equipment":[{"tag":"","category":"major|terminal","type":"","model":"","size":"","cfm":"","electrical":"","notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence: which schedules this sheet carries and roughly how many units"}`;

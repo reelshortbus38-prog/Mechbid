@@ -60,6 +60,36 @@ const NEVER_DIAGNOSTIC_RE = /\btruncated\b|\bcut off\b|\bmay exist beyond\b|\bga
 // Work the contractor has to perform or price — imperative, addressed to us.
 const SCOPE_RE = /\b(?:provide|install|furnish|coordinate|connect|route|seal|support|coordinate with|coordinate all)\b/i;
 
+// ── THE STRUCTURAL RULE ──────────────────────────────────────────────────────
+// Enumerating phrasings does not work. Each run the analyzer says the same
+// thing a new way — "appear in sequence-of-operation text only", "This appears
+// to be a narrative page rather than an equipment schedule page", "not
+// schedule equipment with tags", "no equipment tags ... are shown on this
+// sheet" — and every one slipped past a pattern list built from the run
+// before. Matching prose against a growing list of sentences the model might
+// write is a losing game.
+//
+// What every one of them has in common is structural, not lexical: they
+// describe the DOCUMENT or the extraction pass, and they ask nothing of the
+// contractor. A note that matters always demands something — shall, provide,
+// install, calls for. A note that describes always talks about the sheet, the
+// text, or what could be extracted from it.
+//
+// So: no requirement + talks about the document = diagnostic. That holds
+// across phrasings nobody has written yet, which is the point.
+
+// The flag asks the contractor to do, supply or pay for something.
+// NOTE "furnished" is deliberately absent: "furnished-by", "owner-furnished"
+// and "no furnished-by clauses are present" are NOUN phrases about who buys
+// the equipment, not an instruction to furnish anything. Including it read
+// the spec analyzer's "no furnished-by clauses present in this excerpt" as a
+// requirement and kept it on screen. Real requirements say "shall be
+// furnished", which "shall" already catches.
+const REQUIREMENT_RE = /\b(?:shall|must|provide[sd]?|install(?:ed|ation)?|furnish(?:es|ing)?|coordinat(?:e|ion)|connect|route|seal|support(?:ed)?|calls? for|responsible for|include[sd]? in|is to be|are to be|to be (?:set|installed|provided|furnished))\b/i;
+
+// The flag is about the sheet, or about the reading of it.
+const ABOUT_THE_DOCUMENT_RE = /\bthis (?:sheet|page|document|excerpt|drawing|section|text)\b|\b(?:on|in) this (?:sheet|page|excerpt)\b|\bin this text\b|\bextract(?:ed|able|ion)?\b|\bschedule (?:table|page|rows?|data)\b|\bnarrative\b|\bappears? to be\b|\bsequence[-\s]of[-\s]operations?\b|\bper the rules\b|\bdrawing[-\s](?:schedule|keynote)s?\b|\bare shown on\b|\bnot (?:a |an )?(?:scheduled?|spec(?:ification)?)\b/i;
+
 export function flagCategory(flag) {
   // An upstream pass that RESOLVED the flag against the takeoff knows more
   // than any regex can — coverage resolution can tell "these tags are already
@@ -70,6 +100,8 @@ export function flagCategory(flag) {
   if (!text.trim()) return 'note';
   if (NEVER_DIAGNOSTIC_RE.test(text)) return 'scope';
   if (DIAGNOSTIC_RE.some(re => re.test(text))) return 'diagnostic';
+  // Describes the sheet and asks nothing of the contractor → transcript.
+  if (!REQUIREMENT_RE.test(text) && ABOUT_THE_DOCUMENT_RE.test(text)) return 'diagnostic';
   if (SCOPE_RE.test(text)) return 'scope';
   return 'note';
 }
