@@ -32,13 +32,11 @@
 // Pure — no React, no network.
 
 import { textSimilarity } from '../components/flagDedupe.js';
+import { proseTagRe } from '../components/hvacEquip.js';
 
-// Equipment tag prefixes. Deliberately a copy of the list behind ai.js's
-// UNIT_TAG_RE rather than an import — that pattern is anchored for schedule
-// detection (no space allowed: "RTU-01"), and real sets also write tags with a
-// space ("CU 1-3", "HP 1-5"), which this has to catch. Keep the prefixes in
-// step if the other list gains a type.
-const TAG_RE = /\b(?:VAV|CV|FPB|PIU|RTU|AHU|DOAS|MAU|MUA|ERV|HRV|EF|SF|RF|TF|KEF|GEF|CU|ACCU|CUH|UH|FCU|HP|WSHP|PTAC|FCU|CH|CT|VRF|SSCU|SSAU|DHU)[\s-]?\d{1,3}(?:[\s-]\d{1,3})?[A-Z]?\b/;
+// Shared definition — see components/hvacEquip.js. Page text is prose-like,
+// so the prose variant (no single-letter prefixes) is the right one here.
+const TAG_RE = proseTagRe();
 
 // Any one of these means the page could carry priceable content. Kept.
 // A stated scale is NOT in this list — see the header note.
@@ -115,7 +113,7 @@ export function filterVisionPages(pageNums = [], textByPage = {}) {
 export function takeoffScore(text) {
   const s = String(text || '');
   const kinds = TAKEOFF_SIGNAL.filter(re => re.test(s)).length;
-  const tags = (s.match(new RegExp(TAG_RE.source, 'gi')) || []).length;
+  const tags = (s.match(proseTagRe('gi')) || []).length;
   const dims = (s.match(/\d+\s*["'″]?\s*[x×]\s*\d+/gi) || []).length;
   return kinds * 3 + Math.min(tags, 10) + Math.min(dims, 6);
 }

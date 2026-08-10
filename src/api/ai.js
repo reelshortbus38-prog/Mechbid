@@ -3,6 +3,7 @@
 import { crossCheckDiff } from './crossCheck.js';
 import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
+import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -894,7 +895,9 @@ export function isSpecPage(text, hasScale = false) {
 // Equipment/unit tags as they appear in a mechanical schedule table: a
 // discipline prefix + optional area letter + number (VAV-M101, AHU-E-01,
 // RTU-1, EF-3, CU-2, DOAS-1…). Shared by the detector and the extractor.
-const UNIT_TAG_RE = /\b(VAV|CV|FPB|PIU|RTU|AHU|DOAS|MAU|MUA|ERV|HRV|EF|SF|RF|TF|KEF|GEF|CU|ACCU|CUH|UH|FCU|HP|WSHP|PTAC|FC|AC|B|CH|CT|P|VRF)-?[A-Z]?-?\d+[A-Z]?\b/gi;
+// Shared definition — see components/hvacEquip.js. Schedule tables are dense
+// and unambiguous, so this variant allows the single-letter prefixes (P-1).
+const UNIT_TAG_RE = unitTagRe('gi');
 
 // A schedule sheet is a TABLE of tagged equipment (VAV boxes, AHUs, RTUs,
 // exhaust fans…), not prose. It routes to the schedule extractor, which pulls

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit, expandEquipTags } from './hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit, expandEquipTags, canonicalTag, proseTagRe, unitTagRe } from './hvacEquip.js';
 
 // The load-bearing rule: when a batch has an equipment SCHEDULE, the schedule
 // owns the count and plan-read duplicates are dropped — so the same VAV isn't
@@ -226,5 +226,58 @@ describe('family closure → review', () => {
     const noSched = partitionHvacEquipment([plan('', { type: 'Make-Up Air Unit' })]);
     expect(noSched.review).toHaveLength(0);
     expect(noSched.major).toHaveLength(1); // vision-only job keeps tagless units
+  });
+});
+
+// ── ONE DEFINITION OF A UNIT TAG ─────────────────────────────────────────────
+// This had drifted into four patterns across three files. Two matched any
+// capitalised word plus a number, and ALL of them required the separator to be
+// a dash or nothing — so a set that writes "CU 1-3" and "HP 1-5", which is
+// perfectly ordinary, was invisible to schedule detection, coverage checks and
+// page selection alike.
+
+describe('proseTagRe — scanning sentences and page text', () => {
+  it('matches the tag forms real sets actually use', () => {
+    ['CU 1-3', 'HP 1-5', 'RTU-01', 'RTU01', 'EF-2', 'VAV-M235A', 'SSCU-04', 'AHU 2']
+      .forEach(t => expect(proseTagRe().test(t), t).toBe(true));
+  });
+
+  it('rejects the look-alikes that made every page look tagged', () => {
+    // "LEVEL 01" and "AREA 518" kept every sheet in the vision budget.
+    ['LEVEL 01', 'AREA 518', 'SECTOR 1', 'TYP 2', 'OPTDC 2']
+      .forEach(t => expect(proseTagRe().test(t), t).toBe(false));
+  });
+
+  it('rejects sheet numbers and figures that merely look like tags', () => {
+    expect(proseTagRe().test('M-20301')).toBe(false);   // a sheet number
+    expect(proseTagRe().test('SF 1200')).toBe(false);   // square feet, not supply fan 1200
+  });
+
+  it('leaves single-letter prefixes out of prose', () => {
+    // "NC Registration No. P-0477" must not become pump 477.
+    expect(proseTagRe().test('P-0477')).toBe(false);
+    expect(proseTagRe().test('P-1')).toBe(false);
+  });
+});
+
+describe('unitTagRe — dense schedule tables', () => {
+  it('does allow the single-letter prefixes a schedule really uses', () => {
+    expect(unitTagRe().test('P-1')).toBe(true);
+    expect(unitTagRe().test('CU 1-3')).toBe(true);
+  });
+});
+
+describe('canonicalTag across separator styles', () => {
+  it('unifies every spelling of one unit', () => {
+    const forms = ['CU 1-3', 'CU-1-3', 'cu13'].map(canonicalTag);
+    expect(new Set(forms).size).toBe(1);
+    expect(canonicalTag('RTU 1')).toBe(canonicalTag('RTU-01'));
+  });
+});
+
+describe('expandEquipTags with spaced tags', () => {
+  it('expands a range written with spaces', () => {
+    expect(expandEquipTags({ tag: 'RTU 01 THRU RTU 04' }).map(e => e.tag))
+      .toEqual(['RTU 01', 'RTU 02', 'RTU 03', 'RTU 04']);
   });
 });

@@ -53,6 +53,38 @@ export function canonicalTag(tag) {
   return String(tag || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').replace(/(?<![0-9])0+(?=[0-9])/g, '');
 }
 
+// ── WHAT A UNIT TAG LOOKS LIKE ───────────────────────────────────────────────
+// One definition, used by schedule detection, coverage checks, page selection
+// and range expansion. It had drifted into four: two generic patterns that
+// matched any capitalised word plus a number ("LEVEL 01", "AREA 518"), and two
+// prefix lists that had diverged. Worse, all of them required the separator to
+// be a dash or nothing — so a set that writes "CU 1-3" and "HP 1-5", which is
+// perfectly ordinary, was invisible to every one of them.
+//
+// Equipment prefixes, longest first so ACCU wins over AC and WSHP over HP.
+export const TAG_PREFIXES = [
+  'WSHP', 'DOAS', 'ACCU', 'PTAC', 'SSCU', 'SSAU', 'VAV', 'FPB', 'PIU', 'RTU',
+  'AHU', 'MAU', 'MUA', 'ERV', 'HRV', 'KEF', 'GEF', 'CUH', 'FCU', 'VRF', 'DHU',
+  'CV', 'EF', 'SF', 'RF', 'TF', 'CU', 'UH', 'HP', 'FC', 'AC', 'CH', 'CT',
+  'B', 'P',
+].sort((a, b) => b.length - a.length);
+
+// The number half. Covers RTU-01, RTU01, "CU 1-3", "HP 1-5", VAV-M235A.
+// Capped at three digits so a sheet number (M-20301) or a square-footage
+// figure ("SF 1200") cannot pose as a unit.
+const TAG_BODY = '[\\s-]?[A-Z]?[\\s-]?\\d{1,3}(?:-\\d{1,3})?[A-Z]?';
+
+// Dense schedule tables, where a bare "P-1" really is pump 1.
+export const unitTagRe = (flags = '') =>
+  new RegExp(`\\b(?:${TAG_PREFIXES.join('|')})${TAG_BODY}\\b`, flags);
+
+// Sentences and page text. Single-letter prefixes are excluded here: in prose
+// "B" and "P" turn a licence number ("NC Registration No. P-0477") into a
+// pump, and a false equipment tag in a coverage warning is worse than a
+// missed one.
+export const proseTagRe = (flags = '') =>
+  new RegExp(`\\b(?:${TAG_PREFIXES.filter(p => p.length > 1).join('|')})${TAG_BODY}\\b`, flags);
+
 // A narrative or diagram sometimes hands the extractor a RANGE or LIST as one
 // unit's tag — "RTU-01 THRU RTU-08" from a sequence-of-operations paragraph,
 // "EF-12, EF-13, EF-14" from a callout. Left alone, that phrase matches no
@@ -60,8 +92,10 @@ export function canonicalTag(tag) {
 // individual tags lets per-tag dedupe fold every one into its schedule row.
 // Returns an array of entries (clones with individual tags); a normal tag
 // passes through as [e]. Expansion is capped so a misparse can't explode.
-const RANGE_RE = /^\s*([A-Z][A-Z-]*-?)(\d{1,3})\s*(?:THRU|THROUGH|TO)\s*(?:[A-Z][A-Z-]*-?)?(\d{1,3})\s*$/i;
-const LOOKS_LIKE_TAG = /^[A-Z][A-Z-]*-?\d{1,3}[A-Z]?$/i;
+// Separators here allow a space too ("RTU 01 THRU RTU 08"), matching the
+// shared tag shape above.
+const RANGE_RE = /^\s*([A-Z][A-Z-]*[\s-]?)(\d{1,3})\s*(?:THRU|THROUGH|TO)\s*(?:[A-Z][A-Z-]*[\s-]?)?(\d{1,3})\s*$/i;
+const LOOKS_LIKE_TAG = /^[A-Z][A-Z-]*[\s-]?\d{1,3}(?:-\d{1,3})?[A-Z]?$/i;
 export function expandEquipTags(e = {}) {
   const tag = String(e.tag || '').trim();
   if (!tag) return [e];
