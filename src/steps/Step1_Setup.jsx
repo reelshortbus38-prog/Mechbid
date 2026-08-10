@@ -18,6 +18,7 @@ import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content 
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
+import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc } from '../components/ductwork.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
@@ -36,6 +37,7 @@ export default function Step1_Setup({ onNext }) {
   const [fileStatuses, setFileStatuses] = useState({}); // id -> 'ready'|'analyzing'|'done'|'error'
   const [results, setResults] = useState([]);
   const [pendingReview, setPendingReview] = useState(null); // null = no review screen showing; array = items to review
+  const [showDiagnostics, setShowDiagnostics] = useState(false); // "how each sheet was read" — collapsed by default
   const fileRef = useRef();
 
   // Store actual File objects in a ref (not React state) to prevent serialization issues
@@ -1252,13 +1254,39 @@ export default function Step1_Setup({ onNext }) {
         </Card>
       )}
 
-      {/* Flags */}
-      {state.flags.length > 0 && (
-        <div>
-          <SLabel>Flags & RC Requirements</SLabel>
-          {state.flags.map((f, i) => <Flag key={i} flag={f} />)}
-        </div>
-      )}
+      {/* Flags — findings first. The analyzer's own commentary ("this sheet
+          had no schedule table") is true but not a finding, so it collapses
+          behind a toggle instead of making a correct run look like a mess. */}
+      {state.flags.length > 0 && (() => {
+        const { actionable, scope, diagnostics } = triageFlags(state.flags);
+        return (
+          <div>
+            <SLabel>Scope Findings & Requirements</SLabel>
+            {actionable.length > 0 ? (
+              <>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+                  {scope.length} item{scope.length === 1 ? '' : 's'} to price or qualify
+                  {actionable.length > scope.length ? ` · ${actionable.length - scope.length} reference note${actionable.length - scope.length === 1 ? '' : 's'}` : ''}
+                </div>
+                {actionable.map((f, i) => <Flag key={i} flag={f} />)}
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 8 }}>No scope callouts were found on these sheets.</div>
+            )}
+            {diagnostics.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowDiagnostics(d => !d)}
+                  style={{ marginTop: 10, background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textDim, borderRadius: 8, padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}
+                >
+                  {showDiagnostics ? '▲ Hide' : '▼ Show'} extraction details ({diagnostics.length}) — how each sheet was read
+                </button>
+                {showDiagnostics && <div style={{ marginTop: 8, opacity: 0.75 }}>{diagnostics.map((f, i) => <Flag key={i} flag={f} />)}</div>}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* RC Schedule — dated tasks accepted from schedule documents land here,
           separate from the quick Project Info fields above (which already
