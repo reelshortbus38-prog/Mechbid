@@ -87,3 +87,27 @@ describe('ductPurchase', () => {
     expect(lines).toHaveLength(0);
   });
 });
+
+// A real set labeled a 40" spiral main "40x0 SA (40"ø SA labeled as round)".
+// The rectangular pattern matches "40x0" first, which would price a 40-inch
+// main as a duct with no height — zero pounds, free metal in the bid.
+describe('parseDuctDesc — round duct written into a rectangular size', () => {
+  it('reads a zero-sided size with a round marker as ROUND', () => {
+    const a = parseDuctDesc('Ductwork — 40x0 SA (40"ø SA labeled as round) duct');
+    expect(a).toMatchObject({ kind: 'round', dia: 40, repairedFrom: '40x0' });
+    const b = parseDuctDesc('Ductwork — 32x0 SA (32"ø) duct');
+    expect(b).toMatchObject({ kind: 'round', dia: 32 });
+    expect(parseDuctDesc('0x24 round duct')).toMatchObject({ kind: 'round', dia: 24 });
+  });
+
+  it('leaves a zero-sided size with NO round marker as a (flagged) rect misread', () => {
+    expect(parseDuctDesc('Ductwork — 24x0 duct (supply)')).toMatchObject({ kind: 'rect', w: 24, h: 0 });
+  });
+
+  it('does not disturb ordinary rectangular or round sizes', () => {
+    expect(parseDuctDesc('Ductwork — 22x16 duct')).toMatchObject({ kind: 'rect', w: 22, h: 16 });
+    expect(parseDuctDesc('Ductwork — 8"ø round duct')).toMatchObject({ kind: 'round', dia: 8 });
+    // an oval VAV inlet keeps both dimensions — neither side is zero
+    expect(parseDuctDesc('13x10 oval duct')).toMatchObject({ kind: 'rect', w: 13, h: 10 });
+  });
+});
