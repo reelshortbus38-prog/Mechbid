@@ -18,6 +18,7 @@ import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content 
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
+import { parseDuctDesc } from '../components/ductwork.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -139,14 +140,21 @@ export default function Step1_Setup({ onNext }) {
         if (qty > 0) {
           // Start the tally with the first file's count the first time a
           // second file adds on — from then on each file appends its share.
-          if (!/counted per screenshot/.test(existing.data.notes || '')) {
-            existing.data.notes = [existing.data.notes, `counted per screenshot: ${existing.fileName}: ${prev}`].filter(Boolean).join(' · ');
+          if (!/counted per source/.test(existing.data.notes || '')) {
+            existing.data.notes = [existing.data.notes, `counted per source: ${existing.fileName}: ${prev}`].filter(Boolean).join(' · ');
           }
           existing.data.notes += `, ${fileName}: ${qty}`;
         }
         if (!hvacSumFlagged) {
           hvacSumFlagged = true;
-          flags.push({ type: 'warn', text: 'Counts for repeated takeoff items were SUMMED across your screenshots (treated as different sections of one sheet). If any shots overlap, trim the double-counted qty on the review screen — each card lists the per-screenshot tally.', source: 'System' });
+          // Wording follows what was actually uploaded — telling someone who
+          // uploaded one PDF to check their "screenshots" reads like the app
+          // doesn't know what it just did.
+          const shotCount = modeFiles.filter(f => f.type === 'image').length;
+          flags.push({ type: 'warn', text: shotCount > 1
+            ? 'Counts for repeated takeoff items were SUMMED across your screenshots (treated as different sections of one sheet). If any shots overlap, trim the double-counted qty on the review screen — each card lists the per-source tally.'
+            : 'The same takeoff item appeared on more than one sheet and the counts were SUMMED. If a sheet repeats another one\'s devices (an enlarged plan of the same area), trim the double-counted qty on the review screen — each card lists the per-sheet tally.',
+            source: 'System' });
         }
         return;
       }
@@ -191,7 +199,16 @@ export default function Step1_Setup({ onNext }) {
         // "19x1" is the AI dropping a digit off "19x17" — flag it loudly so
         // the misread gets fixed before footage (and pounds) ride on it.
         const dims = String(r.size || '').match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/);
-        const suspect = dims && Math.min(parseFloat(dims[1]), parseFloat(dims[2])) <= 3;
+        // A round duct written into a rectangular size ("40x0 SA (40"ø …)")
+        // is READ correctly as round rather than reported as a defect — the
+        // dimension is right there, so repairing beats asking. Say what was
+        // done so it's still verifiable.
+        const parsedSize = parseDuctDesc(`${r.size} duct`);
+        const repaired = parsedSize?.repairedFrom;
+        const suspect = !repaired && dims && Math.min(parseFloat(dims[1]), parseFloat(dims[2])) <= 3;
+        if (repaired) {
+          flags.push({ type: 'info', text: `Duct size "${r.size}" was read as ${parsedSize.dia}" ROUND — it came through as "${repaired}", a round duct written into a rectangular size. Priced as spiral; verify on the plan.`, source: fileMeta.name });
+        }
         if (suspect) {
           flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name });
         }

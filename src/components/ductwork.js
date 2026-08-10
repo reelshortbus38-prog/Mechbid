@@ -38,7 +38,20 @@ export function parseDuctDesc(desc = '') {
     return { kind: 'flex', dia: m ? parseFloat(m[1]) : 0 };
   }
   const rect = s.match(/(\d+(?:\.\d+)?)\s*(?:"|″|in)?\s*[x×]\s*(\d+(?:\.\d+)?)/);
-  if (rect) return { kind: 'rect', w: parseFloat(rect[1]), h: parseFloat(rect[2]) };
+  if (rect) {
+    const w = parseFloat(rect[1]), h = parseFloat(rect[2]);
+    // A ROUND duct written into a rectangular slot: real sets label a 40"
+    // spiral main as 40"ø, and the extractor emitted "40x0 SA (40\"ø SA
+    // labeled as round)". The rect pattern matches "40x0" first, which would
+    // price a 40-inch main as a duct with no height — zero pounds, free metal.
+    // A zero side plus a round marker in the text means it IS round, at the
+    // non-zero dimension. Without a round marker it stays a (flagged) misread.
+    if ((w === 0 || h === 0) && /ø|⌀|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s)) {
+      const dia = Math.max(w, h);
+      if (dia > 0) return { kind: 'round', dia, repairedFrom: `${rect[1]}x${rect[2]}` };
+    }
+    return { kind: 'rect', w, h };
+  }
   const round = s.match(/(\d+(?:\.\d+)?)\s*(?:"|″|in\b|inch(?:es)?)?\s*(?:ø|dia(?:meter)?\b|round|spiral)/);
   if (round) return { kind: 'round', dia: parseFloat(round[1]) };
   const roundPrefix = s.match(/[ø⌀]\s*(\d+(?:\.\d+)?)/);
