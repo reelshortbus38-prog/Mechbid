@@ -2,6 +2,8 @@
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 import { crossCheckDiff } from './crossCheck.js';
 import { digestSummaries } from '../components/summaryDigest.js';
+import { selectVisionPages } from './pageSkip.js';
+import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -893,7 +895,9 @@ export function isSpecPage(text, hasScale = false) {
 // Equipment/unit tags as they appear in a mechanical schedule table: a
 // discipline prefix + optional area letter + number (VAV-M101, AHU-E-01,
 // RTU-1, EF-3, CU-2, DOAS-1…). Shared by the detector and the extractor.
-const UNIT_TAG_RE = /\b(VAV|CV|FPB|PIU|RTU|AHU|DOAS|MAU|MUA|ERV|HRV|EF|SF|RF|TF|KEF|GEF|CU|ACCU|CUH|UH|FCU|HP|WSHP|PTAC|FC|AC|B|CH|CT|P|VRF)-?[A-Z]?-?\d+[A-Z]?\b/gi;
+// Shared definition — see components/hvacEquip.js. Schedule tables are dense
+// and unambiguous, so this variant allows the single-letter prefixes (P-1).
+const UNIT_TAG_RE = unitTagRe('gi');
 
 // A schedule sheet is a TABLE of tagged equipment (VAV boxes, AHUs, RTUs,
 // exhaust fans…), not prose. It routes to the schedule extractor, which pulls
@@ -943,8 +947,10 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   // checked FIRST so a schedule sheet with a few notes isn't misrouted to the
   // prose analyzer, which is told a spec has no counts and would drop them all.
   const schedulePages = [], specPages = [], drawingPageNums = [];
+  const textByPage = {};
   if (pages.length) {
     for (const p of pages) {
+      textByPage[p.pageNum] = p.text;
       const hasScale = !!scaleByPage[p.pageNum];
       // A page with a real drawing scale is a plan sheet → vision, even if it
       // lists a few tags — UNLESS it's a dense schedule table (a corner detail's
@@ -980,9 +986,28 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   if (schedulePages.length) absorbResult(await analyzeHvacScheduleText(schedulePages.join('\n\n'), fileName));
   if (specPages.length) absorbResult(await analyzeHvacSpecText(specPages.join('\n\n'), fileName));
 
+  // Spend the vision budget on the sheets that can actually carry a takeoff.
+  // Sheet indexes, code-compliance checklists and cover sheets are dropped
+  // outright, and if more real sheets survive than the cap allows, the budget
+  // goes to the RICHEST ones rather than simply the first ones — page order is
+  // the wrong way to ration a fixed budget (it threw away a "MECHANICAL
+  // DETAILS & SCHEDULES" sheet for being last).
+  const { selected, skipped: skippedSheets, deferred } = pages.length
+    ? selectVisionPages(drawingPageNums, textByPage, MAX_VISION_PAGES)
+    : { selected: [], skipped: [], deferred: [] };
+  if (skippedSheets.length) {
+    const byKind = skippedSheets.reduce((m, s) => ({ ...m, [s.why]: [...(m[s.why] || []), s.pageNum] }), {});
+    merged.flags.push({ type: 'info', source: fileName,
+      text: `${skippedSheets.length} sheet(s) skipped as non-takeoff pages, freeing budget for the drawings: ${Object.entries(byKind).map(([k, ps]) => `${k} (p${ps.join(', p')})`).join(', ')}.` });
+  }
+  if (deferred.length) {
+    merged.flags.push({ type: 'warn', source: fileName,
+      text: `${deferred.length} drawing sheet(s) were not read — the ${MAX_VISION_PAGES}-sheet vision limit was reached and these had the least takeoff content: p${deferred.join(', p')}. Upload them on their own to include them.` });
+  }
+
   const { pages: rendered, truncated } = await renderPdfPagesToImages(file, {
     scaleFtPerInchByPage: scaleByPage,
-    ...(pages.length ? { pageNums: drawingPageNums } : {}),
+    ...(pages.length ? { pageNums: selected } : {}),
     maxPages: MAX_VISION_PAGES,
   });
   if (Object.keys(scaleByPage).length) {
@@ -1026,7 +1051,9 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     const drawnPages = [...new Set(rendered.map(r => r.pageNum))];
     merged.flags.push({ type: 'info', text: `Read as a mechanical set: ${schedulePages.length} schedule sheet(s) + ${specPages.length} spec/notes page(s) analyzed as text, ${drawnPages.length} drawing sheet(s) read by vision (page${drawnPages.length === 1 ? '' : 's'} ${drawnPages.join(', ')}).`, source: fileName });
   }
-  if (truncated) merged.flags.push({ type: 'warn', text: `More drawing sheets than the ${MAX_VISION_PAGES}-page vision limit — some sheets weren't read. Split the set and upload the mechanical plan sheets separately for a full takeoff.`, source: fileName });
+  // Only for the no-text-layer (scanned) path — when pages were classified,
+  // the deferred flag above already names exactly which sheets were left out.
+  if (truncated && !pages.length) merged.flags.push({ type: 'warn', text: `More drawing sheets than the ${MAX_VISION_PAGES}-page vision limit — some sheets weren't read. Split the set and upload the mechanical plan sheets separately for a full takeoff.`, source: fileName });
   return finishHvac(merged);
 }
 

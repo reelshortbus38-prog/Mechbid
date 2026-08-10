@@ -26,18 +26,19 @@
 //
 // Pure — no React.
 
-import { canonicalTag, expandEquipTags } from './hvacEquip.js';
+import { canonicalTag, expandEquipTags, proseTagRe } from './hvacEquip.js';
 
 // The analyzer explaining that it saw a tag but could not schedule it.
 const COVERAGE_RE = /\b(?:cannot|could not|couldn't) be extracted\b|\bnot (?:be )?extracted as\b|\bnot as rows in a schedule\b|\b(?:have|has) no associated schedule data\b|\bno schedule data\b|\bnot a scheduled equipment tag\b|\bnot separate scheduled equipment\b|\bappears? only within\b|\breferenced only within\b|\b(?:referenced|mentioned)\b.{0,40}?\b(?:sequence of operation|sequence-of-operation|narrative)\b|\bnot provided in this text\b|\bshares? a sequence of operation\b/i;
 
-// Tags as they appear inside prose. The dash is REQUIRED: without it this
-// matches sheet ids ("M1.03"), keynote numbers and stray words. Bare class
-// names ("RTU", "VAV terminal units") carry no unit number and are skipped —
+// Tags as they appear inside prose — the shared prose pattern, which knows
+// the real equipment prefixes instead of matching any capitalised word plus a
+// number, and accepts the space form ("CU 1-3") that real sets use. Bare class
+// names ("RTU", "VAV terminal units") carry no unit number and are skipped:
 // there is nothing to look up.
-const TAG_IN_PROSE_RE = /\b[A-Z]{2,6}-\d{1,3}[A-Z]?\b/g;
+const TAG_IN_PROSE_RE = proseTagRe('g');
 // "VRF-01 thru VRF-06" written into a sentence.
-const RANGE_IN_PROSE_RE = /\b([A-Z]{2,6}-\d{1,3})\s*(?:THRU|THROUGH)\s*((?:[A-Z]{2,6}-)?\d{1,3})\b/gi;
+const RANGE_IN_PROSE_RE = new RegExp(`\\b(${proseTagRe().source})\\s*(?:THRU|THROUGH)\\s*((?:[A-Z]{2,6}[\\s-])?\\d{1,3})\\b`, 'gi');
 
 export function isCoverageFlag(flag) {
   const text = String((typeof flag === 'string' ? flag : flag?.text) || '');
