@@ -1,6 +1,7 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 import { crossCheckDiff } from './crossCheck.js';
+import { digestSummaries } from '../components/summaryDigest.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -338,7 +339,7 @@ export async function analyzeRedlinePdf(file, fileName) {
     }
   }
 
-  merged.summary = merged.pageSummaries.join(' ');
+  merged.summary = digestSummaries(merged.pageSummaries).text;
   return merged;
 }
 
@@ -491,7 +492,7 @@ export async function analyzeImageDoc(file, fileName) {
     if (parsed.summary) merged.summaries.push(parsed.summary);
   }
 
-  merged.summary = merged.summaries.join(' ');
+  merged.summary = digestSummaries(merged.summaries).text;
   return merged;
 }
 
@@ -719,7 +720,7 @@ function absorbHvac(merged, parsed, seen) {
   if (parsed.summary) merged.summaries.push(parsed.summary);
 }
 function finishHvac(merged) {
-  merged.summary = merged.summaries.join(' ');
+  merged.summary = digestSummaries(merged.summaries).text;
   delete merged.summaries;
   return merged;
 }
