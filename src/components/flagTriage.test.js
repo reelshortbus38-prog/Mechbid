@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { flagCategory, triageFlags } from './flagTriage.js';
+import { backupModelFlag } from '../api/ai.js';
+import { dedupeFlags } from './flagDedupe.js';
 
 // Every string here is verbatim from a live run on the industrial set. The
 // point of the split: a correct extraction should read like a takeoff, not
@@ -60,6 +62,32 @@ describe('flagCategory — what must stay visible', () => {
     expect(flagCategory('DUCTWORK ELBOWS SHALL BE LONG RADIUS OR SQUARE THROAT PER SMACNA STANDARDS.')).toBe('note');
     expect(flagCategory('Approved manufacturers for roof hoods: Cook, Pennbarry.')).toBe('note');
     expect(flagCategory('Design firm: DG Architectural, NC Registration No. P-0477')).toBe('note');
+  });
+});
+
+describe('backupModelFlag', () => {
+  it('says nothing when the primary model answered', () => {
+    expect(backupModelFlag(null, 'Page 3', 'set.pdf')).toEqual([]);
+    expect(backupModelFlag(undefined, 'Page 3', 'set.pdf')).toEqual([]);
+  });
+
+  it('names the sheet and the model, and survives triage as actionable', () => {
+    const [f] = backupModelFlag('gpt-4o', 'Page 3', 'Drawings_5.pdf');
+    expect(f.type).toBe('warn');
+    expect(f.source).toBe('Drawings_5.pdf');
+    expect(f.text).toMatch(/gpt-4o/);
+    expect(f.text).toMatch(/re-run/);
+    // The whole point is that the estimator SEES it — a backup read hidden in
+    // the diagnostics drawer is the same as no warning at all.
+    expect(flagCategory(f)).toBe('scope');
+    expect(triageFlags([f]).diagnostics).toHaveLength(0);
+  });
+
+  it('collapses to one line when several pages fell back', () => {
+    const flags = [3, 4, 9].flatMap(p => backupModelFlag('gpt-4o', `Page ${p}`, 'set.pdf'));
+    const out = dedupeFlags(flags);
+    expect(out).toHaveLength(1);
+    expect(out[0].count).toBe(3);
   });
 });
 

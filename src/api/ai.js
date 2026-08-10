@@ -1,6 +1,6 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
-import { canonicalTag } from '../components/hvacEquip.js';
+import { crossCheckDiff } from './crossCheck.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -31,6 +31,10 @@ export async function callClaude(messages, system = '', opts = {}) {
   }
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  // The server marks any answer that came from the weaker fallback model.
+  // Callers that build a takeoff MUST surface that — a silently substituted
+  // read looks identical to a good one in the UI.
+  if (data.fallbackModel) opts.onFallback?.(data.fallbackModel, data.primaryError);
   // Handle both OpenRouter and Anthropic response formats
   return pickText(data) || '';
 }
@@ -114,7 +118,7 @@ Return ONLY valid JSON, no markdown:
     }
     const data = await res.json();
     const text = pickText(data);
-    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
+    return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Vision error:', e.message);
     return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
@@ -199,7 +203,7 @@ Return ONLY valid JSON, no markdown, no commentary:
     }
     const data = await res.json();
     const text = pickText(data);
-    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
+    return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('Redline vision error:', e.message);
     return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
@@ -323,6 +327,7 @@ export async function analyzeRedlinePdf(file, fileName) {
         continue;
       }
       absorb(parsed, pageNum);
+      merged.flags.push(...backupModelFlag(vres.fallbackModel, tileLabel, fileName));
       // Two-model cross-check: items the second model saw that the primary
       // didn't become warnings to verify on the drawing, not silent misses.
       crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
@@ -436,6 +441,7 @@ export async function analyzeImageDoc(file, fileName) {
       merged.flags.push({ type: 'warn', text: `${tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image'}: could not be analyzed (${error}) — hit Analyze again to retry`, source: fileName });
       continue;
     }
+    merged.flags.push(...backupModelFlag(vres.fallbackModel, tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image', fileName));
     // Two-model cross-check (full-image pass) — disagreements become warnings.
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Photo cross-check: a second AI model also saw ${m} that the primary read didn't — verify against the document`, source: fileName }));
@@ -551,7 +557,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null, s
     }
     const data = await res.json();
     const text = pickText(data);
-    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
+    return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC vision error:', e.message);
     return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
@@ -599,7 +605,7 @@ Return ONE combined JSON covering everything, counted correctly.`;
     }
     const data = await res.json();
     const text = pickText(data);
-    return text ? { text, second: data.secondOpinion || null } : { text: null, error: 'empty AI response' };
+    return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
   } catch (e) {
     console.warn('HVAC multi-image vision error:', e.message);
     return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
@@ -641,6 +647,7 @@ export async function analyzeHvacPlanImagesCombined(entries) {
   if (!parsed) return null; // caller falls back to per-file analysis
 
   absorbHvac(merged, parsed, seen);
+  merged.flags.push(...backupModelFlag(vres.fallbackModel, 'This batch of screenshots', names));
   crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
     merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: names }));
   merged.flags.push({ type: 'info', text: `${entries.length} screenshots read TOGETHER — same-sheet overlap counted once, distinct sheets kept separate`, source: names });
@@ -720,6 +727,7 @@ export async function analyzeHvacPlanImage(file, fileName) {
       continue;
     }
     absorbHvac(merged, parsed, seen);
+    merged.flags.push(...backupModelFlag(vres.fallbackModel, tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image', fileName));
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
@@ -761,6 +769,7 @@ Return ONLY valid JSON, no markdown:
     if (r.error) { merged.flags.push({ type: 'warn', text: `Part ${r.i + 1} of ${chunks.length} failed (${r.error}) — re-run to fill it in`, source: fileName }); continue; }
     const parsed = r.parsed;
     if (!parsed) { merged.flags.push({ type: 'warn', text: `Part ${r.i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName }); continue; }
+    merged.flags.push(...backupModelFlag(r.fallbackModel, `Spec part ${r.i + 1} of ${chunks.length}`, fileName));
     (parsed.equipment || []).forEach(e => {
       const key = String(e.type || '').toLowerCase().trim();
       if (!key || seenType.has(key)) return;
@@ -823,6 +832,7 @@ Return ONLY valid JSON, no markdown:
     if (r.error) { merged.flags.push({ type: 'warn', text: `Schedule part ${r.i + 1} of ${chunks.length} failed (${r.error}) — re-run to fill it in`, source: fileName }); continue; }
     const parsed = r.parsed;
     if (!parsed) { merged.flags.push({ type: 'warn', text: `Schedule part ${r.i + 1} of ${chunks.length}: AI response could not be parsed`, source: fileName }); continue; }
+    merged.flags.push(...backupModelFlag(r.fallbackModel, `Schedule part ${r.i + 1} of ${chunks.length}`, fileName));
     (parsed.equipment || []).forEach(e => {
       const tag = String(e.tag || '').toUpperCase().trim();
       // No tag → key on the unit's identity so a stray row still counts once,
@@ -971,6 +981,7 @@ export async function analyzeHvacPlanPdf(file, fileName) {
       continue;
     }
     absorbHvac(merged, parsed, seen);
+    merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
     crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Page ${pageNum} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
@@ -1077,42 +1088,29 @@ function repairTruncatedJson(raw) {
   return out;
 }
 
-// ── VISION CROSS-CHECK DIFFER ────────────────────────────────────────────────
-// Compares the primary (Claude) vision read against the second model's
-// (GPT-4o) raw text on the SAME image. Returns human-readable strings for
-// items the second model saw that the primary didn't — circuits, equipment
-// tags, air devices, and callout texts. Only used for documents with no
-// deterministic parser (photos/drawings), where a second model is the only
-// second opinion available. The primary read stays authoritative; these are
-// pointers for a human look, never merged into the takeoff.
+// ── BACKUP-MODEL WARNING ─────────────────────────────────────────────────────
+// When the primary model times out or errors, the server returns the weaker
+// second model's read rather than failing the request — the right call for a
+// 40-page set, but only if it is VISIBLE. Unmarked, a page extracted by the
+// backup looks exactly like a good page, and the estimator prices a bid that
+// is quietly worse on those sheets with no way to know which ones. The
+// wording deliberately contains "failed" so flag triage keeps it up front
+// instead of demoting it to a diagnostic.
+export function backupModelFlag(fallbackModel, label, source) {
+  if (!fallbackModel) return [];
+  return [{
+    type: 'warn',
+    source,
+    text: `${label}: the primary AI read failed and this was read by the backup model (${fallbackModel}), which is less accurate — re-run the upload to read it with the primary model before pricing.`,
+  }];
+}
+
+// Compares the primary (Claude) vision read against the second model's raw
+// text on the SAME image. Grading lives in ./crossCheck.js (pure, tested);
+// this only turns the second model's raw response into an object first.
 export function crossCheckVision(primaryParsed, secondRaw) {
   const second = typeof secondRaw === 'string' ? parseAIJson(secondRaw) : secondRaw;
-  if (!second || !primaryParsed) return [];
-  const msgs = [];
-  const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
-  const diffSet = (label, listA, listB, keyFn, keyNorm = norm) => {
-    const a = new Set((listA || []).map(x => keyNorm(keyFn(x))).filter(Boolean));
-    (listB || []).forEach(item => {
-      const k = keyNorm(keyFn(item));
-      if (k && !a.has(k)) msgs.push(`${label} "${keyFn(item)}"`);
-    });
-  };
-  diffSet('circuit', primaryParsed.circuits, second.circuits, c => c.circuitId);
-  // TAGS compare in canonical form (RTU-1 === RTU-01). Comparing raw strings
-  // made the second model's unpadded tags look like finds the primary missed,
-  // and a full set flooded the flag list with those false alarms.
-  diffSet('equipment tag', primaryParsed.equipment, second.equipment, e => e.tag, canonicalTag);
-  diffSet('air device', primaryParsed.airDevices, second.airDevices, d => d.tag, canonicalTag);
-  // Callouts are free text — flag second-model callouts whose opening words
-  // don't appear anywhere in the primary's callouts.
-  const pTexts = (primaryParsed.fieldTasks || []).map(t => norm(t.desc));
-  (second.fieldTasks || []).forEach(t => {
-    const head = norm(t.desc).slice(0, 25);
-    if (head.length >= 10 && !pTexts.some(pt => pt.includes(head))) {
-      msgs.push(`callout "${String(t.desc || '').slice(0, 70)}"`);
-    }
-  });
-  return msgs;
+  return crossCheckDiff(primaryParsed, second);
 }
 
 export async function parseDocFile(base64, fileName) {
@@ -1305,17 +1303,21 @@ const SCOPE_CHUNK_OVERLAP = 500;
 // chunk order: [{ i, parsed }] on success, [{ i, error }] on failure.
 async function runChunkCalls(chunks, buildContent, system) {
   const results = await Promise.all(chunks.map(async (chunk, i) => {
+    let fallbackModel = null;
     const once = async () => {
       // 8000-token cap: a dense CO2/spec chunk was overrunning the 4000
       // default and getting truncated mid-JSON — every task in the chunk
       // lost. Give scope extraction real headroom.
-      const resultText = await callClaude([{ role: 'user', content: buildContent(chunk, i) }], system, { max_tokens: 8000 });
+      const resultText = await callClaude([{ role: 'user', content: buildContent(chunk, i) }], system, {
+        max_tokens: 8000,
+        onFallback: m => { fallbackModel = m; },
+      });
       return parseAIJson(resultText);
     };
     try {
       let parsed = await once();
       if (!parsed) { await new Promise(r => setTimeout(r, 800)); parsed = await once(); }
-      return { i, parsed };
+      return { i, parsed, fallbackModel };
     } catch (e) {
       return { i, error: e?.message || 'request failed' };
     }
