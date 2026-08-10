@@ -6,7 +6,12 @@
 // If the Anthropic call fails for ANY reason (bad param, model change, outage),
 // the request automatically retries through OpenRouter/gpt-4o rather than
 // surfacing an error to the estimator mid-upload.
-const CLAUDE_MODEL = 'claude-sonnet-5';
+const CLAUDE_MODEL = process.env.MECHBID_TEXT_MODEL || 'claude-sonnet-5';
+
+// Older, weaker reader kept only as a degrade-don't-die path. Every response
+// that came from it is marked so the caller can warn instead of quietly
+// blending a lower-quality read into the takeoff.
+const FALLBACK_MODEL = 'gpt-4o';
 
 // Hard cap on the primary model. Sonnet 5 reasons before answering and a long
 // chunk can run past a minute — but iOS Safari kills any request around the
@@ -74,6 +79,7 @@ export default async function handler(req, res) {
 
     let text = null;
     let lastError = null;
+    let fallbackModel = null;
 
     if (process.env.ANTHROPIC_API_KEY) {
       try {
@@ -86,6 +92,11 @@ export default async function handler(req, res) {
     if (text == null && process.env.OPENROUTER_API_KEY) {
       try {
         text = await callOpenRouter({ messages, system, max_tokens, temperature });
+        // gpt-4o is an older, weaker reader than the primary. Silently
+        // substituting it meant a few timed-out chunks of a 40-page set were
+        // extracted at lower quality with nothing in the UI saying so. Mark
+        // it so the estimator can re-run those pages.
+        fallbackModel = FALLBACK_MODEL;
       } catch (e) {
         lastError = e;
       }
@@ -98,6 +109,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       content: [{ type: 'text', text }],
       choices: [{ message: { content: text } }],
+      ...(fallbackModel ? { fallbackModel, primaryError: lastError?.message || 'primary model unavailable' } : {}),
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });

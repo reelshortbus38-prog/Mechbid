@@ -29,6 +29,13 @@ function toOpenAiMessages(messages) {
   }));
 }
 
+// The cross-check / fallback reader. Deliberately a DIFFERENT model family:
+// two similar models make correlated mistakes, and a different one disagrees
+// in more informative ways. It is never authoritative — its finds become
+// "verify this" flags, and its read is only used at all when the primary
+// failed outright, and then only with a fallbackModel marker attached.
+const SECOND_MODEL = process.env.MECHBID_SECOND_MODEL || 'openai/gpt-4o';
+
 async function secondOpinion(messages, system, max_tokens) {
   if (!process.env.OPENROUTER_API_KEY) return null;
   try {
@@ -42,7 +49,7 @@ async function secondOpinion(messages, system, max_tokens) {
         'HTTP-Referer': 'https://mechbid.vercel.app',
         'X-Title': 'MechBid',
       },
-      body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens: max_tokens || 4000, temperature: 0, messages: orMessages }),
+      body: JSON.stringify({ model: SECOND_MODEL, max_tokens: max_tokens || 4000, temperature: 0, messages: orMessages }),
     });
     const data = await response.json();
     if (!response.ok) return null;
@@ -52,12 +59,42 @@ async function secondOpinion(messages, system, max_tokens) {
   }
 }
 
+// Vision model. Sonnet 5 is the default because it has the SAME high-
+// resolution vision as Opus 5 (2576px long edge) at 60% of the input cost and
+// meaningfully lower latency, which matters against a hard 60s function
+// budget. MECHBID_VISION_MODEL lets the drawing-vision path be moved to
+// claude-opus-5 from Vercel env vars without a deploy, to A/B stronger
+// reasoning on ambiguous plan geometry against the latency risk.
+const VISION_MODEL = process.env.MECHBID_VISION_MODEL || 'claude-sonnet-5';
+
+// Thinking is DISABLED on Sonnet 5 (it runs adaptive thinking by default when
+// the field is omitted): thinking tokens eat the max_tokens budget and the
+// latency blew the time cap on dense plan sheets, and this is structured
+// extraction, not deliberation.
+//
+// Opus-class models are the exception. There, `disabled` is only accepted at
+// effort `high` or below, and running disabled has two documented failure
+// modes that would silently corrupt a takeoff: tool calls emitted as plain
+// text, and `<thinking>` tags leaking into the text block (which lands
+// non-JSON in front of the JSON we parse). The documented fix is to let it
+// think — adaptive keeps it brief on easy sheets.
+function thinkingFor(model) {
+  return /^claude-(opus|fable)/.test(model) ? { type: 'adaptive' } : { type: 'disabled' };
+}
+
+// Belt-and-braces for the leakage failure mode above: a stray thinking block
+// rendered as text must never reach the JSON parser.
+function stripLeakedThinking(text) {
+  return text.replace(/<thinking>[\s\S]*?<\/thinking>\s*/gi, '');
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { messages, system, max_tokens, model, temperature, crossCheck } = req.body;
+    const { messages, system, max_tokens, model, crossCheck } = req.body;
     if (!messages) return res.status(400).json({ error: 'No messages provided' });
+    const activeModel = model || VISION_MODEL;
 
     // Primary (Claude) and the cross-check second opinion (GPT-4o) run in
     // PARALLEL, each with its own cap. Running them back-to-back with an
@@ -76,26 +113,23 @@ module.exports = async function handler(req, res) {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: model || 'claude-sonnet-5',
+          model: activeModel,
           max_tokens: max_tokens || 4000,
           // No temperature: Sonnet 5 rejects the parameter outright
           // ("`temperature` is deprecated for this model" → HTTP 400).
-          // Thinking DISABLED: Sonnet 5 runs adaptive thinking by default when
-          // the field is omitted. On dense plan sheets it would think first —
-          // a thinking block lands BEFORE the text block (clients reading
-          // content[0].text saw "empty" responses), thinking tokens eat the
-          // max_tokens budget, and the extra latency blew the time cap. This
-          // is structured extraction under a hard 60s budget — no thinking.
-          thinking: { type: 'disabled' },
+          thinking: thinkingFor(activeModel),
           ...(system ? { system } : {}),
           messages,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || `Anthropic API error ${response.status}`);
-      // Normalize to text-only blocks: even with thinking disabled, never
-      // assume the text block is first — join every text block there is.
-      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      // Normalize to text-only blocks: a thinking block can land BEFORE the
+      // text block, so never assume content[0] is the answer — join every
+      // text block there is (reading [0].text turned good answers into
+      // "empty AI response" failures).
+      const text = stripLeakedThinking(
+        (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(''));
       if (!text) throw new Error('Anthropic returned no text content');
       return [{ type: 'text', text }];
     })();
@@ -107,8 +141,15 @@ module.exports = async function handler(req, res) {
 
     if (content == null && second != null) {
       // Primary timed out or errored but the second model answered — return
-      // ITS read (marked) instead of a dead request. Degrade, don't die.
-      return res.status(200).json({ content: [{ type: 'text', text: second }], fallbackModel: 'gpt-4o' });
+      // ITS read instead of a dead request. Degrade, don't die. But the
+      // second model is the weaker reader, so this MUST be marked: an
+      // unlabelled backup read is a quietly worse takeoff, and the client
+      // turns fallbackModel into a warning naming the sheet.
+      return res.status(200).json({
+        content: [{ type: 'text', text: second }],
+        fallbackModel: SECOND_MODEL,
+        primaryError: primaryErr?.message || 'primary model unavailable',
+      });
     }
     if (content == null) {
       return res.status(502).json({ error: primaryErr?.message || 'Vision analysis failed' });
