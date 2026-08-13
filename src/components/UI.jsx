@@ -153,10 +153,10 @@ export function Flag({ flag }) {
               border: `1px solid ${colors.blue}66`, borderRadius: 6,
               padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
             }}
-          >📐 View page {target.page}</button>
+          >📐 Show me on page {target.page}</button>
         )}
       </div>
-      {peek && <SheetPeek fileName={peek.file} page={peek.page} onClose={() => setPeek(null)} />}
+      {peek && <SheetPeek fileName={peek.file} page={peek.page} flagText={flag.text} onClose={() => setPeek(null)} />}
     </div>
   );
 }
