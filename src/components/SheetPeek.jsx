@@ -31,6 +31,11 @@ const MAX_SCALE = 6;
 
 export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   const [state, setState] = useState({ status: 'loading' });
+  // Opening centred on the mark at full resolution is right for reading the
+  // label, and it leaves you with no idea WHERE on a four-foot sheet you are.
+  // "Fit sheet" pulls back to the whole drawing so the mark can be placed in
+  // context, then back in to read it.
+  const [fit, setFit] = useState(false);
   const frameRef = useRef(null);
   const markRef = useRef(null);
 
@@ -74,6 +79,14 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
           boxes.slice(0, 6).forEach((b, i) => {
             const x = b.x * scale, y = b.y * scale, w = Math.max(b.w * scale, 24), h = Math.max(b.h * scale, 14);
             const pad = Math.max(6, h * 0.45);
+            // Two marks. The tight box is precise; the outer ring is sized off
+            // the SHEET rather than the label so it stays findable when the
+            // whole drawing is fitted to the screen — at that zoom a box drawn
+            // round a half-inch label is a couple of pixels.
+            const ring = Math.max(w, h) * 3 + canvas.width * 0.012;
+            ctx.strokeStyle = 'rgba(255,45,85,0.45)';
+            ctx.lineWidth = Math.max(4, canvas.width * 0.002);
+            ctx.strokeRect(x + w / 2 - ring, y + h / 2 - ring, ring * 2, ring * 2);
             ctx.strokeStyle = '#ff2d55';
             ctx.lineWidth = Math.max(3, h * 0.14);
             ctx.strokeRect(x - pad, y - pad, w + pad * 2, h + pad * 2);
@@ -98,11 +111,11 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   // Open scrolled to the marked label rather than at the top-left corner of a
   // four-foot sheet.
   useEffect(() => {
-    if (state.status !== 'ready' || !state.mark || !frameRef.current) return;
+    if (fit || state.status !== 'ready' || !state.mark || !frameRef.current) return;
     const el = frameRef.current;
     el.scrollLeft = Math.max(0, state.mark.x + state.mark.w / 2 - el.clientWidth / 2);
     el.scrollTop = Math.max(0, state.mark.y + state.mark.h / 2 - el.clientHeight / 2);
-  }, [state]);
+  }, [state, fit]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column', padding: 10 }}>
@@ -116,9 +129,15 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
             </span>
           )}
         </div>
+        {state.status === 'ready' && (
+          <button
+            onClick={() => setFit(f => !f)}
+            style={{ marginLeft: 'auto', flexShrink: 0, background: 'transparent', color: colors.blue, border: `1px solid ${colors.blue}66`, borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >{fit ? '🔍 Zoom to mark' : '🗺️ Fit sheet'}</button>
+        )}
         <button
           onClick={onClose}
-          style={{ marginLeft: 'auto', flexShrink: 0, background: colors.green, color: '#000', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          style={{ marginLeft: state.status === 'ready' ? 8 : 'auto', flexShrink: 0, background: colors.green, color: '#000', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
         >Close</button>
       </div>
       {/* Natural size inside a scrolling frame: a drawing squeezed to fit a
@@ -128,7 +147,15 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 8, background: '#fff' }}
       >
         {state.status === 'ready'
-          ? <img ref={markRef} src={state.src} alt={`Page ${page}`} style={{ display: 'block', width: state.width, height: state.height, maxWidth: 'none' }} />
+          ? <img
+              ref={markRef}
+              src={state.src}
+              alt={`Page ${page}`}
+              onClick={() => setFit(f => !f)}
+              style={fit
+                ? { display: 'block', width: '100%', height: 'auto', cursor: 'zoom-in' }
+                : { display: 'block', width: state.width, height: state.height, maxWidth: 'none', cursor: 'zoom-out' }}
+            />
           : (
             <div style={{ padding: 40, textAlign: 'center', color: state.status === 'error' ? colors.red : colors.textDim, fontSize: 13, background: colors.panel, height: '100%' }}>
               {state.status === 'error' ? state.message : `Rendering page ${page}…`}
