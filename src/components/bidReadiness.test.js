@@ -147,13 +147,18 @@ describe('unreadable duct sizes block the bid', () => {
     hvacParts: descs.map(desc => ({ desc, qty: 80, unitCost: 0 })),
   });
 
-  it('stops a bid where footage is shown but the size is broken', () => {
-    // Passes the no-footage check (80 ft each) and then prices at zero.
-    const { blockers } = checkBidReadiness(job(['Ductwork — 32x0 SA duct (supply air)']), {});
+  it('stops a bid where footage is shown but NO size survives', () => {
+    // Both sides zero: nothing to infer a diameter from, so it still prices at
+    // nothing. (A single dimension like "32x0" is round duct and prices fine.)
+    const { blockers } = checkBidReadiness(job(['Ductwork — 0x0 duct (supply air)']), {});
     const hit = blockers.find(b => b.key === 'ductBadSize');
     expect(hit).toBeTruthy();
     expect(hit.detail).toMatch(/ZERO pounds/);
-    expect(hit.detail).toMatch(/32x0/);
+  });
+
+  it('does NOT block a single-dimension size — that is round duct', () => {
+    const { issues } = checkBidReadiness(job(['Ductwork — 32x0 SA duct (supply air)']), {});
+    expect(issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
   });
 
   it('says nothing about duct lines with a real size', () => {

@@ -209,7 +209,17 @@ export default function Step1_Setup({ onNext }) {
         const repaired = parsedSize?.repairedFrom;
         const suspect = !repaired && dims && Math.min(parseFloat(dims[1]), parseFloat(dims[2])) <= 3;
         if (repaired) {
-          flags.push({ type: 'info', text: `Duct size "${r.size}" was read as ${parsedSize.dia}" ROUND — it came through as "${repaired}", a round duct written into a rectangular size. Priced as spiral; verify on the plan.`, source: fileMeta.name });
+          // Two different confidences. With a round marker in the text this is
+          // a READ and just needs noting. Without one it is an INFERENCE from
+          // the drafting convention that a single dimension is a diameter —
+          // usually right, and far better than the zero-pound alternative, but
+          // if the duct really is rectangular this under-prices it. That earns
+          // a warning and a named number to check.
+          flags.push(parsedSize.inferred
+            ? { type: 'warn', source: fileMeta.name,
+                text: `Duct size "${r.size}" gave only ONE dimension, so it was priced as ${parsedSize.dia}" ROUND spiral — rectangular duct always carries two sides, so a single number is a diameter. Check the plan: if this run is actually rectangular, fix the size, because spiral costs less than the equivalent sheet metal.` }
+            : { type: 'info', source: fileMeta.name,
+                text: `Duct size "${r.size}" was read as ${parsedSize.dia}" ROUND — it came through as "${repaired}", a round duct written into a rectangular size. Priced as spiral; verify on the plan.` });
         }
         if (suspect) {
           flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name });

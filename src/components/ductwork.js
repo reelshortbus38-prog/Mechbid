@@ -40,15 +40,27 @@ export function parseDuctDesc(desc = '') {
   const rect = s.match(/(\d+(?:\.\d+)?)\s*(?:"|″|in)?\s*[x×]\s*(\d+(?:\.\d+)?)/);
   if (rect) {
     const w = parseFloat(rect[1]), h = parseFloat(rect[2]);
-    // A ROUND duct written into a rectangular slot: real sets label a 40"
-    // spiral main as 40"ø, and the extractor emitted "40x0 SA (40\"ø SA
-    // labeled as round)". The rect pattern matches "40x0" first, which would
-    // price a 40-inch main as a duct with no height — zero pounds, free metal.
-    // A zero side plus a round marker in the text means it IS round, at the
-    // non-zero dimension. Without a round marker it stays a (flagged) misread.
-    if ((w === 0 || h === 0) && /ø|⌀|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s)) {
-      const dia = Math.max(w, h);
-      if (dia > 0) return { kind: 'round', dia, repairedFrom: `${rect[1]}x${rect[2]}` };
+    // A ROUND duct written into a rectangular slot. ONE dimension means round:
+    // rectangular duct cannot be drawn without both sides, so a label carrying
+    // a single number is a diameter — 40"ø, or just 40" against a round
+    // symbol. The extractor forces those into WxH and emits "40x0", which the
+    // rect pattern then matches, pricing a 40-inch main as a duct with no
+    // height: zero pounds, free metal.
+    //
+    // The repair used to require an explicit round marker in the text, and a
+    // live set proved that too strict — three main supply trunks came through
+    // as plain "32x0 SA", "38x0 SA", "40x0 SA" with the marker lost, 140 of
+    // 272 total feet priced at nothing.
+    //
+    // Exactly ZERO is the signal, and only zero. A side of 1"-3" ("19x1" for
+    // 19x17) is a dropped digit, not a diameter — nobody labels round duct
+    // that way — so those stay a flagged misread rather than becoming a
+    // 19-inch spiral. `inferred` tells the caller this was reasoned, not read,
+    // so it can ask for a look: guessing round on a duct that really is
+    // rectangular under-prices it, which is better than free but still wrong.
+    if ((w === 0 || h === 0) && Math.max(w, h) > 0) {
+      const marked = /ø|⌀|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s);
+      return { kind: 'round', dia: Math.max(w, h), repairedFrom: `${rect[1]}x${rect[2]}`, inferred: !marked };
     }
     return { kind: 'rect', w, h };
   }
