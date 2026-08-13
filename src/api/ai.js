@@ -537,17 +537,19 @@ Extract the following EXACTLY as written — never round, simplify, or invent:
 
 For estLengthFt: duct length is scaled off the drawing, not labeled — so ESTIMATE the total run length per size using real-world size references visible on the sheet, and say which reference you used in lengthBasis. Usable references, best first: (a) dimension strings or labeled structural grid spacing (column bubbles with distances like 25'-0"); (b) the 2'x4' suspended-ceiling tile grid if drawn; (c) the air devices themselves — a 24x24 diffuser is exactly 2 ft square, so a duct run 10 diffuser-widths long is ~20 ft; (d) standard door openings (3 ft) or parking stalls (9 ft) on architectural background. Trace each duct size's total visible length against the reference and give a conservative whole-number estimate. These are BUDGET estimates the estimator will verify — mark lengthBasis with what you measured against. If NO usable size reference is visible, set estLengthFt to 0 rather than guessing blind.
 
-5) PIPE RUNS — on a piping plan, hydronic/refrigerant lines labeled with size + service, e.g. "4\" CHWS&R" (chilled water supply & return), "2½\" HWS&R" (hot water S&R), "1\" HWR". Return {size, service, notes}.
+5) PIPE RUNS — hydronic, refrigerant, gas, compressed-air and condensate lines labeled with size + service, e.g. "4\" CHWS&R" (chilled water supply & return), "2½\" HWS&R", "1 1/4\" RS" (refrigerant suction), "3/4\" RL" (refrigerant liquid). Return {size, service, estLengthFt, lengthBasis, notes}. MEASURE estLengthFt exactly the way you measure duct — against the calibrated scale bar if one is stamped on the image, otherwise against on-sheet references — and set lengthBasis to say which. Pipe is bought by the foot, so a run with no length is a run nobody prices. If a line genuinely cannot be measured, return 0 and say why in notes rather than guessing.
 
 6) RADIANT / HYDRONIC HEATING ZONES — many hydronic jobs tag heating zones as "ZONE n" with a heating load in MBH or BTUH (e.g. "ZONE 10  35.1 MBH", "ZONE 1  24.5 MBH"). A "RADIANT FLOOR HEATING SUMMARY" table may also list, per zone: manifold no., room, area (sq ft), number of loops, capacity (BTUH), flow (GPM), and tube spacing. Capture each zone as {zone, room, loadMBH, area, loops, notes} — pull whatever of those is shown; loadMBH is the MBH number (convert BTUH to MBH by dividing by 1000 if only BTUH is given).
 
 7) COST-AFFECTING GENERAL NOTES — capture as flags (type "warn") any standing note that changes the price of the work, verbatim. Common ones: duct lining/insulation requirements ("ALL SUPPLY AND RETURN DUCTWORK SHALL BE PROVIDED WITH 1.5\" THICK LINING"), flex connections at diffusers, double-wall duct, welded fittings, seismic bracing, or anything that says it "shall be" provided/installed a certain way. These drive material and labor cost even though they aren't a tag.
 
+VERTICAL RUNS: a riser is a DOT in plan view — an exhaust duct going up through the roof, a refrigerant line dropping to a unit below — so measuring it against the scale bar gives ~0 and the run reads as free. Its length is written as an ELEVATION instead: "AT 18' FROM FFL", "5' BELOW THE ROOF", "BOD 31'-10\"". When a run is vertical and an elevation callout gives its extent, use that as estLengthFt and set lengthBasis to "elevation callout". Never report 0 feet for a duct or pipe that is visibly drawn — say in notes why it could not be measured.
+
 If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, loads, or counts.
 ${NO_SELF_DESCRIPTION_RULE}
 
 Return ONLY valid JSON, no markdown:
-{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","faceSize":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","estLengthFt":0,"lengthBasis":"","notes":""}],"pipeRuns":[{"size":"","service":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
+{"documentType":"mechanical_plan|piping_plan|equipment_schedule|unknown","drawingNumber":"","drawingTitle":"","projectName":"","date":"","equipment":[{"tag":"","type":"","notes":""}],"airDevices":[{"tag":"","deviceType":"","faceSize":"","neckSize":"","cfm":0,"qty":1}],"ductRuns":[{"shape":"","size":"","service":"","estLengthFt":0,"lengthBasis":"","notes":""}],"pipeRuns":[{"size":"","service":"","estLengthFt":0,"lengthBasis":"","notes":""}],"hydronicZones":[{"zone":"","room":"","loadMBH":0,"area":0,"loops":0,"notes":""}],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing the sheet"}`;
 
 export async function callClaudeVisionHVAC(base64Image, fileName, tile = null, scaleNote = '') {
   try {
@@ -679,7 +681,17 @@ function newHvacMerged() {
     equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], hydronicZones: [], flags: [], summaries: [],
   };
 }
-function absorbHvac(merged, parsed, seen) {
+// origin: { pageNum, drawing } for the sheet this result came from. Duct and
+// pipe runs are stamped with it and deduped PER PAGE rather than per file.
+//
+// They used to be deduped per FILE on shape+size+service, first-wins, which
+// silently threw footage away: 32x24 supply at 50 ft on page 4 and 30 ft on
+// page 6 kept only the 50. That was crude overlap protection standing in for
+// the real thing — sheetOverlap already pools sheets by role, sums within a
+// pool and takes the max across them, so an enlarged plan re-drawing an
+// overall plan is handled properly. Duct simply never reached it, because the
+// runs had been collapsed before they got there.
+function absorbHvac(merged, parsed, seen, origin = null) {
   if (!parsed) return;
   if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
   if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
@@ -703,16 +715,18 @@ function absorbHvac(merged, parsed, seen) {
   (parsed.ductRuns || []).forEach(r => {
     const size = String(r.size || '').trim();
     if (!size) return;
-    const k = 'dr|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
+    // Page-scoped: two sheets legitimately carry the same duct size in
+    // different areas, and both lengths are real.
+    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
     if (seen.has(k)) return; seen.add(k);
-    merged.ductRuns.push({ ...r, size });
+    merged.ductRuns.push({ ...r, size, ...(origin || {}) });
   });
   (parsed.pipeRuns || []).forEach(r => {
     const size = String(r.size || '').trim();
     if (!size) return;
-    const k = 'pr|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
+    const k = 'pr|' + (origin?.pageNum ?? '') + '|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
     if (seen.has(k)) return; seen.add(k);
-    merged.pipeRuns.push({ ...r, size });
+    merged.pipeRuns.push({ ...r, size, ...(origin || {}) });
   });
   (parsed.hydronicZones || []).forEach(z => {
     const zone = String(z.zone || '').toUpperCase().trim();
@@ -1077,7 +1091,10 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     const rk = reclassifyRuns(rc.runs, parsed.pipeRuns, `Page ${pageNum}`);
     rk.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
     parsed = { ...parsed, ductRuns: rk.ductRuns, pipeRuns: rk.pipeRuns };
-    absorbHvac(merged, parsed, seen);
+    absorbHvac(merged, parsed, seen, {
+      pageNum,
+      drawing: [parsed.drawingNumber, parsed.drawingTitle].filter(Boolean).join(' — '),
+    });
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
     const { reported, dropped } = crossCheckVision(parsed, vres.second);
     reported.slice(0, 4).forEach(m =>
@@ -1216,6 +1233,8 @@ export function backupModelFlag(fallbackModel, label, source) {
 // Compares the primary (Claude) vision read against the second model's raw
 // text on the SAME image. Grading lives in ./crossCheck.js (pure, tested);
 // this only turns the second model's raw response into an object first.
+export { absorbHvac };
+
 export function crossCheckVision(primaryParsed, secondRaw) {
   const second = typeof secondRaw === 'string' ? parseAIJson(secondRaw) : secondRaw;
   return crossCheckDiff(primaryParsed, second);

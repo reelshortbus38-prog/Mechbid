@@ -242,16 +242,35 @@ export default function Step1_Setup({ onNext }) {
           notes: [
             suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '',
             estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing` : 'enter footage or lbs — plans scale length off the drawing',
-            r.notes, drawing,
+            r.notes, r.drawing || drawing,
           ].filter(Boolean).join(' · '),
-        }, drawing);
+          // Pool by the sheet this run came from, not the file's first sheet.
+          // sheetOverlap sums within a pool and takes the max across plan vs
+          // enlarged, which is what stops an enlarged plan double-counting an
+          // overall plan — duct now gets that instead of losing the footage.
+        }, r.drawing || drawing);
       });
       (hv.pipeRuns || []).forEach(r => {
+        // Pipe used to stage at a hardcoded qty 0 — the schema had no length
+        // field, so the model was never even asked. Pipe is bought by the
+        // foot, so every run arrived unpriceable and the estimator scaled all
+        // of it by hand. It now carries a measured length on the same terms
+        // as duct: an estimate, labelled as one, to be verified.
+        const pipeLf = Math.max(0, Math.round(Number(r.estLengthFt) || 0));
         pushHvacPart(fileMeta.name, {
           desc: `Pipe — ${r.size}${r.service ? ` ${r.service}` : ''}`,
-          qty: 0, unitCost: 0,
-          notes: ['enter footage', r.notes, drawing].filter(Boolean).join(' · '),
-        }, drawing);
+          qty: pipeLf, unitCost: 0,
+          notes: [
+            pipeLf
+              ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
+              : 'enter footage — this run could not be measured off the sheet',
+            r.notes, r.drawing || drawing,
+          ].filter(Boolean).join(' · '),
+          // Pool by the sheet this run came from, not the file's first sheet.
+          // sheetOverlap sums within a pool and takes the max across plan vs
+          // enlarged, which is what stops an enlarged plan double-counting an
+          // overall plan — duct now gets that instead of losing the footage.
+        }, r.drawing || drawing);
       });
       (hv.hydronicZones || []).forEach(z => {
         const spec = [z.room, z.loadMBH ? `${z.loadMBH} MBH` : '', z.area ? `${z.area} sq ft` : '', z.loops ? `${z.loops} loop(s)` : '']
