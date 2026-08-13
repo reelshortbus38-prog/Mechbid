@@ -5,6 +5,7 @@ import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
+import { reclassifyRuns } from './runKind.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
@@ -1069,8 +1070,13 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // fails in different ways than a raster read, so it can recover a dropped
     // digit exactly instead of sending the estimator to the plan.
     const rc = recheckDuctRuns(parsed.ductRuns, textByPage[pageNum] || '', `Page ${pageNum}`);
-    parsed = { ...parsed, ductRuns: rc.runs };
     rc.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
+    // Then re-sort duct vs pipe. The analyzer mixes them both ways — an
+    // exhaust-air duct filed as pipe, a refrigerant line filed as duct — and
+    // they are bought in different units, so the mistake is real money.
+    const rk = reclassifyRuns(rc.runs, parsed.pipeRuns, `Page ${pageNum}`);
+    rk.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
+    parsed = { ...parsed, ductRuns: rk.ductRuns, pipeRuns: rk.pipeRuns };
     absorbHvac(merged, parsed, seen);
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
     const { reported, dropped } = crossCheckVision(parsed, vres.second);

@@ -1,0 +1,75 @@
+import { describe, it, expect } from 'vitest';
+import { sizeInches, classifyRun, reclassifyRuns } from './runKind.js';
+
+// Both of these are verbatim from one live run, and they are the same mistake
+// in opposite directions:
+//   Pipe — 6" EA                    an exhaust-AIR duct filed as pipe
+//   Ductwork — 3/4" dia round duct  a refrigerant line filed as duct
+// Sheet metal is bought by the pound and copper by the foot, so a run in the
+// wrong bucket is wrong money — and neither looks wrong on screen, because
+// each reads plausibly inside the group it landed in.
+
+describe('sizeInches', () => {
+  it('reads whole, decimal and fractional sizes', () => {
+    expect(sizeInches('6"')).toBe(6);
+    expect(sizeInches('3/4"')).toBe(0.75);
+    expect(sizeInches('1 1/4"')).toBe(1.25);
+    expect(sizeInches('12.5')).toBe(12.5);
+    expect(sizeInches('')).toBe(0);
+  });
+});
+
+describe('classifyRun', () => {
+  it('moves an air service out of the pipe bucket', () => {
+    expect(classifyRun({ size: '6"', service: 'EA' }, 'pipe')).toMatchObject({ kind: 'duct', moved: true });
+    expect(classifyRun({ size: '24x16', service: 'exhaust air' }, 'pipe').kind).toBe('duct');
+  });
+
+  it('moves a piped service out of the duct bucket', () => {
+    expect(classifyRun({ size: '3/4"', service: 'refrigerant liquid' }, 'duct')).toMatchObject({ kind: 'pipe', moved: true });
+    expect(classifyRun({ size: '1 1/4"', service: 'RS' }, 'duct').kind).toBe('pipe');
+    expect(classifyRun({ size: '2"', service: 'condensate drain' }, 'duct').kind).toBe('pipe');
+  });
+
+  it('leaves correct calls alone', () => {
+    expect(classifyRun({ size: '24x12', service: 'supply air' }, 'duct')).toMatchObject({ kind: 'duct', moved: false });
+    expect(classifyRun({ size: '4"', service: 'CHWS' }, 'pipe')).toMatchObject({ kind: 'pipe', moved: false });
+  });
+
+  it('catches a sub-4" round "duct" on size alone, with no service to go on', () => {
+    // 3/4" round duct does not exist; that is copper in the wrong bucket.
+    expect(classifyRun({ size: '3/4"', shape: 'round' }, 'duct')).toMatchObject({ kind: 'pipe', moved: true });
+    expect(classifyRun({ size: '6"', shape: 'round' }, 'duct').moved).toBe(false);
+  });
+
+  it('will not reclassify on an ambiguous or silent label', () => {
+    // Says both — "exhaust air" and "drain" — so the original call stands
+    // rather than trading one error for another.
+    expect(classifyRun({ size: '8"', service: 'exhaust air drain' }, 'duct').moved).toBe(false);
+    expect(classifyRun({ size: '20x10' }, 'duct').moved).toBe(false);
+    expect(classifyRun({}, 'pipe').moved).toBe(false);
+  });
+});
+
+describe('reclassifyRuns', () => {
+  it('re-sorts both live errors and says so', () => {
+    const { ductRuns, pipeRuns, flags } = reclassifyRuns(
+      [{ size: '3/4"', shape: 'round', service: 'refrigerant liquid' }, { size: '16x12', service: 'exhaust air' }],
+      [{ size: '6"', service: 'EA' }, { size: '1 1/4"', service: 'refrigerant suction' }],
+      'Page 4');
+    expect(ductRuns.map(r => r.size)).toEqual(['16x12', '6"']);
+    expect(pipeRuns.map(r => r.size)).toEqual(['3/4"', '1 1/4"']);
+    expect(flags).toHaveLength(2);
+    expect(flags[0].text).toMatch(/bought by the pound and pipe by the foot/);
+  });
+
+  it('says nothing when the analyzer sorted them right', () => {
+    const { flags } = reclassifyRuns(
+      [{ size: '24x12', service: 'supply air' }], [{ size: '2"', service: 'refrigerant suction' }]);
+    expect(flags).toEqual([]);
+  });
+
+  it('handles empty input', () => {
+    expect(reclassifyRuns()).toEqual({ ductRuns: [], pipeRuns: [], flags: [] });
+  });
+});
