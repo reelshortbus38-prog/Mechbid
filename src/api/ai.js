@@ -693,6 +693,13 @@ function newHvacMerged() {
 // runs had been collapsed before they got there.
 function absorbHvac(merged, parsed, seen, origin = null) {
   if (!parsed) return;
+  // Re-sort duct vs pipe HERE rather than at one call site, so a screenshot
+  // upload gets the same correction a PDF does. The analyzer mixes them both
+  // ways and they are bought in different units.
+  const rk = reclassifyRuns(parsed.ductRuns, parsed.pipeRuns,
+    origin?.pageNum ? `Page ${origin.pageNum}` : '');
+  rk.flags.forEach(f => merged.flags.push(f));
+  parsed = { ...parsed, ductRuns: rk.ductRuns, pipeRuns: rk.pipeRuns };
   if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
   if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
   if (parsed.drawingTitle && !merged.drawingTitle) merged.drawingTitle = parsed.drawingTitle;
@@ -1088,9 +1095,7 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // Then re-sort duct vs pipe. The analyzer mixes them both ways — an
     // exhaust-air duct filed as pipe, a refrigerant line filed as duct — and
     // they are bought in different units, so the mistake is real money.
-    const rk = reclassifyRuns(rc.runs, parsed.pipeRuns, `Page ${pageNum}`);
-    rk.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
-    parsed = { ...parsed, ductRuns: rk.ductRuns, pipeRuns: rk.pipeRuns };
+    parsed = { ...parsed, ductRuns: rc.runs };
     absorbHvac(merged, parsed, seen, {
       pageNum,
       drawing: [parsed.drawingNumber, parsed.drawingTitle].filter(Boolean).join(' — '),
