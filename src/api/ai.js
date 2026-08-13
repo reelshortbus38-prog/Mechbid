@@ -3,6 +3,7 @@
 import { crossCheckDiff } from './crossCheck.js';
 import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
+import { mapWithConcurrency } from './concurrency.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
@@ -333,7 +334,7 @@ export async function analyzeRedlinePdf(file, fileName) {
       merged.flags.push(...backupModelFlag(vres.fallbackModel, tileLabel, fileName));
       // Two-model cross-check: items the second model saw that the primary
       // didn't become warnings to verify on the drawing, not silent misses.
-      crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+      crossCheckVision(parsed, vres.second).reported.slice(0, 4).forEach(m =>
         merged.flags.push({ type: 'warn', text: `${tileLabel} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the drawing`, source: fileName }));
     }
     if (truncated) {
@@ -446,7 +447,7 @@ export async function analyzeImageDoc(file, fileName) {
     }
     merged.flags.push(...backupModelFlag(vres.fallbackModel, tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image', fileName));
     // Two-model cross-check (full-image pass) — disagreements become warnings.
-    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+    crossCheckVision(parsed, vres.second).reported.slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Photo cross-check: a second AI model also saw ${m} that the primary read didn't — verify against the document`, source: fileName }));
 
     if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
@@ -663,7 +664,7 @@ export async function analyzeHvacPlanImagesCombined(entries) {
 
   absorbHvac(merged, parsed, seen);
   merged.flags.push(...backupModelFlag(vres.fallbackModel, 'This batch of screenshots', names));
-  crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+  crossCheckVision(parsed, vres.second).reported.slice(0, 4).forEach(m =>
     merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: names }));
   merged.flags.push({ type: 'info', text: `${entries.length} screenshots read TOGETHER — same-sheet overlap counted once, distinct sheets kept separate`, source: names });
   return finishHvac(merged);
@@ -743,7 +744,7 @@ export async function analyzeHvacPlanImage(file, fileName) {
     }
     absorbHvac(merged, parsed, seen);
     merged.flags.push(...backupModelFlag(vres.fallbackModel, tile ? `Section ${tile.tileNum}/${tile.tilesTotal}` : 'Full image', fileName));
-    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+    crossCheckVision(parsed, vres.second).reported.slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Sheet cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
   }
   return finishHvac(merged);
@@ -880,7 +881,13 @@ Return ONLY valid JSON, no markdown:
 // straight to the spec analyzer, and every drawing sheet (the ducts/diffusers)
 // was lost.
 const SPEC_PAGE_MIN_CHARS = 1800; // dense enough that it's prose, not a sheet
-const MAX_VISION_PAGES = 10;      // cap vision pages so a big set stays in budget
+// Sheets read in parallel. Raised from 10 now that passes overlap: ten
+// sequential calls was 4-7 minutes, and at this width eighteen sheets finish
+// faster than ten used to. See api/concurrency.js for why the width is small.
+const MAX_VISION_PAGES = 18;
+const VISION_CONCURRENCY = 3;
+// Sheets rendered to images at once. Bounds peak memory — this runs on iPads.
+const RENDER_BATCH = 6;
 
 // A PDF page is a spec/notes page (→ text analyzer) when it's dense prose full
 // of specification verbs. Anything else (sparse label text, or a page with a
@@ -1005,26 +1012,70 @@ export async function analyzeHvacPlanPdf(file, fileName) {
       text: `${deferred.length} drawing sheet(s) were not read — the ${MAX_VISION_PAGES}-sheet vision limit was reached and these had the least takeoff content: p${deferred.join(', p')}. Upload them on their own to include them.` });
   }
 
-  const { pages: rendered, truncated } = await renderPdfPagesToImages(file, {
+  // Render in BATCHES rather than all at once. Every sheet becomes a
+  // full-resolution JPEG held as base64, and a big set also tiles, so
+  // rendering the whole selection up front put twenty-odd multi-megabyte
+  // strings in memory simultaneously — enough to kill Safari on an iPad, which
+  // is where this actually gets used. Batching bounds the peak to one batch,
+  // which makes eighteen sheets lighter than ten used to be.
+  const renderBatch = nums => renderPdfPagesToImages(file, {
     scaleFtPerInchByPage: scaleByPage,
-    ...(pages.length ? { pageNums: selected } : {}),
-    maxPages: MAX_VISION_PAGES,
+    ...(nums ? { pageNums: nums } : {}),
+    maxPages: nums ? nums.length : MAX_VISION_PAGES,
   });
+  // No text layer (a scan) means no per-page classification, so there is
+  // nothing to batch by — render the document the old way.
+  const batches = pages.length
+    ? Array.from({ length: Math.ceil(selected.length / RENDER_BATCH) },
+        (_, i) => selected.slice(i * RENDER_BATCH, (i + 1) * RENDER_BATCH))
+    : [null];
+
   if (Object.keys(scaleByPage).length) {
     merged.flags.push({ type: 'info', text: `Drawing scale detected (${Object.entries(scaleByPage).map(([p, s]) => `page ${p}: ${s} ft/in`).join(', ')}) — a calibrated scale bar was stamped on the renders and duct lengths were MEASURED against it. Verify before final pricing.`, source: fileName });
   }
   const SCALE_NOTE = `\n\nIMPORTANT — CALIBRATED SCALE BAR: a black/white segmented bar labeled in FEET (inside a white box, lower-left) has been stamped onto this image, computed exactly from the drawing's stated scale and the PDF's page geometry. For estLengthFt, MEASURE each duct size's total run length against this bar — these measurements are dependable, not guesses. Set lengthBasis to "calibrated scale bar".`;
-  for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64, scaled } of rendered) {
-    const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }, scaled ? SCALE_NOTE : ''));
+  // Read a few sheets at a time. Sequential passes made a ten-sheet set four
+  // to seven minutes of spinner, and that wall-clock cost — not any server
+  // limit, since each page is its own serverless request — is what forced the
+  // page cap that left real drawings unread.
+  const rendered = [], visionResults = [];
+  let truncated = false;
+  for (const batchNums of batches) {
+    const { pages: batch, truncated: cut } = await renderBatch(batchNums);
+    truncated = truncated || cut;
+    const res = await mapWithConcurrency(batch, VISION_CONCURRENCY,
+      ({ base64, tileNum = 1, tilesOnPage = 1, scaled }) =>
+        visionPassWithRetry(() => callClaudeVisionHVAC(base64, fileName, { tileNum, tilesTotal: tilesOnPage }, scaled ? SCALE_NOTE : '')));
+    // Drop the image data as soon as it has been read — only the page
+    // identity is needed for the merge below.
+    batch.forEach(b => { b.base64 = null; });
+    rendered.push(...batch);
+    visionResults.push(...res);
+  }
+
+  // Absorb in PAGE ORDER, never completion order — the merge dedupes
+  // first-wins, so a takeoff that depended on which page finished first would
+  // not be reproducible from one run to the next.
+  rendered.forEach(({ pageNum, tileNum = 1, tilesOnPage = 1 }, i) => {
+    const { vres, parsed, error } = visionResults[i];
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed (${error})`, source: fileName });
-      continue;
+      return;
     }
     absorbHvac(merged, parsed, seen);
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
-    crossCheckVision(parsed, vres.second).slice(0, 4).forEach(m =>
+    const { reported, dropped } = crossCheckVision(parsed, vres.second);
+    reported.slice(0, 4).forEach(m =>
       merged.flags.push({ type: 'warn', text: `Page ${pageNum} cross-check: a second AI model also saw ${m} that the primary read didn't — verify on the plan`, source: fileName }));
-  }
+    // Nothing the cross-check throws away stays invisible. These are the
+    // low-confidence singles — one tag in a class the primary saw none of —
+    // which are usually the second model inventing something, but "usually"
+    // is not "always" and the estimator gets to look.
+    if (dropped.length) {
+      merged.flags.push({ type: 'info', category: 'diagnostic', source: fileName,
+        text: `Page ${pageNum} cross-check: ${dropped.length} low-confidence find(s) not shown as warnings — the second model read ${dropped.join(', ')} where the primary found nothing of that type.` });
+    }
+  });
   // Independent geometry cross-check: measure duct linework straight off the
   // CAD vector layer of the scaled drawing pages. Gives the estimator an exact
   // second number to check the vision takeoff against — something the generic

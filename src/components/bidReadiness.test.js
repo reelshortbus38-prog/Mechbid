@@ -114,3 +114,29 @@ describe('checkBidReadiness — mode awareness', () => {
     expect(() => checkBidReadiness()).not.toThrow();
   });
 });
+
+describe('unread sheets block the bid', () => {
+  const unreadFlag = { type: 'warn', text: '3 drawing sheet(s) were not read — the 18-sheet vision limit was reached and these had the least takeoff content: p6, p9, p15. Upload them on their own to include them.' };
+
+  it('is a blocker, not a warning — absent scope cannot be reviewed', () => {
+    // Every other blocker is about a number being WRONG. This one is about a
+    // number being missing entirely: scope on an unread sheet never becomes an
+    // unpriced line, because there is no line.
+    const { blockers, ready } = checkBidReadiness({ flags: [unreadFlag] }, {});
+    const hit = blockers.find(b => b.key === 'unreadSheets');
+    expect(hit).toBeTruthy();
+    expect(hit.title).toMatch(/3 drawing sheets were never read/);
+    expect(hit.detail).toMatch(/p6, p9, p15/);
+    expect(ready).toBe(false);
+  });
+
+  it('says nothing when every sheet was read', () => {
+    const { issues } = checkBidReadiness({ flags: [{ text: 'PROVIDE WIRE MESH SCREEN' }] }, {});
+    expect(issues.find(i => i.key === 'unreadSheets')).toBeUndefined();
+  });
+
+  it('counts each page once when two files both fell short', () => {
+    const { blockers } = checkBidReadiness({ flags: [unreadFlag, unreadFlag] }, {});
+    expect(blockers.find(b => b.key === 'unreadSheets').title).toMatch(/^3 drawing sheets/);
+  });
+});

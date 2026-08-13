@@ -107,6 +107,23 @@ export function checkBidReadiness(state = {}, totals = {}) {
     });
   }
 
+  // Sheets the vision budget never reached. Every other blocker here is about
+  // a number being wrong; this one is about a number being ABSENT — scope from
+  // an unread drawing cannot show up as an unpriced line, because there is no
+  // line. It is the only failure on this list that a careful estimator cannot
+  // catch by reviewing the takeoff, so it has to stop the bid.
+  const unread = (state.flags || [])
+    .map(f => String(f?.text || ''))
+    .filter(t => /drawing sheet\(s\) were not read/.test(t));
+  if (unread.length) {
+    const pages = [...new Set(unread.flatMap(t => (t.match(/\bp\d+/g) || [])))];
+    issues.push({
+      key: 'unreadSheets', severity: 'blocker',
+      title: `${pages.length} drawing sheet${pages.length === 1 ? '' : 's'} were never read`,
+      detail: `Nothing from ${pages.join(', ')} is in this takeoff — not the equipment, not the duct, not the keynotes. Upload those sheets on their own and merge the result before bidding.`,
+    });
+  }
+
   const blockers = issues.filter(i => i.severity === 'blocker');
   const warnings = issues.filter(i => i.severity === 'warn');
   return { issues, blockers, warnings, ready: blockers.length === 0 };

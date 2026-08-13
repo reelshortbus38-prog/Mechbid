@@ -68,10 +68,17 @@ export function gradeTagFinds(primaryList, secondList, keyFn) {
 }
 
 // primaryParsed / second: parsed extraction objects (not raw text).
-// Returns human-readable fragments; the caller wraps them in flag wording.
+// Returns { reported, dropped }:
+//   reported  human-readable fragments the caller wraps in flag wording
+//   dropped   the low-confidence singles this graded OUT — surfaced as a
+//             diagnostic rather than discarded. Suppressing noise is worth
+//             doing; suppressing it WITHOUT A TRACE is not, because "usually
+//             a hallucination" is not "always", and the one time it was real
+//             the estimator should be able to find it.
 export function crossCheckDiff(primaryParsed, second) {
-  if (!second || !primaryParsed) return [];
+  if (!second || !primaryParsed) return { reported: [], dropped: [] };
   const msgs = [];
+  const dropped = [];
 
   const grade = (label, listA, listB, keyFn) => {
     const { confirmed, unknownFamilies } = gradeTagFinds(listA, listB, keyFn);
@@ -79,7 +86,7 @@ export function crossCheckDiff(primaryParsed, second) {
     Object.entries(unknownFamilies).forEach(([fam, tags]) => {
       // A lone tag in a class the primary saw nothing of is noise; a cluster
       // of them is a whole class the primary may have missed.
-      if (tags.length < 2) return;
+      if (tags.length < 2) { dropped.push(...tags); return; }
       msgs.push(`${tags.length} "${fam}" ${label}s (${tags.slice(0, 4).join(', ')}${tags.length > 4 ? ', …' : ''}) — a class the primary read found none of`);
     });
   };
@@ -98,5 +105,5 @@ export function crossCheckDiff(primaryParsed, second) {
       msgs.push(`callout "${String(t.desc || '').slice(0, 70)}"`);
     }
   });
-  return msgs;
+  return { reported: msgs, dropped };
 }
