@@ -21,6 +21,7 @@ import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote } from '../components/sheetOverlap.js';
 import { missingSizeNote } from '../api/runEvidence.js';
+import { rememberFile } from '../api/fileCache.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc } from '../components/ductwork.js';
 
@@ -72,6 +73,10 @@ export default function Step1_Setup({ onNext }) {
       // Generate a blob URL for every file type so it can be handed off to
       // the native app on iOS (Pages for .docx, Numbers for .xlsx, etc.)
       // via a download anchor click in the file viewer.
+      // Hold the File itself for the session so a flag can show the sheet it
+      // is talking about. Kept outside React state — state is serialized to
+      // localStorage on every save, and a 20 MB PDF would blow the quota.
+      rememberFile(f);
       const previewUrl = URL.createObjectURL(f);
       return { id, name: f.name, size: f.size, type, mode: state.mode, previewUrl };
     });
