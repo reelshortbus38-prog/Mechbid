@@ -20,6 +20,7 @@ import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote } from '../components/sheetOverlap.js';
+import { missingSizeNote } from '../api/runEvidence.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc } from '../components/ductwork.js';
 
@@ -196,7 +197,11 @@ export default function Step1_Setup({ onNext }) {
         }, drawing);
       });
       (hv.ductRuns || []).forEach(r => {
-        const label = r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
+        // A run whose size could not be read is still a run: it keeps its
+        // measured footage and says plainly what it needs, instead of
+        // appearing as "unspecified duct" beside real material lines.
+        const label = r.sizeMissing ? 'SIZE NEEDED'
+          : r.shape === 'round' ? `${r.size} round duct` : `${r.size} duct`;
         // Sanity check the read: no real rectangular duct has a 1"–3" side.
         // "19x1" is the AI dropping a digit off "19x17" — flag it loudly so
         // the misread gets fixed before footage (and pounds) ride on it.
@@ -241,7 +246,9 @@ export default function Step1_Setup({ onNext }) {
           qty: estLf, unitCost: 0,
           notes: [
             suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '',
-            estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing` : 'enter footage or lbs — plans scale length off the drawing',
+            r.sizeMissing ? missingSizeNote(r, 'duct')
+              : estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
+              : 'enter footage or lbs — plans scale length off the drawing',
             r.notes, r.drawing || drawing,
           ].filter(Boolean).join(' · '),
           // Pool by the sheet this run came from, not the file's first sheet.
@@ -258,11 +265,11 @@ export default function Step1_Setup({ onNext }) {
         // as duct: an estimate, labelled as one, to be verified.
         const pipeLf = Math.max(0, Math.round(Number(r.estLengthFt) || 0));
         pushHvacPart(fileMeta.name, {
-          desc: `Pipe — ${r.size}${r.service ? ` ${r.service}` : ''}`,
+          desc: `Pipe — ${r.sizeMissing ? 'SIZE NEEDED' : r.size}${r.service ? ` ${r.service}` : ''}`,
           qty: pipeLf, unitCost: 0,
           notes: [
-            pipeLf
-              ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
+            r.sizeMissing ? missingSizeNote(r, 'pipe')
+              : pipeLf ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
               : 'enter footage — this run could not be measured off the sheet',
             r.notes, r.drawing || drawing,
           ].filter(Boolean).join(' · '),

@@ -16,7 +16,9 @@
 import { partGroupOf } from './partGroups.js';
 import { parseDuctDesc, MIN_DUCT_SIDE } from './ductwork.js';
 
-const isDuctLine = (p) => ['duct-rect', 'duct-round'].includes(partGroupOf(p));
+// duct-unsized counts as duct: those runs carry footage and must not reach a
+// bid unpriced just because the app could not read their label.
+const isDuctLine = (p) => ['duct-rect', 'duct-round', 'duct-unsized'].includes(partGroupOf(p));
 const num = (v) => Number(v) || 0;
 
 // Equipment lists and material lists differ per mode; everything downstream is
@@ -83,8 +85,8 @@ export function checkBidReadiness(state = {}, totals = {}) {
     const names = ductBadSize.slice(0, 3).map(p => `"${p.desc}"`);
     issues.push({
       key: 'ductBadSize', severity: 'blocker',
-      title: `${ductBadSize.length} duct line${ductBadSize.length === 1 ? '' : 's'} have footage but an unreadable size`,
-      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — a side is 0 or impossibly narrow, so a digit was lost. These convert to NO metal at all no matter how many feet are shown. Fix the size against the plan, or delete the line and take it off by hand.`,
+      title: `${ductBadSize.length} duct line${ductBadSize.length === 1 ? '' : 's'} have footage but no usable size`,
+      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — either a side reads 0 or impossibly narrow (a lost digit), or the label could not be read at all. Every one converts to NO metal no matter how many feet are shown, so the footage on screen is not money in the bid. Read the size off the plan and type it in, or delete the line and take it off by hand.`,
       count: ductBadSize.length,
     });
   }
