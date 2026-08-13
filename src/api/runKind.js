@@ -81,16 +81,49 @@ export function reclassifyRuns(ductRuns = [], pipeRuns = [], label = '') {
   const duct = [], pipe = [], flags = [];
   const where = label ? `${label}: ` : '';
 
+  const moves = [];
   const place = (run, from) => {
     const { kind, moved, why } = classifyRun(run, from);
+    const entry = { run, kind, from, why };
     (kind === 'duct' ? duct : pipe).push(run);
-    if (moved) {
-      flags.push({ type: 'warn', source: label || undefined,
-        text: `${where}"${run.size || 'a run'}${run.service ? ` ${run.service}` : ''}" was read as ${from} but priced as ${kind} — ${why}. Sheet metal is bought by the pound and pipe by the foot, so check this one.` });
-    }
+    if (moved) moves.push(entry);
   };
 
   (ductRuns || []).forEach(r => place(r, 'duct'));
   (pipeRuns || []).forEach(r => place(r, 'pipe'));
+
+  // A run that moved buckets is a line the analyzer already got wrong once,
+  // and the correct bucket often ALREADY holds the same line read properly.
+  // A live set had "Ductwork — 3/4\" dia round duct" alongside a perfectly
+  // good "Pipe — 3/4\" RL (refrigerant liquid)": the same refrigerant line,
+  // read twice, once into the wrong list. Moving it without checking turns one
+  // misclassification into two pipe lines, and if either later gets footage
+  // the run is counted twice.
+  //
+  // So a moved run is DROPPED when the target list already has the same size
+  // from a run that did not move — that twin is the better read, because it
+  // arrived with a service on it.
+  const survives = (entry) => {
+    const list = entry.kind === 'duct' ? duct : pipe;
+    const dia = sizeInches(entry.run.size);
+    const twin = list.find(r => r !== entry.run && !moves.some(m => m.run === r) && sizeInches(r.size) === dia);
+    return twin ? { drop: true, twin } : { drop: false };
+  };
+
+  for (const entry of moves) {
+    const { run, kind, from, why } = entry;
+    const { drop, twin } = survives(entry);
+    const name = `"${run.size || 'a run'}${run.service ? ` ${run.service}` : ''}"`;
+    if (drop) {
+      const list = kind === 'duct' ? duct : pipe;
+      list.splice(list.indexOf(run), 1);
+      flags.push({ type: 'info', source: label || undefined,
+        text: `${where}${name} was read as ${from}, but ${why} — and "${twin.size}${twin.service ? ` ${twin.service}` : ''}" is already on the ${kind} list, so this was the same line read twice and the duplicate was dropped.` });
+      continue;
+    }
+    flags.push({ type: 'warn', source: label || undefined,
+      text: `${where}${name} was read as ${from} but priced as ${kind} — ${why}. Sheet metal is bought by the pound and pipe by the foot, so check this one.` });
+  }
+
   return { ductRuns: duct, pipeRuns: pipe, flags };
 }

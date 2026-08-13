@@ -73,3 +73,45 @@ describe('reclassifyRuns', () => {
     expect(reclassifyRuns()).toEqual({ ductRuns: [], pipeRuns: [], flags: [] });
   });
 });
+
+// ── THE SAME LINE READ TWICE ─────────────────────────────────────────────────
+// The live set carried BOTH "Ductwork — 3/4" dia round duct" and a perfectly
+// good "Pipe — 3/4" RL (refrigerant liquid)". Moving the first without
+// checking turns one misclassification into two pipe lines, and if either
+// later gets footage the refrigerant run is counted twice.
+
+describe('a moved run that duplicates a good one is dropped', () => {
+  const ductSide = [{ size: '3/4"', shape: 'round' }];
+  const pipeSide = [{ size: '3/4"', service: 'RL (refrigerant liquid)' }, { size: '1 1/4"', service: 'RS' }];
+
+  it('keeps the properly-read line and drops the misfiled twin', () => {
+    const { ductRuns, pipeRuns, flags } = reclassifyRuns(ductSide, pipeSide, 'Page 4');
+    expect(ductRuns).toEqual([]);
+    expect(pipeRuns.map(r => r.size)).toEqual(['3/4"', '1 1/4"']);
+    expect(pipeRuns[0].service).toMatch(/refrigerant/);   // the one WITH a service survived
+    expect(flags[0].type).toBe('info');                    // resolved, not a warning
+    expect(flags[0].text).toMatch(/same line read twice/);
+  });
+
+  it('still moves it when the target list has no twin', () => {
+    const { pipeRuns, flags } = reclassifyRuns(ductSide, [{ size: '1 1/4"', service: 'RS' }], 'Page 4');
+    // Duct is placed first, so a moved run leads the list. Order does not
+    // affect pricing; what matters is that both runs are present.
+    expect(pipeRuns.map(r => r.size).sort()).toEqual(['1 1/4"', '3/4"']);
+    expect(flags[0].type).toBe('warn');                    // needs a look
+  });
+
+  it('matches sizes numerically, not as strings', () => {
+    // 0.75 written two ways is one size.
+    const { pipeRuns } = reclassifyRuns([{ size: '3/4"', shape: 'round' }], [{ size: '0.75"', service: 'RL' }]);
+    expect(pipeRuns).toHaveLength(1);
+  });
+
+  it('does not drop a moved run against another moved run', () => {
+    // Two misfiled runs of the same size are still two runs — neither is the
+    // trustworthy twin.
+    const { pipeRuns } = reclassifyRuns(
+      [{ size: '2"', shape: 'round' }, { size: '2"', shape: 'round', notes: 'second riser' }], []);
+    expect(pipeRuns).toHaveLength(2);
+  });
+});
