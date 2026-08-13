@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { suspectDuctSize, pairedDimensions, recheckDuctSize, recheckDuctRuns } from './sizeRecheck.js';
+import { suspectDuctSize, pairedDimensions, recheckDuctSize, recheckDuctRuns, isRoundInText } from './sizeRecheck.js';
 
 // The vision model reads a rendered IMAGE; the text layer is what the drafter
 // typed. They fail in different ways, so one is a real check on the other —
@@ -104,5 +104,57 @@ describe('recheckDuctRuns', () => {
 
   it('handles an empty page and no runs', () => {
     expect(recheckDuctRuns()).toEqual({ runs: [], flags: [] });
+  });
+});
+
+// ── WHERE THE TWO RULES MEET ─────────────────────────────────────────────────
+// Both features fire on the same input — a size with one side missing — and
+// they disagree about what it means. The recheck wants to restore a lost
+// rectangular dimension; the round-duct rule says one dimension IS the label.
+// The recheck runs first, so without a guard it would win every time and turn
+// a genuine spiral main into rectangular duct off some unrelated branch
+// elsewhere on the sheet.
+
+describe('isRoundInText', () => {
+  it('recognises the ways a diameter gets written', () => {
+    ['32"ø SA MAIN', '32 DIA', '32" DIAMETER', 'Ø32', '32" ROUND', '32 SPIRAL']
+      .forEach(t => expect(isRoundInText(32, t), t).toBe(true));
+  });
+
+  it('does not see a diameter in a rectangular label', () => {
+    expect(isRoundInText(32, 'MAIN SA TRUNK 32x20')).toBe(false);
+    expect(isRoundInText(32, 'BOD 32\'-6" AFF')).toBe(false);
+  });
+});
+
+describe('the round rule and the recheck do not fight', () => {
+  it('will not rectangularise a round main because a 32x20 branch is on the same sheet', () => {
+    // The dangerous case: both labels present. The diameter marker on THIS
+    // dimension is the authority on its own shape.
+    const v = recheckDuctSize('32x0', 'SA MAIN 32"ø DOWN TO BRANCH 32x20');
+    expect(v.status).toBe('round');
+    expect(v.known).toBe(32);
+  });
+
+  it('leaves the size untouched and marks the shape confirmed', () => {
+    const { runs, flags } = recheckDuctRuns([{ size: '32x0', estLengthFt: 80 }], 'SA MAIN 32"ø', 'Page 4');
+    expect(runs[0].size).toBe('32x0');          // parseDuctDesc reads this as 32" round
+    expect(runs[0].shapeConfirmed).toBe('round');
+    expect(flags[0].type).toBe('info');
+    expect(flags[0].text).toMatch(/confirmed, not assumed/);
+  });
+
+  it('still corrects to rectangular when NO diameter marker exists', () => {
+    const v = recheckDuctSize('32x0', 'MAIN SUPPLY TRUNK 32x20 BOD 36\'-2"');
+    expect(v.status).toBe('corrected');
+    expect(v.size).toBe('32x20');
+  });
+
+  it('falls back to the round-duct convention when the text layer is silent', () => {
+    // No marker, no pairing — nothing is added, and parseDuctDesc still reads
+    // "32x0" as 32" round with inferred:true, which raises its own warning.
+    const { runs, flags } = recheckDuctRuns([{ size: '32x0' }], 'no sizes here');
+    expect(runs[0].shapeConfirmed).toBeUndefined();
+    expect(flags).toEqual([]);
   });
 });

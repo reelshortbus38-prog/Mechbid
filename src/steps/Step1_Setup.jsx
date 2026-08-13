@@ -215,7 +215,11 @@ export default function Step1_Setup({ onNext }) {
           // usually right, and far better than the zero-pound alternative, but
           // if the duct really is rectangular this under-prices it. That earns
           // a warning and a named number to check.
-          flags.push(parsedSize.inferred
+          // shapeConfirmed means the text-layer recheck already found a
+          // diameter marker on this dimension and said so — repeating it as a
+          // "verify on the plan" warning would be asking for a check that has
+          // already been done.
+          flags.push(parsedSize.inferred && r.shapeConfirmed !== 'round'
             ? { type: 'warn', source: fileMeta.name,
                 text: `Duct size "${r.size}" gave only ONE dimension, so it was priced as ${parsedSize.dia}" ROUND spiral — rectangular duct always carries two sides, so a single number is a diameter. Check the plan: if this run is actually rectangular, fix the size, because spiral costs less than the equivalent sheet metal.` }
             : { type: 'info', source: fileMeta.name,
