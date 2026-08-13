@@ -56,7 +56,7 @@ export function suspectDuctSize(size) {
 export function isRoundInText(known, pageText) {
   const d = String(known).replace('.', '\\.');
   return new RegExp(
-    `\\b${d}\\s*(?:"|″|in)?\\s*(?:ø|⌀|dia\\b|diam\\b|diameter\\b|round\\b|spiral\\b)|(?:ø|⌀)\\s*${d}\\b`, 'i',
+    `\\b${d}\\s*(?:"|″|in)?\\s*(?:[ø⌀∅]|dia\\b|diam\\b|diameter\\b|round\\b|spiral\\b)|[ø⌀∅]\\s*${d}\\b`, 'i',
   ).test(String(pageText || ''));
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sizeInches, classifyRun, reclassifyRuns } from './runKind.js';
+import { sizeInches, sizeSignature, classifyRun, reclassifyRuns } from './runKind.js';
 
 // Both of these are verbatim from one live run, and they are the same mistake
 // in opposite directions:
@@ -113,5 +113,36 @@ describe('a moved run that duplicates a good one is dropped', () => {
     const { pipeRuns } = reclassifyRuns(
       [{ size: '2"', shape: 'round' }, { size: '2"', shape: 'round', notes: 'second riser' }], []);
     expect(pipeRuns).toHaveLength(2);
+  });
+});
+
+// ── THE FALSE TWIN THAT ATE A REAL DUCT ──────────────────────────────────────
+// Live: a 6" round exhaust run was correctly moved out of the pipe list, then
+// dropped as a "duplicate" of "6x6 outside air/return" already on the duct
+// list — because the twin test compared only the leading number, and both
+// lead with 6. Different shape, different service, different run.
+
+describe('sizeSignature', () => {
+  it('keeps a round size and a rectangular size apart', () => {
+    expect(sizeSignature('6"')).not.toBe(sizeSignature('6x6'));
+  });
+
+  it('still treats one diameter written two ways as one size', () => {
+    expect(sizeSignature('3/4"')).toBe(sizeSignature('0.75"'));
+    expect(sizeSignature('12"ø')).toBe(sizeSignature('12 dia'));
+  });
+
+  it('matches rectangles on both dimensions', () => {
+    expect(sizeSignature('6x6')).not.toBe(sizeSignature('6x12'));
+  });
+});
+
+describe('a 6" round run is not a duplicate of a 6x6 rectangular one', () => {
+  it('keeps both runs', () => {
+    const { ductRuns, pipeRuns } = reclassifyRuns(
+      [{ size: '6x6', service: 'outside air/return' }],
+      [{ size: '6"', service: 'EA (exhaust air)' }], 'Page 7');
+    expect(ductRuns.map(r => r.size)).toEqual(['6x6', '6"']);
+    expect(pipeRuns).toEqual([]);
   });
 });

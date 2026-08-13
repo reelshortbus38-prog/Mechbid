@@ -42,6 +42,19 @@ export function sizeInches(size) {
   return n ? parseFloat(n[1]) : 0;
 }
 
+// A size's identity for duplicate-matching. Comparing the leading NUMBER
+// alone was wrong in a way that cost a real duct: a 6" round exhaust run and a
+// 6x6 rectangular outside-air run both lead with 6, so the round one was
+// treated as a duplicate of the rectangular one and dropped. They are
+// different runs of different shapes. Rectangular sizes keep both dimensions;
+// round and pipe sizes reduce to inches, so 3/4" and 0.75" still match.
+export function sizeSignature(size) {
+  const s = String(size || '');
+  const rect = s.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
+  if (rect) return `rect:${parseFloat(rect[1])}x${parseFloat(rect[2])}`;
+  return `dia:${sizeInches(s)}`;
+}
+
 // run: { size, service, notes }. kind: what the analyzer called it.
 // Returns { kind, moved, why } — moved is true only when the call changed.
 export function classifyRun(run = {}, kind = 'duct') {
@@ -105,8 +118,9 @@ export function reclassifyRuns(ductRuns = [], pipeRuns = [], label = '') {
   // arrived with a service on it.
   const survives = (entry) => {
     const list = entry.kind === 'duct' ? duct : pipe;
-    const dia = sizeInches(entry.run.size);
-    const twin = list.find(r => r !== entry.run && !moves.some(m => m.run === r) && sizeInches(r.size) === dia);
+    const sig = sizeSignature(entry.run.size);
+    const twin = list.find(r => r !== entry.run && !moves.some(m => m.run === r)
+      && sizeSignature(r.size) === sig);
     return twin ? { drop: true, twin } : { drop: false };
   };
 
