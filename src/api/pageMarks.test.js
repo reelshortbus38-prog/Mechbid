@@ -10,6 +10,16 @@ describe('searchTerms', () => {
     expect(t[0]).toBe('40x0');
   });
 
+  it('never yields a bare service abbreviation', () => {
+    // The inch mark IS a double quote, so "6\" EA (exhaust air…)" parses as the
+    // fragment EA — which matched every exhaust-air label on the sheet. A live
+    // page came back with four red boxes for a flag about one 6" run.
+    const t = searchTerms('Page 7: "6" EA (exhaust air duct labeled as pipe-like run)" was read as pipe, and "6" exhaust air (EA)" is already on the duct list.');
+    expect(t).not.toContain('EA');
+    expect(t).not.toContain('exhaust air');
+    expect(t).toContain('6" EA');
+  });
+
   it('finds a size even when nothing is quoted', () => {
     expect(searchTerms('Duct size 32x20 was corrected from 32x0')).toContain('32x20');
   });
@@ -58,5 +68,51 @@ describe('findTermBoxes', () => {
   it('marks nothing when the sheet has no text layer', () => {
     expect(findTermBoxes([], ['40x0'], 800)).toEqual([]);
     expect(findTermBoxes(items, [], 800)).toEqual([]);
+  });
+});
+
+// ── ONE FLAG, ONE MARK ───────────────────────────────────────────────────────
+// Marking everything is the same as marking nothing, except it also misleads.
+
+const sheet = ['6"ø EA', '16"ø EA', '14"ø EA', '12"ø EA', '40"ø SA']
+  .map((str, i) => ({ str, transform: [1, 0, 0, 10, 100, 700 - i * 20], width: 40, height: 10 }));
+
+describe('the live over-marking case', () => {
+  const sixInch = 'Page 7: "6" EA (exhaust air duct labeled as pipe-like run)" was read as pipe, but the label reads as an air service — and "6" exhaust air (EA)" is already on the duct list.';
+
+  it('boxes only the 6" run, not every EA label on the sheet', () => {
+    const boxes = findTermBoxes(sheet, searchTerms(sixInch), 800);
+    expect(boxes.map(b => b.str)).toEqual(['6"ø EA']);
+  });
+
+  it('finds the 40" main from a flag written about "40x0"', () => {
+    const boxes = findTermBoxes(sheet, searchTerms('Page 7: duct "40x0 (40"ø SA labeled)" is 40" ROUND.'), 800);
+    expect(boxes.map(b => b.str)).toEqual(['40"ø SA']);
+  });
+});
+
+describe('matching a size against the drawing', () => {
+  it('treats 6" EA and 6"ø EA as the same run', () => {
+    // The flag drops the diameter symbol the drawing carries.
+    expect(itemMatches('6"ø EA', '6" EA')).toBe(true);
+  });
+
+  it('does not match a search for 6 against 16', () => {
+    expect(itemMatches('16"ø EA', '6" EA')).toBe(false);
+    expect(itemMatches('14"ø EA', '6" EA')).toBe(false);
+  });
+
+  it('survives the case change on the diameter symbol', () => {
+    // toUpperCase turns ø into Ø; a strip list holding only the lowercase form
+    // silently stopped matching anything at all.
+    expect(itemMatches('40"Ø SA', '40"ø SA')).toBe(true);
+  });
+});
+
+describe('a term that hits half the sheet marks nothing', () => {
+  it('refuses to box everything', () => {
+    const many = Array.from({ length: 8 }, (_, i) =>
+      ({ str: `12"ø EA ${i}`, transform: [1, 0, 0, 10, 10, 700], width: 40, height: 10 }));
+    expect(findTermBoxes(many, ['12"ø EA'], 800)).toEqual([]);
   });
 });
