@@ -50,11 +50,11 @@ describe('missingSizeNote — say what is needed, not "unspecified"', () => {
   it('leads with the footage it DID measure', () => {
     const n = missingSizeNote({ estLengthFt: 20, lengthBasis: 'calibrated scale bar' }, 'duct');
     expect(n).toMatch(/~20 LF was measured against calibrated scale bar/);
-    expect(n).toMatch(/enter W x H/);
+    expect(n).toMatch(/read W x H .* off the sheet/);
   });
 
   it('asks for a pipe size on a pipe run', () => {
-    expect(missingSizeNote({ estLengthFt: 15 }, 'pipe')).toMatch(/enter the pipe size/);
+    expect(missingSizeNote({ estLengthFt: 15 }, 'pipe')).toMatch(/read the pipe size off the sheet/);
   });
 
   it('says so when neither size nor length could be read', () => {

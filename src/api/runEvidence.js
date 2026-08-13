@@ -64,6 +64,6 @@ export function missingSizeNote(run = {}, kind = 'duct') {
     lf
       ? `~${lf} LF was measured${run.lengthBasis ? ` against ${run.lengthBasis}` : ''}, but the size label could not be read`
       : 'this run was seen on the sheet but neither its size nor its length could be read',
-    `enter ${want} to price it`,
+    `read ${want} off the sheet to price it`,
   ].join(' — ');
 }
