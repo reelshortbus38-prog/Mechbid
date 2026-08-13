@@ -252,7 +252,7 @@ export default function Step1_Setup({ onNext }) {
           notes: [
             suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '',
             r.sizeMissing ? missingSizeNote(r, 'duct')
-              : estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
+              : estLf ? `~${estLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — check it on the sheet — open the flag and use Measure`
               : 'enter footage or lbs — plans scale length off the drawing',
             r.notes, r.drawing || drawing,
           ].filter(Boolean).join(' · '),
@@ -274,7 +274,7 @@ export default function Step1_Setup({ onNext }) {
           qty: pipeLf, unitCost: 0,
           notes: [
             r.sizeMissing ? missingSizeNote(r, 'pipe')
-              : pipeLf ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — verify by scaling the plan before pricing`
+              : pipeLf ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — check it on the sheet — open the flag and use Measure`
               : 'enter footage — this run could not be measured off the sheet',
             r.notes, r.drawing || drawing,
           ].filter(Boolean).join(' · '),

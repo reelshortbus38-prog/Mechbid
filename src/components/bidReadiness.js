@@ -61,7 +61,7 @@ export function checkBidReadiness(state = {}, totals = {}) {
     issues.push({
       key: 'ductNoFootage', severity: 'blocker',
       title: `${ductNoFootage.length} duct line${ductNoFootage.length === 1 ? '' : 's'} still have no footage`,
-      detail: 'Scale the run lengths off the plan and enter them in the Qty box, then re-run Duct → Purchase Units. Until then this ductwork is free in your bid.',
+      detail: 'Measure the run lengths on the sheet (open a flag for that page and use Measure) and enter them in the Qty box, then re-run Duct → Purchase Units. Until then this ductwork is free in your bid.',
       count: ductNoFootage.length,
     });
   }
@@ -86,7 +86,7 @@ export function checkBidReadiness(state = {}, totals = {}) {
     issues.push({
       key: 'ductBadSize', severity: 'blocker',
       title: `${ductBadSize.length} duct line${ductBadSize.length === 1 ? '' : 's'} have footage but no usable size`,
-      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — either a side reads 0 or impossibly narrow (a lost digit), or the label could not be read at all. Every one converts to NO metal no matter how many feet are shown, so the footage on screen is not money in the bid. Read the size off the plan and type it in, or delete the line and take it off by hand.`,
+      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — either a side reads 0 or impossibly narrow (a lost digit), or the label could not be read at all. Every one converts to NO metal no matter how many feet are shown, so the footage on screen is not money in the bid. Read the size off the sheet and type it in, or delete the line and take it off by hand.`,
       count: ductBadSize.length,
     });
   }

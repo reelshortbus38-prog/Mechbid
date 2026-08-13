@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { colors } from '../styles/theme.js';
 import { getCachedFile } from '../api/fileCache.js';
 import { searchTerms, findTermBoxes } from '../api/pageMarks.js';
+import { ftPerPixel, measureFeet, formatFeet } from '../api/sheetScale.js';
 
 // ── SHEET PEEK ───────────────────────────────────────────────────────────────
 // "Duct size 40x0 looks misread — verify on the plan" is half a finding. The
@@ -36,6 +37,12 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   // "Fit sheet" pulls back to the whole drawing so the mark can be placed in
   // context, then back in to read it.
   const [fit, setFit] = useState(false);
+  // Measuring. An estimator without a paper print has no architect's scale,
+  // and the app kept telling them to "verify by scaling the plan" — work it
+  // was asking for and not providing. The drawing's stated scale is already
+  // parsed for the vision pass, so the sheet can measure itself.
+  const [measuring, setMeasuring] = useState(false);
+  const [pts, setPts] = useState([]);
   const frameRef = useRef(null);
   const markRef = useRef(null);
 
@@ -73,8 +80,10 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
 
         // Mark what the flag is about, if the text layer can place it.
         let first = null;
+        let ftPerPx = null;
         try {
           const tc = await pg.getTextContent();
+          ftPerPx = ftPerPixel(tc.items.map(i => i.str).join(' '), scale);
           const boxes = findTermBoxes(tc.items, searchTerms(flagText), base.height);
           boxes.slice(0, 6).forEach((b, i) => {
             const x = b.x * scale, y = b.y * scale, w = Math.max(b.w * scale, 24), h = Math.max(b.h * scale, 14);
@@ -100,6 +109,7 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
           width: canvas.width,
           height: canvas.height,
           mark: first,
+          ftPerPx,
         });
       } catch (e) {
         if (!cancelled) setState({ status: 'error', message: e?.message || 'Could not open that sheet.' });
@@ -126,13 +136,20 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
           {state.status === 'ready' && (
             <span style={{ color: state.mark ? '#ff2d55' : colors.textDim, fontWeight: 400, marginLeft: 8 }}>
               {state.mark ? '· marked in red' : '· label not found in the text layer'}
+              {!state.ftPerPx && ' · no stated scale on this sheet, so it cannot be measured'}
             </span>
           )}
         </div>
+        {state.status === 'ready' && state.ftPerPx && (
+          <button
+            onClick={() => { setMeasuring(m => !m); setPts([]); }}
+            style={{ marginLeft: 'auto', flexShrink: 0, background: measuring ? colors.green : 'transparent', color: measuring ? '#000' : colors.green, border: `1px solid ${colors.green}66`, borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >📏 {measuring ? (pts.length === 2 ? formatFeet(measureFeet(pts[0], pts[1], state.ftPerPx)) : 'Tap two points') : 'Measure'}</button>
+        )}
         {state.status === 'ready' && (
           <button
             onClick={() => setFit(f => !f)}
-            style={{ marginLeft: 'auto', flexShrink: 0, background: 'transparent', color: colors.blue, border: `1px solid ${colors.blue}66`, borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            style={{ marginLeft: state.ftPerPx ? 8 : 'auto', flexShrink: 0, background: 'transparent', color: colors.blue, border: `1px solid ${colors.blue}66`, borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
           >{fit ? '🔍 Zoom to mark' : '🗺️ Fit sheet'}</button>
         )}
         <button
@@ -147,15 +164,46 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 8, background: '#fff' }}
       >
         {state.status === 'ready'
-          ? <img
+          ? <div style={{ position: 'relative', width: fit ? '100%' : state.width, height: fit ? 'auto' : state.height }}>
+            <img
               ref={markRef}
               src={state.src}
               alt={`Page ${page}`}
-              onClick={() => setFit(f => !f)}
+              onClick={e => {
+                if (!measuring) { setFit(f => !f); return; }
+                // Clicks arrive in DISPLAYED pixels; the measurement lives in
+                // the rendered image's own pixels, so scale across.
+                const r = e.currentTarget.getBoundingClientRect();
+                const k = state.width / r.width;
+                const p = { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
+                setPts(prev => (prev.length >= 2 ? [p] : [...prev, p]));
+              }}
               style={fit
                 ? { display: 'block', width: '100%', height: 'auto', cursor: 'zoom-in' }
                 : { display: 'block', width: state.width, height: state.height, maxWidth: 'none', cursor: 'zoom-out' }}
             />
+            {measuring && pts.length > 0 && (
+              <svg
+                viewBox={`0 0 ${state.width} ${state.height}`}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+              >
+                {pts.length === 2 && (
+                  <line x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y}
+                    stroke="#0a84ff" strokeWidth={state.width * 0.0022} />
+                )}
+                {pts.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={state.width * 0.004} fill="#0a84ff" />
+                ))}
+                {pts.length === 2 && (
+                  <text
+                    x={(pts[0].x + pts[1].x) / 2} y={(pts[0].y + pts[1].y) / 2 - state.width * 0.008}
+                    fill="#0a84ff" fontSize={state.width * 0.016} fontWeight="700" textAnchor="middle"
+                    stroke="#fff" strokeWidth={state.width * 0.004} paintOrder="stroke"
+                  >{formatFeet(measureFeet(pts[0], pts[1], state.ftPerPx))}</text>
+                )}
+              </svg>
+            )}
+          </div>
           : (
             <div style={{ padding: 40, textAlign: 'center', color: state.status === 'error' ? colors.red : colors.textDim, fontSize: 13, background: colors.panel, height: '100%' }}>
               {state.status === 'error' ? state.message : `Rendering page ${page}…`}
