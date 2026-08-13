@@ -1069,10 +1069,8 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // fails in different ways than a raster read, so it can recover a dropped
     // digit exactly instead of sending the estimator to the plan.
     const rc = recheckDuctRuns(parsed.ductRuns, textByPage[pageNum] || '', `Page ${pageNum}`);
-    if (rc.flags.length) {
-      parsed = { ...parsed, ductRuns: rc.runs };
-      rc.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
-    }
+    parsed = { ...parsed, ductRuns: rc.runs };
+    rc.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
     absorbHvac(merged, parsed, seen);
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
     const { reported, dropped } = crossCheckVision(parsed, vres.second);

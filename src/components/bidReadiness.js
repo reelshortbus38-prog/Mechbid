@@ -14,7 +14,7 @@
 //
 // Pure over (state, totals); unit-tested with no React or network.
 import { partGroupOf } from './partGroups.js';
-import { parseDuctDesc } from './ductwork.js';
+import { parseDuctDesc, MIN_DUCT_SIDE } from './ductwork.js';
 
 const isDuctLine = (p) => ['duct-rect', 'duct-round'].includes(partGroupOf(p));
 const num = (v) => Number(v) || 0;
@@ -75,7 +75,7 @@ export function checkBidReadiness(state = {}, totals = {}) {
     if (!isDuctLine(p) || p.dgen || num(p.qty) <= 0) return false;
     const d = parseDuctDesc(p.desc);
     if (!d) return true;
-    if (d.kind === 'rect') return !(d.w > 0 && d.h > 0);
+    if (d.kind === 'rect') return !(d.w >= MIN_DUCT_SIDE && d.h >= MIN_DUCT_SIDE);
     if (d.kind === 'round') return !(d.dia > 0);
     return false;
   });
@@ -84,7 +84,7 @@ export function checkBidReadiness(state = {}, totals = {}) {
     issues.push({
       key: 'ductBadSize', severity: 'blocker',
       title: `${ductBadSize.length} duct line${ductBadSize.length === 1 ? '' : 's'} have footage but an unreadable size`,
-      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — a side reads 0, so these convert to ZERO pounds of metal no matter how many feet are shown. Fix the size against the plan, or delete the line and take it off by hand.`,
+      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — a side is 0 or impossibly narrow, so a digit was lost. These convert to NO metal at all no matter how many feet are shown. Fix the size against the plan, or delete the line and take it off by hand.`,
       count: ductBadSize.length,
     });
   }

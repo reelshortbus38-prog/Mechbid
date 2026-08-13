@@ -171,3 +171,40 @@ describe('duct runs that cannot be priced come back instead of vanishing', () =>
     expect(ductPurchase([{ desc: 'Ductwork — 32x0 SA duct', lf: 0 }]).unusable).toEqual([]);
   });
 });
+
+// ── THE DROPPED DIGIT THAT LOOKS HEALTHY ─────────────────────────────────────
+// Found auditing the round-duct rule. "19x1" (19x17 with a digit lost) is more
+// dangerous than "32x0": zero prices at nothing and shows up in the totals,
+// while 19x1 prices at 386 lb against the true 694 lb — 44% light, and
+// perfectly believable on screen.
+
+describe('a side too narrow to be real is not priced', () => {
+  it('refuses to price a dropped-digit size and says why', () => {
+    const { lines, unusable } = ductPurchase(
+      [{ desc: 'Ductwork — 19x1 duct (supply air)', lf: 100 }], { wastePct: 0, insulate: 'none' });
+    expect(lines).toEqual([]);
+    expect(unusable).toHaveLength(1);
+    expect(unusable[0].reason).toMatch(/1" side/);
+    expect(unusable[0].reason).toMatch(/digit was dropped/);
+  });
+
+  it('prices the same run correctly once the digit is restored', () => {
+    const { lines } = ductPurchase(
+      [{ desc: 'Ductwork — 19x17 duct (supply air)', lf: 100 }], { wastePct: 0, insulate: 'none' });
+    expect(lines[0].qty).toBe(694);   // vs the 386 lb the misread produced
+  });
+
+  it('still prices the smallest ducts that are actually real', () => {
+    const { lines } = ductPurchase(
+      [{ desc: 'Ductwork — 6x4 duct (supply air)', lf: 50 }], { wastePct: 0, insulate: 'none' });
+    expect(lines).toHaveLength(1);
+    expect(lines[0].unit).toBe('lb');
+  });
+
+  it('does not apply the minimum to round duct — no second digit to drop', () => {
+    const { lines, unusable } = ductPurchase(
+      [{ desc: 'Ductwork — 3" round duct (exhaust)', lf: 20 }], { wastePct: 0, insulate: 'none' });
+    expect(unusable).toEqual([]);
+    expect(lines[0].desc).toMatch(/Spiral round duct, 3" dia/);
+  });
+});

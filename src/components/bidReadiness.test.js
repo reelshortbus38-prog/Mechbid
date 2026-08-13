@@ -153,7 +153,7 @@ describe('unreadable duct sizes block the bid', () => {
     const { blockers } = checkBidReadiness(job(['Ductwork — 0x0 duct (supply air)']), {});
     const hit = blockers.find(b => b.key === 'ductBadSize');
     expect(hit).toBeTruthy();
-    expect(hit.detail).toMatch(/ZERO pounds/);
+    expect(hit.detail).toMatch(/NO metal at all/);
   });
 
   it('does NOT block a single-dimension size — that is round duct', () => {
@@ -171,5 +171,19 @@ describe('unreadable duct sizes block the bid', () => {
     const keys = checkBidReadiness(state, {}).issues.map(i => i.key);
     expect(keys).toContain('ductNoFootage');
     expect(keys).not.toContain('ductBadSize');
+  });
+});
+
+describe('a dropped-digit duct size blocks too', () => {
+  it('stops the believable-but-wrong number, not just the zero', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 19x1 duct (supply air)', qty: 100 }] };
+    const hit = checkBidReadiness(state, {}).blockers.find(b => b.key === 'ductBadSize');
+    expect(hit).toBeTruthy();
+    expect(hit.detail).toMatch(/impossibly narrow/);
+  });
+
+  it('leaves a genuinely small duct alone', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 6x4 duct (supply air)', qty: 100 }] };
+    expect(checkBidReadiness(state, {}).issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
   });
 });

@@ -14,6 +14,15 @@
 //     (perimeter × length) plus overlap. Flex needs none (pre-insulated),
 //     and return/exhaust duct is commonly run bare.
 
+// The smallest side a real rectangular duct has. Commercial sheet metal does
+// not go below this, so anything under it is a misread — specifically a
+// dropped digit ("19x1" for 19x17). That case is more dangerous than a zero
+// side: zero prices at nothing and shows up in the totals, while 19x1 prices
+// at 386 lb against the true 694 lb, which is 44% light and looks perfectly
+// healthy on screen. Round duct is exempt — a single-dimension label has no
+// second digit to drop.
+export const MIN_DUCT_SIDE = 4;
+
 // Galvanized sheet weight by gauge, lb per sq ft (standard G60/G90 sheet).
 export const GALV_LB_SQFT = { 26: 0.906, 24: 1.156, 22: 1.406, 20: 1.656, 18: 2.156 };
 
@@ -115,7 +124,7 @@ export function ductPurchase(runs, opts = {}) {
     if (!p) { unusable.push({ desc: r.desc, lf, reason: 'no duct size could be read' }); return; }
     const svc = ductServiceOf(r.desc);
     const wrap = insulate === 'all' || (insulate === 'supply' && (svc === 'supply' || svc === 'oa' || svc === ''));
-    if (p.kind === 'rect' && p.w > 0 && p.h > 0) {
+    if (p.kind === 'rect' && p.w >= MIN_DUCT_SIDE && p.h >= MIN_DUCT_SIDE) {
       const g = gaugeForRect(Math.max(p.w, p.h));
       const perimFt = (2 * (p.w + p.h)) / 12;
       rectByGauge[g] = (rectByGauge[g] || 0) + perimFt * GALV_LB_SQFT[g] * lf;
@@ -130,9 +139,9 @@ export function ductPurchase(runs, opts = {}) {
       // footage, unpriceable size.
       unusable.push({
         desc: r.desc, lf,
-        reason: p.kind === 'rect'
-          ? `"${p.w}x${p.h}" has a zero side — one dimension was misread`
-          : 'no diameter could be read',
+        reason: p.kind !== 'rect' ? 'no diameter could be read'
+          : Math.min(p.w, p.h) === 0 ? `"${p.w}x${p.h}" has a zero side — one dimension was misread`
+          : `"${p.w}x${p.h}" has a ${Math.min(p.w, p.h)}" side — no real duct is that narrow, so a digit was dropped`,
       });
     }
   });
