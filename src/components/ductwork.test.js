@@ -100,8 +100,12 @@ describe('parseDuctDesc — round duct written into a rectangular size', () => {
     expect(parseDuctDesc('0x24 round duct')).toMatchObject({ kind: 'round', dia: 24 });
   });
 
-  it('leaves a zero-sided size with NO round marker as a (flagged) rect misread', () => {
-    expect(parseDuctDesc('Ductwork — 24x0 duct (supply)')).toMatchObject({ kind: 'rect', w: 24, h: 0 });
+  it('reads a zero-sided size as round even with NO round marker', () => {
+    // Corrected by the estimator: rectangular duct is always drawn with both
+    // sides, so a label carrying one number is a diameter. Requiring an
+    // explicit symbol left real 32"/38"/40" mains priced at zero pounds.
+    expect(parseDuctDesc('Ductwork — 24x0 duct (supply)'))
+      .toMatchObject({ kind: 'round', dia: 24, inferred: true });
   });
 
   it('does not disturb ordinary rectangular or round sizes', () => {
@@ -109,5 +113,98 @@ describe('parseDuctDesc — round duct written into a rectangular size', () => {
     expect(parseDuctDesc('Ductwork — 8"ø round duct')).toMatchObject({ kind: 'round', dia: 8 });
     // an oval VAV inlet keeps both dimensions — neither side is zero
     expect(parseDuctDesc('13x10 oval duct')).toMatchObject({ kind: 'rect', w: 13, h: 10 });
+  });
+});
+
+// ── THE FREE-METAL BUG ───────────────────────────────────────────────────────
+// A live 60% set read three main supply trunks as "32x0 SA", "38x0 SA" and
+// "40x0 SA" — the second dimension lost. Those three carried 140 of the job's
+// 272 total feet, showed full quantities on screen, and converted to ZERO
+// pounds of galvanized steel, because a rectangle with a zero side matches no
+// purchase branch. Over half the ductwork, bought for free, silently.
+
+describe('duct runs that cannot be priced come back instead of vanishing', () => {
+  const trunks = [
+    { desc: 'Ductwork — 32x0 SA duct (supply air)', lf: 80 },
+    { desc: 'Ductwork — 38x0 SA duct (supply air)', lf: 15 },
+    { desc: 'Ductwork — 40x0 SA duct (supply air)', lf: 45 },
+  ];
+
+  it('prices a single-dimension trunk as round spiral instead of nothing', () => {
+    // Rectangular duct always carries two sides, so one number is a diameter.
+    const { unusable, lines } = ductPurchase(trunks);
+    expect(unusable).toEqual([]);
+    const dias = lines.filter(l => /Spiral round duct/.test(l.desc)).map(l => l.desc);
+    expect(dias).toEqual(['Spiral round duct, 32" dia', 'Spiral round duct, 38" dia', 'Spiral round duct, 40" dia']);
+  });
+
+  it('marks the repair as INFERRED when no round symbol survived the read', () => {
+    expect(parseDuctDesc('Ductwork — 32x0 SA duct (supply air)')).toMatchObject({ kind: 'round', dia: 32, inferred: true });
+    expect(parseDuctDesc('Ductwork — 40x0 SA duct (40"ø supply air)')).toMatchObject({ kind: 'round', dia: 40, inferred: false });
+  });
+
+  it('keeps a dropped digit a misread, NOT a diameter', () => {
+    // "19x1" is 19x17 with a lost digit. Nobody labels round duct that way, so
+    // it must not quietly become a 19-inch spiral.
+    expect(parseDuctDesc('Ductwork — 19x1 duct (supply air)')).toEqual({ kind: 'rect', w: 19, h: 1 });
+  });
+
+  it('keeps pricing the runs that ARE readable alongside them', () => {
+    const { lines, unusable } = ductPurchase([...trunks, { desc: 'Ductwork — 36x36 duct (supply air)', lf: 25 }]);
+    expect(unusable).toEqual([]);
+    expect(lines.some(l => /Galvanized rectangular duct/.test(l.desc))).toBe(true);
+  });
+
+  it('still reports a run with no readable size at all', () => {
+    const { unusable } = ductPurchase([{ desc: 'Ductwork — 0x0 duct (supply air)', lf: 30 }]);
+    expect(unusable).toHaveLength(1);
+    expect(unusable[0].reason).toMatch(/zero side/);
+  });
+
+  it('says so when no size could be read at all', () => {
+    const { unusable } = ductPurchase([{ desc: 'Ductwork — main trunk duct', lf: 30 }]);
+    expect(unusable[0].reason).toMatch(/no duct size could be read/);
+  });
+
+  it('does not call a line unusable just because it has no footage', () => {
+    // No-footage is a different problem with its own warning.
+    expect(ductPurchase([{ desc: 'Ductwork — 32x0 SA duct', lf: 0 }]).unusable).toEqual([]);
+  });
+});
+
+// ── THE DROPPED DIGIT THAT LOOKS HEALTHY ─────────────────────────────────────
+// Found auditing the round-duct rule. "19x1" (19x17 with a digit lost) is more
+// dangerous than "32x0": zero prices at nothing and shows up in the totals,
+// while 19x1 prices at 386 lb against the true 694 lb — 44% light, and
+// perfectly believable on screen.
+
+describe('a side too narrow to be real is not priced', () => {
+  it('refuses to price a dropped-digit size and says why', () => {
+    const { lines, unusable } = ductPurchase(
+      [{ desc: 'Ductwork — 19x1 duct (supply air)', lf: 100 }], { wastePct: 0, insulate: 'none' });
+    expect(lines).toEqual([]);
+    expect(unusable).toHaveLength(1);
+    expect(unusable[0].reason).toMatch(/1" side/);
+    expect(unusable[0].reason).toMatch(/digit was dropped/);
+  });
+
+  it('prices the same run correctly once the digit is restored', () => {
+    const { lines } = ductPurchase(
+      [{ desc: 'Ductwork — 19x17 duct (supply air)', lf: 100 }], { wastePct: 0, insulate: 'none' });
+    expect(lines[0].qty).toBe(694);   // vs the 386 lb the misread produced
+  });
+
+  it('still prices the smallest ducts that are actually real', () => {
+    const { lines } = ductPurchase(
+      [{ desc: 'Ductwork — 6x4 duct (supply air)', lf: 50 }], { wastePct: 0, insulate: 'none' });
+    expect(lines).toHaveLength(1);
+    expect(lines[0].unit).toBe('lb');
+  });
+
+  it('does not apply the minimum to round duct — no second digit to drop', () => {
+    const { lines, unusable } = ductPurchase(
+      [{ desc: 'Ductwork — 3" round duct (exhaust)', lf: 20 }], { wastePct: 0, insulate: 'none' });
+    expect(unusable).toEqual([]);
+    expect(lines[0].desc).toMatch(/Spiral round duct, 3" dia/);
   });
 });

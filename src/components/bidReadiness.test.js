@@ -140,3 +140,50 @@ describe('unread sheets block the bid', () => {
     expect(blockers.find(b => b.key === 'unreadSheets').title).toMatch(/^3 drawing sheets/);
   });
 });
+
+describe('unreadable duct sizes block the bid', () => {
+  const job = descs => ({
+    mode: 'Commercial HVAC',
+    hvacParts: descs.map(desc => ({ desc, qty: 80, unitCost: 0 })),
+  });
+
+  it('stops a bid where footage is shown but NO size survives', () => {
+    // Both sides zero: nothing to infer a diameter from, so it still prices at
+    // nothing. (A single dimension like "32x0" is round duct and prices fine.)
+    const { blockers } = checkBidReadiness(job(['Ductwork — 0x0 duct (supply air)']), {});
+    const hit = blockers.find(b => b.key === 'ductBadSize');
+    expect(hit).toBeTruthy();
+    expect(hit.detail).toMatch(/NO metal at all/);
+  });
+
+  it('does NOT block a single-dimension size — that is round duct', () => {
+    const { issues } = checkBidReadiness(job(['Ductwork — 32x0 SA duct (supply air)']), {});
+    expect(issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
+  });
+
+  it('says nothing about duct lines with a real size', () => {
+    const { issues } = checkBidReadiness(job(['Ductwork — 36x36 duct (supply air)']), {});
+    expect(issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
+  });
+
+  it('does not double-report a line that simply has no footage', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 32x0 SA duct', qty: 0 }] };
+    const keys = checkBidReadiness(state, {}).issues.map(i => i.key);
+    expect(keys).toContain('ductNoFootage');
+    expect(keys).not.toContain('ductBadSize');
+  });
+});
+
+describe('a dropped-digit duct size blocks too', () => {
+  it('stops the believable-but-wrong number, not just the zero', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 19x1 duct (supply air)', qty: 100 }] };
+    const hit = checkBidReadiness(state, {}).blockers.find(b => b.key === 'ductBadSize');
+    expect(hit).toBeTruthy();
+    expect(hit.detail).toMatch(/impossibly narrow/);
+  });
+
+  it('leaves a genuinely small duct alone', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 6x4 duct (supply air)', qty: 100 }] };
+    expect(checkBidReadiness(state, {}).issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
+  });
+});

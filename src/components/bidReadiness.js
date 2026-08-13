@@ -14,6 +14,7 @@
 //
 // Pure over (state, totals); unit-tested with no React or network.
 import { partGroupOf } from './partGroups.js';
+import { parseDuctDesc, MIN_DUCT_SIDE } from './ductwork.js';
 
 const isDuctLine = (p) => ['duct-rect', 'duct-round'].includes(partGroupOf(p));
 const num = (v) => Number(v) || 0;
@@ -60,6 +61,31 @@ export function checkBidReadiness(state = {}, totals = {}) {
       title: `${ductNoFootage.length} duct line${ductNoFootage.length === 1 ? '' : 's'} still have no footage`,
       detail: 'Scale the run lengths off the plan and enter them in the Qty box, then re-run Duct → Purchase Units. Until then this ductwork is free in your bid.',
       count: ductNoFootage.length,
+    });
+  }
+
+  // 2b. Duct lines with real footage but an UNUSABLE size. The nastiest
+  //     failure in the app: "32x0 SA duct" shows 80 ft on screen, passes the
+  //     no-footage check above, and then converts to zero pounds of steel
+  //     because a rectangle with a zero side matches no purchase branch. On a
+  //     live set three misread trunks were 140 of 272 total feet — over half
+  //     the ductwork, bought for free, with full quantities displayed
+  //     throughout. Footage alone is not evidence that duct got priced.
+  const ductBadSize = parts.filter(p => {
+    if (!isDuctLine(p) || p.dgen || num(p.qty) <= 0) return false;
+    const d = parseDuctDesc(p.desc);
+    if (!d) return true;
+    if (d.kind === 'rect') return !(d.w >= MIN_DUCT_SIDE && d.h >= MIN_DUCT_SIDE);
+    if (d.kind === 'round') return !(d.dia > 0);
+    return false;
+  });
+  if (ductBadSize.length > 0) {
+    const names = ductBadSize.slice(0, 3).map(p => `"${p.desc}"`);
+    issues.push({
+      key: 'ductBadSize', severity: 'blocker',
+      title: `${ductBadSize.length} duct line${ductBadSize.length === 1 ? '' : 's'} have footage but an unreadable size`,
+      detail: `${names.join(', ')}${ductBadSize.length > names.length ? ' and others' : ''} — a side is 0 or impossibly narrow, so a digit was lost. These convert to NO metal at all no matter how many feet are shown. Fix the size against the plan, or delete the line and take it off by hand.`,
+      count: ductBadSize.length,
     });
   }
 
