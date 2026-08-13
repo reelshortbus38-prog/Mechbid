@@ -111,3 +111,48 @@ describe('parseDuctDesc — round duct written into a rectangular size', () => {
     expect(parseDuctDesc('13x10 oval duct')).toMatchObject({ kind: 'rect', w: 13, h: 10 });
   });
 });
+
+// ── THE FREE-METAL BUG ───────────────────────────────────────────────────────
+// A live 60% set read three main supply trunks as "32x0 SA", "38x0 SA" and
+// "40x0 SA" — the second dimension lost. Those three carried 140 of the job's
+// 272 total feet, showed full quantities on screen, and converted to ZERO
+// pounds of galvanized steel, because a rectangle with a zero side matches no
+// purchase branch. Over half the ductwork, bought for free, silently.
+
+describe('duct runs that cannot be priced come back instead of vanishing', () => {
+  const trunks = [
+    { desc: 'Ductwork — 32x0 SA duct (supply air)', lf: 80 },
+    { desc: 'Ductwork — 38x0 SA duct (supply air)', lf: 15 },
+    { desc: 'Ductwork — 40x0 SA duct (supply air)', lf: 45 },
+  ];
+
+  it('reports every zero-sided run rather than silently skipping it', () => {
+    const { unusable, lines } = ductPurchase(trunks);
+    expect(unusable).toHaveLength(3);
+    expect(unusable.reduce((n, u) => n + u.lf, 0)).toBe(140);
+    expect(unusable[0].reason).toMatch(/zero side/);
+    expect(lines).toEqual([]); // and it still refuses to invent a weight
+  });
+
+  it('keeps pricing the runs that ARE readable alongside them', () => {
+    const { lines, unusable } = ductPurchase([...trunks, { desc: 'Ductwork — 36x36 duct (supply air)', lf: 25 }]);
+    expect(unusable).toHaveLength(3);
+    expect(lines.some(l => /Galvanized rectangular duct/.test(l.desc))).toBe(true);
+  });
+
+  it('says so when no size could be read at all', () => {
+    const { unusable } = ductPurchase([{ desc: 'Ductwork — main trunk duct', lf: 30 }]);
+    expect(unusable[0].reason).toMatch(/no duct size could be read/);
+  });
+
+  it('still treats a zero side WITH a round marker as round, not unusable', () => {
+    const { unusable, lines } = ductPurchase([{ desc: 'Ductwork — 40x0 SA duct (40"ø supply air)', lf: 45 }]);
+    expect(unusable).toEqual([]);
+    expect(lines[0].desc).toMatch(/Spiral round duct, 40" dia/);
+  });
+
+  it('does not call a line unusable just because it has no footage', () => {
+    // No-footage is a different problem with its own warning.
+    expect(ductPurchase([{ desc: 'Ductwork — 32x0 SA duct', lf: 0 }]).unusable).toEqual([]);
+  });
+});

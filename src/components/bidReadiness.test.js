@@ -140,3 +140,31 @@ describe('unread sheets block the bid', () => {
     expect(blockers.find(b => b.key === 'unreadSheets').title).toMatch(/^3 drawing sheets/);
   });
 });
+
+describe('unreadable duct sizes block the bid', () => {
+  const job = descs => ({
+    mode: 'Commercial HVAC',
+    hvacParts: descs.map(desc => ({ desc, qty: 80, unitCost: 0 })),
+  });
+
+  it('stops a bid where footage is shown but the size is broken', () => {
+    // Passes the no-footage check (80 ft each) and then prices at zero.
+    const { blockers } = checkBidReadiness(job(['Ductwork — 32x0 SA duct (supply air)']), {});
+    const hit = blockers.find(b => b.key === 'ductBadSize');
+    expect(hit).toBeTruthy();
+    expect(hit.detail).toMatch(/ZERO pounds/);
+    expect(hit.detail).toMatch(/32x0/);
+  });
+
+  it('says nothing about duct lines with a real size', () => {
+    const { issues } = checkBidReadiness(job(['Ductwork — 36x36 duct (supply air)']), {});
+    expect(issues.find(i => i.key === 'ductBadSize')).toBeUndefined();
+  });
+
+  it('does not double-report a line that simply has no footage', () => {
+    const state = { mode: 'Commercial HVAC', hvacParts: [{ desc: 'Ductwork — 32x0 SA duct', qty: 0 }] };
+    const keys = checkBidReadiness(state, {}).issues.map(i => i.key);
+    expect(keys).toContain('ductNoFootage');
+    expect(keys).not.toContain('ductBadSize');
+  });
+});

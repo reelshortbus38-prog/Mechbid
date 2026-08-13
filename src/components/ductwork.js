@@ -87,10 +87,20 @@ export function ductPurchase(runs, opts = {}) {
   let flexFt = 0;
   let wrapSqft = 0;
 
+  // Runs that carry real footage but no usable SIZE. These used to fall
+  // through every branch below and contribute nothing — silently. A live set
+  // read three main supply trunks as "32x0", "38x0" and "40x0" (the second
+  // dimension lost), 140 of 272 total feet, and every one of them converted to
+  // zero pounds of galvanized steel. The bid bought that metal for free, with
+  // a full quantity showing on screen the whole time. Anything unusable now
+  // comes back so the caller can refuse to price the job.
+  const unusable = [];
+
   runs.forEach(r => {
     const p = parseDuctDesc(r.desc);
     const lf = Number(r.lf) || 0;
-    if (!p || lf <= 0) return;
+    if (lf <= 0) return; // no footage is a separate, already-reported problem
+    if (!p) { unusable.push({ desc: r.desc, lf, reason: 'no duct size could be read' }); return; }
     const svc = ductServiceOf(r.desc);
     const wrap = insulate === 'all' || (insulate === 'supply' && (svc === 'supply' || svc === 'oa' || svc === ''));
     if (p.kind === 'rect' && p.w > 0 && p.h > 0) {
@@ -103,6 +113,15 @@ export function ductPurchase(runs, opts = {}) {
       if (wrap) wrapSqft += (Math.PI * p.dia / 12) * lf;
     } else if (p.kind === 'flex') {
       flexFt += lf; // pre-insulated — never wrapped
+    } else {
+      // A rectangle with a zero side, or a round with no diameter. Real
+      // footage, unpriceable size.
+      unusable.push({
+        desc: r.desc, lf,
+        reason: p.kind === 'rect'
+          ? `"${p.w}x${p.h}" has a zero side — one dimension was misread`
+          : 'no diameter could be read',
+      });
     }
   });
 
@@ -140,5 +159,5 @@ export function ductPurchase(runs, opts = {}) {
     });
   }
 
-  return { lines, rectByGauge, spiralByDia, flexFt, wrapSqft };
+  return { lines, rectByGauge, spiralByDia, flexFt, wrapSqft, unusable };
 }
