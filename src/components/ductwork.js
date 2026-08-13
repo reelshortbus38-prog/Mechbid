@@ -68,14 +68,22 @@ export function parseDuctDesc(desc = '') {
     // so it can ask for a look: guessing round on a duct that really is
     // rectangular under-prices it, which is better than free but still wrong.
     if ((w === 0 || h === 0) && Math.max(w, h) > 0) {
-      const marked = /ø|⌀|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s);
+      const marked = /[ø⌀∅]|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s);
       return { kind: 'round', dia: Math.max(w, h), repairedFrom: `${rect[1]}x${rect[2]}`, inferred: !marked };
     }
     return { kind: 'rect', w, h };
   }
-  const round = s.match(/(\d+(?:\.\d+)?)\s*(?:"|″|in\b|inch(?:es)?)?\s*(?:ø|dia(?:meter)?\b|round|spiral)/);
+  // Diameter can be written with any of several symbols, and they are NOT the
+  // same character: ø/Ø are Latin o-with-stroke, ⌀ is the actual DIAMETER SIGN
+  // and ∅ the empty set. Only ø was matched here, so a run labelled 12"⌀ fell
+  // through every branch, returned null, and landed in "Other parts &
+  // materials" — out of the round group and out of spiral pricing entirely.
+  // The symbol also sits BETWEEN the inch mark and the word "round"
+  // ("12\"⌀ round duct"), which blocked the older pattern even when the word
+  // was right there.
+  const round = s.match(/(\d+(?:\.\d+)?)\s*(?:"|″|in\b|inch(?:es)?)?\s*(?:[ø⌀∅]|dia(?:meter)?\b|round\b|spiral\b)/);
   if (round) return { kind: 'round', dia: parseFloat(round[1]) };
-  const roundPrefix = s.match(/[ø⌀]\s*(\d+(?:\.\d+)?)/);
+  const roundPrefix = s.match(/[ø⌀∅]\s*(\d+(?:\.\d+)?)/);
   if (roundPrefix) return { kind: 'round', dia: parseFloat(roundPrefix[1]) };
   return null;
 }

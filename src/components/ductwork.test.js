@@ -208,3 +208,30 @@ describe('a side too narrow to be real is not priced', () => {
     expect(lines[0].desc).toMatch(/Spiral round duct, 3" dia/);
   });
 });
+
+// ── THE DIAMETER SIGN IS NOT THE LETTER Ø ────────────────────────────────────
+// A live run labelled 12"⌀ parsed as nothing, so it never reached the round
+// group and never reached spiral pricing — it sat in "Other parts &
+// materials" with footage on it. Only U+00F8 was matched; U+2300 is the actual
+// DIAMETER SIGN and U+2205 the empty set, and drafters use all of them.
+
+describe('every way a diameter gets written', () => {
+  it('reads all the symbols as round', () => {
+    for (const c of ['ø', 'Ø', '⌀', '∅']) {
+      expect(parseDuctDesc(`Ductwork — 12"${c} round duct (exhaust air)`), c)
+        .toMatchObject({ kind: 'round', dia: 12 });
+    }
+  });
+
+  it('reads the symbol before the number too', () => {
+    expect(parseDuctDesc('Ductwork — ⌀14 duct')).toMatchObject({ kind: 'round', dia: 14 });
+  });
+
+  it('prices those runs as spiral rather than dropping them', () => {
+    const { lines, unusable } = ductPurchase(
+      [{ desc: 'Ductwork — 40"⌀ round duct (supply air)', lf: 60 }], { wastePct: 0, insulate: 'none' });
+    expect(unusable).toEqual([]);
+    expect(lines[0].desc).toMatch(/Spiral round duct, 40" dia/);
+    expect(lines[0].qty).toBe(60);
+  });
+});
