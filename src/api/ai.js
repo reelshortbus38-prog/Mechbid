@@ -6,6 +6,7 @@ import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { reclassifyRuns } from './runKind.js';
+import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
@@ -545,7 +546,7 @@ For estLengthFt: duct length is scaled off the drawing, not labeled — so ESTIM
 
 VERTICAL RUNS: a riser is a DOT in plan view — an exhaust duct going up through the roof, a refrigerant line dropping to a unit below — so measuring it against the scale bar gives ~0 and the run reads as free. Its length is written as an ELEVATION instead: "AT 18' FROM FFL", "5' BELOW THE ROOF", "BOD 31'-10\"". When a run is vertical and an elevation callout gives its extent, use that as estLengthFt and set lengthBasis to "elevation callout". Never report 0 feet for a duct or pipe that is visibly drawn — say in notes why it could not be measured.
 
-If you cannot actually read a value, leave it empty — do not guess tags, sizes, CFM, loads, or counts.
+If you cannot actually read a value, leave it EMPTY — do not guess tags, sizes, CFM, loads, or counts, and never write filler text like "unspecified", "unknown", "N/A", "TBD" or "various" into a field. An empty field means "could not read"; a filler word looks like data and gets priced like data. If you can see a duct or pipe run but cannot read its SIZE, still return the run with an empty size and whatever length you could measure — it is real work that has to be bought.
 ${NO_SELF_DESCRIPTION_RULE}
 
 Return ONLY valid JSON, no markdown:
@@ -720,20 +721,26 @@ function absorbHvac(merged, parsed, seen, origin = null) {
     merged.airDevices.push({ ...d, tag, qty: d.qty || 1 });
   });
   (parsed.ductRuns || []).forEach(r => {
-    const size = String(r.size || '').trim();
-    if (!size) return;
-    // Page-scoped: two sheets legitimately carry the same duct size in
-    // different areas, and both lengths are real.
-    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
+    // "unspecified" is not a size — it is the model saying it could not read
+    // one. A run with no size is KEPT when something was genuinely seen
+    // (footage, a service, a note), because it is still a run somebody has to
+    // buy; only a completely empty row is discarded as a schema artifact.
+    const size = cleanSize(r.size);
+    const service = cleanService(r.service);
+    if (!size && !hasEvidence(r)) return;
+    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + (r.shape || '') + '|'
+      + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service;
     if (seen.has(k)) return; seen.add(k);
-    merged.ductRuns.push({ ...r, size, ...(origin || {}) });
+    merged.ductRuns.push({ ...r, size, service, sizeMissing: !size, ...(origin || {}) });
   });
   (parsed.pipeRuns || []).forEach(r => {
-    const size = String(r.size || '').trim();
-    if (!size) return;
-    const k = 'pr|' + (origin?.pageNum ?? '') + '|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
+    const size = cleanSize(r.size);
+    const service = cleanService(r.service);
+    if (!size && !hasEvidence(r)) return;
+    const k = 'pr|' + (origin?.pageNum ?? '') + '|'
+      + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service.toLowerCase();
     if (seen.has(k)) return; seen.add(k);
-    merged.pipeRuns.push({ ...r, size, ...(origin || {}) });
+    merged.pipeRuns.push({ ...r, size, service, sizeMissing: !size, ...(origin || {}) });
   });
   (parsed.hydronicZones || []).forEach(z => {
     const zone = String(z.zone || '').toUpperCase().trim();

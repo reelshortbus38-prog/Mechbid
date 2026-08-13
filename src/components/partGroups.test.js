@@ -112,3 +112,17 @@ describe('proposal coverage', () => {
     expect(new Set(ids).size).toBe(parts.length);
   });
 });
+
+describe('runs the analyzer could not size', () => {
+  it('gets its own section instead of passing as material', () => {
+    // "Ductwork — unspecified duct (unknown)" used to land in "Other parts &
+    // materials", where it reads like something a customer should understand.
+    expect(partGroupOf({ desc: 'Ductwork — SIZE NEEDED (exhaust air)' })).toBe('duct-unsized');
+    expect(partGroupOf({ desc: 'Pipe — SIZE NEEDED (refrigerant suction)' })).toBe('duct-unsized');
+  });
+
+  it('leaves sized runs in their proper groups', () => {
+    expect(partGroupOf({ desc: 'Ductwork — 24x12 duct (supply air)' })).toBe('duct-rect');
+    expect(partGroupOf({ desc: 'Ductwork — 12"⌀ round duct (exhaust air)' })).toBe('duct-round');
+  });
+});

@@ -12,6 +12,10 @@ import { isTerminalUnit } from './hvacEquip.js';
 export const PART_GROUPS = [
   { key: 'duct-rect', label: 'Ductwork — rectangular', icon: '🌀', qtyUnit: 'ft' },
   { key: 'duct-round', label: 'Ductwork — round & flex', icon: '⭕', qtyUnit: 'ft' },
+  // Runs the analyzer saw but could not size. Their own section so they read
+  // as a to-do rather than as material — an estimator scanning the table
+  // should never have to wonder what "unspecified duct" is.
+  { key: 'duct-unsized', label: 'Ductwork & pipe — SIZE NEEDED', icon: '📏', qtyUnit: 'ft' },
   { key: 'purchase', label: 'Duct purchase units', icon: '🧾', qtyUnit: '' },
   { key: 'terminal', label: 'VAV / terminal boxes', icon: '📦', qtyUnit: 'ea' },
   { key: 'pipe', label: 'Pipe', icon: '〰️', qtyUnit: 'ft' },
@@ -24,6 +28,7 @@ export function partGroupOf(p = {}) {
   // Condensate/drain lines sometimes come off a plan labeled "round duct
   // (drain)" — they're PIPING, and mis-grouping them as duct would let the
   // Duct→Purchase converter turn drain pipe into pounds of sheet metal.
+  if (/\bsize needed\b/i.test(desc)) return 'duct-unsized';
   if (/\b(drain|condensate)\b/i.test(desc)) return 'pipe';
   const duct = parseDuctDesc(desc);
   if (duct) return duct.kind === 'rect' ? 'duct-rect' : 'duct-round';
