@@ -4,6 +4,7 @@ import { crossCheckDiff } from './crossCheck.js';
 import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
+import { recheckDuctRuns } from './sizeRecheck.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
@@ -1057,10 +1058,20 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   // first-wins, so a takeoff that depended on which page finished first would
   // not be reproducible from one run to the next.
   rendered.forEach(({ pageNum, tileNum = 1, tilesOnPage = 1 }, i) => {
-    const { vres, parsed, error } = visionResults[i];
+    const { vres, error } = visionResults[i];
+    let { parsed } = visionResults[i];
     if (!parsed) {
       merged.flags.push({ type: 'warn', text: `Page ${pageNum}${tilesOnPage > 1 ? ` (section ${tileNum}/${tilesOnPage})` : ''}: could not be analyzed (${error})`, source: fileName });
       return;
+    }
+    // Before absorbing: a duct size that looks wrong gets rechecked against
+    // this page's TEXT LAYER — an independent copy of the same label that
+    // fails in different ways than a raster read, so it can recover a dropped
+    // digit exactly instead of sending the estimator to the plan.
+    const rc = recheckDuctRuns(parsed.ductRuns, textByPage[pageNum] || '', `Page ${pageNum}`);
+    if (rc.flags.length) {
+      parsed = { ...parsed, ductRuns: rc.runs };
+      rc.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
     }
     absorbHvac(merged, parsed, seen);
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
