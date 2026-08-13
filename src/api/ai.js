@@ -681,7 +681,17 @@ function newHvacMerged() {
     equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], hydronicZones: [], flags: [], summaries: [],
   };
 }
-function absorbHvac(merged, parsed, seen) {
+// origin: { pageNum, drawing } for the sheet this result came from. Duct and
+// pipe runs are stamped with it and deduped PER PAGE rather than per file.
+//
+// They used to be deduped per FILE on shape+size+service, first-wins, which
+// silently threw footage away: 32x24 supply at 50 ft on page 4 and 30 ft on
+// page 6 kept only the 50. That was crude overlap protection standing in for
+// the real thing — sheetOverlap already pools sheets by role, sums within a
+// pool and takes the max across them, so an enlarged plan re-drawing an
+// overall plan is handled properly. Duct simply never reached it, because the
+// runs had been collapsed before they got there.
+function absorbHvac(merged, parsed, seen, origin = null) {
   if (!parsed) return;
   if (parsed.documentType && !merged.documentType) merged.documentType = parsed.documentType;
   if (parsed.drawingNumber && !merged.drawingNumber) merged.drawingNumber = parsed.drawingNumber;
@@ -705,16 +715,18 @@ function absorbHvac(merged, parsed, seen) {
   (parsed.ductRuns || []).forEach(r => {
     const size = String(r.size || '').trim();
     if (!size) return;
-    const k = 'dr|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
+    // Page-scoped: two sheets legitimately carry the same duct size in
+    // different areas, and both lengths are real.
+    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + (r.shape || '') + '|' + size.toLowerCase() + '|' + (r.service || '');
     if (seen.has(k)) return; seen.add(k);
-    merged.ductRuns.push({ ...r, size });
+    merged.ductRuns.push({ ...r, size, ...(origin || {}) });
   });
   (parsed.pipeRuns || []).forEach(r => {
     const size = String(r.size || '').trim();
     if (!size) return;
-    const k = 'pr|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
+    const k = 'pr|' + (origin?.pageNum ?? '') + '|' + size.toLowerCase() + '|' + (r.service || '').toLowerCase();
     if (seen.has(k)) return; seen.add(k);
-    merged.pipeRuns.push({ ...r, size });
+    merged.pipeRuns.push({ ...r, size, ...(origin || {}) });
   });
   (parsed.hydronicZones || []).forEach(z => {
     const zone = String(z.zone || '').toUpperCase().trim();
@@ -1079,7 +1091,10 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     const rk = reclassifyRuns(rc.runs, parsed.pipeRuns, `Page ${pageNum}`);
     rk.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
     parsed = { ...parsed, ductRuns: rk.ductRuns, pipeRuns: rk.pipeRuns };
-    absorbHvac(merged, parsed, seen);
+    absorbHvac(merged, parsed, seen, {
+      pageNum,
+      drawing: [parsed.drawingNumber, parsed.drawingTitle].filter(Boolean).join(' — '),
+    });
     merged.flags.push(...backupModelFlag(vres.fallbackModel, `Page ${pageNum}`, fileName));
     const { reported, dropped } = crossCheckVision(parsed, vres.second);
     reported.slice(0, 4).forEach(m =>
@@ -1218,6 +1233,8 @@ export function backupModelFlag(fallbackModel, label, source) {
 // Compares the primary (Claude) vision read against the second model's raw
 // text on the SAME image. Grading lives in ./crossCheck.js (pure, tested);
 // this only turns the second model's raw response into an object first.
+export { absorbHvac };
+
 export function crossCheckVision(primaryParsed, secondRaw) {
   const second = typeof secondRaw === 'string' ? parseAIJson(secondRaw) : secondRaw;
   return crossCheckDiff(primaryParsed, second);
