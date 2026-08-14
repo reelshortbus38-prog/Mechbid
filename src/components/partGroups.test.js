@@ -126,3 +126,16 @@ describe('runs the analyzer could not size', () => {
     expect(partGroupOf({ desc: 'Ductwork — 12"⌀ round duct (exhaust air)' })).toBe('duct-round');
   });
 });
+
+describe('linear diffusers do not sit in the duct groups', () => {
+  it('routes a face size tagged in duct notation to its own section', () => {
+    // The staged line, and a legacy line saved before the two were told apart.
+    expect(partGroupOf({ desc: 'Linear slot diffuser or grille — 204x4 face (supply)' })).toBe('linear-device');
+    expect(partGroupOf({ desc: 'Ductwork — 288x4 duct (supply air)' })).toBe('linear-device');
+  });
+
+  it('leaves real duct in the duct groups', () => {
+    expect(partGroupOf({ desc: 'Ductwork — 30x12 duct (supply)' })).toBe('duct-rect');
+    expect(partGroupOf({ desc: 'Ductwork — 40" round duct (supply)' })).toBe('duct-round');
+  });
+});

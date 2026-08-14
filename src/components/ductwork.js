@@ -23,6 +23,40 @@
 // second digit to drop.
 export const MIN_DUCT_SIDE = 4;
 
+// ── A RECTANGLE THAT ISN'T DUCT ──────────────────────────────────────────────
+// Linear slot diffusers and linear bar grilles are tagged with a FACE SIZE in
+// exactly the notation duct is tagged with a duct size — "60x3", "204x4",
+// "288x4" on a leader off a device bubble — so the analyzer files them as duct
+// runs. Pricing them as duct is not a rounding error: 288x4 over 24 ft comes
+// to 2,518 lb of 18 ga at ~$13,000, plus 1,168 sq ft of wrap, for a device
+// that costs a fraction of it. Two such tags on one live sheet carried ~$19,600
+// of sheet metal that does not exist.
+//
+// The tell is the SHAPE. Rectangular duct is kept near square — SMACNA holds
+// aspect ratio to 4:1 and treats 8:1 as the practical extreme — because a long
+// flat duct is all friction and all metal. Linear devices are the opposite: a
+// 3"-8" face running 2 to 24 feet, 20:1 and up. And nothing rectangular that a
+// sheet metal shop builds is 204 inches across.
+//
+// The LOWER bounds matter as much as the aspect ratio, because they are what
+// keeps this rule off the misreads. "19x1" is a dropped digit off 19x17 and has
+// to stay a misread, so a face under 2" is not a device; and a linear diffuser
+// is not made shorter than the 24" minimum section, so a short rectangle like
+// 24x4 stays duct.
+export const LINEAR_DEVICE = { minFace: 2, maxFace: 8, minLength: 24, minAspect: 10 };
+
+export function isLinearDevice(w, h) {
+  const face = Math.min(w, h), len = Math.max(w, h);
+  const { minFace, maxFace, minLength, minAspect } = LINEAR_DEVICE;
+  if (!(face >= minFace && face <= maxFace)) return false;
+  if (!(len >= minLength)) return false;
+  return len / face >= minAspect;
+}
+
+// Feet of device from the face length, which is PRINTED on the tag ("204x4" is
+// a 17'-0" run) and so beats anything scaled off the drawing.
+export const linearDeviceFt = len => Math.round((len / 12) * 10) / 10;
+
 // Galvanized sheet weight by gauge, lb per sq ft (standard G60/G90 sheet).
 export const GALV_LB_SQFT = { 26: 0.906, 24: 1.156, 22: 1.406, 20: 1.656, 18: 2.156 };
 
@@ -70,6 +104,12 @@ export function parseDuctDesc(desc = '') {
     if ((w === 0 || h === 0) && Math.max(w, h) > 0) {
       const marked = /[ø⌀∅]|\bround\b|\bdia(?:meter)?\b|\bspiral\b/.test(s);
       return { kind: 'round', dia: Math.max(w, h), repairedFrom: `${rect[1]}x${rect[2]}`, inferred: !marked };
+    }
+    // A face size, not a duct size. Caught AFTER the zero-side repair so a
+    // round main never reaches it, and before the rect return so no consumer
+    // can turn it into pounds.
+    if (isLinearDevice(w, h)) {
+      return { kind: 'linear', len: Math.max(w, h), face: Math.min(w, h) };
     }
     return { kind: 'rect', w, h };
   }
@@ -142,6 +182,14 @@ export function ductPurchase(runs, opts = {}) {
       if (wrap) wrapSqft += (Math.PI * p.dia / 12) * lf;
     } else if (p.kind === 'flex') {
       flexFt += lf; // pre-insulated — never wrapped
+    } else if (p.kind === 'linear') {
+      // Reaches here only from a hand-typed line or a job saved before linear
+      // faces were told apart from duct. Never priced as metal — it is
+      // reported so the estimator moves it, which is the whole point.
+      unusable.push({
+        desc: r.desc, lf,
+        reason: `"${p.len}x${p.face}" is a linear diffuser/grille FACE, not a duct size — ${p.len}" long × ${p.face}" wide is ${Math.round(p.len / p.face)}:1, and duct is not built past about 8:1. Price it per foot of device, not as sheet metal.`,
+      });
     } else {
       // A rectangle with a zero side, or a round with no diameter. Real
       // footage, unpriceable size.
