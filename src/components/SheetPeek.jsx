@@ -27,8 +27,17 @@ import { ftPerPixel, measureFeet, formatFeet } from '../api/sheetScale.js';
 // works on desktop Chrome, Edge and Firefox. iOS Safari ignores the fragment
 // and lands on page 1 every time, which is worse than no button.
 
-const TARGET_LONG_EDGE = 4200; // rendered px — legible on a retina iPad, safe on memory
+const TARGET_LONG_EDGE = 4200; // rendered px on a small sheet
 const MAX_SCALE = 6;
+// A hard ceiling on TOTAL pixels, which is what actually costs memory. A
+// 21 MB set crashed the tab on an iPad: an arch-E sheet at 4200 px long edge
+// is 13.2 megapixels — 53 MB of canvas — and the old code then encoded that to
+// a data URL and handed it to an <img>, which decoded the same bitmap a SECOND
+// time. 106 MB of pixels for one drawing, on top of the file and pdf.js.
+// Drawing straight into a mounted canvas removes the duplicate outright; this
+// caps what remains. iOS also enforces its own canvas-area limit, so staying
+// well under it is what keeps big sheets rendering at all.
+const MAX_PIXELS = 8_000_000;
 
 export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   const [state, setState] = useState({ status: 'loading' });
@@ -44,10 +53,11 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   const [measuring, setMeasuring] = useState(false);
   const [pts, setPts] = useState([]);
   const frameRef = useRef(null);
-  const markRef = useRef(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
+    let doc = null;
     (async () => {
       const file = getCachedFile(fileName);
       if (!file) {
@@ -60,16 +70,25 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
         const pdfjs = await import('pdfjs-dist/build/pdf.mjs');
         pdfjs.GlobalWorkerOptions.workerSrc =
           `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
-        const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+        doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
         const pg = await doc.getPage(Math.min(page, doc.numPages));
 
         // Scale from the sheet's own size, not a fixed multiplier — that is
-        // what made a big sheet unreadable.
+        // what made a big sheet unreadable — and then cap TOTAL pixels, which
+        // is what actually costs memory.
         const base = pg.getViewport({ scale: 1 });
-        const scale = Math.min(MAX_SCALE, TARGET_LONG_EDGE / Math.max(base.width, base.height));
+        const scale = Math.min(
+          MAX_SCALE,
+          TARGET_LONG_EDGE / Math.max(base.width, base.height),
+          Math.sqrt(MAX_PIXELS / (base.width * base.height)),
+        );
         const viewport = pg.getViewport({ scale });
 
-        const canvas = document.createElement('canvas');
+        // Draw into the canvas that is ALREADY IN THE DOM. The old code drew
+        // offscreen, encoded to a data URL and let an <img> decode it again —
+        // two full bitmaps and a multi-megabyte string for one sheet.
+        const canvas = canvasRef.current;
+        if (!canvas) return;
         canvas.width = Math.round(viewport.width);
         canvas.height = Math.round(viewport.height);
         const ctx = canvas.getContext('2d');
@@ -103,19 +122,14 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
           });
         } catch { /* no text layer (a scan) — the sheet still opens, unmarked */ }
 
-        setState({
-          status: 'ready',
-          src: canvas.toDataURL('image/jpeg', 0.92),
-          width: canvas.width,
-          height: canvas.height,
-          mark: first,
-          ftPerPx,
-        });
+        setState({ status: 'ready', width: canvas.width, height: canvas.height, mark: first, ftPerPx });
       } catch (e) {
         if (!cancelled) setState({ status: 'error', message: e?.message || 'Could not open that sheet.' });
       }
     })();
-    return () => { cancelled = true; };
+    // Release the parsed PDF. Left alive it holds the whole document — on a
+    // 21 MB set that is tens of megabytes kept for a sheet already drawn.
+    return () => { cancelled = true; doc?.destroy?.(); };
   }, [fileName, page, flagText]);
 
   // Open scrolled to the marked label rather than at the top-left corner of a
@@ -161,54 +175,58 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
           tablet is unreadable, so it pans and pinches instead. */}
       <div
         ref={frameRef}
-        style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 8, background: '#fff' }}
+        style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 8, background: '#fff', position: 'relative' }}
       >
-        {state.status === 'ready'
-          ? <div style={{ position: 'relative', width: fit ? '100%' : state.width, height: fit ? 'auto' : state.height }}>
-            <img
-              ref={markRef}
-              src={state.src}
-              alt={`Page ${page}`}
-              onClick={e => {
-                if (!measuring) { setFit(f => !f); return; }
-                // Clicks arrive in DISPLAYED pixels; the measurement lives in
-                // the rendered image's own pixels, so scale across.
-                const r = e.currentTarget.getBoundingClientRect();
-                const k = state.width / r.width;
-                const p = { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
-                setPts(prev => (prev.length >= 2 ? [p] : [...prev, p]));
-              }}
-              style={fit
-                ? { display: 'block', width: '100%', height: 'auto', cursor: 'zoom-in' }
-                : { display: 'block', width: state.width, height: state.height, maxWidth: 'none', cursor: 'zoom-out' }}
-            />
-            {measuring && pts.length > 0 && (
-              <svg
-                viewBox={`0 0 ${state.width} ${state.height}`}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-              >
-                {pts.length === 2 && (
-                  <line x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y}
-                    stroke="#0a84ff" strokeWidth={state.width * 0.0022} />
-                )}
-                {pts.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={state.width * 0.004} fill="#0a84ff" />
-                ))}
-                {pts.length === 2 && (
-                  <text
-                    x={(pts[0].x + pts[1].x) / 2} y={(pts[0].y + pts[1].y) / 2 - state.width * 0.008}
-                    fill="#0a84ff" fontSize={state.width * 0.016} fontWeight="700" textAnchor="middle"
-                    stroke="#fff" strokeWidth={state.width * 0.004} paintOrder="stroke"
-                  >{formatFeet(measureFeet(pts[0], pts[1], state.ftPerPx))}</text>
-                )}
-              </svg>
-            )}
-          </div>
-          : (
-            <div style={{ padding: 40, textAlign: 'center', color: state.status === 'error' ? colors.red : colors.textDim, fontSize: 13, background: colors.panel, height: '100%' }}>
-              {state.status === 'error' ? state.message : `Rendering page ${page}…`}
-            </div>
+        {/* The canvas is mounted from the start so the render effect has
+            something to draw into. Drawing straight into a live canvas is what
+            removed the duplicate bitmap that was crashing the tab. */}
+        <div style={{ position: 'relative', width: fit ? '100%' : state.width, height: fit ? 'auto' : state.height }}>
+          <canvas
+            ref={canvasRef}
+            onClick={e => {
+              if (!measuring) { setFit(f => !f); return; }
+              // Clicks arrive in DISPLAYED pixels; the measurement lives in
+              // the canvas's own pixels, so scale across.
+              const r = e.currentTarget.getBoundingClientRect();
+              const k = state.width / r.width;
+              const p = { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
+              setPts(prev => (prev.length >= 2 ? [p] : [...prev, p]));
+            }}
+            style={{
+              display: state.status === 'ready' ? 'block' : 'none',
+              width: fit ? '100%' : state.width,
+              height: fit ? 'auto' : state.height,
+              maxWidth: 'none',
+              cursor: measuring ? 'crosshair' : fit ? 'zoom-in' : 'zoom-out',
+            }}
+          />
+          {measuring && pts.length > 0 && state.status === 'ready' && (
+            <svg
+              viewBox={`0 0 ${state.width} ${state.height}`}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+            >
+              {pts.length === 2 && (
+                <line x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y}
+                  stroke="#0a84ff" strokeWidth={state.width * 0.0022} />
+              )}
+              {pts.map((p, i) => (
+                <circle key={i} cx={p.x} cy={p.y} r={state.width * 0.004} fill="#0a84ff" />
+              ))}
+              {pts.length === 2 && (
+                <text
+                  x={(pts[0].x + pts[1].x) / 2} y={(pts[0].y + pts[1].y) / 2 - state.width * 0.008}
+                  fill="#0a84ff" fontSize={state.width * 0.016} fontWeight="700" textAnchor="middle"
+                  stroke="#fff" strokeWidth={state.width * 0.004} paintOrder="stroke"
+                >{formatFeet(measureFeet(pts[0], pts[1], state.ftPerPx))}</text>
+              )}
+            </svg>
           )}
+        </div>
+        {state.status !== 'ready' && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center', color: state.status === 'error' ? colors.red : colors.textDim, fontSize: 13, background: colors.panel }}>
+            {state.status === 'error' ? state.message : `Rendering page ${page}…`}
+          </div>
+        )}
       </div>
     </div>
   );
