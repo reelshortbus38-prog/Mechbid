@@ -5,6 +5,7 @@ import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
+import { dropDeviceFaces } from './deviceFace.js';
 import { reclassifyRuns } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
@@ -532,9 +533,11 @@ Extract the following EXACTLY as written — never round, simplify, or invent:
 
 2) EQUIPMENT — units shown as TAGS, either inside hexagons/ovals/boxes OR as plain text labels next to the unit (e.g. "AHU-1 ON ROOF", "ASHP-1 ON ROOF", "ERV-2"). Capture each distinct tag ONCE. Common prefixes and what they mean: RTU=rooftop unit, AHU=air handling unit, FCU=fan coil unit, VAV=variable air volume box, CU=condensing unit, AC=AC/condenser unit, EF=exhaust fan, TF=transfer fan, MAU=make-up air unit, ERV/HRV=energy/heat recovery ventilator, ASHP/HP=heat pump (air-source), CU/CH=condensing unit/chiller, P=pump, B=boiler, FF=force-flow/cabinet/unit heater, HC=heating coil, UH=unit heater, MB=mixing box, BH/FH=baseboard/finned-tube heater. DATA-CENTER / CENTRAL-PLANT tags: CRAC=computer-room AC (DX), CRAH=computer-room air handler (chilled water), CH/CHLR=chiller (note water-cooled vs air-cooled if stated), CT=cooling tower, CDU=coolant distribution unit (liquid cooling), RDHx=rear-door heat exchanger, CHWP=chilled-water pump, CWP/CDWP=condenser-water pump, DC=dry cooler / fluid cooler. Return {tag, type, notes}; infer type from the prefix. If the same tag appears repeatedly it is still ONE entry — say so in notes. The tag field must be ONE unit's tag exactly as printed — NEVER a range ("RTU-01 THRU RTU-08") or a list ("EF-12, EF-13"); emit a separate entry per unit. Do NOT create equipment entries from controls/BMS narrative, sequence-of-operations text, or zone labels that merely NAME a unit — only physical units drawn or scheduled on this sheet.
 
-3) AIR DEVICES — supply diffusers, return/exhaust grilles, registers. They read as TYPE-NUMBER with a neck size and a CFM, e.g. "CD-1 8\"⌀ 100" = ceiling diffuser CD-1, 8 inch round neck, 100 CFM. They MAY also carry a face/grille size before the tag, e.g. "24x24 CD-1 8\"⌀ NECK 200 CFM" = 24x24 face, 8" neck, 200 CFM — capture that face size too. Prefixes: CD=ceiling/supply diffuser, SG=supply grille, RG=return grille, EG or ED=exhaust grille/diffuser, TG=transfer grille, LD=linear diffuser. A "(TYP. n)" note means n identical devices — put n in qty. Return {tag, deviceType, faceSize, neckSize, cfm, qty}.
+3) AIR DEVICES — supply diffusers, return/exhaust grilles, registers. They read as TYPE-NUMBER with a neck size and a CFM, e.g. "CD-1 8\"⌀ 100" = ceiling diffuser CD-1, 8 inch round neck, 100 CFM. They MAY also carry a face/grille size before the tag, e.g. "24x24 CD-1 8\"⌀ NECK 200 CFM" = 24x24 face, 8" neck, 200 CFM — capture that face size too. Prefixes: CD=ceiling/supply diffuser, SG=supply grille, RG=return grille, EG or ED=exhaust grille/diffuser, TG=transfer grille, LD=linear diffuser. A "(TYP. n)" note means n identical devices — put n in qty. MANY SHEETS DO NOT USE A PREFIX-NUMBER AT ALL. The other common convention is a bare TYPE LETTER keyed to a schedule elsewhere in the set, written TYPE [CFM] FACE-SIZE (TYP n): "O 315 24x48" = type O device, 315 CFM, 24x48 face; "J 720 24x12"; "F 100 10x10 (TYP 5)"; "G 500 24x12 (TYP 3)"; "A 400 12ø" = 12" round neck; "F 22x10 (TYP 2)" with the CFM omitted. LINEAR slot diffusers and bar grilles use the same convention but carry NO CFM and a long, narrow face: "M1 60x3 (TYP 4)" = four 60-inch-long devices with a 3-inch face; "M2 204x4"; "M2 312x4". Capture every one of these as an AIR DEVICE with the type letter as tag and the trailing size as faceSize. Return {tag, deviceType, faceSize, neckSize, cfm, qty}.
 
 4) DUCT RUNS — duct segments labeled with a size on the run. Rectangular ducts are "WxH" (e.g. "24x16", "60x24"). Round ducts use a diameter mark (e.g. "8\"⌀", "12 DIA", "10∅"). Capture every distinct size you can read. Note "UP THRU ROOF" or the service (supply/return/exhaust/outside air) when indicated. Return {shape:"rect"|"round", size, service, estLengthFt, lengthBasis, notes}.
+
+A SIZE THAT BELONGS TO A DEVICE TAG IS NOT A DUCT SIZE. This is the single most expensive mistake available on a plan sheet, because device faces are written in exactly the same WxH notation as duct. A duct size stands ALONE on the drawn run, usually with UP, DN or UP/DN after it ("20x18 UP/DN", "14x14 DN", "18x12"). A device face is preceded by a type letter and often a CFM ("O 315 24x48", "J 720 24x12", "M2 204x4") — that WxH belongs in airDevices and must NEVER appear in ductRuns. The same size can be both on one sheet: "J 580 24x12" is a grille face while a bare "24x12" on a run is duct, so go by what precedes the number, not by the number. Two further checks: a rectangular duct is kept NEAR SQUARE — anything past about 8:1 ("60x3", "204x4", "312x4", "72x3") is a linear diffuser face, never duct — and no duct is wider than about 120 inches, so a first number in the hundreds is always a device length.
 
 For estLengthFt: duct length is scaled off the drawing, not labeled — so ESTIMATE the total run length per size using real-world size references visible on the sheet, and say which reference you used in lengthBasis. Usable references, best first: (a) dimension strings or labeled structural grid spacing (column bubbles with distances like 25'-0"); (b) the 2'x4' suspended-ceiling tile grid if drawn; (c) the air devices themselves — a 24x24 diffuser is exactly 2 ft square, so a duct run 10 diffuser-widths long is ~20 ft; (d) standard door openings (3 ft) or parking stalls (9 ft) on architectural background. Trace each duct size's total visible length against the reference and give a conservative whole-number estimate. These are BUDGET estimates the estimator will verify — mark lengthBasis with what you measured against. If NO usable size reference is visible, set estLengthFt to 0 rather than guessing blind.
 
@@ -1109,6 +1112,17 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // exhaust-air duct filed as pipe, a refrigerant line filed as duct — and
     // they are bought in different units, so the mistake is real money.
     parsed = { ...parsed, ductRuns: rc.runs };
+    // Then lift out any "duct size" that is really an air device FACE. A plan
+    // writes a grille face in the same WxH notation as a duct, so the analyzer
+    // files them as runs and they price as sheet metal by the pound. Only the
+    // page's own text can tell them apart, and only for sizes that never once
+    // stand alone on a run — see deviceFace.js for why that bar is set there.
+    const df = dropDeviceFaces(rc.runs, textByPage[pageNum] || '', `Page ${pageNum}`);
+    df.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
+    parsed = {
+      ...parsed, ductRuns: df.runs,
+      airDevices: [...(parsed.airDevices || []), ...df.devices],
+    };
     absorbHvac(merged, parsed, seen, {
       pageNum,
       drawing: [parsed.drawingNumber, parsed.drawingTitle].filter(Boolean).join(' — '),
