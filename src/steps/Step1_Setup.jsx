@@ -19,7 +19,7 @@ import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
-import { resolveHvacPartCounts, tallyNote } from '../components/sheetOverlap.js';
+import { resolveHvacPartCounts, tallyNote, cfmNote } from '../components/sheetOverlap.js';
 import { missingSizeNote } from '../api/runEvidence.js';
 import { rememberFile } from '../api/fileCache.js';
 import { triageFlags } from '../components/flagTriage.js';
@@ -160,7 +160,7 @@ export default function Step1_Setup({ onNext }) {
           unitCost: entry.unitCost || 0,
           // The per-sheet tally stays on the card: a resolved number nobody
           // can trace back to a sheet is a number nobody will bid on.
-          notes: [entry.notes, tallyNote(entry)].filter(Boolean).join(' · '),
+          notes: [cfmNote(entry), entry.notes, tallyNote(entry)].filter(Boolean).join(' · '),
         });
       });
       if (trimmed > 0) {
@@ -196,10 +196,13 @@ export default function Step1_Setup({ onNext }) {
       (hv.airDevices || []).forEach(d => {
         const desc = [`${d.tag ? d.tag + ' — ' : ''}${d.deviceType || 'Air device'}`, d.faceSize ? `${d.faceSize} face` : '', d.neckSize ? `${d.neckSize} neck` : '']
           .filter(Boolean).join(' · ');
+        // The device's OWN sheet, not the file's first one — the pooling rule
+        // is only meaningful if each sheet is named correctly.
+        const dSheet = d.drawing || drawing;
         pushHvacPart(fileMeta.name, {
-          desc, qty: Number(d.qty) || 1, unitCost: 0,
-          notes: [d.cfm ? `${d.cfm} CFM` : '', drawing].filter(Boolean).join(' · '),
-        }, drawing);
+          desc, qty: Number(d.qty) || 1, unitCost: 0, cfm: Number(d.cfm) || 0,
+          notes: dSheet,
+        }, dSheet);
       });
       (hv.ductRuns || []).forEach(r => {
         // A run whose size could not be read is still a run: it keeps its
