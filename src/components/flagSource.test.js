@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { flagPage, flagFile, flagVerifyTarget } from './flagSource.js';
+import { dedupeFlags } from './flagDedupe.js';
+import { resolveCoverageFlags } from './flagCoverage.js';
+import { triageFlags } from './flagTriage.js';
 
 // Flag wording here is verbatim from live runs — the page is written into the
 // sentence, which is fine to read and useless to a button.
@@ -62,5 +65,47 @@ describe('flagVerifyTarget', () => {
 
   it('defaults to offering nothing when availability is unknown', () => {
     expect(flagVerifyTarget({ source: 'set.pdf', text: 'Page 7: misread' })).toBeNull();
+  });
+});
+
+// ── THE PAGE HAS TO SURVIVE THE PIPELINE ─────────────────────────────────────
+// A live set came back with flags and no view buttons. The duct-misread
+// warning is raised in Step1 rather than the vision loop, so it never got the
+// "Page N:" prefix the recovery relied on — and every scope note the analyzer
+// raised from a sheet had no page either. Both now carry it as a FIELD, which
+// only helps if nothing downstream drops it.
+
+describe('the page survives every stage between the read and the button', () => {
+  const flag = { type: 'warn', source: 'Drawings 3.pdf', page: 12,
+    text: 'Duct size "60x3" looks misread (a 3" side isn\'t a real duct dimension). Verify on the plan.' };
+  const loaded = () => true;
+
+  it('survives dedupe', () => {
+    const [out] = dedupeFlags([flag]);
+    expect(flagVerifyTarget(out, loaded)).toEqual({ file: 'Drawings 3.pdf', page: 12 });
+  });
+
+  it('survives dedupe when the same note collapses from several sheets', () => {
+    const [out] = dedupeFlags([flag, { ...flag, page: 15 }]);
+    expect(out.count).toBe(2);
+    expect(flagPage(out)).toBe(12); // the first sighting's sheet
+  });
+
+  it('survives coverage resolution', () => {
+    const [out] = resolveCoverageFlags([flag], []);
+    expect(flagPage(out)).toBe(12);
+  });
+
+  it('survives triage', () => {
+    const { actionable } = triageFlags([flag]);
+    expect(flagVerifyTarget(actionable[0], loaded)).toEqual({ file: 'Drawings 3.pdf', page: 12 });
+  });
+
+  it('gives a scope note its sheet too', () => {
+    // The commonest case: "PROVIDE CEILING ACCESS PANEL FOR FIRE/SMOKE DAMPER
+    // ACCESS" is worth far more when you can see where it was written.
+    const note = { type: 'warn', source: 'Drawings 3.pdf', page: 4,
+      text: 'PROVIDE CEILING ACCESS PANEL FOR FIRE/SMOKE DAMPER ACCESS.' };
+    expect(flagVerifyTarget(note, loaded)).toEqual({ file: 'Drawings 3.pdf', page: 4 });
   });
 });
