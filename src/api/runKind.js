@@ -55,6 +55,30 @@ export function sizeSignature(size) {
   return `dia:${sizeInches(s)}`;
 }
 
+// ONE SPELLING PER SIZE. The analyzer writes the same duct several ways across
+// a set — 6"ø on one sheet, 6ø on the next — and every spelling became its own
+// takeoff line. A live 11-sheet read came back with "6"ø round duct (supply)"
+// at 29 ft AND "6ø duct (supply)" at 6 ft: one duct, two lines, the footage
+// split between them and neither one right.
+//
+// sizeSignature already knew these were the same; it just was not what the
+// dedupe key or the description were built from. This is the display form of
+// that same judgement, so the key and the label can never disagree again.
+//
+// Fractions are left exactly as written: a 3/4" line is pipe that landed in
+// the duct bucket, and rewriting it as 0.75"ø would bury the evidence of that.
+export function canonicalDuctSize(size, shape = '') {
+  const s = String(size || '').trim();
+  if (!s) return s;
+  const rect = s.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
+  if (rect) return `${parseFloat(rect[1])}x${parseFloat(rect[2])}`;
+  if (s.includes('/')) return s;
+  const marked = /[ø⌀∅]|\bdia(?:meter)?\b|\bround\b|\bspiral\b/i.test(s);
+  if (!marked && String(shape).toLowerCase() !== 'round') return s;
+  const n = sizeInches(s);
+  return n > 0 ? `${n}"ø` : s;
+}
+
 // run: { size, service, notes }. kind: what the analyzer called it.
 // Returns { kind, moved, why } — moved is true only when the call changed.
 export function classifyRun(run = {}, kind = 'duct') {

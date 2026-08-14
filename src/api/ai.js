@@ -7,7 +7,7 @@ import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { dropDeviceFaces } from './deviceFace.js';
 import { coverageGap } from './sheetCoverage.js';
-import { reclassifyRuns } from './runKind.js';
+import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 
@@ -738,13 +738,17 @@ function absorbHvac(merged, parsed, seen, origin = null) {
     // one. A run with no size is KEPT when something was genuinely seen
     // (footage, a service, a note), because it is still a run somebody has to
     // buy; only a completely empty row is discarded as a schema artifact.
-    const size = cleanSize(r.size);
+    const size = canonicalDuctSize(cleanSize(r.size), r.shape);
     const service = cleanService(r.service);
     if (!size && !hasEvidence(r)) return;
-    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + (r.shape || '') + '|'
+    // Shape follows the canonical size. A run written "6ø" with no shape field
+    // was labeled "6ø duct" while its twin "6"ø" was labeled "6"ø round duct",
+    // so they read as two different products as well as two different lines.
+    const shape = /[ø⌀∅]/.test(size) ? 'round' : (r.shape || '');
+    const k = 'dr|' + (origin?.pageNum ?? '') + '|' + shape + '|'
       + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service;
     if (seen.has(k)) return; seen.add(k);
-    merged.ductRuns.push({ ...r, size, service, sizeMissing: !size, ...(origin || {}) });
+    merged.ductRuns.push({ ...r, size, shape, service, sizeMissing: !size, ...(origin || {}) });
   });
   (parsed.pipeRuns || []).forEach(r => {
     const size = cleanSize(r.size);
