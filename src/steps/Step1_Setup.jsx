@@ -23,7 +23,7 @@ import { resolveHvacPartCounts, tallyNote } from '../components/sheetOverlap.js'
 import { missingSizeNote } from '../api/runEvidence.js';
 import { rememberFile } from '../api/fileCache.js';
 import { triageFlags } from '../components/flagTriage.js';
-import { parseDuctDesc } from '../components/ductwork.js';
+import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -216,6 +216,26 @@ export default function Step1_Setup({ onNext }) {
         // dimension is right there, so repairing beats asking. Say what was
         // done so it's still verifiable.
         const parsedSize = parseDuctDesc(`${r.size} duct`);
+        // A linear diffuser/grille FACE, tagged in duct notation. It leaves the
+        // duct path entirely: as duct it would price as sheet metal by the
+        // pound, which on a 288x4 is ~$13,000 of steel for a grille. Length
+        // comes from the tag itself — "204x4" is a 17'-0" device — which is
+        // read off the sheet rather than scaled off it.
+        if (parsedSize?.kind === 'linear') {
+          const ft = linearDeviceFt(parsedSize.len);
+          pushHvacPart(fileMeta.name, {
+            desc: `Linear slot diffuser or grille — ${parsedSize.len}x${parsedSize.face} face${r.service ? ` (${r.service})` : ''}`,
+            qty: ft, unitCost: 0,
+            notes: [
+              `${ft} ft as tagged (${parsedSize.len}" long × ${parsedSize.face}" face)`,
+              'CONFIRM against the device legend on the sheet — if the tag reads TYP n, multiply by n',
+              r.notes, r.drawing || drawing,
+            ].filter(Boolean).join(' · '),
+          }, r.drawing || drawing);
+          flags.push({ type: 'warn', source: fileMeta.name, page: r.pageNum,
+            text: `"${r.size}" was read as a DUCT size but it is ${Math.round(parsedSize.len / parsedSize.face)}:1 — duct is not built past about 8:1, so this is a linear diffuser/grille face (${parsedSize.len}" long × ${parsedSize.face}" wide). It has been moved out of ductwork and priced as ${ft} ft of device instead of sheet metal. Confirm the device type and count against the legend on the sheet.` });
+          return;
+        }
         const repaired = parsedSize?.repairedFrom;
         const suspect = !repaired && dims && Math.min(parseFloat(dims[1]), parseFloat(dims[2])) <= 3;
         if (repaired) {

@@ -16,6 +16,11 @@ export const PART_GROUPS = [
   // as a to-do rather than as material — an estimator scanning the table
   // should never have to wonder what "unspecified duct" is.
   { key: 'duct-unsized', label: 'Ductwork & pipe — SIZE NEEDED', icon: '📏', qtyUnit: 'ft' },
+  // Linear slot diffusers and bar grilles, which are tagged with a face size
+  // in duct notation ("204x4") and so arrive looking like ductwork. Their own
+  // section because they are bought by the foot of DEVICE — putting them
+  // anywhere near the duct groups is how they get priced as sheet metal.
+  { key: 'linear-device', label: 'Linear diffusers & grilles', icon: '📶', qtyUnit: 'ft' },
   { key: 'purchase', label: 'Duct purchase units', icon: '🧾', qtyUnit: '' },
   { key: 'terminal', label: 'VAV / terminal boxes', icon: '📦', qtyUnit: 'ea' },
   { key: 'pipe', label: 'Pipe', icon: '〰️', qtyUnit: 'ft' },
@@ -30,8 +35,12 @@ export function partGroupOf(p = {}) {
   // Duct→Purchase converter turn drain pipe into pounds of sheet metal.
   if (/\bsize needed\b/i.test(desc)) return 'duct-unsized';
   if (/\b(drain|condensate)\b/i.test(desc)) return 'pipe';
+  if (/\blinear (?:slot )?(?:diffuser|grille)\b/i.test(desc)) return 'linear-device';
   const duct = parseDuctDesc(desc);
-  if (duct) return duct.kind === 'rect' ? 'duct-rect' : 'duct-round';
+  if (duct) {
+    if (duct.kind === 'linear') return 'linear-device';
+    return duct.kind === 'rect' ? 'duct-rect' : 'duct-round';
+  }
   if (/^\s*pipe\b|—\s*pipe\b/i.test(desc)) return 'pipe';
   if (isTerminalUnit({ type: desc })) return 'terminal';
   return 'other';

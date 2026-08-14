@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDuctDesc, gaugeForRect, ductPurchase, ductServiceOf, GALV_LB_SQFT } from './ductwork.js';
+import { parseDuctDesc, gaugeForRect, ductPurchase, ductServiceOf, GALV_LB_SQFT, isLinearDevice, linearDeviceFt } from './ductwork.js';
 
 // Guards the feet → purchase-unit conversion: rectangular sheet metal is
 // bought by the POUND (fabricated), spiral by the foot in 10' joints, flex
@@ -233,5 +233,75 @@ describe('every way a diameter gets written', () => {
     expect(unusable).toEqual([]);
     expect(lines[0].desc).toMatch(/Spiral round duct, 40" dia/);
     expect(lines[0].qty).toBe(60);
+  });
+});
+
+// ── LINEAR DIFFUSER FACES TAGGED IN DUCT NOTATION ────────────────────────────
+// A live sheet carried "60x3 (TYP 3)", "204x4" and "288x4" on leaders off M1/M2
+// device bubbles. Those are linear diffuser/grille FACE sizes, and the analyzer
+// filed all three as duct runs. 204x4 and 288x4 cleared the narrow-side check
+// (a 4" face is exactly MIN_DUCT_SIDE) and priced as 18 ga sheet metal: ~$19,600
+// of steel and 1,757 sq ft of wrap for hardware that is bought by the foot.
+
+describe('telling a linear device face from a duct size', () => {
+  it('reads the real tags off that sheet as devices, not duct', () => {
+    expect(parseDuctDesc('Ductwork — 60x3 duct')).toEqual({ kind: 'linear', len: 60, face: 3 });
+    expect(parseDuctDesc('Ductwork — 204x4 duct')).toEqual({ kind: 'linear', len: 204, face: 4 });
+    expect(parseDuctDesc('Ductwork — 288x4 duct')).toEqual({ kind: 'linear', len: 288, face: 4 });
+  });
+
+  it('leaves ordinary duct alone, including the flat end of the range', () => {
+    // 48x6 is 8:1 — SMACNA's practical extreme, and still duct.
+    for (const s of ['24x12', '36x36', '22x16', '48x6', '24x4', '12x4', '30x10']) {
+      expect(parseDuctDesc(`Ductwork — ${s} duct`), s).toMatchObject({ kind: 'rect' });
+    }
+  });
+
+  it('does NOT swallow the dropped-digit misread it sits next to', () => {
+    // 19x1 is 19:1 and would pass an aspect test alone. A 1" face is not a
+    // device, so the minimum face width is what keeps it a misread.
+    expect(parseDuctDesc('Ductwork — 19x1 duct (supply air)')).toEqual({ kind: 'rect', w: 19, h: 1 });
+    expect(isLinearDevice(19, 1)).toBe(false);
+  });
+
+  it('does not fire on a round main written into a rectangular size', () => {
+    // 40x0 must still repair to a 40" diameter — the zero-side branch runs
+    // first, and a 0" face would otherwise be nonsense either way.
+    expect(parseDuctDesc('Ductwork — 40x0 SA duct')).toMatchObject({ kind: 'round', dia: 40 });
+  });
+
+  it('holds the boundaries where they were set', () => {
+    expect(isLinearDevice(60, 3)).toBe(true);
+    expect(isLinearDevice(20, 2)).toBe(false);  // 10:1 but only 20" long — under a 24" section
+    expect(isLinearDevice(24, 2)).toBe(true);   // shortest real section
+    expect(isLinearDevice(100, 9)).toBe(false); // 9" face is past any slot diffuser
+    expect(isLinearDevice(80, 8)).toBe(true);   // 8" face, 10:1 — still a device
+  });
+
+  it('converts the tag straight to feet, since the length is printed on it', () => {
+    expect(linearDeviceFt(204)).toBe(17);
+    expect(linearDeviceFt(288)).toBe(24);
+    expect(linearDeviceFt(60)).toBe(5);
+  });
+
+  it('never turns one into pounds of sheet metal', () => {
+    const { lines, rectByGauge, unusable, wrapSqft } = ductPurchase(
+      [{ desc: 'Ductwork — 288x4 duct (supply air)', lf: 24 }], { wastePct: 0 });
+    expect(rectByGauge).toEqual({});
+    expect(lines).toEqual([]);
+    expect(wrapSqft).toBe(0);
+    expect(unusable).toHaveLength(1);
+    expect(unusable[0].reason).toMatch(/linear diffuser\/grille FACE, not a duct size/);
+    expect(unusable[0].reason).toMatch(/72:1/);
+  });
+
+  it('still prices the real duct on a sheet that also has devices on it', () => {
+    const { lines, unusable } = ductPurchase([
+      { desc: 'Ductwork — 204x4 duct (supply air)', lf: 17 },
+      { desc: 'Ductwork — 30x12 duct (supply air)', lf: 40 },
+    ], { wastePct: 0, insulate: 'none' });
+    expect(unusable).toHaveLength(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].desc).toMatch(/Galvanized rectangular duct/);
   });
 });
