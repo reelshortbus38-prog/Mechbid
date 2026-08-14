@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partitionHvacEquipment, isTerminalUnit, isPhantomScheduleUnit, expandEquipTags, canonicalTag, proseTagRe, unitTagRe } from './hvacEquip.js';
+import { partitionHvacEquipment, isTerminalUnit, termTypeLabel, isPhantomScheduleUnit, expandEquipTags, canonicalTag, proseTagRe, unitTagRe } from './hvacEquip.js';
 
 // The load-bearing rule: when a batch has an equipment SCHEDULE, the schedule
 // owns the count and plan-read duplicates are dropped — so the same VAV isn't
@@ -279,5 +279,26 @@ describe('expandEquipTags with spaced tags', () => {
   it('expands a range written with spaces', () => {
     expect(expandEquipTags({ tag: 'RTU 01 THRU RTU 04' }).map(e => e.tag))
       .toEqual(['RTU 01', 'RTU 02', 'RTU 03', 'RTU 04']);
+  });
+});
+
+describe('termTypeLabel', () => {
+  // A live read showed "VAV × 23" and "VAV box × 14" — one product, two lines,
+  // 37 boxes split between them, because the analyzer named the type on some
+  // sheets and left it blank on others.
+  it('collapses the bare names onto one label', () => {
+    for (const t of ['VAV', 'VAV box', 'vav-box', 'VAV BOX', 'vav', '', '   ', null])
+      expect(termTypeLabel(t), JSON.stringify(t)).toBe('VAV box');
+  });
+
+  it('keeps a type that says more than the bare name', () => {
+    // Different hardware, different price — these must stay separate lines.
+    expect(termTypeLabel('VAV with hot water reheat')).toBe('VAV with hot water reheat');
+    expect(termTypeLabel('Series fan-powered box')).toBe('Series fan-powered box');
+  });
+
+  it('keeps the other terminal families distinct', () => {
+    expect(termTypeLabel('FPB')).toBe('FPB box');
+    expect(termTypeLabel('CV')).toBe('CV box');
   });
 });

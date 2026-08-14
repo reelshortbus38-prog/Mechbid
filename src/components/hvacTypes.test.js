@@ -48,3 +48,50 @@ describe('mapHvacType — data center / central plant', () => {
     expect(mapHvacType('HRV-2')).toBe('Heat Recovery Ventilator (HRV)');
   });
 });
+
+// ── TERMINAL HEAT ────────────────────────────────────────────────────────────
+// A live school read put 32 of 40 units into "Other". The dropdown had no
+// heater type at all, so unit heaters over entries, cabinet heaters in
+// vestibules and fin-tube along glass had nowhere to land.
+
+describe('terminal heat gets a type instead of Other', () => {
+  it('maps unit heaters, however the prefix is written', () => {
+    for (const t of ['UH-1', 'EUH-3', 'GUH-2', 'unit heater', 'ELECTRIC UNIT HEATER'])
+      expect(mapHvacType(t), t).toBe('Unit Heater');
+  });
+
+  it('maps cabinet heaters and force-flows', () => {
+    for (const t of ['CUH-4', 'FF-1', 'force flow', 'cabinet unit heater'])
+      expect(mapHvacType(t), t).toBe('Cabinet Unit Heater (CUH)');
+  });
+
+  it('maps baseboard and fin-tube', () => {
+    for (const t of ['BH-2', 'FTR-1', 'FH-3', 'fin tube radiation', 'baseboard heater'])
+      expect(mapHvacType(t), t).toBe('Baseboard / Fin-Tube Heater');
+  });
+
+  it('stops counting baseboard heaters as boilers', () => {
+    // BH- used to hit the boiler rule. B- still does, which is correct.
+    expect(mapHvacType('BH-1')).not.toBe('Boiler');
+    expect(mapHvacType('B-1')).toBe('Boiler');
+    expect(mapHvacType('boiler')).toBe('Boiler');
+  });
+
+  it('does not steal AHU, which shares the letters', () => {
+    expect(mapHvacType('AHU-1')).toBe('Air Handling Unit (AHU)');
+    expect(mapHvacType('AHU')).toBe('Air Handling Unit (AHU)');
+  });
+});
+
+describe('AC condensing units', () => {
+  it('recognizes ACU and ACCU, not just AC and CU', () => {
+    // A sheet's own summary named "an AC condensing unit (ACU-C-02)" while the
+    // app filed it under Other.
+    for (const t of ['ACU-C-02', 'ACCU-1', 'AC-3', 'CU-2'])
+      expect(mapHvacType(t), t).toBe('Split System — Condenser');
+  });
+
+  it('leaves the air-cooled chiller prefix alone', () => {
+    expect(mapHvacType('ACCH-1')).toBe('Chiller — Air-Cooled');
+  });
+});
