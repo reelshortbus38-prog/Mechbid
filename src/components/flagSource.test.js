@@ -109,3 +109,24 @@ describe('the page survives every stage between the read and the button', () => 
     expect(flagVerifyTarget(note, loaded)).toEqual({ file: 'Drawings 3.pdf', page: 4 });
   });
 });
+
+// ── THE REFRIGERATION SIDE GETS THE BUTTON TOO ───────────────────────────────
+// analyzeRedlinePdf stamped pageNum onto field tasks but not onto flags, so a
+// refrigeration job's flags never named a page and never offered the button —
+// the same defect the HVAC read had, on the other half of the app.
+
+describe('a refrigeration redline flag can open its sheet', () => {
+  const loaded = () => true;
+
+  it('offers the target once the page is stamped', () => {
+    const flag = { type: 'warn', source: 'Store plan.pdf', page: 5,
+      text: 'PROVIDE NEW 3/4" COPPER TO CASE END — FIELD VERIFY ROUTING.' };
+    expect(flagVerifyTarget(flag, loaded)).toEqual({ file: 'Store plan.pdf', page: 5 });
+  });
+
+  it('survives the same pipeline the HVAC flags go through', () => {
+    const flag = { type: 'warn', source: 'Store plan.pdf', page: 5, text: 'PROVIDE NEW CASE END.' };
+    expect(flagPage(dedupeFlags([flag])[0])).toBe(5);
+    expect(flagPage(triageFlags([flag]).actionable[0] || triageFlags([flag]).scope[0])).toBe(5);
+  });
+});

@@ -36,7 +36,10 @@ const MIN_ROUND_DUCT_IN = 4;
 // Pull a leading diameter out of a size string: '3/4"' → 0.75, '6"' → 6.
 export function sizeInches(size) {
   const s = String(size || '').trim();
-  const frac = s.match(/^(\d+)?\s*(\d+)\s*\/\s*(\d+)/);
+  // The hyphen matters: 1-1/4" is the commonest way a pipe size is written, and
+  // without it the whole number was taken alone — a 1-1/4" line read as 1", a
+  // 2-1/2" as 2". Wrong size, wrong price, and nothing to see on screen.
+  const frac = s.match(/^(\d+)?\s*[-–]?\s*(\d+)\s*\/\s*(\d+)/);
   if (frac) return (frac[1] ? parseFloat(frac[1]) : 0) + parseFloat(frac[2]) / parseFloat(frac[3]);
   const n = s.match(/(\d+(?:\.\d+)?)/);
   return n ? parseFloat(n[1]) : 0;

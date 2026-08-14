@@ -7,6 +7,7 @@ import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { dropDeviceFaces } from './deviceFace.js';
 import { coverageGap } from './sheetCoverage.js';
+import { pipeCoverageGap } from './pipeCoverage.js';
 import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
@@ -289,7 +290,10 @@ export async function analyzeRedlinePdf(file, fileName) {
       seenTask.add(key);
       merged.fieldTasks.push({ ...t, pageNum });
     });
-    (parsed.flags || []).forEach(f => merged.flags.push(f));
+    // Stamp the sheet, same as the HVAC read does. Field tasks already carried
+    // pageNum; flags did not, so nothing on the refrigeration side could offer
+    // a "show me on the page" button even though the page was right here.
+    (parsed.flags || []).forEach(f => merged.flags.push(pageNum ? { ...f, page: pageNum } : f));
     if (parsed.summary && !summarizedPages.has(pageNum)) {
       summarizedPages.add(pageNum);
       merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
@@ -1141,6 +1145,11 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // above grades the runs that came back; none of it can see a size the read
     // missed entirely, which is the failure that costs money silently.
     coverageGap(df.runs, textByPage[pageNum] || '', `Page ${pageNum}`).flags
+      .forEach(f => merged.flags.push({ ...f, source: fileName, page: pageNum }));
+    // Same question for the piping, which needs a different anchor: a pipe size
+    // is just a small number with an inch mark, so the SERVICE CODE beside it
+    // is what makes the callout identifiable. See pipeCoverage.js.
+    pipeCoverageGap(parsed.pipeRuns, textByPage[pageNum] || '', `Page ${pageNum}`).flags
       .forEach(f => merged.flags.push({ ...f, source: fileName, page: pageNum }));
     absorbHvac(merged, parsed, seen, {
       pageNum,
