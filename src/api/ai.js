@@ -6,6 +6,7 @@ import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { dropDeviceFaces } from './deviceFace.js';
+import { coverageGap } from './sheetCoverage.js';
 import { reclassifyRuns } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
@@ -1118,11 +1119,16 @@ export async function analyzeHvacPlanPdf(file, fileName) {
     // page's own text can tell them apart, and only for sizes that never once
     // stand alone on a run — see deviceFace.js for why that bar is set there.
     const df = dropDeviceFaces(rc.runs, textByPage[pageNum] || '', `Page ${pageNum}`);
-    df.flags.forEach(f => merged.flags.push({ ...f, source: fileName }));
+    df.flags.forEach(f => merged.flags.push({ ...f, source: fileName, page: pageNum }));
     parsed = {
       ...parsed, ductRuns: df.runs,
       airDevices: [...(parsed.airDevices || []), ...df.devices],
     };
+    // Finally, the one check that looks at what was NOT reported. Everything
+    // above grades the runs that came back; none of it can see a size the read
+    // missed entirely, which is the failure that costs money silently.
+    coverageGap(df.runs, textByPage[pageNum] || '', `Page ${pageNum}`).flags
+      .forEach(f => merged.flags.push({ ...f, source: fileName, page: pageNum }));
     absorbHvac(merged, parsed, seen, {
       pageNum,
       drawing: [parsed.drawingNumber, parsed.drawingTitle].filter(Boolean).join(' — '),
