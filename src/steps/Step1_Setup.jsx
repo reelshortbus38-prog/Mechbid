@@ -234,13 +234,13 @@ export default function Step1_Setup({ onNext }) {
           // just be the app talking to itself.
           if (r.shapeConfirmed === 'round') { /* already reported by the recheck */ }
           else flags.push(parsedSize.inferred
-            ? { type: 'warn', source: fileMeta.name,
+            ? { type: 'warn', source: fileMeta.name, page: r.pageNum,
                 text: `Duct size "${r.size}" gave only ONE dimension, so it was priced as ${parsedSize.dia}" ROUND spiral — rectangular duct always carries two sides, so a single number is a diameter. Check the plan: if this run is actually rectangular, fix the size, because spiral costs less than the equivalent sheet metal.` }
-            : { type: 'info', source: fileMeta.name,
+            : { type: 'info', source: fileMeta.name, page: r.pageNum,
                 text: `Duct size "${r.size}" was read as ${parsedSize.dia}" ROUND — it came through as "${repaired}", a round duct written into a rectangular size. Priced as spiral; verify on the plan.` });
         }
         if (suspect) {
-          flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name });
+          flags.push({ type: 'warn', text: `Duct size "${r.size}" looks misread (a ${Math.min(parseFloat(dims[1]), parseFloat(dims[2]))}" side isn't a real duct dimension — likely a dropped digit, e.g. 19x1 for 19x17). Verify on the plan and fix or delete the line.`, source: fileMeta.name, page: r.pageNum });
         }
         // AI-estimated footage (measured against on-sheet references like
         // grid spacing or diffuser sizes) pre-fills qty as a BUDGET number —

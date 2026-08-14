@@ -749,7 +749,13 @@ function absorbHvac(merged, parsed, seen, origin = null) {
     if (seen.has(k)) return; seen.add(k);
     merged.hydronicZones.push({ ...z, zone });
   });
-  (parsed.flags || []).forEach(f => merged.flags.push(f));
+  // Stamp the sheet onto every note the analyzer raised from it. Flags name
+  // their page in prose, but prose is not something a button can act on, and
+  // a scope note the estimator wants to see in context is the commonest case
+  // of all: "PROVIDE CEILING ACCESS PANEL FOR FIRE/SMOKE DAMPER ACCESS" is
+  // worth far more when you can look at where it was written.
+  (parsed.flags || []).forEach(f => merged.flags.push(
+    origin?.pageNum ? { ...f, page: origin.pageNum } : f));
   if (parsed.summary) merged.summaries.push(parsed.summary);
 }
 function finishHvac(merged) {
