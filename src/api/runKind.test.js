@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sizeInches, sizeSignature, classifyRun, reclassifyRuns } from './runKind.js';
+import { sizeInches, sizeSignature, classifyRun, reclassifyRuns, canonicalDuctSize } from './runKind.js';
 
 // Both of these are verbatim from one live run, and they are the same mistake
 // in opposite directions:
@@ -144,5 +144,48 @@ describe('a 6" round run is not a duplicate of a 6x6 rectangular one', () => {
       [{ size: '6"', service: 'EA (exhaust air)' }], 'Page 7');
     expect(ductRuns.map(r => r.size)).toEqual(['6x6', '6"']);
     expect(pipeRuns).toEqual([]);
+  });
+});
+
+// ── ONE SPELLING PER SIZE ────────────────────────────────────────────────────
+// A live 11-sheet read came back with "6"ø round duct (supply)" at 29 ft AND
+// "6ø duct (supply)" at 6 ft. One duct, two lines, the footage split between
+// them — and they even read as different products, because the run written
+// without the inch mark carried no shape either.
+
+describe('canonicalDuctSize', () => {
+  it('gives the same duct the same name however it was written', () => {
+    expect(canonicalDuctSize('6"ø')).toBe('6"ø');
+    expect(canonicalDuctSize('6ø')).toBe('6"ø');
+    expect(canonicalDuctSize('6 ø')).toBe('6"ø');
+    expect(canonicalDuctSize('6⌀')).toBe('6"ø');
+    expect(canonicalDuctSize('6" round')).toBe('6"ø');
+  });
+
+  it('uses the shape when the mark itself was lost', () => {
+    expect(canonicalDuctSize('10"', 'round')).toBe('10"ø');
+    expect(canonicalDuctSize('10"', '')).toBe('10"');
+  });
+
+  it('normalizes rectangular spacing without touching the numbers', () => {
+    expect(canonicalDuctSize('24 x 12')).toBe('24x12');
+    expect(canonicalDuctSize('24X12')).toBe('24x12');
+    expect(canonicalDuctSize('24×12')).toBe('24x12');
+  });
+
+  it('leaves a zero side alone for the round-repair rule to handle', () => {
+    expect(canonicalDuctSize('40x0')).toBe('40x0');
+  });
+
+  it('never rewrites a fraction, which is pipe in the wrong bucket', () => {
+    expect(canonicalDuctSize('3/4"', 'round')).toBe('3/4"');
+    expect(canonicalDuctSize('1 1/4" RS', 'round')).toBe('1 1/4" RS');
+  });
+
+  it('agrees with the signature that decides duplicates', () => {
+    for (const [a, b] of [['6"ø', '6ø'], ['24 x 12', '24x12'], ['8⌀', '8"ø']]) {
+      expect(sizeSignature(canonicalDuctSize(a))).toBe(sizeSignature(canonicalDuctSize(b)));
+      expect(canonicalDuctSize(a)).toBe(canonicalDuctSize(b));
+    }
   });
 });

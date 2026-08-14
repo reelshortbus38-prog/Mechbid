@@ -88,7 +88,7 @@ const SCOPE_RE = /\b(?:provide|install|furnish|coordinate|connect|route|seal|sup
 const REQUIREMENT_RE = /\b(?:shall|must|provide[sd]?|install(?:ed|ation)?|furnish(?:es|ing)?|coordinat(?:e|ion)|connect|route|seal|support(?:ed)?|calls? for|responsible for|include[sd]? in|is to be|are to be|to be (?:set|installed|provided|furnished))\b/i;
 
 // The flag is about the sheet, or about the reading of it.
-const ABOUT_THE_DOCUMENT_RE = /\bthis (?:sheet|page|document|excerpt|drawing|section|text)\b|\b(?:on|in) this (?:sheet|page|excerpt)\b|\bin this text\b|\bextract(?:ed|able|ion)?\b|\bschedule (?:table|page|rows?|data)\b|\bnarrative\b|\bappears? to be\b|\bsequence[-\s]of[-\s]operations?\b|\bper the rules\b|\bdrawing[-\s](?:schedule|keynote)s?\b|\bare shown on\b|\bnot (?:a |an )?(?:scheduled?|spec(?:ification)?)\b|\bno legible\b|\bwith no\b.{0,80}?\b(?:depicted|shown|visible|present)\b/i;
+const ABOUT_THE_DOCUMENT_RE = /\bthis(?:\s+\w+){0,2}\s+(?:sheet|page|document|excerpt|drawing|section|text)\b|\b(?:on|in) this(?:\s+\w+){0,2}\s+(?:sheet|page|excerpt)\b|\bin this text\b|\bextract(?:ed|able|ion)?\b|\bschedule (?:table|page|rows?|data)\b|\bnarrative\b|\bappears? to be\b|\bsequence[-\s]of[-\s]operations?\b|\bper the rules\b|\bdrawing[-\s](?:schedule|keynote)s?\b|\bare shown on\b|\bnot (?:a |an )?(?:scheduled?|spec(?:ification)?)\b|\bno legible\b|\bwith no\b.{0,80}?\b(?:depicted|shown|visible|present)\b/i;
 
 export function flagCategory(flag) {
   // An upstream pass that RESOLVED the flag against the takeoff knows more

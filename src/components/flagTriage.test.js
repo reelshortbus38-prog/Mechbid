@@ -145,3 +145,25 @@ describe('triageFlags', () => {
     expect(triageFlags().actionable).toEqual([]);
   });
 });
+
+describe('a self-description survives an adjective', () => {
+  // Verbatim from a live run. The rule matched "this sheet" but not
+  // "this SPECIFIC sheet", so the analyzer describing its own page reached the
+  // estimator's scope list.
+  it('catches the wording that got through', () => {
+    expect(flagCategory('Sheet is largely a diagrammatic zoning/grid layout with column bubbles and callouts to sheets M7.21 and M9.12b; minimal duct or air devices are drawn on this specific sheet.')).toBe('diagnostic');
+    expect(flagCategory('No duct sizes are legible on this particular sheet')).toBe('diagnostic');
+    expect(flagCategory('Nothing to extract from this one drawing')).toBe('diagnostic');
+  });
+
+  it('still leaves real scope alone', () => {
+    expect(flagCategory('PROVIDE CEILING ACCESS PANEL FOR FIRE/SMOKE DAMPER ACCESS.')).toBe('scope');
+    expect(flagCategory('PROVIDE SEISMIC JOINT PER DETAIL 6/M9.07.')).toBe('scope');
+    // A requirement that happens to name the sheet is still a requirement, so
+    // it must not be swallowed as diagnostic. (It lands in 'note' rather than
+    // 'scope' — a standing "SHALL BE" reads as reference, an imperative
+    // "PROVIDE" as an action item — which is the existing split, not this rule.)
+    expect(flagCategory('ALL DUCTWORK ON THIS EXPOSED SHEET SHALL BE PROVIDED WITHOUT STANDING SEAMS.'))
+      .not.toBe('diagnostic');
+  });
+});
