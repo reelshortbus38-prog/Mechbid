@@ -719,10 +719,19 @@ function absorbHvac(merged, parsed, seen, origin = null) {
   });
   (parsed.airDevices || []).forEach(d => {
     const tag = String(d.tag || '').toUpperCase().trim();
-    const k = 'ad|' + tag + '|' + (d.neckSize || '') + '|' + (d.cfm || '');
+    // Scoped to the SHEET, exactly like duct and pipe runs. Deduping air
+    // devices across the whole file made every sheet after the first invisible
+    // to sheetOverlap, which needs one contribution PER SHEET to tell an
+    // enlarged plan re-drawing an area from two floors that genuinely add up.
+    const k = 'ad|' + (origin?.pageNum ?? '') + '|' + tag + '|'
+      + (d.faceSize || '') + '|' + (d.neckSize || '') + '|' + (d.cfm || '');
     if (!tag && !d.cfm) return;
     if (seen.has(k)) return; seen.add(k);
-    merged.airDevices.push({ ...d, tag, qty: d.qty || 1 });
+    // Carry the sheet with the device. Without it every device in the file
+    // inherited the FIRST sheet's drawing number, so the per-sheet tally read
+    // "M3.10a: 6, M3.10a: 1, M3.10a: 1 …" and — far worse — every sheet
+    // looked like the same 'plan' sheet, so no overlap was ever detected.
+    merged.airDevices.push({ ...d, tag, qty: d.qty || 1, ...(origin || {}) });
   });
   (parsed.ductRuns || []).forEach(r => {
     // "unspecified" is not a size — it is the model saying it could not read
