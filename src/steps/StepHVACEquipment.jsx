@@ -26,6 +26,14 @@ const HVAC_EQUIP_TYPES = [
   'Exhaust Fan',
   'Roof Hood / Gravity Vent',
   'Make-Up Air Unit (MAU)',
+  // ── Terminal heat ──
+  // A school set is full of these: unit heaters over entries, cabinet heaters
+  // in vestibules, fin-tube along glass. With no type to land on, all of them
+  // pooled into "Other" — 32 of 40 units on one live read.
+  'Unit Heater',
+  'Cabinet Unit Heater (CUH)',
+  'Baseboard / Fin-Tube Heater',
+  'Duct Heater',
   // ── Data center / central plant ──
   'Chiller — Water-Cooled',
   'Chiller — Air-Cooled',

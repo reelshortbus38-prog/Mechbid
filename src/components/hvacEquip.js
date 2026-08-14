@@ -31,6 +31,25 @@ export function isTerminalUnit(e = {}) {
   return TERMINAL_RE.test(`${e.type || ''} ${e.tag || ''}`);
 }
 
+// One label per box. The analyzer calls the same thing "VAV" on one sheet and
+// leaves the type blank on the next, and the blank fell through to the default
+// "VAV box" — so a live read showed "VAV × 23" and "VAV box × 14" as two lines
+// for one product, 37 boxes split across them.
+//
+// Only the BARE names collapse. "VAV with hot water reheat" and "Series
+// fan-powered box" describe different hardware at different prices, so anything
+// carrying more than the bare name keeps its own line.
+const BARE_TERMINAL_RE = /^(?:vav|cv|fpb|piu)(?:[-\s]?(?:box|terminal|unit))?$/i;
+export function termTypeLabel(type) {
+  const s = String(type || '').trim();
+  if (!s) return 'VAV box';
+  if (BARE_TERMINAL_RE.test(s)) {
+    const fam = s.match(/^(vav|cv|fpb|piu)/i)[1].toUpperCase();
+    return fam === 'VAV' ? 'VAV box' : `${fam} box`;
+  }
+  return s;
+}
+
 // A cross-reference, not a real scheduled unit. In a VAV schedule every row
 // names the AHU it's "served by" (the Associated Unit column), and the
 // extractor sometimes turns that reference into its own AHU entry — inflating
@@ -193,7 +212,7 @@ export function partitionHvacEquipment(collected = []) {
         if (seenTermTag.has(tag)) continue;
         seenTermTag.add(tag);
       }
-      const type = e.type || 'VAV box', model = e.model || '', size = e.size || '';
+      const type = termTypeLabel(e.type), model = e.model || '', size = e.size || '';
       const key = `${type}|${model}|${size}`;
       const g = termGroups.get(key) || { type, model, size, qty: 0, fileName: c.fileName, drawing: c.drawing };
       g.qty += 1;

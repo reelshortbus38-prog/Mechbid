@@ -23,10 +23,24 @@ export function mapHvacType(t) {
   if (/vav/.test(s)) return 'VAV Box';
   if (/mini.?split/.test(s)) return 'Mini Split — Condenser';
   if (/ashp|air.?source|heat pump|^hp\b|\bhp-/.test(s)) return 'Packaged Heat Pump';
-  if (/condens|^cu\b|\bcu-|^ac\b|\bac-/.test(s)) return 'Split System — Condenser';
+  // ACU / ACCU are the same animal as CU — a live sheet's own summary named
+  // "an AC condensing unit (ACU-C-02)" while the app filed it under Other,
+  // because the old pattern demanded a word break straight after "ac".
+  if (/condens|^cu\b|\bcu-|^ac{1,2}u?\b|\bac{1,2}u?-/.test(s)) return 'Split System — Condenser';
   if (/split/.test(s)) return 'Split System — Air Handler';
   if (/chiller|^ch\b|\bch-/.test(s)) return 'Chiller';
-  if (/boiler|^b-\d|^bh\b|\bbh-/.test(s)) return 'Boiler';
+  // ── Terminal heat ──
+  // Checked BEFORE the boiler rule, which used to claim the BH- prefix. BH is
+  // baseboard heater on every set that uses it (B- is the boiler), so a school's
+  // fin-tube was being counted as boilers.
+  if (/cabinet\s*(unit\s*)?heater|force[-\s]?flow|^cuh\b|\bcuh-|^ff\b|\bff-/.test(s)) return 'Cabinet Unit Heater (CUH)';
+  if (/baseboard|fin[-\s]?tube|finned[-\s]?tube|radiation|^ftr\b|\bftr-|^bh\b|\bbh-|^fh\b|\bfh-/.test(s)) return 'Baseboard / Fin-Tube Heater';
+  if (/duct\s*heater|reheat\s*coil|^dh\b|\bdh-|^hc\b|\bhc-/.test(s)) return 'Duct Heater';
+  // UH / EUH / GUH. The \b guards keep this off AHU — "ahu-1" has no "uh-"
+  // substring and no word break before its "uh" — but the AHU rule runs first
+  // regardless.
+  if (/unit\s*heater|^e?uh\b|\be?uh-|^guh\b|\bguh-/.test(s)) return 'Unit Heater';
+  if (/boiler|^b-\d/.test(s)) return 'Boiler';
   if (/erv/.test(s)) return 'Energy Recovery Ventilator (ERV)';
   if (/hrv/.test(s)) return 'Heat Recovery Ventilator (HRV)';
   if (/mau|make.?up/.test(s)) return 'Make-Up Air Unit (MAU)';
