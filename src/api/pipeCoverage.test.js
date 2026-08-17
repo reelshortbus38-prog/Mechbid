@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textPipeRuns, pipeCoverageGap, normalizeService, isNominalPipeSize } from './pipeCoverage.js';
+import { textPipeRuns, pipeCoverageGap, normalizeService, isNominalPipeSize, expandServices, canonicalPipeService, canonicalPipeSize } from './pipeCoverage.js';
 
 // A hydronic/refrigerant sheet's labels, written the way plans write them.
 const PIPING = `3/4" HWS 3/4" HWR 1-1/4" HWS 1 1/4" HWR 2" CHWS 2" CHWR 4" CHWS&R
@@ -147,5 +147,83 @@ describe('isNominalPipeSize', () => {
   it('rejects numbers that are two numbers run together', () => {
     for (const d of [1.75, 3.75, 4.5, 5.5, 7.5, 7.75, 8.75, 10.06])
       expect(isNominalPipeSize(d), `${d}`).toBe(false);
+  });
+});
+
+// ── ONE LINE CARRIES TWO PIPES ───────────────────────────────────────────────
+// The check's first live run reported 24 missing runs on a sheet the read had
+// largely got RIGHT. Every hydronic line is tagged as the pair — "3/4" HWS/HWR"
+// — while the drawing labels supply and return separately, so each correct
+// line read as two misses. A check that cries wolf on a good read is worse than
+// no check, because the next real one gets ignored too.
+
+describe('expandServices', () => {
+  it('splits a pair written either way', () => {
+    expect(expandServices('HWS/HWR')).toEqual(['HWS', 'HWR']);
+    expect(expandServices('HWS&R')).toEqual(['HWS', 'HWR']);
+    expect(expandServices('CHWS&R')).toEqual(['CHWS', 'CHWR']);
+    expect(expandServices('CWS & R')).toEqual(['CWS', 'CWR']);
+  });
+
+  it('drops a gloss before splitting, since the gloss has slashes too', () => {
+    expect(expandServices('HWS/HWR (heating water supply/return)')).toEqual(['HWS', 'HWR']);
+  });
+
+  it('handles a run carrying three services', () => {
+    expect(expandServices('HWS/CWR/CWS')).toEqual(['HWS', 'CWR', 'CWS']);
+  });
+
+  it('leaves a single service alone', () => {
+    expect(expandServices('HWS')).toEqual(['HWS']);
+    expect(expandServices('')).toEqual([]);
+  });
+});
+
+describe('canonicalPipeService', () => {
+  it('gives one label to a pair however it was written', () => {
+    // "3/4" HWS/HWR" at 220 ft and "3/4" HWS&R" at 15 ft were two rows.
+    expect(canonicalPipeService('HWS&R')).toBe('HWS/HWR');
+    expect(canonicalPipeService('HWS/HWR')).toBe('HWS/HWR');
+    expect(canonicalPipeService('CWS&R')).toBe('CWS/CWR');
+    expect(canonicalPipeService('CWS/CWR')).toBe('CWS/CWR');
+  });
+});
+
+describe('canonicalPipeSize', () => {
+  it('gives one spelling to each nominal size', () => {
+    for (const s of ['1 1/2"', '1-1/2"', '1.5"']) expect(canonicalPipeSize(s), s).toBe('1-1/2"');
+    expect(canonicalPipeSize('2 1/2"')).toBe('2-1/2"');
+    expect(canonicalPipeSize('3/4"')).toBe('3/4"');
+    expect(canonicalPipeSize('2"')).toBe('2"');
+  });
+
+  it('leaves a size it does not recognize exactly as read', () => {
+    expect(canonicalPipeSize('10.06"')).toBe('10.06"');
+    expect(canonicalPipeSize('')).toBe('');
+  });
+});
+
+describe('the paired run no longer reads as two misses', () => {
+  const SHEET = '3/4"HWS 3/4"HWR 2"HWS 2"HWR 6"CWS 6"CWR';
+
+  it('counts a paired run as covering both arrows', () => {
+    const { missing } = pipeCoverageGap(
+      [{ size: '3/4"', service: 'HWS/HWR' }, { size: '2"', service: 'HWS&R' },
+       { size: '6"', service: 'CWS/CWR' }], SHEET, 'Page 1');
+    expect(missing).toEqual([]);
+  });
+
+  it('still reports the direction a run genuinely does not cover', () => {
+    // The live case: a "4" HWS/CWR/CWS" line covers three services at 4" but
+    // not HWR, and the sheet has a 4" HWR.
+    const { missing } = pipeCoverageGap(
+      [{ size: '4"', service: 'HWS/CWR/CWS' }], '4"HWS 4"HWR', '');
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toMatchObject({ dia: 4, service: 'HWR' });
+  });
+
+  it('still catches a read that returned almost nothing', () => {
+    expect(pipeCoverageGap([{ size: '3/4"', service: 'HWS/HWR' }], SHEET, 'Page 1').missing)
+      .toHaveLength(4);
   });
 });
