@@ -106,3 +106,30 @@ describe('isHydronicService', () => {
     for (const s of ['RS', 'RL', 'NG', 'CD']) expect(isHydronicService(s), s).toBe(false);
   });
 });
+
+// ── FITTINGS ALLOWANCE SCOPE ─────────────────────────────────────────────────
+// The allowance is a percentage of HYDRONIC pipe only. Refrigerant lines carry
+// their own fittings treatment on the refrigeration side, and counting them
+// here would be exactly the quiet double-count this app exists to remove.
+
+describe('what the fittings allowance is allowed to see', () => {
+  const pipeSubtotal = (lines, pct) => Math.round(
+    lines.filter(p => isHydronicService(p.desc))
+      .reduce((s, p) => s + p.qty * p.unitCost, 0) * pct / 100);
+
+  it('counts hydronic pipe and nothing else', () => {
+    const lines = [
+      { desc: 'Pipe — 3/4" HWS', qty: 275, unitCost: 9 },
+      { desc: 'Pipe — 3/4" HWR', qty: 275, unitCost: 9 },
+      { desc: 'Pipe — 1-5/8" RS', qty: 100, unitCost: 14 },  // refrigerant — not ours
+      { desc: 'Ductwork — 24x12 duct', qty: 80, unitCost: 0 },
+    ];
+    // 550 ft x $9 = $4,950 of hydronic; the suction line must not be in it.
+    expect(pipeSubtotal(lines, 40)).toBe(1980);
+  });
+
+  it('is zero while the pipe is still unpriced', () => {
+    // A percentage of nothing is nothing — the card warns rather than inventing.
+    expect(pipeSubtotal([{ desc: 'Pipe — 2" HWS', qty: 70, unitCost: 0 }], 40)).toBe(0);
+  });
+});
