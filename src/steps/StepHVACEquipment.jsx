@@ -43,6 +43,7 @@ const HVAC_EQUIP_TYPES = [
   'Rear-Door Heat Exchanger',
   'Chilled Water Pump',
   'Condenser Water Pump',
+  'Pump — Circulator / Inline',
   'Dry Cooler / Fluid Cooler',
   'Air Handling Unit — Computer Room',
   'Other',

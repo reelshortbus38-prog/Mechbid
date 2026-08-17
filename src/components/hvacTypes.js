@@ -51,6 +51,11 @@ export function mapHvacType(t) {
   if (/kitchen\s*hood|grease\s*hood|type\s*[i1l]{1,2}\s*hood|\bkh-/.test(s)) return 'Other';
   if (/roof\s*hood|gravity\s*(hood|vent(ilator)?)|(intake|relief)\s*hood|^rh\b|\brh-/.test(s)) return 'Roof Hood / Gravity Vent';
   if (/exhaust|^ef\b|\bef-|^tf\b|\btf-/.test(s)) return 'Exhaust Fan';
-  if (/\bpump\b|^p-?\d/.test(s)) return 'Chilled Water Pump'; // generic pump default
+  // A bare pump tag is NOT a chilled water pump. A live hydronic sheet tagged
+  // 20 radiant-panel circulators as "P10 0.5 GPM" and every one came back as a
+  // chilled water pump — a half-GPM circulator priced as central plant. CHWP
+  // and CWP are matched explicitly further up; what is left is a circulator
+  // until someone says otherwise.
+  if (/circulat|inline\s*pump|\bpump\b|^p-?\d/.test(s)) return 'Pump — Circulator / Inline';
   return 'Other';
 }

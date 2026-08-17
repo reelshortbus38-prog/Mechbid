@@ -56,6 +56,23 @@ const NOMINAL_IN = new Set([
 ]);
 export const isNominalPipeSize = dia => NOMINAL_IN.has(Number(dia));
 
+// How each nominal size is written on a takeoff. The analyzer spells the same
+// size several ways across a set — 1-1/2", 1 1/2", 1.5" — and each spelling
+// became its own line, exactly like 6ø vs 6"ø did for duct. A size that is not
+// nominal is left exactly as read, because rewriting something this code does
+// not recognize would hide it.
+const FRACTION = { 0.125: '1/8', 0.25: '1/4', 0.375: '3/8', 0.5: '1/2',
+  0.625: '5/8', 0.75: '3/4', 0.875: '7/8' };
+export function canonicalPipeSize(size) {
+  const s = String(size || '').trim();
+  if (!s) return s;
+  const dia = sizeInches(s);
+  if (!isNominalPipeSize(dia)) return s;
+  const whole = Math.floor(dia), frac = FRACTION[Math.round((dia - whole) * 1000) / 1000];
+  if (!frac) return `${whole}"`;
+  return whole ? `${whole}-${frac}"` : `${frac}"`;
+}
+
 // What a service code MEANS, so a spelled-out service on a reported run can be
 // matched against a coded one on the sheet. The analyzer returns either.
 const SERVICE_ALIASES = [
@@ -84,6 +101,48 @@ export function normalizeService(service) {
   if (!s) return '';
   for (const [re, code] of SERVICE_ALIASES) if (re.test(s)) return code;
   return s.toUpperCase();
+}
+
+// ── ONE LINE, TWO PIPES ──────────────────────────────────────────────────────
+// A hydronic run is almost always tagged as the pair: "3/4" HWS/HWR", "2"
+// HWS&R", "4" CHWS&R" — the supply and the return of one system written once,
+// because they run together. The DRAWING labels them separately, one arrow
+// each, so a run has to expand into the codes it actually covers.
+//
+// Without this the coverage check reported every line the read got RIGHT as
+// missing: a live sheet came back with "3/4" HWS/HWR" at 220 ft and the flag
+// still claimed 3/4" HWS and 3/4" HWR were never returned. A check that cries
+// wolf on a good read is worse than no check, because the next real one gets
+// ignored too.
+export function expandServices(service) {
+  // A gloss in parentheses carries its own slashes — "(heating water
+  // supply/return)" — so it goes before anything is split.
+  const s = String(service || '').replace(/\([^)]*\)/g, ' ').trim();
+  if (!s) return [];
+  const out = [];
+  // "HWS&R", "CHWS & R" — supply and return sharing one prefix. Must run
+  // before the generic split, which would otherwise leave a bare "R".
+  const amp = s.match(/^([A-Za-z]{1,4})S\s*&\s*R\b/);
+  if (amp) out.push(normalizeService(`${amp[1]}S`), normalizeService(`${amp[1]}R`));
+  else for (const part of s.split(/[/,&+]/)) {
+    const code = normalizeService(part.trim());
+    if (code) out.push(code);
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+
+// Supply before return, so a pair reads the way it is written on the sheet.
+const svcRank = c => (/S$/.test(c) ? 0 : /R$/.test(c) ? 1 : 2);
+
+// One spelling per service, so "HWS&R" and "HWS/HWR" stop being two lines for
+// one run — the same split that had 3/4" hot water on two rows, 220 ft and
+// 15 ft, instead of one row of 235.
+export function canonicalPipeService(service) {
+  const codes = expandServices(service);
+  if (!codes.length) return String(service || '').trim();
+  return [...codes].sort((a, b) =>
+    a.replace(/[SR]$/, '').localeCompare(b.replace(/[SR]$/, '')) || svcRank(a) - svcRank(b)
+  ).join('/');
 }
 
 // A size written the way pipe is written: 3/4", 1-1/4", 2 1/2", 4".
@@ -121,7 +180,10 @@ export function pipeCoverageGap(runs = [], pageText = '', label = '') {
     const dia = sizeInches(r?.size);
     if (!(dia > 0)) continue;
     if (!got.has(dia)) got.set(dia, new Set());
-    got.get(dia).add(normalizeService(r?.service));
+    // A run tagged HWS/HWR covers BOTH of the sheet's arrows.
+    const codes = expandServices(r?.service);
+    if (!codes.length) got.get(dia).add('');
+    else codes.forEach(c => got.get(dia).add(c));
   }
 
   const missing = [...textPipeRuns(text).values()].filter(t => {

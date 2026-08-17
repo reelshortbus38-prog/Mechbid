@@ -7,7 +7,7 @@ import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { dropDeviceFaces } from './deviceFace.js';
 import { coverageGap } from './sheetCoverage.js';
-import { pipeCoverageGap } from './pipeCoverage.js';
+import { pipeCoverageGap, canonicalPipeService, canonicalPipeSize } from './pipeCoverage.js';
 import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
@@ -755,8 +755,10 @@ function absorbHvac(merged, parsed, seen, origin = null) {
     merged.ductRuns.push({ ...r, size, shape, service, sizeMissing: !size, ...(origin || {}) });
   });
   (parsed.pipeRuns || []).forEach(r => {
-    const size = cleanSize(r.size);
-    const service = cleanService(r.service);
+    const size = canonicalPipeSize(cleanSize(r.size));
+    // "HWS&R" and "HWS/HWR" are one run written two ways, and they were
+    // landing on two lines — 3/4" hot water at 220 ft and again at 15 ft.
+    const service = canonicalPipeService(cleanService(r.service));
     if (!size && !hasEvidence(r)) return;
     const k = 'pr|' + (origin?.pageNum ?? '') + '|'
       + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service.toLowerCase();

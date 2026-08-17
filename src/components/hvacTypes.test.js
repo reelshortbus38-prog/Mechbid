@@ -95,3 +95,17 @@ describe('AC condensing units', () => {
     expect(mapHvacType('ACCH-1')).toBe('Chiller — Air-Cooled');
   });
 });
+
+describe('a bare pump tag is not a chilled water pump', () => {
+  it('reads an untagged pump as a circulator', () => {
+    // A hydronic sheet tagged 20 radiant-panel circulators "P10 0.5 GPM" and
+    // every one came back as central-plant chilled water.
+    for (const t of ['P-1', 'P10', 'pump', 'circulator', 'inline pump'])
+      expect(mapHvacType(t), t).toBe('Pump — Circulator / Inline');
+  });
+
+  it('still reads the named plant pumps correctly', () => {
+    expect(mapHvacType('CHWP-1')).toBe('Chilled Water Pump');
+    expect(mapHvacType('CWP-2')).toBe('Condenser Water Pump');
+  });
+});
