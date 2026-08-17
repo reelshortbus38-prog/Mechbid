@@ -227,3 +227,34 @@ describe('the paired run no longer reads as two misses', () => {
       .toHaveLength(4);
   });
 });
+
+// ── SPLITTING A PAIRED CALLOUT ───────────────────────────────────────────────
+// Not the splitting itself (that lives in absorbHvac) but the expansion it is
+// built on, against the exact labels a live job produced. The analyzer mixed
+// conventions across one set — "1/2" HWS 150" and "1/2" HWR 150" on one sheet,
+// "1/2" HWS/HWR 25" on another — so all three showed as separate lines for one
+// system with no way to tell whether they overlapped.
+
+describe('the conventions the analyzer actually mixes', () => {
+  it('expands a pair so it lands on the same lines as the split form', () => {
+    // These are the three labels that appeared together in one job.
+    expect(expandServices('HWS')).toEqual(['HWS']);
+    expect(expandServices('HWR')).toEqual(['HWR']);
+    expect(expandServices('HWS/HWR')).toEqual(['HWS', 'HWR']);
+  });
+
+  it('reads a service written as a trailing gloss', () => {
+    // "6" CWR condenser water return" and "3/4" HWS (heating water supply)".
+    expect(expandServices('CWR condenser water return')).toEqual(['CWR']);
+    expect(expandServices('CWS condenser water supply')).toEqual(['CWS']);
+    expect(expandServices('HWS (heating water supply)')).toEqual(['HWS']);
+    expect(expandServices('CWR (chilled water return)')).toEqual(['CWR']);
+  });
+
+  it('keeps a paired run covered by the coverage check after the split', () => {
+    // Once absorbHvac splits "1/2" HWS/HWR" into two runs, the check must see
+    // both arrows covered — the split must not create a phantom gap.
+    const split = [{ size: '1/2"', service: 'HWS' }, { size: '1/2"', service: 'HWR' }];
+    expect(pipeCoverageGap(split, '1/2"HWS 1/2"HWR', '').missing).toEqual([]);
+  });
+});
