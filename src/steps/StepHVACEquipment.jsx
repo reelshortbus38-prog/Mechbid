@@ -5,6 +5,7 @@ import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
+import { isHydronicService } from '../components/pipePricing.js';
 import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
@@ -415,6 +416,90 @@ function MiscParts() {
   );
 }
 
+// ── HYDRONIC FITTINGS ALLOWANCE ────────────────────────────────────────────────
+// Pipe footage is not the cost of piping. Every branch off a main is a tee, every
+// turn an ell, every unit a pair of adapters and a hanger — and a hydronic layout
+// is nearly all branches. One live sheet dropped 43 separate 3/4" runs to fin
+// tube off a single main, so the fitting count there is larger than the footage
+// suggests by a wide margin.
+//
+// Same shape as the refrigeration side's fittings allowance: a percentage of the
+// pipe material, generated as one visible lot line rather than folded invisibly
+// into the pipe rate, so it can be seen, edited, or deleted outright by a shop
+// that itemizes instead.
+//
+// VALVES ARE NOT IN IT. Balancing, isolation and control valves on a hydronic
+// job are big enough to price individually, and burying them in a percentage
+// would both understate them and hide them.
+export const DEFAULT_HYDRONIC_FITTINGS_PCT = 40;
+
+function HydronicFittingsCalculator() {
+  const { state, dispatch } = useStore();
+  const parts = state.hvacParts || [];
+  const pct = Number(state.rates?.hydronicFittingsPct ?? DEFAULT_HYDRONIC_FITTINGS_PCT);
+  const [added, setAdded] = useState(false);
+
+  // Hydronic pipe only. Refrigerant lines carry their own fittings treatment on
+  // the refrigeration side, and pricing them twice is exactly the kind of quiet
+  // double-count this app exists to remove.
+  const pipeLines = parts.filter(p =>
+    !p.dgen && partGroupOf(p) === 'pipe' && isHydronicService(p.desc));
+  if (pipeLines.length === 0) return null;
+
+  const pipeTotal = pipeLines.reduce((s, p) => s + (Number(p.qty) || 0) * (Number(p.unitCost) || 0), 0);
+  const allowance = Math.round(pipeTotal * pct / 100);
+  const unpriced = pipeLines.filter(p => !(Number(p.unitCost) > 0));
+
+  function addAllowance() {
+    const line = {
+      id: uid(), dgen: true, gen: 'hydronic',
+      desc: `Hydronic fittings, joints & hangers — ${pct}% of pipe material (valves NOT included)`,
+      qty: 1, unitCost: allowance, total: allowance,
+    };
+    dispatch({ type: 'SET', key: 'hvacParts',
+      value: [...parts.filter(p => !(p.dgen && p.gen === 'hydronic')), line] });
+    setAdded(true);
+  }
+
+  return (
+    <Card style={{ background: colors.surface }}>
+      <SLabel>🔩 Hydronic Fittings Allowance</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
+        Footage alone under-buys piping — every branch is a tee, every turn an ell, every unit a pair of
+        adapters and a hanger. This adds a percentage of the <strong>hydronic pipe material</strong> as one
+        lot line covering <strong>fittings, solder/braze and hangers</strong>. Branch-heavy layouts (lots of
+        short drops to fin tube or coils) run higher than this; long straight mains run lower.
+        <br />
+        <strong style={{ color: colors.yellow }}>Valves are not included</strong> — balancing, isolation and
+        control valves are worth pricing individually.
+      </div>
+
+      {unpriced.length > 0 && (
+        <div style={{ fontSize: 11, color: colors.yellow, marginBottom: 10 }}>
+          ⚠ {unpriced.length} pipe line{unpriced.length > 1 ? 's have' : ' has'} no price yet — the allowance is a
+          percentage of priced pipe, so price those first or this number will be short.
+        </div>
+      )}
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Fittings %</span>
+          <Input type="number" value={pct}
+            onChange={e => { dispatch({ type: 'SET_RATES_MISC', key: 'hydronicFittingsPct', value: parseFloat(e.target.value) || 0 }); setAdded(false); }}
+            style={{ width: 60, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+        </div>
+        <div style={{ fontSize: 12, color: colors.textDim }}>
+          {pipeLines.length} hydronic line(s) · {fmt(pipeTotal)} of pipe → <strong style={{ color: colors.green }}>{fmt(allowance)}</strong>
+        </div>
+      </Row>
+
+      <Btn variant={added ? 'ghost' : 'green'} size="sm" onClick={addAllowance} disabled={!(allowance > 0)}>
+        {added ? '✓ Added — click again to update' : `Add ${fmt(allowance)} fittings allowance`}
+      </Btn>
+    </Card>
+  );
+}
+
 // ── DUCT PURCHASE CALCULATOR ───────────────────────────────────────────────────
 // Duct isn't bought the way it's measured. The takeoff is in feet per size,
 // but rectangular sheet metal is custom-fabricated and priced BY THE POUND,
@@ -448,12 +533,16 @@ function DuctCalculator() {
       const unitCost = match ? Number(match.entry.price) || 0 : (l.defaultPrice || 0);
       return {
         id: uid(), desc: `${l.desc}${l.notes ? ` (${l.notes})` : ''}`,
-        qty: l.qty, unitCost, total: l.qty * unitCost, dgen: true,
+        qty: l.qty, unitCost, total: l.qty * unitCost, dgen: true, gen: 'duct',
       };
     });
     // Regenerating replaces the previously generated purchase lines, so
-    // changing footage or options never stacks duplicates.
-    dispatch({ type: 'SET', key: 'hvacParts', value: [...parts.filter(p => !p.dgen), ...newLines] });
+    // changing footage or options never stacks duplicates. Scoped to THIS
+    // generator's lines — the hydronic fittings allowance is also `dgen`, and
+    // wiping it here would make the two calculators delete each other's work.
+    // Lines saved before `gen` existed were all duct, so they count as duct.
+    dispatch({ type: 'SET', key: 'hvacParts',
+      value: [...parts.filter(p => !(p.dgen && (p.gen || 'duct') === 'duct')), ...newLines] });
     setAdded(true);
   }
 
@@ -669,6 +758,7 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
       {/* Duct footage → pounds / joints / rolls (only shows when duct lines exist) */}
       <DuctCalculator />
+      <HydronicFittingsCalculator />
 
       {/* Split-system charge adder — run once per split/mini-split; each Add
           appends its own line to the parts table above. */}
