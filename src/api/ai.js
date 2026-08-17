@@ -7,7 +7,7 @@ import { mapWithConcurrency } from './concurrency.js';
 import { recheckDuctRuns } from './sizeRecheck.js';
 import { dropDeviceFaces } from './deviceFace.js';
 import { coverageGap } from './sheetCoverage.js';
-import { pipeCoverageGap, canonicalPipeService, canonicalPipeSize } from './pipeCoverage.js';
+import { pipeCoverageGap, canonicalPipeService, canonicalPipeSize, expandServices } from './pipeCoverage.js';
 import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
@@ -754,17 +754,43 @@ function absorbHvac(merged, parsed, seen, origin = null) {
     if (seen.has(k)) return; seen.add(k);
     merged.ductRuns.push({ ...r, size, shape, service, sizeMissing: !size, ...(origin || {}) });
   });
+  // ── A PAIRED CALLOUT IS TWO PIPES ON ONE PATH ──────────────────────────────
+  // "3/4" HWS/HWR" is the supply AND the return sharing a route, and the length
+  // the analyzer measures is the ROUTE — so that run is 25 ft of supply plus
+  // 25 ft of return, and staging it as one 25 ft line buys half the pipe.
+  //
+  // The analyzer also mixes the two conventions across a set: one sheet gives
+  // "1/2" HWS 150" and "1/2" HWR 150" as separate runs, the next gives
+  // "1/2" HWS/HWR 25". A live job showed all three as three lines for one
+  // system, with no way to tell whether they overlapped.
+  //
+  // Splitting every pair into its own runs settles both at once: the footage
+  // becomes the pipe you actually buy, and the two conventions land on the same
+  // lines instead of beside each other.
+  let paired = 0;
   (parsed.pipeRuns || []).forEach(r => {
     const size = canonicalPipeSize(cleanSize(r.size));
-    // "HWS&R" and "HWS/HWR" are one run written two ways, and they were
-    // landing on two lines — 3/4" hot water at 220 ft and again at 15 ft.
-    const service = canonicalPipeService(cleanService(r.service));
+    const svcRaw = cleanService(r.service);
     if (!size && !hasEvidence(r)) return;
-    const k = 'pr|' + (origin?.pageNum ?? '') + '|'
-      + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service.toLowerCase();
-    if (seen.has(k)) return; seen.add(k);
-    merged.pipeRuns.push({ ...r, size, service, sizeMissing: !size, ...(origin || {}) });
+    const codes = expandServices(svcRaw);
+    const services = codes.length > 1 ? codes : [canonicalPipeService(svcRaw)];
+    if (codes.length > 1) paired++;
+    services.forEach(service => {
+      const k = 'pr|' + (origin?.pageNum ?? '') + '|'
+        + (size.toLowerCase() || `nosize:${Math.round(Number(r.estLengthFt) || 0)}`) + '|' + service.toLowerCase();
+      if (seen.has(k)) return; seen.add(k);
+      merged.pipeRuns.push({
+        ...r, size, service, sizeMissing: !size,
+        ...(codes.length > 1 ? { pairedFrom: codes.join('/') } : {}),
+        ...(origin || {}),
+      });
+    });
   });
+  if (paired > 0) {
+    merged.flags.push({ type: 'info', category: 'diagnostic',
+      ...(origin?.pageNum ? { page: origin.pageNum } : {}),
+      text: `${origin?.pageNum ? `Page ${origin.pageNum}: ` : ''}${paired} pipe callout(s) named a supply-and-return PAIR on one route (e.g. "3/4\" HWS/HWR"). Each was split into its own run at the same measured length, because the route carries both pipes — one line at the route length would buy half the pipe.` });
+  }
   (parsed.hydronicZones || []).forEach(z => {
     const zone = String(z.zone || '').toUpperCase().trim();
     if (!zone && !z.loadMBH) return;

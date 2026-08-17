@@ -296,6 +296,10 @@ export default function Step1_Setup({ onNext }) {
           desc: `Pipe — ${r.sizeMissing ? 'SIZE NEEDED' : r.size}${r.service ? ` ${r.service}` : ''}`,
           qty: pipeLf, unitCost: 0,
           notes: [
+            // Never let the split be silent — the estimator has to be able to
+            // see WHY there are now two lines where the sheet has one label.
+            r.pairedFrom ? `from a paired callout "${r.size} ${r.pairedFrom}" — the route carries both pipes, so supply and return each get its full length`
+              : '',
             r.sizeMissing ? missingSizeNote(r, 'pipe')
               : pipeLf ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — check it on the sheet — open the flag and use Measure`
               : 'enter footage — this run could not be measured off the sheet',
