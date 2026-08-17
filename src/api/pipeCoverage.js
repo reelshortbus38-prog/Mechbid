@@ -27,8 +27,34 @@ export const PIPE_SERVICES = [
   'CWS', 'CWR', 'CDWS', 'CDWR', 'GLY', 'GLYS', 'GLYR',
   'LPS', 'MPS', 'HPS', 'PC', 'SC',
   'RS', 'RL', 'RG', 'RD', 'HGB', 'HG',
-  'FOS', 'FOR', 'CA', 'CD', 'COND', 'NG',
+  // 'FOR' is deliberately absent. It is an English word, and a real sheet
+  // carries "SEE 1/M 10.06 FOR CONTROL SEQUENCE AND VALVING" — which read as a
+  // 10.06-inch fuel-oil return line. Fuel oil return is rare enough on an HVAC
+  // sheet that catching it is not worth reading prose as pipe.
+  'FOS', 'CA', 'CD', 'COND', 'NG',
 ];
+
+// ── PIPE COMES IN SIZES ──────────────────────────────────────────────────────
+// The text layer joins items with spaces, so a keynote bubble sitting beside a
+// callout runs into it: a real sheet reads "8 8 9 9 8 8 8 3/4"HWR" (a column of
+// keynotes, then one 3/4" return) and "4 4 1/2"HWR UP" (keynote 4, then a 1/2"
+// return). Read naively those become 8-3/4" and 4-1/2" pipe.
+//
+// Nobody makes 8-3/4" pipe. Nominal sizes are a short, closed list — steel NPS
+// plus the copper/refrigerant ODs — so anything off it is not a size that was
+// read wrong, it is two numbers that were never one number.
+//
+// One ambiguity survives on purpose: a keynote "2" beside a 1/2" line is
+// indistinguishable from a real 2-1/2" line, because 2-1/2" IS a standard size.
+// Rejecting it would lose a common main to protect against a rarer misread.
+const NOMINAL_IN = new Set([
+  0.25, 0.375, 0.5, 0.625, 0.75, 0.875,
+  1, 1.125, 1.25, 1.375, 1.5, 1.625,
+  2, 2.125, 2.5, 2.625,
+  3, 3.125, 3.5, 3.625,
+  4, 4.125, 5, 6, 8, 10, 12, 14, 16, 18, 20, 24,
+]);
+export const isNominalPipeSize = dia => NOMINAL_IN.has(Number(dia));
 
 // What a service code MEANS, so a spelled-out service on a reported run can be
 // matched against a coded one on the sheet. The analyzer returns either.
@@ -70,7 +96,7 @@ export function textPipeRuns(pageText = '') {
   const out = new Map();
   for (const m of String(pageText || '').matchAll(pipeRe())) {
     const dia = sizeInches(m[1]);
-    if (!(dia > 0)) continue;
+    if (!(dia > 0) || !isNominalPipeSize(dia)) continue;
     const service = normalizeService(m[2]);
     const key = `${dia}|${service}`;
     const rec = out.get(key) || { dia, service, count: 0, raw: `${m[1].trim()}" ${m[2].toUpperCase()}` };

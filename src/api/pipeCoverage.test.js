@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textPipeRuns, pipeCoverageGap, normalizeService } from './pipeCoverage.js';
+import { textPipeRuns, pipeCoverageGap, normalizeService, isNominalPipeSize } from './pipeCoverage.js';
 
 // A hydronic/refrigerant sheet's labels, written the way plans write them.
 const PIPING = `3/4" HWS 3/4" HWR 1-1/4" HWS 1 1/4" HWR 2" CHWS 2" CHWR 4" CHWS&R
@@ -90,5 +90,62 @@ describe('pipeCoverageGap', () => {
   it('stays quiet on a scanned sheet with no text', () => {
     expect(pipeCoverageGap([], '', 'Page 3').flags).toEqual([]);
     expect(pipeCoverageGap([], '   ', 'Page 3').flags).toEqual([]);
+  });
+});
+
+// ── AGAINST A REAL PIPING SHEET ──────────────────────────────────────────────
+// Verbatim fragments from the text layer of a live hydronic plan. The keynote
+// bubbles really do run into the callouts exactly like this — a column of
+// numbers down the sheet, then the label that follows them.
+const REAL = `3/4"HWS 3/4"HWS 3/4"HWR 3/4"HWR 1/2"HWS UP/DN 1/2"HWR UP/DN
+  7 3/4"HWR 3/4"HWS 1 1/2"HWR 1 1/2"HWS
+  RLL UP/DN 4"HWS 4"HWR 6"CWR 6"CWS 8 8 9 9 9 8 8 8 9 9 8 8 8 8 8 8 8 3/4"HWR
+  1"HWS 1"HWR 5 1/2"HWR UP 1/2"HWS UP M 3.2 GPM FT-M210 4 4 1/2"HWR UP
+  P10 0.5 GPM PR-MH21C 3/4"HWR DN 3/4"HWS DN 1 1 3/4"HWR DN
+  2 1/2"HWS 2 1/2"HWR 1 1/4"CWS 1 1/4"CWR
+  HYDRONIC CHANGE-OVER ISOLATION VALVES, SEE 1/M 10.06 FOR CONTROL SEQUENCE AND VALVING.
+  RADIANT WALL PANELS SERVED BY SAME BRANCH HWS/HWR. SEE UNIT TAGS FOR TOTAL GPM.
+  ROUTE HWS/HWR FULL SIZE TO LAST UNIT.`;
+
+describe('a real hydronic sheet', () => {
+  it('reads the sizes that are actually on it', () => {
+    const got = new Set([...textPipeRuns(REAL).values()].map(r => r.dia));
+    for (const d of [0.5, 0.75, 1, 1.25, 1.5, 2.5, 4, 6]) expect(got.has(d), `${d}"`).toBe(true);
+  });
+
+  it('does not read a keynote bubble as the whole number of a pipe size', () => {
+    // "8 8 9 9 8 8 8 3/4"HWR" is one 3/4" return behind a column of keynotes,
+    // and "4 4 1/2"HWR" is a 1/2" return behind keynote 4.
+    const dias = [...textPipeRuns(REAL).values()].map(r => r.dia);
+    for (const bogus of [8.75, 7.75, 5.5, 4.5, 1.75]) expect(dias, `${bogus}"`).not.toContain(bogus);
+  });
+
+  it('does not read the word "for" as fuel oil return', () => {
+    // "SEE 1/M 10.06 FOR CONTROL SEQUENCE" came back as a 10.06" line.
+    expect([...textPipeRuns(REAL).values()].map(r => r.dia)).not.toContain(10.06);
+    expect(textPipeRuns('SEE 1/M 10.06 FOR CONTROL SEQUENCE AND VALVING.').size).toBe(0);
+  });
+
+  it('does not count a service named in a general note as a run', () => {
+    // These are requirements, not callouts — they carry no size and are picked
+    // up as scope flags elsewhere.
+    expect(textPipeRuns('ROUTE HWS/HWR FULL SIZE TO LAST UNIT.').size).toBe(0);
+    expect(textPipeRuns('RADIANT WALL PANELS SERVED BY SAME BRANCH HWS/HWR.').size).toBe(0);
+  });
+
+  it('keeps every size a hydronic plan really uses', () => {
+    for (const s of ['1/2', '3/4', '1', '1-1/4', '1-1/2', '2', '2-1/2', '3', '4', '6'])
+      expect(textPipeRuns(`${s}"HWS`).size, s).toBe(1);
+  });
+});
+
+describe('isNominalPipeSize', () => {
+  it('accepts the sizes pipe is made in', () => {
+    for (const d of [0.5, 0.75, 1, 1.25, 1.5, 1.625, 2, 2.125, 2.5, 3, 4, 6, 8, 12])
+      expect(isNominalPipeSize(d), `${d}`).toBe(true);
+  });
+  it('rejects numbers that are two numbers run together', () => {
+    for (const d of [1.75, 3.75, 4.5, 5.5, 7.5, 7.75, 8.75, 10.06])
+      expect(isNominalPipeSize(d), `${d}`).toBe(false);
   });
 });
