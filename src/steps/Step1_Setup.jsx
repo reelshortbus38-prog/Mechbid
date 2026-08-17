@@ -24,6 +24,7 @@ import { missingSizeNote } from '../api/runEvidence.js';
 import { rememberFile } from '../api/fileCache.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
+import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pipePricing.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -299,6 +300,13 @@ export default function Step1_Setup({ onNext }) {
             // Never let the split be silent — the estimator has to be able to
             // see WHY there are now two lines where the sheet has one label.
             r.pairedFrom ? `from a paired callout "${r.size} ${r.pairedFrom}" — the route carries both pipes, so supply and return each get its full length`
+              : '',
+            // Say which default is a real number and which is a stand-in. The
+            // copper table is scaled off the estimator's own 3/4" quote; the
+            // steel prices above 2-1/2" are not from anybody and should not be
+            // bid without a quote.
+            pipeDescSize(r.size || '') > COPPER_MAX_IN && isHydronicService(r.service || '')
+              ? '⚠ over 2-1/2" prices as BLACK STEEL at a placeholder rate — get a real quote before bidding this line'
               : '',
             r.sizeMissing ? missingSizeNote(r, 'pipe')
               : pipeLf ? `~${pipeLf} LF is an AI ESTIMATE${r.lengthBasis ? ` (measured against: ${r.lengthBasis})` : ''} — check it on the sheet — open the flag and use Measure`

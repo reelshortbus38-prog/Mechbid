@@ -1,3 +1,4 @@
+import { pipeDefaultPrice } from '../components/pipePricing.js';
 import { createContext, useContext, useReducer } from 'react';
 
 // ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
@@ -77,6 +78,11 @@ const DEFAULT_HVAC_PRICES = [
   [/duct\s*wrap|wrap\s*insulation/i, 115], // per roll
 ];
 export function defaultHvacPrice(desc) {
+  // Pipe first, and by SIZE. It is the one material here that cannot take a
+  // flat rate — 1/2" to 6" on one hydronic sheet is a 10x spread — and the
+  // generic rules below would happily price a condensate line at $40 a foot.
+  const pipe = pipeDefaultPrice(desc);
+  if (pipe > 0) return pipe;
   const hit = DEFAULT_HVAC_PRICES.find(([re]) => re.test(desc || ''));
   return hit ? hit[1] : 0;
 }
