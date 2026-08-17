@@ -264,6 +264,29 @@ function MiscParts() {
     dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc: '', qty: 1, unitCost: 0, total: 0 }] });
   }
 
+  // Empty the materials table so a re-read can rebuild it cleanly.
+  //
+  // Needed because a job analyzed under an older build carries lines whose
+  // DESCRIPTIONS no longer match what the app produces now — every improvement
+  // to how a size or service is written leaves the old wording stranded, and a
+  // re-read adds its lines beside them instead of replacing them. Accepting a
+  // read now clears that file's previous lines automatically, but only for
+  // lines recorded since; anything older has no source on it and cannot be
+  // told apart from a line typed by hand.
+  //
+  // So this clears everything and says so, rather than guessing which lines
+  // were the app's. Blunt beats clever when the alternative is silently
+  // deleting someone's own work.
+  function clearTakeoff() {
+    if (!parts.length) return;
+    if (!confirm(
+      `Remove ALL ${parts.length} line(s) from this materials table?\n\n`
+      + `This includes any you added or priced by hand — there is no way to tell those from lines an older version of the app produced.\n\n`
+      + `Re-run Analyze on the Setup step afterwards to rebuild the takeoff.`
+    )) return;
+    dispatch({ type: 'SET', key: 'hvacParts', value: [] });
+  }
+
   function updatePart(id, field, value) {
     dispatch({ type: 'SET', key: 'hvacParts', value: parts.map(p => {
       if (p.id !== id) return p;
@@ -342,6 +365,7 @@ function MiscParts() {
         <SLabel>Parts & Misc Materials</SLabel>
         <Row style={{ gap: 8 }}>
           {unpricedCount > 0 && <Btn variant="green" size="sm" onClick={fillDefaults}>💲 Fill default prices ({unpricedCount})</Btn>}
+          {parts.length > 0 && <Btn variant="ghost" size="sm" onClick={clearTakeoff}>🧹 Clear takeoff lines</Btn>}
           <Btn variant="ghost" size="sm" onClick={addPart}>+ Add Part</Btn>
         </Row>
       </Row>

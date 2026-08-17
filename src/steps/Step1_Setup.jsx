@@ -1001,6 +1001,30 @@ export default function Step1_Setup({ onNext }) {
     let projAddr = '';
     let storeNumber = '';
 
+    // ── RE-ANALYZING A FILE REPLACES ITS LINES, IT DOES NOT ADD TO THEM ───────
+    // Takeoff lines were deduped by their DESCRIPTION text and nothing else,
+    // and a description is not an identity — it is a label that changes
+    // whenever the app gets better at reading. Every improvement to how a size
+    // or service is written ("HWS/HWR" → "HWS", "6ø" → "6\"ø", "VAV" → "VAV
+    // box") made the new lines stop matching the ones already in the job, so
+    // re-analyzing the same sheet stacked a second full takeoff on top of the
+    // first. The user saw it as everything being doubled, and they were right.
+    //
+    // A line now records the FILE it came from, and accepting a file's read
+    // clears that file's previous lines first. Analyze the same sheet ten
+    // times and the answer is the same as analyzing it once. Other files are
+    // untouched, so adding a second sheet still adds to the takeoff.
+    const reanalyzed = new Set(
+      acceptedItems.filter(i => i.kind === 'hvacPart' && i.fileName).map(i => i.fileName));
+    // Prices the estimator typed are theirs, not the analyzer's — carry them
+    // across the replacement rather than resetting the job to $0.
+    const supersededPrice = new Map();
+    const keptHvacParts = (state.hvacParts || []).filter(p => {
+      if (!p.src || !reanalyzed.has(p.src)) return true;
+      if (Number(p.unitCost) > 0) supersededPrice.set(normalizeDesc(p.desc), Number(p.unitCost));
+      return false;
+    });
+
     acceptedItems.forEach(item => {
       if (item.kind === 'circuit' && item.data.circuitId) {
         if (!newCircuits.find(x => x.circuitId === item.data.circuitId) && !state.circuits.find(x => x.circuitId === item.data.circuitId)) {
@@ -1074,9 +1098,11 @@ export default function Step1_Setup({ onNext }) {
         // table on the Equipment step. Autofill unit cost from the price book
         // when the user hasn't typed one — same learning loop as refrigeration.
         const hpKey = p => normalizeDesc(p.desc);
-        if (item.data.desc && !newHvacParts.find(x => hpKey(x) === hpKey(item.data)) && !(state.hvacParts || []).find(x => hpKey(x) === hpKey(item.data))) {
+        if (item.data.desc && !newHvacParts.find(x => hpKey(x) === hpKey(item.data)) && !keptHvacParts.find(x => hpKey(x) === hpKey(item.data))) {
           const qty = Number(item.data.qty) || 0;
           let unitCost = Number(item.data.unitCost) || 0;
+          // A price the estimator typed on this line before the re-read.
+          if (!unitCost) unitCost = supersededPrice.get(hpKey(item.data)) || 0;
           if (!unitCost) {
             const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
             if (match) unitCost = Number(match.entry.price) || 0;
@@ -1084,7 +1110,7 @@ export default function Step1_Setup({ onNext }) {
           // Ballpark default so the line isn't $0 (skips duct FOOTAGE lines,
           // which are priced by the Duct → Purchase Units calculator instead).
           if (!unitCost) unitCost = defaultHvacPrice(item.data.desc);
-          newHvacParts.push({ id: uid(), desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
+          newHvacParts.push({ id: uid(), src: item.fileName || '', desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
         }
       } else if (item.kind === 'hvacEquip') {
         // Confirmed family-closure unit → the Equipment step, mapped the same
@@ -1111,7 +1137,7 @@ export default function Step1_Setup({ onNext }) {
       rackTasks: [...state.rackTasks, ...newRackTasks],
       fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
       rackParts: [...state.rackParts, ...newRackParts],
-      hvacParts: [...(state.hvacParts || []), ...newHvacParts],
+      hvacParts: [...keptHvacParts, ...newHvacParts],
       ...(newHvacEquipment.length ? { hvacEquipment: [...(state.hvacEquipment || []), ...newHvacEquipment] } : {}),
       rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
       flags: dedupeFlags([...(state.flags || []), ...newNotes]),
