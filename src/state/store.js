@@ -141,6 +141,10 @@ export const initialState = {
       lowLiquid: { ...DEFAULT_INSUL_RATES.lowLiquid },
     },
     fittingsMarkupPct: 25,
+    // K65 costs a multiple of ACR copper, and the premium moves with the copper
+    // market plus specialty distribution — so it rides on the tuned ACR rate
+    // rather than being a second absolute price that goes stale on its own.
+    hpPipeMultiplier: 2.0,
     // 'percentage' = auto allowance line based on % of copper cost.
     // 'manual' = no allowance line; fittings are added one-by-one via the fitting picker.
     fittingsMode: 'percentage',

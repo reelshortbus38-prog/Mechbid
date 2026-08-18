@@ -3,6 +3,7 @@ import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, cal
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
+import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -917,9 +918,15 @@ export default function Step4_Materials({ onNext, onBack }) {
         if(c.liqHoriz&&total>0){const k=normalizePipeSize(c.liqHoriz);copperBySize[k]=(copperBySize[k]||0)+total;}
       }
     });
+    // K65 is not priced like ACR copper. The label already said K65; the RATE
+    // did not, so a transcritical job was a standard job wearing a different
+    // name. The premium rides on whatever ACR rate the estimator has tuned.
+    const hpMult = rates.hpPipeMultiplier ?? DEFAULT_HP_PIPE_MULTIPLIER;
+    const hpNote = hpPipeNote(state.systemType, hpMult);
     Object.entries(copperBySize).forEach(([size,footage])=>{
-      const rate=rates?.cu?.[size]||0; const qty=Math.ceil(footage*wasteFactor);
-      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage});
+      const rate=hpPipeRate(rates?.cu?.[size]||0, state.systemType, hpMult);
+      const qty=Math.ceil(footage*wasteFactor);
+      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,notes:hpNote||undefined});
     });
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
 
@@ -1274,6 +1281,14 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <div style={{ flex:1, minWidth:120 }}>
                 <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Fittings Allowance (%)</div>
                 <Input type="number" value={state.rates?.fittingsMarkupPct||25} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:parseFloat(e.target.value)||25})} style={{ fontFamily:"'DM Mono',monospace" }} />
+              </div>
+            )}
+            {state.systemType === 'CO2' && (
+              <div style={{ flex:1, minWidth:150 }}>
+                <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>K65 premium (× ACR copper)</div>
+                <Input type="number" step="0.1" value={state.rates?.hpPipeMultiplier ?? DEFAULT_HP_PIPE_MULTIPLIER}
+                  onChange={e=>dispatch({type:'SET_RATES_MISC',key:'hpPipeMultiplier',value:parseFloat(e.target.value)||DEFAULT_HP_PIPE_MULTIPLIER})}
+                  style={{ fontFamily:"'DM Mono',monospace" }} />
               </div>
             )}
             <div style={{ flex:1, minWidth:120 }}>
