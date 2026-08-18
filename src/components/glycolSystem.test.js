@@ -129,3 +129,41 @@ describe('the material list a secondary loop actually needs', () => {
     expect(glycolMaterialLines({ runs: [{ dia: 2, ft: 0 }] })).toEqual([]);
   });
 });
+
+// ── AMBIENT WATER LOOP ───────────────────────────────────────────────────────
+// Self-contained cases with their own condensing units, on a loop that rejects
+// heat to a fluid cooler. It LOOKS like a glycol loop — central plant, header
+// out, header back, drops to cases — and it is priced very differently.
+
+describe('a water loop is not a chilled loop', () => {
+  const runs = [{ dia: 3, ft: 400 }, { dia: 2, ft: 600 }, { dia: 0.75, ft: 900 }];
+  const water = glycolMaterialLines({ runs, loopType: 'water', freezeExposedFt: 120, fixtures: 34, pct: 32 });
+  const chilled = glycolMaterialLines({ runs, loopType: 'chilled', fixtures: 34, pct: 32, coilGal: 120 });
+
+  it('does not insulate a loop that runs at ambient', () => {
+    // The single largest difference between the two: 1,900 ft of closed-cell a
+    // water loop does not owe.
+    expect(water.filter(l => l.key.startsWith('insul-'))).toEqual([]);
+    expect(chilled.filter(l => l.key.startsWith('insul-')).length).toBeGreaterThan(0);
+  });
+
+  it('charges glycol only for the freeze-exposed run, not the whole system', () => {
+    const w = water.find(l => l.key === 'pg');
+    const c = chilled.find(l => l.key === 'pg');
+    expect(w.qty).toBeGreaterThan(0);
+    expect(w.qty).toBeLessThan(c.qty / 3);
+  });
+
+  it('swaps the chiller side for a fluid cooler, and leaves it to a quote', () => {
+    const fc = water.find(l => l.key === 'fluidcooler');
+    expect(fc).toBeTruthy();
+    expect(fc.defaultPrice).toBe(0);
+    expect(fc.desc).toMatch(/VENDOR QUOTE/);
+    expect(chilled.find(l => l.key === 'fluidcooler')).toBeUndefined();
+  });
+
+  it('carries no glycol at all when nothing is freeze-exposed', () => {
+    const dry = glycolMaterialLines({ runs, loopType: 'water', freezeExposedFt: 0 });
+    expect(dry.find(l => l.key === 'pg')).toBeUndefined();
+  });
+});
