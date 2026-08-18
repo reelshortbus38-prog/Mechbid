@@ -5,7 +5,8 @@ import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
-import { isHydronicService } from '../components/pipePricing.js';
+import { isHydronicService, pipeDescSize } from '../components/pipePricing.js';
+import { hydronicValveLines, countHydronicEquipment } from '../components/hydronicValves.js';
 import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
@@ -500,6 +501,159 @@ function HydronicFittingsCalculator() {
   );
 }
 
+// ── HYDRONIC VALVES & SPECIALTIES ──────────────────────────────────────────────
+// Counts key off the equipment already read from the plans — one connection
+// package per terminal unit, a strainer and check per pump, isolation at the
+// branches. Everything stays editable, because the plans do not always say how
+// many high points a system has.
+function HydronicValveCalculator() {
+  const { state, dispatch } = useStore();
+  const parts = state.hvacParts || [];
+  const equipment = state.hvacEquipment || [];
+  const counted = countHydronicEquipment(equipment);
+
+  const pipeLines = parts.filter(p => !p.dgen && partGroupOf(p) === 'pipe' && isHydronicService(p.desc));
+  const [terminals, setTerminals] = useState(counted.terminals);
+  const [pumps, setPumps] = useState(counted.pumps);
+  const [terminalSize, setTerminalSize] = useState(0.75);
+  const [terminalMode, setTerminalMode] = useState('hosekit');
+  const [controlValves, setControlValves] = useState('byOthers');
+  const [pumpSize, setPumpSize] = useState(1.5);
+  const [airVents, setAirVents] = useState(0);
+  const [drains, setDrains] = useState(0);
+  const [added, setAdded] = useState(false);
+
+  // Mains and branches worth isolating — the sizes the takeoff actually found,
+  // two valves each (supply and return) as a starting count.
+  const branchSizes = [...new Set(pipeLines.map(p => pipeDescSize(p.desc)).filter(d => d >= 1.25))].sort((a, b) => a - b);
+  const [branchCounts, setBranchCounts] = useState({});
+  const branches = branchSizes.map(dia => ({ dia, count: branchCounts[dia] ?? 2 }));
+
+  if (pipeLines.length === 0 && counted.terminals === 0) return null;
+
+  const lines = hydronicValveLines({
+    terminals: Number(terminals) || 0, terminalSize, terminalMode, controlValves,
+    pumps: Number(pumps) || 0, pumpSize, branches,
+    airVents: Number(airVents) || 0, drains: Number(drains) || 0,
+  });
+  const total = lines.reduce((s, l) => s + l.qty * l.defaultPrice, 0);
+
+  function addValves() {
+    const book = loadPriceBook();
+    const newLines = lines.map(l => {
+      const match = findPriceMatch(book, { desc: l.desc });
+      const unitCost = match ? Number(match.entry.price) || 0 : (l.defaultPrice || 0);
+      return {
+        id: uid(), dgen: true, gen: 'valves',
+        desc: l.desc, qty: l.qty, unitCost, total: l.qty * unitCost,
+        notes: [l.notes, match ? '' : 'default price is a PLACEHOLDER — correct it once and the price book remembers'].filter(Boolean).join(' · '),
+      };
+    });
+    dispatch({ type: 'SET', key: 'hvacParts',
+      value: [...parts.filter(p => !(p.dgen && p.gen === 'valves')), ...newLines] });
+    setAdded(true);
+  }
+
+  const num = (v, set) => (
+    <Input type="number" value={v} onChange={e => { set(e.target.value); setAdded(false); }}
+      style={{ width: 64, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+  );
+
+  return (
+    <Card style={{ background: colors.surface }}>
+      <SLabel>🔧 Hydronic Valves & Specialties</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
+        Valves are what make a hydronic system one you can balance, isolate and service — and they are the part a
+        percentage allowance hides worst. Counts start from the equipment read off the plans and stay editable.
+        <br />
+        <strong style={{ color: colors.yellow }}>Every price here is a placeholder.</strong> Unlike the copper table,
+        nobody has quoted these — correct one and the price book remembers it for good.
+      </div>
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Terminal units</span>
+          {num(terminals, setTerminals)}
+          <Select value={terminalSize} onChange={e => { setTerminalSize(Number(e.target.value)); setAdded(false); }} style={{ width: 80 }}>
+            <option value={0.5}>1/2"</option><option value={0.75}>3/4"</option><option value={1}>1"</option>
+          </Select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Select value={terminalMode} onChange={e => { setTerminalMode(e.target.value); setAdded(false); }} style={{ width: 220 }}>
+            <option value="hosekit">Hose kits (one assembly per unit)</option>
+            <option value="valves">Loose valves (ball + balancing + P/T)</option>
+          </Select>
+        </div>
+      </Row>
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Control valves</span>
+          <Select value={controlValves} onChange={e => { setControlValves(e.target.value); setAdded(false); }} style={{ width: 240 }}>
+            <option value="byOthers">Furnished by controls — we install</option>
+            <option value="ours">We furnish and install</option>
+            <option value="none">Not in our scope at all</option>
+          </Select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Pumps</span>
+          {num(pumps, setPumps)}
+          <Select value={pumpSize} onChange={e => { setPumpSize(Number(e.target.value)); setAdded(false); }} style={{ width: 90 }}>
+            {[1, 1.25, 1.5, 2, 2.5, 3, 4].map(d => <option key={d} value={d}>{d === 1.25 ? '1-1/4"' : d === 1.5 ? '1-1/2"' : d === 2.5 ? '2-1/2"' : `${d}"`}</option>)}
+          </Select>
+        </div>
+      </Row>
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Air vents (high points)</span>{num(airVents, setAirVents)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Drain valves (low points)</span>{num(drains, setDrains)}
+        </div>
+      </Row>
+
+      {branchSizes.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Branch / main isolation valves — count per size</div>
+          <Row style={{ gap: 10, flexWrap: 'wrap' }}>
+            {branchSizes.map(dia => (
+              <div key={dia} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ fontSize: 11, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
+                  {dia === 1.25 ? '1-1/4"' : dia === 1.5 ? '1-1/2"' : dia === 2.5 ? '2-1/2"' : `${dia}"`}
+                </span>
+                <Input type="number" value={branchCounts[dia] ?? 2}
+                  onChange={e => { setBranchCounts({ ...branchCounts, [dia]: parseInt(e.target.value, 10) || 0 }); setAdded(false); }}
+                  style={{ width: 52, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+              </div>
+            ))}
+          </Row>
+        </div>
+      )}
+
+      {lines.length > 0 && (
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+          {lines.map((l, i) => (
+            <div key={l.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 12px', fontSize: 12, borderBottom: i < lines.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600 }}>{l.desc}</div>
+                {l.notes && <div style={{ fontSize: 10, color: colors.textDim }}>{l.notes}</div>}
+              </div>
+              <div style={{ whiteSpace: 'nowrap', fontFamily: "'DM Mono', monospace" }}>
+                {l.qty} × {fmt(l.defaultPrice)} = <strong style={{ color: colors.green }}>{fmt(l.qty * l.defaultPrice)}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Btn variant={added ? 'ghost' : 'green'} size="sm" onClick={addValves} disabled={!lines.length}>
+        {added ? '✓ Added — click again to update' : `Add ${lines.length} valve line(s) — ${fmt(total)}`}
+      </Btn>
+    </Card>
+  );
+}
+
 // ── DUCT PURCHASE CALCULATOR ───────────────────────────────────────────────────
 // Duct isn't bought the way it's measured. The takeoff is in feet per size,
 // but rectangular sheet metal is custom-fabricated and priced BY THE POUND,
@@ -759,6 +913,7 @@ export default function StepHVACEquipment({ onNext, onBack }) {
       {/* Duct footage → pounds / joints / rolls (only shows when duct lines exist) */}
       <DuctCalculator />
       <HydronicFittingsCalculator />
+      <HydronicValveCalculator />
 
       {/* Split-system charge adder — run once per split/mini-split; each Add
           appends its own line to the parts table above. */}
