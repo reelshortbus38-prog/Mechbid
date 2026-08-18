@@ -6,6 +6,7 @@ import { pipeMaterialPrice } from './pipePricing.js';
 import {
   glycolMaterialLines, systemVolumeGal, glycolCharge, checkMix, pgFreezePoint,
 } from './glycolSystem.js';
+import { glycolHydraulics } from './glycolHydraulics.js';
 
 // ── SECONDARY GLYCOL LOOP CALCULATOR ─────────────────────────────────────────
 // A secondary system's materials do not come out of the circuit table the way a
@@ -38,6 +39,12 @@ export default function GlycolCalc() {
   const [fixtures, setFixtures] = useState(medTemp);
   const [fixtureSize, setFixtureSize] = useState(0.75);
   const [added, setAdded] = useState(false);
+  // Hydraulics — what sizes the pump, and the check on whether the mains can
+  // carry the flow the load needs.
+  const [btuh, setBtuh] = useState(0);
+  const [deltaT, setDeltaT] = useState(8);
+  const [longestPathFt, setLongestPathFt] = useState(0);
+  const [componentHeadFt, setComponentHeadFt] = useState(25);
 
   const sized = runs.filter(r => Number(r.ft) > 0);
   const headerSize = sized.length ? Math.max(...sized.map(r => Number(r.dia))) : 2;
@@ -60,6 +67,15 @@ export default function GlycolCalc() {
     return l;
   });
   const total = lines.reduce((s, l) => s + l.qty * (l.defaultPrice || 0), 0);
+
+  // Inside diameter of the largest run, for the velocity check. Nominal size is
+  // close enough to ID at these sizes for an estimating-grade check.
+  const mainId = sized.length ? Math.max(...sized.map(r => Number(r.dia))) : 0;
+  const hyd = glycolHydraulics({
+    btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0, pct: Number(pct) || 35,
+    longestPathFt: Number(longestPathFt) || 0, idInches: mainId,
+    componentHeadFt: Number(componentHeadFt) || 0,
+  });
 
   const setRun = (i, field, v) => {
     setRuns(runs.map((r, j) => (j === i ? { ...r, [field]: field === 'dia' ? Number(v) : v } : r)));
@@ -225,6 +241,51 @@ export default function GlycolCalc() {
           ))}
         </div>
       )}
+
+      {/* ── Flow & pump sizing ── */}
+      <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+          FLOW &amp; PUMP SIZING — what the load needs, and whether the mains can carry it.
+          This selects a pump to <strong>price</strong>; the engineer of record still sizes it.
+        </div>
+        <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Load</span>{num(btuh, setBtuh, 100)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>BTU/h</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>ΔT</span>{num(deltaT, setDeltaT, 56)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>°F</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Longest path (out + back)</span>
+            {num(longestPathFt, setLongestPathFt, 84)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>ft</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Equipment head</span>
+            {num(componentHeadFt, setComponentHeadFt, 64)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>ft</span>
+          </div>
+        </Row>
+
+        {hyd.gpm === null ? (
+          <div style={{ fontSize: 12, color: colors.textDim }}>
+            Enter the load and ΔT to size the flow — the spec's 20–24°F supply against a 28–32°F return is about 8°F.
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: colors.textDim, fontFamily: "'DM Mono', monospace", lineHeight: 1.9 }}>
+            <div><strong style={{ color: colors.green }}>{hyd.gpm} GPM</strong> — {hyd.extraFlowPct}% more than the {hyd.waterGpm} GPM the same load would need on water</div>
+            {hyd.head && <div>head {hyd.head.totalFt} ft ({hyd.head.frictionFt} friction over {hyd.head.developedFt} ft developed + {hyd.head.componentFt} equipment)</div>}
+            {hyd.hp && <div><strong style={{ color: colors.green }}>{hyd.hp.motorHp} HP</strong> motor ({hyd.hp.bhp} bhp) × {hyd.pumpCount} — the spec calls for dual redundant pumps</div>}
+            {hyd.velocityVerdict && (
+              <div style={{ color: hyd.velocityVerdict.ok ? colors.textDim : colors.red }}>
+                {hyd.velocityVerdict.ok ? '✓' : '⚠'} {hyd.velocity} ft/s in the {label(mainId)} main — {hyd.velocityVerdict.why}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <Btn variant={added ? 'ghost' : 'green'} size="sm" onClick={addLines} disabled={!lines.length}>
         {added ? '✓ Added — click again to update' : `Add ${lines.length} glycol line(s) — ${fmt(total)}`}
