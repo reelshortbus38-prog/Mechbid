@@ -5,6 +5,7 @@ import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
 import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
+import { foldHeaders } from '../components/headers.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
@@ -925,6 +926,13 @@ export default function Step4_Materials({ onNext, onBack }) {
     // name. The premium rides on whatever ACR rate the estimator has tuned.
     const hpMult = rates.hpPipeMultiplier ?? DEFAULT_HP_PIPE_MULTIPLIER;
     const hpNote = hpPipeNote(state.systemType, hpMult);
+    // The shared header is ONE pipe every circuit taps. It is folded in here,
+    // once, rather than riding inside each circuit's run length — which on a
+    // thirty-circuit loop would buy thirty headers.
+    const hdr = foldHeaders(state.headers || [], normalizePipeSize);
+    Object.entries(hdr.copperBySize).forEach(([size, ft]) => {
+      copperBySize[size] = (copperBySize[size] || 0) + ft;
+    });
     const unrated = unratedCopperSizes(Object.keys(copperBySize), rates);
     Object.entries(copperBySize).forEach(([size,footage])=>{
       // Fall back to the CURRENT defaults for a size this job never copied —
@@ -978,6 +986,12 @@ export default function Step4_Materials({ onNext, onBack }) {
       }
     });
 
+    // Same fold for insulation — a suction header is insulated at its
+    // temperature exactly like a circuit's suction run.
+    Object.entries(hdr.medSucBySize).forEach(([k, v]) => { medSucBySize[k] = (medSucBySize[k]||0) + v; });
+    Object.entries(hdr.lowSucBySize).forEach(([k, v]) => { lowSucBySize[k] = (lowSucBySize[k]||0) + v; });
+    Object.entries(hdr.lowLiqBySize).forEach(([k, v]) => { lowLiqBySize[k] = (lowLiqBySize[k]||0) + v; });
+
     function pushInsulLines(bySize, category, label) {
       Object.entries(bySize).forEach(([size, footage]) => {
         if (footage <= 0) return;
@@ -996,7 +1010,8 @@ export default function Step4_Materials({ onNext, onBack }) {
     // at 6ft spacing. (Risers are strapped separately and not counted here.)
     const totalHorizRun = state.circuits
       .filter(c => !c.isRiserOnly)
-      .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0);
+      .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0)
+      + hdr.horizFt;   // the header runs the length of the store and hangs like any main
     if (totalHorizRun > 0) {
       const supports = Math.ceil(totalHorizRun / 6);
       items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: supports, unit: 'ea', unitCost: 0, total: 0 });

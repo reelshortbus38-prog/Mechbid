@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { useStore, uid, normalizePipeSize } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, EmptyState } from '../components/UI.jsx';
+import { newHeader, headerSanityNote } from '../components/headers.js';
 
-const PIPE_SIZES = ['', '1/4"', '3/8"', '1/2"', '5/8"', '7/8"', '1-1/8"', '1-3/8"', '1-5/8"', '2-1/8"', '2-5/8"', '3-1/8"'];
+// Stops at 3-1/8 no longer: a loop system's shared suction header runs 3-5/8,
+// 4-1/8 and larger, and a size the dropdown does not offer is a size the
+// estimator cannot enter at all.
+const PIPE_SIZES = ['', '1/4"', '3/8"', '1/2"', '5/8"', '7/8"', '1-1/8"', '1-3/8"', '1-5/8"', '2-1/8"', '2-5/8"', '3-1/8"', '3-5/8"', '4-1/8"', '5-1/8"', '6-1/8"'];
 const TEMP_TYPES = ['medium', 'low'];
 
 function CircuitRow({ circuit, onUpdate, onRemove }) {
@@ -136,8 +140,61 @@ export default function Step2_Circuits({ onNext, onBack }) {
   const lowTemp = state.circuits.filter(c => c.tempType === 'low').length;
   const medTemp = state.circuits.filter(c => c.tempType === 'medium').length;
 
+  const headers = state.headers || [];
+  const setHeaders = v => dispatch({ type: 'SET', key: 'headers', value: v });
+  const addHeader = () => setHeaders([...headers, newHeader(uid())]);
+  const updHeader = (id, k, v) => setHeaders(headers.map(h => h.id === id ? { ...h, [k]: v } : h));
+  const delHeader = id => setHeaders(headers.filter(h => h.id !== id));
+  const headerFt = headers.reduce((a, h) => a + (Number(h.lengthFt) || 0), 0);
+  const sanity = headerSanityNote(state.circuits, headers);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Shared suction header (loop systems) ───────────────────────────── */}
+      <Card>
+        <Row style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+          <SLabel>🔁 Shared Header / Main — loop systems</SLabel>
+          <Btn variant="ghost" size="sm" onClick={addHeader}>+ Add header</Btn>
+        </Row>
+        <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
+          On a loop layout the suction <strong>header</strong> leaves the rack, circles the sales floor, and every
+          lineup taps into it. It is <strong>one pipe</strong> — enter it here once, and let each circuit below carry
+          only the <strong>branch from its tap to the case</strong>. Rolled into the circuits instead, a thirty-circuit
+          job buys thirty headers.
+        </div>
+
+        {sanity && (
+          <div style={{ fontSize: 12, marginBottom: 10, padding: '8px 12px', borderRadius: 8,
+            background: 'rgba(234,179,8,0.08)', border: `1px solid ${colors.yellow}40`, color: colors.yellow }}>
+            ⚠ {sanity}
+          </div>
+        )}
+
+        {headers.map(h => (
+          <Row key={h.id} style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Input value={h.label} onChange={e => updHeader(h.id, 'label', e.target.value)}
+              placeholder="MT header / rack A loop" style={{ flex: 1, minWidth: 150 }} />
+            <Select value={h.size} onChange={e => updHeader(h.id, 'size', e.target.value)} style={{ width: 100 }}>
+              {PIPE_SIZES.map(x => <option key={x} value={x}>{x || '--'}</option>)}
+            </Select>
+            <Input type="number" value={h.lengthFt} onChange={e => updHeader(h.id, 'lengthFt', e.target.value)}
+              placeholder="ft" style={{ width: 90, textAlign: 'center', fontFamily: "'DM Mono',monospace" }} />
+            <Select value={h.lineType} onChange={e => updHeader(h.id, 'lineType', e.target.value)} style={{ width: 110 }}>
+              <option value="suction">Suction</option><option value="liquid">Liquid</option>
+            </Select>
+            <Select value={h.tempType} onChange={e => updHeader(h.id, 'tempType', e.target.value)} style={{ width: 110 }}>
+              <option value="medium">Med temp</option><option value="low">Low temp</option>
+            </Select>
+            <button onClick={() => delHeader(h.id)}
+              style={{ background: 'transparent', border: 'none', color: colors.red, cursor: 'pointer', fontSize: 16 }}>×</button>
+          </Row>
+        ))}
+
+        {headers.length === 0
+          ? <div style={{ fontSize: 12, color: colors.textDim }}>No shared header — correct for a home-run layout where every circuit pipes back to the rack on its own.</div>
+          : <div style={{ fontSize: 12, color: colors.textDim, fontFamily: "'DM Mono',monospace" }}>{headers.length} header(s) · {headerFt} ft — counted ONCE in materials</div>}
+      </Card>
 
       {/* Stats */}
       {state.circuits.length > 0 && (
