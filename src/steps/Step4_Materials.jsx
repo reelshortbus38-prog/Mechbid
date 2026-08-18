@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
+import GlycolCalc from '../components/GlycolCalc.jsx';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -1125,6 +1126,8 @@ export default function Step4_Materials({ onNext, onBack }) {
       </div>
 
       {activeTab==='bid' ? <BidMaterials onGenerate={generateMaterials} /> : <SupplyHouseList />}
+
+      {activeTab==='bid' && <GlycolCalc />}
 
 
       <Row style={{ justifyContent:'space-between', marginTop:10 }}>

@@ -1808,6 +1808,15 @@ For EVERY item, capture pipe sizes, valve sizes, or other technical specifics EX
 
 Pay special attention to statements that explicitly say something must be included in the bid (e.g. "MAKE SURE THIS GETS IN YOUR BIDS") — always capture these as a "warn" flag, verbatim.
 
+SECONDARY GLYCOL LOOPS — a growing share of this work is not DX at all. A secondary system chills propylene glycol at a central barrel and pumps it to case coils, so there is NO suction line, NO liquid line and NO per-case refrigerant charge; there is a header out to the floor and back, and a valve set at every case. When the document describes one, capture:
+- the glycol CONCENTRATION and what it must protect to ("30% to 35% propylene glycol", "prevent freezing to 15F") and the supply/return temperatures — these set the fluid buy and the pipe sizing
+- pipe material and size for the loop (schedule 80 PVC, ABS, copper, pre-insulated), as fieldTasks or parts with the sizes exactly as written
+- INSULATION requirements verbatim — closed-cell elastomeric, wall thickness, vapor sealing. On a glycol loop this is on every foot of supply AND return, and it is one of the largest line items on the job
+- per-case devices: glycol balance valves, circuit setters (note if ELECTRONIC), liquid-line solenoid valves and their coil voltage
+- the chiller package: barrel/skid, condensers, brazed-plate or shell-and-tube heat exchangers, and how many circulation pumps (redundant pairs are common)
+- charging and commissioning steps as fieldTasks: hydrostatic test pressure and duration, flush, vacuum purge, blending to a refractometer reading, balancing to equal GPM, defrost strategy programming, redundant pump failover testing
+Glycol services are written HWS/HWR-style as GLY, GLYS/GLYR or simply "glycol supply/return" — treat them as piping scope, never as refrigerant lines.
+
 Do NOT invent dates — this document has none, leave date fields empty. Do NOT invent circuit IDs unless explicitly stated.
 
 Return ONLY valid JSON, no markdown:
