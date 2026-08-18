@@ -29,6 +29,8 @@ export default function GlycolCalc() {
 
   const [runs, setRuns] = useState([{ dia: 3, ft: 0 }, { dia: 2, ft: 0 }, { dia: 1, ft: 0 }, { dia: 0.75, ft: 0 }]);
   const [material, setMaterial] = useState('copper');
+  const [loopType, setLoopType] = useState('chilled');
+  const [freezeExposedFt, setFreezeExposedFt] = useState(0);
   const [pct, setPct] = useState(32);
   const [protectTo, setProtectTo] = useState(15);
   const [coilGal, setCoilGal] = useState(0);
@@ -47,6 +49,7 @@ export default function GlycolCalc() {
     runs: sized, material, pct,
     coilGal: Number(coilGal) || 0, tankGal: Number(tankGal) || 0,
     fixtures: Number(fixtures) || 0, fixtureSize, headerSize,
+    loopType, freezeExposedFt: Number(freezeExposedFt) || 0,
   }).map(l => {
     // Copper is priced by the shared table — the one scaled off the estimator's
     // own 3/4" quote — rather than a second number that could drift from it.
@@ -81,7 +84,7 @@ export default function GlycolCalc() {
 
   return (
     <Card style={{ background: colors.surface }}>
-      <SLabel>🧊 Secondary Glycol Loop</SLabel>
+      <SLabel>🧊 Secondary Loop — Glycol or Water</SLabel>
       <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
         A secondary loop has no suction or liquid line per case, so none of it comes out of the circuit table.
         What it does have: header out and back, <strong>insulation on every foot</strong>, a valve set at each case,
@@ -110,6 +113,33 @@ export default function GlycolCalc() {
         ))}
         <Btn variant="ghost" size="sm" onClick={() => { setRuns([...runs, { dia: 1, ft: 0 }]); setAdded(false); }}>+ Add size</Btn>
       </div>
+
+      <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>Loop type</span>
+          <Select value={loopType} onChange={e => { setLoopType(e.target.value); setAdded(false); }} style={{ width: 260 }}>
+            <option value="chilled">Chilled glycol — cold fluid to case coils</option>
+            <option value="water">Ambient water loop — self-contained cases</option>
+          </Select>
+        </div>
+        {loopType === 'water' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Freeze-exposed</span>
+            {num(freezeExposedFt, setFreezeExposedFt)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>ft</span>
+          </div>
+        )}
+      </Row>
+
+      {loopType === 'water' && (
+        <div style={{ fontSize: 12, marginBottom: 10, padding: '8px 12px', borderRadius: 8,
+          background: 'rgba(59,130,246,0.06)', border: `1px solid ${colors.blue}40`, color: colors.textDim }}>
+          A water loop runs at ambient and rejects heat — it does <strong>not</strong> get insulated, and the cases arrive
+          with their refrigerant sealed inside, so you run no refrigerant piping at all. Glycol here is
+          <strong> freeze protection for the outdoor run only</strong>, not the working fluid. The chiller barrel is
+          replaced by a fluid cooler, which is quoted rather than estimated.
+        </div>
+      )}
 
       <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

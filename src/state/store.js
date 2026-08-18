@@ -7,9 +7,22 @@ import { createContext, useContext, useReducer } from 'react';
 // costs — copper especially swings with the commodity market, so they're meant to
 // be reviewed and tuned per shop, not treated as gospel. Editable in the Materials
 // step, and reloadable there via "Load default prices".
+// Sizes above 3-1/8 are NOT decoration. A supermarket LOOP system — the layout
+// Kroger and Walmart run, where a large suction main circles the sales floor and
+// case lineups tap into it — carries 3-5/8, 4-1/8 and larger on its mains. The
+// table used to stop at 3-1/8, so a 4-1/8 suction main looked up to nothing and
+// priced at ZERO per foot: 300 ft of the largest copper on the job, free, with
+// the footage showing on screen the whole time.
+//
+// The large sizes continue the table's own curve rather than being invented.
+// ACR copper cost tracks the weight of metal in the tube, and the implied rate
+// in the existing rows falls steadily with size — $8.56/lb at 2-1/8, $8.07 at
+// 2-5/8, $7.52 at 3-1/8 — so the new rows are their ACR weight per foot at
+// $7.50/lb, which is where that curve was heading.
 export const DEFAULT_CU_RATES = {
   '1/4': 1.10, '3/8': 1.70, '1/2': 2.40, '5/8': 3.10, '7/8': 4.70,
   '1-1/8': 6.30, '1-3/8': 8.20, '1-5/8': 10.50, '2-1/8': 15.00, '2-5/8': 20.00, '3-1/8': 25.00,
+  '3-5/8': 32.00, '4-1/8': 40.00, '5-1/8': 57.00, '6-1/8': 77.00,
 };
 // Ballpark national pricing for generated hardware & consumables — same idea
 // as the copper table: a fresh job prices itself without hand-entering every
@@ -89,11 +102,11 @@ export function defaultHvacPrice(desc) {
 
 export const DEFAULT_INSUL_RATES = {
   // 1/2" wall Armaflex, medium-temp suction.
-  medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40 },
+  medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40, '3-5/8': 7.40, '4-1/8': 8.40, '5-1/8': 10.40, '6-1/8': 12.40 },
   // 3/4"–1" wall for low-temp suction — thicker, ~35% more.
-  lowSuction: { '1/4': 1.20, '3/8': 1.40, '1/2': 1.70, '5/8': 2.10, '7/8': 2.70, '1-1/8': 3.30, '1-3/8': 4.00, '1-5/8': 4.65, '2-1/8': 5.95, '2-5/8': 7.30, '3-1/8': 8.65 },
+  lowSuction: { '1/4': 1.20, '3/8': 1.40, '1/2': 1.70, '5/8': 2.10, '7/8': 2.70, '1-1/8': 3.30, '1-3/8': 4.00, '1-5/8': 4.65, '2-1/8': 5.95, '2-5/8': 7.30, '3-1/8': 8.65, '3-5/8': 10.00, '4-1/8': 11.35, '5-1/8': 14.05, '6-1/8': 16.75 },
   // Low-temp liquid lines — insulated but smaller sizes dominate.
-  lowLiquid: { '1/4': 0.95, '3/8': 1.10, '1/2': 1.35, '5/8': 1.65, '7/8': 2.15, '1-1/8': 2.60, '1-3/8': 3.15, '1-5/8': 3.70, '2-1/8': 4.70, '2-5/8': 5.75, '3-1/8': 6.85 },
+  lowLiquid: { '1/4': 0.95, '3/8': 1.10, '1/2': 1.35, '5/8': 1.65, '7/8': 2.15, '1-1/8': 2.60, '1-3/8': 3.15, '1-5/8': 3.70, '2-1/8': 4.70, '2-5/8': 5.75, '3-1/8': 6.85, '3-5/8': 7.95, '4-1/8': 9.05, '5-1/8': 11.25, '6-1/8': 13.45 },
 };
 
 // ── INITIAL STATE ──────────────────────────────────────────────────────────────

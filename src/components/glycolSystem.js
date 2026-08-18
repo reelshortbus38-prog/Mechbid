@@ -120,14 +120,20 @@ const nearest = (table, dia) => {
 //   fixtures    — cases and walk-in coils, each getting a valve set
 //   fixtureSize — the branch size at a case
 //   headerSize  — main size, for the air separator
-//   insulateAll — the spec says ALL supply and return; false prices supply only
+//   loopType    — 'chilled' (glycol out to case coils) | 'water' (ambient loop
+//                 rejecting heat from self-contained cases). A WATER loop runs
+//                 at ambient and is NOT insulated, so forcing insulation on it
+//                 was a five-figure overbid on a store's worth of pipe.
+//   insulateAll — chilled loops insulate supply AND return; false prices supply
+//                 only. Ignored on a water loop, which insulates neither.
 export function glycolMaterialLines(opts = {}) {
   const {
     runs = [], material = 'copper', pct = 32,
     coilGal = 0, tankGal = 0, overfillPct = 10,
     fixtures = 0, fixtureSize = 0.75, headerSize = 2,
-    insulateAll = true,
+    insulateAll = true, loopType = 'chilled', freezeExposedFt = 0,
   } = opts;
+  const isWater = loopType === 'water';
   const lines = [];
   const label = d => (d === 0.5 ? '1/2"' : d === 0.75 ? '3/4"' : d === 1.25 ? '1-1/4"' : d === 1.5 ? '1-1/2"' : d === 2.5 ? '2-1/2"' : `${d}"`);
   const sized = runs.filter(r => Number(r.ft) > 0 && Number(r.dia) > 0);
@@ -147,7 +153,11 @@ export function glycolMaterialLines(opts = {}) {
   // Insulation. The spec is explicit — vapor-sealed closed cell, 1" minimum, on
   // supply AND return, because a sweating line over open merchandise is a
   // failed job regardless of how well the loop performs.
-  const insFt = sized.reduce((s, r) => s + Math.ceil(Number(r.ft)), 0);
+  // A water loop runs at ambient — it does not sweat and it does not get
+  // insulated. That single difference is the largest number separating the two
+  // architectures: 2,800 ft of closed-cell is over $18,000 that a water loop
+  // does not owe.
+  const insFt = isWater ? 0 : sized.reduce((s, r) => s + Math.ceil(Number(r.ft)), 0);
   if (insFt > 0) {
     sized.forEach(r => {
       const dia = Number(r.dia), ft = Math.ceil(Number(r.ft)) * (insulateAll ? 1 : 0.5);
@@ -163,7 +173,13 @@ export function glycolMaterialLines(opts = {}) {
 
   // The fluid. The line nobody carries.
   const vol = systemVolumeGal(sized, { material, coilGal, tankGal });
-  const charge = glycolCharge(vol.totalGal, pct, { overfillPct });
+  // On a water loop the glycol is FREEZE PROTECTION for the outdoor portion, not
+  // the working fluid — charging the whole system volume would buy several times
+  // the glycol the job needs. Only the exposed footage counts.
+  const chargeVol = isWater
+    ? systemVolumeGal(sized.map(r => ({ ...r, ft: Math.min(Number(r.ft), Number(freezeExposedFt) || 0) })), { material }).pipeGal
+    : vol.totalGal;
+  const charge = glycolCharge(chargeVol, pct, { overfillPct });
   if (charge.concentrateGal > 0) {
     lines.push({
       key: 'pg', section: 'Glycol Charge',
@@ -211,9 +227,17 @@ export function glycolMaterialLines(opts = {}) {
       desc: 'Expansion tank — glycol rated, bladder type',
       qty: 1, unit: 'ea', defaultPrice: EXPANSION_TANK });
     lines.push({ key: 'feed', section: 'Loop Specialties',
-      desc: 'Glycol feed / makeup station — tank, pump, low-level alarm',
+      desc: `${isWater ? 'Loop' : 'Glycol'} feed / makeup station — tank, pump, low-level alarm`,
       qty: 1, unit: 'ea', defaultPrice: GLYCOL_FEED_STATION,
-      notes: 'makeup must be pre-mixed glycol, never plain water — topping up with water walks the concentration down' });
+      notes: isWater
+        ? 'water make-up; if the loop carries freeze protection, top up with pre-mixed fluid rather than plain water'
+        : 'makeup must be pre-mixed glycol, never plain water — topping up with water walks the concentration down' });
+    if (isWater) {
+      lines.push({ key: 'fluidcooler', section: 'Loop Specialties',
+        desc: 'Closed-circuit fluid cooler — heat rejection (VENDOR QUOTE)',
+        qty: 1, unit: 'ea', defaultPrice: 0,
+        notes: 'a water loop rejects heat rather than making cold — this replaces the chiller barrel, and it is quoted not estimated' });
+    }
   }
 
   return lines;

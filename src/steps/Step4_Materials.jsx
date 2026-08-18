@@ -4,6 +4,8 @@ import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
 import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
+import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
+import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -923,10 +925,16 @@ export default function Step4_Materials({ onNext, onBack }) {
     // name. The premium rides on whatever ACR rate the estimator has tuned.
     const hpMult = rates.hpPipeMultiplier ?? DEFAULT_HP_PIPE_MULTIPLIER;
     const hpNote = hpPipeNote(state.systemType, hpMult);
+    const unrated = unratedCopperSizes(Object.keys(copperBySize), rates);
     Object.entries(copperBySize).forEach(([size,footage])=>{
-      const rate=hpPipeRate(rates?.cu?.[size]||0, state.systemType, hpMult);
+      // Fall back to the CURRENT defaults for a size this job never copied —
+      // an old job picks up 3-5/8, 4-1/8 and larger without losing a rate it
+      // has tuned. A tuned zero is a decision and survives.
+      const look = copperRate(size, rates);
+      const rate=hpPipeRate(look.rate, state.systemType, hpMult);
       const qty=Math.ceil(footage*wasteFactor);
-      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,notes:hpNote||undefined});
+      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,
+        notes:[look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')||undefined});
     });
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
 
@@ -973,7 +981,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     function pushInsulLines(bySize, category, label) {
       Object.entries(bySize).forEach(([size, footage]) => {
         if (footage <= 0) return;
-        const r = rates?.insul?.[category]?.[size] || 0;
+        const r = insulRate(size, rates, category).rate;
         const q = Math.ceil(footage * wasteFactor);
         items.push({ id: uid(), section: 'Insulation', desc: `${size}" ${label}`, qty: q, unit: 'ft', unitCost: r, total: q * r, pipeSize: size, insulCategory: category });
       });
@@ -1075,6 +1083,17 @@ export default function Step4_Materials({ onNext, onBack }) {
       }
     });
 
+    // A size nothing can price is not a rounding error — it is free copper on
+    // screen. A 4-1/8 suction main on a loop system is 300+ ft of the largest
+    // pipe on the job, and it used to land in the total as nothing at all.
+    if (unrated.length) {
+      dispatch({ type:'MERGE', payload:{ flags: dedupeFlags([...(state.flags||[]), {
+        type:'error', source:'System',
+        text: `${unrated.length} copper size(s) have footage but NO RATE — ${unrated.map(u=>`${u}"`).join(', ')}. `
+          + 'Those lines are priced at $0 and are not in your total. Set a rate for each in the rates panel below '
+          + '(large sizes like 3-5/8 and 4-1/8 turn up on loop systems, where the shared suction main is the biggest run on the job).',
+      }]) } });
+    }
     dispatch({ type:'SET', key:'lineItems', value:items });
   }
 
