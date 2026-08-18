@@ -133,6 +133,11 @@ export const initialState = {
   // always notes regardless.
   taskBidMode: 'notes',
   circuits: [],
+  // Shared suction headers on a LOOP system — one pipe every circuit taps.
+  // Kept separate from circuits so it is bought ONCE: rolled into a circuit's
+  // run length it would be bought once per circuit.
+  // Shape: { id, label, size, lengthFt, lineType: 'suction'|'liquid', tempType }
+  headers: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
   supplyItems: [],
