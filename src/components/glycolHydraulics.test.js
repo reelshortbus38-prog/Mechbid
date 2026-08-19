@@ -141,3 +141,49 @@ describe('glycolHydraulics — the whole call', () => {
     expect(empty.velocity).toBeNull();
   });
 });
+
+// ── VALIDATED AGAINST A REAL ENGINEERED SCHEDULE ─────────────────────────────
+// Edmonds SD College Place, HYDRONIC PUMP SCHEDULE. Two selections made by the
+// engineer of record, with the flow, head and pump efficiency they were made
+// from. If MechBid cannot reproduce these, it is not ready to price a pump.
+describe('against the Edmonds SD College Place pump schedule', () => {
+  const SCHEDULE = [
+    { mark: 'HWP-01', gpm: 276, ft: 83, eff: 0.78, pct: 0, hp: 10 },
+    { mark: 'CWP-01', gpm: 455, ft: 125, eff: 0.75, pct: 20, hp: 25 },
+  ];
+
+  for (const r of SCHEDULE) {
+    it(`${r.mark} — ${r.gpm} GPM @ ${r.ft} ft selects the scheduled ${r.hp} HP`, () => {
+      const hp = pumpHorsepower(r.gpm, r.ft, { pct: r.pct, efficiency: r.eff });
+      expect(hp.motorHp).toBe(r.hp);
+    });
+
+    it(`${r.mark} — the bare next-size answer is one frame light, which is the bug`, () => {
+      const hp = pumpHorsepower(r.gpm, r.ft, { pct: r.pct, efficiency: r.eff });
+      expect(hp.minMotorHp).toBeLessThan(r.hp);
+      expect(NEMA_HP.indexOf(hp.motorHp) - NEMA_HP.indexOf(hp.minMotorHp)).toBe(1);
+    });
+  }
+
+  it('the brake horsepower itself was already right — only the frame lookup was wrong', () => {
+    expect(pumpHorsepower(276, 83, { pct: 0, efficiency: 0.78 }).bhp).toBeCloseTo(7.42, 2);
+    expect(pumpHorsepower(455, 125, { pct: 20, efficiency: 0.75 }).bhp).toBeCloseTo(19.44, 2);
+  });
+
+  it('a zero margin reproduces the old bare-frame behaviour, for comparison', () => {
+    const hp = pumpHorsepower(276, 83, { pct: 0, efficiency: 0.78, margin: 0 });
+    expect(hp.motorHp).toBe(7.5);
+    expect(hp.motorHp).toBe(hp.minMotorHp);
+  });
+
+  it('never selects below the design point, whatever the margin', () => {
+    for (const m of [0, 0.15, 0.5]) {
+      const hp = pumpHorsepower(455, 125, { pct: 20, efficiency: 0.75, margin: m });
+      expect(hp.motorHp).toBeGreaterThanOrEqual(hp.bhp);
+    }
+  });
+
+  it('reports the margin it used, so the number is not a black box', () => {
+    expect(pumpHorsepower(276, 83, { pct: 0, efficiency: 0.78 }).marginPct).toBe(15);
+  });
+});

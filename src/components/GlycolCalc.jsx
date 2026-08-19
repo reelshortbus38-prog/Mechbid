@@ -452,7 +452,13 @@ export default function GlycolCalc() {
           <div style={{ fontSize: 12, color: colors.textDim, fontFamily: "'DM Mono', monospace", lineHeight: 1.9 }}>
             <div><strong style={{ color: colors.green }}>{hyd.gpm} GPM</strong> — {hyd.extraFlowPct}% more than the {hyd.waterGpm} GPM the same load would need on water</div>
             {hyd.head && <div>head {hyd.head.totalFt} ft ({hyd.head.frictionFt} friction over {hyd.head.developedFt} ft developed + {hyd.head.componentFt} equipment)</div>}
-            {hyd.hp && <div><strong style={{ color: colors.green }}>{hyd.hp.motorHp} HP</strong> motor ({hyd.hp.bhp} bhp) × {hyd.pumpCount} — the spec calls for dual redundant pumps</div>}
+            {hyd.hp && (
+              <div>
+                <strong style={{ color: colors.green }}>{hyd.hp.motorHp} HP</strong> motor ({hyd.hp.bhp} bhp
+                {hyd.hp.motorHp !== hyd.hp.minMotorHp && <> · {hyd.hp.minMotorHp} HP would clear the design point, {hyd.hp.marginPct}% non-overloading margin buys the next frame</>}
+                ) × {hyd.pumpCount} — the spec calls for dual redundant pumps
+              </div>
+            )}
             {hyd.velocityVerdict && (
               <div style={{ color: hyd.velocityVerdict.ok ? colors.textDim : colors.red }}>
                 {hyd.velocityVerdict.ok ? '✓' : '⚠'} {hyd.velocity} ft/s in the {label(mainId)} main — {hyd.velocityVerdict.why}
