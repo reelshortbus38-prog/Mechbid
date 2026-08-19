@@ -172,6 +172,9 @@ export const DEFAULT_INSUL_RATES = {
 // preferredSupplier starts as 'RE Michel' here for safety (this module can't import
 // from components/PriceBook.jsx without a circular import risk). Wizard.jsx applies
 // the real global default on RESET/new job — see applyDefaultSupplier() usage there.
+export const OOT_BASES = ['crew', 'person'];
+export const DEFAULT_OOT_BASIS = 'crew';
+
 export const initialState = {
   mode: 'Commercial Refrigeration',
   // Refrigeration system type. CO₂ transcritical (R-744) uses K65 copper-iron
@@ -249,6 +252,12 @@ export const initialState = {
   // job length — "4 guys for 27 weeks" — the way many shops actually bid it.
   laborMode: 'periods',
   flatJob: { crew: [], weeks: 0, daysPerWeek: 5, ootPerDay: 0 },
+  // Out-of-town expense. `outOfTown: false` zeroes it for an in-town job
+  // without wiping the per-day figure, so a similar travelling job can be
+  // copied and switched back on. See ootCost() for why the basis defaults the
+  // way it does.
+  outOfTown: true,
+  ootBasis: DEFAULT_OOT_BASIS,
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
@@ -567,8 +576,49 @@ export function importJobsJSON(text) {
   return count;
 }
 
+// ── OUT-OF-TOWN EXPENSE ──────────────────────────────────────────────────────
+// Out-of-town cost was `ootPerDay × days`, with the crew size nowhere in it. On
+// a whole-job crew of four running 27 weeks that is $20,250 where the real
+// number is $81,000 — an estimator typing "150" means per diem, and per diem is
+// per person per day. GSA publishes it per person, union agreements pay it per
+// person, and the IRS treats it per person. Four men do not share a hotel room.
+//
+// BOTH BASES ARE REAL, WHICH IS WHY THIS IS A CHOICE AND NOT A MIGRATION.
+// A lump travel allowance, or one truck and one hotel bill carried as a daily
+// figure, genuinely is per crew-day. So the basis is stated rather than assumed.
+//
+// THE DEFAULT STAYS ON THE OLD BEHAVIOUR ON PURPOSE. Jobs load as
+// { ...initialState, ...saved }, so any default put here reaches every bid
+// already saved. Defaulting to per-person would silently add tens of thousands
+// to open bids nobody reopened. The Labor step shows both numbers side by side
+// and the estimator makes the call.
+
+// Who is actually away. A member is travelling unless explicitly marked not —
+// a crew entered before this existed is all-travelling, which is what the
+// entered figure assumed.
+export function crewTravelCount(crew) {
+  return (crew || []).filter(m => m && m.travels !== false).length;
+}
+
+export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, outOfTown = true } = {}) {
+  if (outOfTown === false) return 0;
+  const per = parseFloat(ootPerDay) || 0;
+  const d = parseFloat(days) || 0;
+  if (!(per > 0) || !(d > 0)) return 0;
+  if (ootBasis === 'person') return per * d * crewTravelCount(crew);
+  return per * d;
+}
+
+// The one place the job's OOT settings are read, so every caller agrees.
+export function ootOpts(state) {
+  return {
+    ootBasis: state?.ootBasis || DEFAULT_OOT_BASIS,
+    outOfTown: state?.outOfTown !== false,
+  };
+}
+
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
-export function calcLaborPeriodCost(period) {
+export function calcLaborPeriodCost(period, opts = {}) {
   // Each crew member contributes rate × their own hours/day. hrsPerDay defaults
   // to 8 so existing periods are unchanged, but a 10-hour day now actually costs
   // a 10-hour day (previously hrsPerDay was stored and ignored — always ×8).
@@ -577,14 +627,14 @@ export function calcLaborPeriodCost(period) {
   const otMult = parseFloat(period.otMult) || 1;
   const nightMult = period.isNight ? (parseFloat(period.nightMult) || 1.5) : 1;
   const days = parseFloat(period.days) || 0;
-  const oot = (parseFloat(period.ootPerDay) || 0) * days;
+  const oot = ootCost(days, period.ootPerDay, period.crew, opts);
   const labor = crewDayRate * days * otMult * nightMult;
   return { labor, oot, total: labor + oot };
 }
 
-export function calcTotalLabor(laborPeriods) {
+export function calcTotalLabor(laborPeriods, opts = {}) {
   return (laborPeriods || []).reduce((s, p) => {
-    const { total } = calcLaborPeriodCost(p);
+    const { total } = calcLaborPeriodCost(p, opts);
     return s + total;
   }, 0);
 }
@@ -593,13 +643,13 @@ export function calcTotalLabor(laborPeriods) {
 // "4 guys for 27 weeks" — one crew carried for the full job length instead of
 // phase-by-phase periods. Cost = per-man day rate (rate × hrs/day) × total
 // days (weeks × days per week), plus out-of-town per day.
-export function calcFlatJobCost(flat) {
+export function calcFlatJobCost(flat, opts = {}) {
   const f = flat || {};
   const days = (parseFloat(f.weeks) || 0) * (parseFloat(f.daysPerWeek) || 5);
   const crewDayRate = (f.crew || []).reduce(
     (s, m) => s + (parseFloat(m.rate) || 0) * (parseFloat(m.hrsPerDay) || 8), 0);
   const labor = crewDayRate * days;
-  const oot = (parseFloat(f.ootPerDay) || 0) * days;
+  const oot = ootCost(days, f.ootPerDay, f.crew, opts);
   return { days, labor, oot, total: labor + oot };
 }
 
@@ -607,10 +657,14 @@ export function calcFlatJobCost(flat) {
 // and the rack/field task costing use, so switching labor modes moves the
 // entire bid consistently (rack and field tasks price off whichever crew is
 // actually bid, flat or first-period).
+// Labor total INCLUDES out-of-town — the bid engine backs it out again to show
+// it as its own category. Both halves must therefore read the same basis, or
+// `labor = laborTotal - oot` silently understates labor by the difference.
 export function jobLaborTotal(state) {
+  const o = ootOpts(state);
   return state?.laborMode === 'flat'
-    ? calcFlatJobCost(state.flatJob).total
-    : calcTotalLabor(state?.laborPeriods);
+    ? calcFlatJobCost(state.flatJob, o).total
+    : calcTotalLabor(state?.laborPeriods, o);
 }
 
 export function jobCrew(state) {
@@ -622,8 +676,31 @@ export function jobCrew(state) {
 // Out-of-town expenses across the whole job, mode-aware. Food Lion bid
 // letters require OOT broken out as its own category, separate from labor.
 export function jobOOTTotal(state) {
-  if (state?.laborMode === 'flat') return calcFlatJobCost(state?.flatJob).oot;
-  return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p).oot, 0);
+  const o = ootOpts(state);
+  if (state?.laborMode === 'flat') return calcFlatJobCost(state?.flatJob, o).oot;
+  return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p, o).oot, 0);
+}
+
+// ── WHAT THE OTHER BASIS WOULD COST ──────────────────────────────────────────
+// The number an estimator needs in order to choose, rather than a prompt asking
+// them to think about it in the abstract. Returns null when the two bases give
+// the same answer — a one-man crew, or nothing entered — because there is
+// nothing to decide then.
+export function ootBasisComparison(state) {
+  if (state?.outOfTown === false) return null;
+  const basis = state?.ootBasis || DEFAULT_OOT_BASIS;
+  const other = basis === 'person' ? 'crew' : 'person';
+  const current = jobOOTTotal(state);
+  const asOther = jobOOTTotal({ ...state, ootBasis: other });
+  if (current === asOther) return null;
+  const crew = jobCrew(state);
+  return {
+    basis, other,
+    current, asOther,
+    delta: asOther - current,
+    travelers: crewTravelCount(crew),
+    crewSize: (crew || []).length,
+  };
 }
 
 export function calcMaterialsTotal(lineItems) {

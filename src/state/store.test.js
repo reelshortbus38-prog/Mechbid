@@ -5,6 +5,8 @@ import {
   calcLaborPeriodCost, calcRackTaskCost, calcRackLaborTotal,
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
   estimateCircuitLabor, DEFAULT_LABOR_UNITS, defaultHvacPrice,
+  ootCost, crewTravelCount, ootBasisComparison, jobOOTTotal,
+  calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -218,5 +220,153 @@ describe('saveJob failure reporting', () => {
     saveJob({ projName: 'J', uploadedFiles: [{ id: '1', name: 'plan.pdf', previewUrl: 'blob:http://x/y' }] });
     expect(written).toContain('plan.pdf');
     expect(written).not.toContain('blob:');
+  });
+});
+
+// ── OUT-OF-TOWN EXPENSE ──────────────────────────────────────────────────────
+describe('out-of-town expense', () => {
+  const CREW = [{ rate: 100 }, { rate: 75 }, { rate: 75 }, { rate: 50 }];
+
+  it('per person is what per diem actually is, and it is four times the old number', () => {
+    // 27 weeks × 5 days = 135 days, crew of four, $150/day entered.
+    expect(ootCost(135, 150, CREW, { ootBasis: 'crew' })).toBe(20250);
+    expect(ootCost(135, 150, CREW, { ootBasis: 'person' })).toBe(81000);
+  });
+
+  it('defaults to the old basis, so no saved bid reprices itself', () => {
+    // Jobs load as { ...initialState, ...saved }, so a default here reaches
+    // every bid already on disk.
+    expect(DEFAULT_OOT_BASIS).toBe('crew');
+    expect(initialState.ootBasis).toBe('crew');
+    expect(ootCost(135, 150, CREW)).toBe(20250);
+  });
+
+  it('an in-town job costs nothing without wiping the per-day figure', () => {
+    expect(ootCost(135, 150, CREW, { ootBasis: 'person', outOfTown: false })).toBe(0);
+    expect(ootCost(135, 150, CREW, { ootBasis: 'crew', outOfTown: false })).toBe(0);
+  });
+
+  it('counts only the crew actually away', () => {
+    const mixed = [{ rate: 100 }, { rate: 75, travels: false }, { rate: 75 }, { rate: 50, travels: false }];
+    expect(crewTravelCount(mixed)).toBe(2);
+    expect(ootCost(135, 150, mixed, { ootBasis: 'person' })).toBe(40500);
+  });
+
+  it('treats a crew entered before travel flags existed as all travelling', () => {
+    // Which is what the figure they typed assumed.
+    expect(crewTravelCount(CREW)).toBe(4);
+  });
+
+  it('is zero when nothing was entered, on either basis', () => {
+    expect(ootCost(135, 0, CREW, { ootBasis: 'person' })).toBe(0);
+    expect(ootCost(0, 150, CREW, { ootBasis: 'person' })).toBe(0);
+    expect(ootCost(135, 150, [], { ootBasis: 'person' })).toBe(0);
+  });
+
+  it('flows through a labor period', () => {
+    const period = { crew: CREW, days: 10, ootPerDay: 150 };
+    expect(calcLaborPeriodCost(period, { ootBasis: 'crew' }).oot).toBe(1500);
+    expect(calcLaborPeriodCost(period, { ootBasis: 'person' }).oot).toBe(6000);
+  });
+
+  it('flows through a flat whole-job crew', () => {
+    const flat = { crew: CREW, weeks: 27, daysPerWeek: 5, ootPerDay: 150 };
+    expect(calcFlatJobCost(flat, { ootBasis: 'crew' }).oot).toBe(20250);
+    expect(calcFlatJobCost(flat, { ootBasis: 'person' }).oot).toBe(81000);
+  });
+
+  it('does not touch the labor figure either way', () => {
+    const period = { crew: CREW, days: 10, ootPerDay: 150 };
+    const a = calcLaborPeriodCost(period, { ootBasis: 'crew' });
+    const b = calcLaborPeriodCost(period, { ootBasis: 'person' });
+    expect(a.labor).toBe(b.labor);
+    expect(b.total - a.total).toBe(b.oot - a.oot);
+  });
+
+  it('reads the job total on whichever basis the job is set to', () => {
+    const state = { laborMode: 'flat', flatJob: { crew: CREW, weeks: 27, daysPerWeek: 5, ootPerDay: 150 } };
+    expect(jobOOTTotal({ ...state, ootBasis: 'crew' })).toBe(20250);
+    expect(jobOOTTotal({ ...state, ootBasis: 'person' })).toBe(81000);
+    expect(jobOOTTotal({ ...state, ootBasis: 'person', outOfTown: false })).toBe(0);
+  });
+
+  it('sums OOT across phased periods', () => {
+    const state = {
+      laborMode: 'periods', ootBasis: 'person',
+      laborPeriods: [
+        { crew: CREW, days: 10, ootPerDay: 150 },
+        { crew: [{ rate: 100 }, { rate: 75 }], days: 5, ootPerDay: 150 },
+      ],
+    };
+    expect(jobOOTTotal(state)).toBe(6000 + 1500);
+  });
+});
+
+describe('what the other basis would cost', () => {
+  const CREW = [{ rate: 100 }, { rate: 75 }, { rate: 75 }, { rate: 50 }];
+  const state = {
+    laborMode: 'flat', ootBasis: 'crew',
+    flatJob: { crew: CREW, weeks: 27, daysPerWeek: 5, ootPerDay: 150 },
+  };
+
+  it('shows the estimator the number rather than asking them to imagine it', () => {
+    const c = ootBasisComparison(state);
+    expect(c.current).toBe(20250);
+    expect(c.asOther).toBe(81000);
+    expect(c.delta).toBe(60750);
+    expect(c.travelers).toBe(4);
+  });
+
+  it('works in the other direction too', () => {
+    const c = ootBasisComparison({ ...state, ootBasis: 'person' });
+    expect(c.current).toBe(81000);
+    expect(c.asOther).toBe(20250);
+    expect(c.delta).toBe(-60750);
+  });
+
+  it('says nothing on a one-man crew, where the two bases agree', () => {
+    const solo = { ...state, flatJob: { ...state.flatJob, crew: [{ rate: 100 }] } };
+    expect(ootBasisComparison(solo)).toBeNull();
+  });
+
+  it('says nothing when no out-of-town figure was entered', () => {
+    const none = { ...state, flatJob: { ...state.flatJob, ootPerDay: 0 } };
+    expect(ootBasisComparison(none)).toBeNull();
+  });
+
+  it('says nothing on an in-town job — there is no choice to make', () => {
+    expect(ootBasisComparison({ ...state, outOfTown: false })).toBeNull();
+  });
+});
+
+describe('the bid decomposition holds on either basis', () => {
+  const CREW = [{ rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }];
+  const base = { laborMode: 'flat', flatJob: { crew: CREW, weeks: 27, daysPerWeek: 5, ootPerDay: 150 } };
+
+  // bidTotals shows labor and out-of-town as separate categories, computing
+  // labor as (labor total MINUS oot). If those two read different bases the
+  // difference vanishes out of the bid without anything on screen saying so.
+  for (const ootBasis of ['crew', 'person']) {
+    it(`labor total minus OOT is pure labor on the ${ootBasis} basis`, () => {
+      const state = { ...base, ootBasis };
+      const pureLabor = jobLaborTotal(state) - jobOOTTotal(state);
+      // 4 men × 8 h × their rates × 135 days, with no travel in it at all.
+      const expected = CREW.reduce((s, m) => s + m.rate * m.hrsPerDay, 0) * 135;
+      expect(pureLabor).toBeCloseTo(expected, 6);
+    });
+  }
+
+  it('switching basis moves the bid by exactly the OOT difference, not more', () => {
+    const asCrew = { ...base, ootBasis: 'crew' };
+    const asPerson = { ...base, ootBasis: 'person' };
+    const laborDelta = jobLaborTotal(asPerson) - jobLaborTotal(asCrew);
+    const ootDelta = jobOOTTotal(asPerson) - jobOOTTotal(asCrew);
+    expect(laborDelta).toBe(ootDelta);
+  });
+
+  it('an in-town job carries labor and no travel', () => {
+    const state = { ...base, ootBasis: 'person', outOfTown: false };
+    expect(jobOOTTotal(state)).toBe(0);
+    expect(jobLaborTotal(state)).toBe(CREW.reduce((s, m) => s + m.rate * m.hrsPerDay, 0) * 135);
   });
 });

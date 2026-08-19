@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -53,7 +53,10 @@ function periodHasData(period) {
 
 function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNames = REFRIG_PERIOD_NAMES }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const { labor, oot, total } = calcLaborPeriodCost(period);
+  // Costed on the JOB's out-of-town basis, so this card and the bid total
+  // cannot disagree about what a per-day figure means.
+  const { state: jobState } = useStore();
+  const { labor, oot, total } = calcLaborPeriodCost(period, ootOpts(jobState));
 
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -156,6 +159,7 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
             <CrewBuilder
               crew={period.crew}
               onChange={crew => onUpdate('crew', crew)}
+              showTravel={jobState.outOfTown !== false && (jobState.ootBasis || 'crew') === 'person'}
             />
           </div>
 
@@ -364,10 +368,14 @@ export default function Step5_Labor({ onNext, onBack }) {
 
   const laborMode = state.laborMode || 'periods';
   const flat = state.flatJob || { crew: [], weeks: 0, daysPerWeek: 5, ootPerDay: 0 };
-  const flatCost = calcFlatJobCost(flat);
+  const ootO = ootOpts(state);
+  const flatCost = calcFlatJobCost(flat, ootO);
   const totalLabor = jobLaborTotal(state);
   const totalDays = laborMode === 'flat' ? flatCost.days : state.laborPeriods.reduce((s, p) => s + (parseFloat(p.days) || 0), 0);
-  const totalOOT = laborMode === 'flat' ? flatCost.oot : state.laborPeriods.reduce((s, p) => s + (parseFloat(p.ootPerDay) || 0) * (parseFloat(p.days) || 0), 0);
+  // Was recomputing per-day x days inline and so ignored both the basis and the
+  // in-town switch — the header read one number while the bid carried another.
+  const totalOOT = jobOOTTotal(state);
+  const ootCompare = ootBasisComparison(state);
   const totalPeople = laborMode === 'flat' ? flat.crew.length : Math.max(...state.laborPeriods.map(p => p.crew.length), 0);
 
   function setFlat(updates) {
@@ -398,6 +406,73 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* ── Out-of-town expense: is it a travelling job, and per what? ── */}
+      <Card>
+        <SLabel>✈️ Out-of-Town Expense</SLabel>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 10 }}>
+          {[
+            { k: true, label: '✈️ Travelling job', desc: 'Per diem, lodging — carried as its own bid category' },
+            { k: false, label: '🏠 In town', desc: 'No travel expense. The per-day figure is kept, just not charged' },
+          ].map(o => (
+            <button key={String(o.k)} onClick={() => dispatch({ type: 'SET', key: 'outOfTown', value: o.k })}
+              style={{ flex: 1, padding: '12px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                border: `2px solid ${(state.outOfTown !== false) === o.k ? colors.green : colors.border}`,
+                background: (state.outOfTown !== false) === o.k ? colors.greenFaint : colors.card2 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: (state.outOfTown !== false) === o.k ? colors.green : colors.text }}>{o.label}</div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>{o.desc}</div>
+            </button>
+          ))}
+        </div>
+
+        {state.outOfTown !== false && (
+          <>
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>The $/day figure is…</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {[
+                { k: 'person', label: 'Per person, per day', desc: 'What per diem is. Four men do not share a room' },
+                { k: 'crew', label: 'Per crew, per day', desc: 'A lump travel allowance, or one truck and one bill' },
+              ].map(o => (
+                <button key={o.k} onClick={() => dispatch({ type: 'SET', key: 'ootBasis', value: o.k })}
+                  style={{ flex: 1, padding: '10px 12px', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
+                    border: `2px solid ${(state.ootBasis || 'crew') === o.k ? colors.green : colors.border}`,
+                    background: (state.ootBasis || 'crew') === o.k ? colors.greenFaint : colors.card2 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: (state.ootBasis || 'crew') === o.k ? colors.green : colors.text }}>{o.label}</div>
+                  <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>{o.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {ootCompare && (
+              <div style={{ fontSize: 12, lineHeight: 1.6, padding: '10px 12px', borderRadius: 8,
+                background: ootCompare.basis === 'crew' ? 'rgba(234,179,8,0.07)' : 'rgba(34,197,94,0.06)',
+                border: `1px solid ${(ootCompare.basis === 'crew' ? colors.yellow : colors.green)}40`,
+                color: colors.textDim }}>
+                <strong style={{ color: ootCompare.basis === 'crew' ? colors.yellow : colors.green }}>
+                  {ootCompare.basis === 'crew' ? '⚠' : '✓'} This job carries {fmt(ootCompare.current)} of out-of-town
+                  {' '}— per {ootCompare.basis === 'crew' ? 'crew' : 'person'}, per day
+                </strong>
+                <br />
+                On the other basis it is <strong>{fmt(ootCompare.asOther)}</strong>, a difference of{' '}
+                <strong style={{ color: ootCompare.delta > 0 ? colors.red : colors.green }}>
+                  {ootCompare.delta > 0 ? '+' : ''}{fmt(ootCompare.delta)}
+                </strong>{' '}
+                across {ootCompare.travelers} travelling of {ootCompare.crewSize} on the crew.
+                {ootCompare.basis === 'crew' && (
+                  <> Per diem is normally per person — if that figure is a hotel and meals rate, this bid is short.</>
+                )}
+              </div>
+            )}
+
+            {crewTravelCount(jobCrew(state)) < (jobCrew(state) || []).length && (
+              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8 }}>
+                {crewTravelCount(jobCrew(state))} of {(jobCrew(state) || []).length} on the crew are marked as
+                travelling — untick a man in the crew list to leave him off per diem.
+              </div>
+            )}
+          </>
+        )}
+      </Card>
 
       {/* How labor is bid: one crew for the whole job, or phase-by-phase. */}
       <div>
@@ -441,7 +516,8 @@ export default function Step5_Labor({ onNext, onBack }) {
           </div>
 
           <SLabel>Crew ({flat.crew.length})</SLabel>
-          <CrewBuilder crew={flat.crew} onChange={crew => setFlat({ crew })} />
+          <CrewBuilder crew={flat.crew} onChange={crew => setFlat({ crew })}
+            showTravel={state.outOfTown !== false && (state.ootBasis || 'crew') === 'person'} />
 
           {flatCost.total > 0 && (
             <>

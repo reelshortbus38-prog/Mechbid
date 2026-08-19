@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
@@ -53,7 +53,10 @@ const RES_LABOR_PERIOD_NAMES = ['Installation Day','Startup & Commissioning','Se
 // ── RESIDENTIAL LABOR ─────────────────────────────────────────────────────────
 function ResLaborPeriodCard({ period, onUpdate, onRemove }) {
   const [expanded, setExpanded] = useState(true);
-  const { labor, oot, total } = calcLaborPeriodCost(period);
+  // Costed on the JOB's out-of-town basis, so this card and the bid total
+  // cannot disagree about what a per-day figure means.
+  const { state: jobState } = useStore();
+  const { labor, oot, total } = calcLaborPeriodCost(period, ootOpts(jobState));
 
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -242,7 +245,7 @@ function ResidentialEquipment({ onNext, onBack }) {
   const equipTotal = equipment.reduce((s,e) => s+(e.cost||0), 0);
   const partsTotal = parts.reduce((s,p) => s+(p.total||0), 0);
   const markupPct = state.markupPct || 20;
-  const laborTotal = calcTotalLabor(laborPeriods);
+  const laborTotal = calcTotalLabor(laborPeriods, ootOpts(state));
   // One engine for the money: this preview previously did its own flat-markup
   // math (no tax, no split equipment markup), so its "Total Bid" could disagree
   // with the Proposal step's number for the same job.
