@@ -1185,7 +1185,9 @@ export default function Step4_Materials({ onNext, onBack }) {
 // every time you land on this step. Insulation categories are independently
 // collapsible inside here too, since the per-size rate grid (9 sizes × 3
 // categories = 27 inputs) is the single biggest source of clutter on this page.
-const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
+// Must reach as far as the rate table does, or the large sizes have rates
+// nobody can see or edit — which is how a wrong number survives.
+const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8','3-5/8','4-1/8','5-1/8','6-1/8'];
 const INSUL_CATEGORIES = [
   { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
   { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },

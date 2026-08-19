@@ -7,22 +7,33 @@ import { createContext, useContext, useReducer } from 'react';
 // costs — copper especially swings with the commodity market, so they're meant to
 // be reviewed and tuned per shop, not treated as gospel. Editable in the Materials
 // step, and reloadable there via "Load default prices".
-// Sizes above 3-1/8 are NOT decoration. A supermarket LOOP system — the layout
-// Kroger and Walmart run, where a large suction main circles the sales floor and
-// case lineups tap into it — carries 3-5/8, 4-1/8 and larger on its mains. The
-// table used to stop at 3-1/8, so a 4-1/8 suction main looked up to nothing and
-// priced at ZERO per foot: 300 ft of the largest copper on the job, free, with
-// the footage showing on screen the whole time.
+// ACR COPPER, $/ft. Replaced 2026-08-19 from supplier pricing the estimator
+// pulled for the Virginia market (United Refrigeration / Bond / Southern Pipe
+// territory). The previous table was roughly a THIRD of these — old enough that
+// every refrigeration bid built on it was materially light.
 //
-// The large sizes continue the table's own curve rather than being invented.
-// ACR copper cost tracks the weight of metal in the tube, and the implied rate
-// in the existing rows falls steadily with size — $8.56/lb at 2-1/8, $8.07 at
-// 2-5/8, $7.52 at 3-1/8 — so the new rows are their ACR weight per foot at
-// $7.50/lb, which is where that curve was heading.
+// Six sizes were quoted as ranges and are the MIDPOINT of each:
+//   3/8 $4.50-5.50 · 1/2 $5-7 · 5/8 $7.50-9 · 7/8 $9-11 · 1-1/8 $15-21
+//   and "2-1/8 and up" opening at $38.
+//
+// The rest are derived, not invented. Copper cost tracks the weight of metal in
+// the tube, so the gaps interpolate on ACR weight per foot between the two
+// quoted sizes that bracket them, and everything above 2-1/8 scales at that
+// size's implied $21.70/lb. Sanity check on that: it puts 3-5/8 at $93, inside
+// the "$38 to $105+" band the same source gives for the large diameters.
+//
+// The implied $/lb FALLS as the tube grows — $37/lb at 3/8, $22/lb at 2-1/8 —
+// which is real: small tube carries coil and handling overhead that a hard
+// length of 2-1/8 does not.
+//
+// These are a market snapshot, not a quote. Copper moves, and the ranges behind
+// the small sizes are wide (1-1/8 spans $15 to $21, a 40% spread). Correct any
+// row in the rates panel; an existing job keeps whatever it has already tuned,
+// and "Load default prices" pulls this table in fresh.
 export const DEFAULT_CU_RATES = {
-  '1/4': 1.10, '3/8': 1.70, '1/2': 2.40, '5/8': 3.10, '7/8': 4.70,
-  '1-1/8': 6.30, '1-3/8': 8.20, '1-5/8': 10.50, '2-1/8': 15.00, '2-5/8': 20.00, '3-1/8': 25.00,
-  '3-5/8': 32.00, '4-1/8': 40.00, '5-1/8': 57.00, '6-1/8': 77.00,
+  '1/4': 3.00, '3/8': 5.00, '1/2': 6.00, '5/8': 8.25, '7/8': 10.00,
+  '1-1/8': 18.00, '1-3/8': 22.00, '1-5/8': 27.00, '2-1/8': 38.00, '2-5/8': 54.00, '3-1/8': 72.00,
+  '3-5/8': 93.00, '4-1/8': 117.00, '5-1/8': 165.00, '6-1/8': 221.00,
 };
 // Ballpark national pricing for generated hardware & consumables — same idea
 // as the copper table: a fresh job prices itself without hand-entering every
