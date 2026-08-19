@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   FLOW_CONSTANT, NEMA_HP, VELOCITY_MIN, VELOCITY_MAX,
   flowConstant, glycolGpm, waterGpm, velocityFtSec, velocityVerdict,
-  pumpHead, pumpHorsepower, glycolHydraulics,
+  pumpHead, pumpHorsepower, glycolHydraulics, psiToFt, checkDpAgainstBranch,
 } from './glycolHydraulics.js';
 
 // The familiar rule is GPM = BTU/hr ÷ (500 × ΔT), and that 500 is a WATER
@@ -185,5 +185,89 @@ describe('against the Edmonds SD College Place pump schedule', () => {
 
   it('reports the margin it used, so the number is not a black box', () => {
     expect(pumpHorsepower(276, 83, { pct: 0, efficiency: 0.78 }).marginPct).toBe(15);
+  });
+});
+
+// ── THE REMOTE DP TERM, FOUND BY DECOMPOSING A REAL SELECTION ────────────────
+// Edmonds SD College Place, sheet M10.06 — HYDRONIC WATER SYSTEM RISER DIAGRAM
+// AND CONTROL SEQUENCE. HWP-01 is scheduled 276 GPM at 83 ft; the sequence sets
+// "HW Differential Pressure STPT ... initially set from 8-12 PSI".
+describe('maintained remote differential pressure', () => {
+  it('converts a PSI setpoint to feet', () => {
+    expect(psiToFt(8)).toBeCloseTo(18.5, 1);
+    expect(psiToFt(12)).toBeCloseTo(27.7, 1);
+    expect(psiToFt(0)).toBe(0);
+    expect(psiToFt('')).toBe(0);
+  });
+
+  it('accounts for the gap between the old model and the scheduled 83 ft', () => {
+    // Plant equipment off the schedules: air separator 3.0 + boiler 1.0 + say 1.
+    const PLANT = 5;
+    for (const psi of [8, 12]) {
+      const withDp = pumpHead(0, { componentHeadFt: PLANT, remoteDpFt: psiToFt(psi) });
+      const distribution = 83 - withDp.totalFt;
+      // What is left over for distribution friction stays a sane number —
+      // it does not go negative, and it does not swallow the whole 83 ft.
+      expect(distribution).toBeGreaterThan(45);
+      expect(distribution).toBeLessThan(65);
+    }
+  });
+
+  it('omitting it selects one motor frame light — the actual consequence', () => {
+    const PLANT = 5, FRICTION = 55;
+    const withDp = PLANT + FRICTION + psiToFt(10);
+    const withoutDp = PLANT + FRICTION;
+    const right = pumpHorsepower(276, withDp, { pct: 0, efficiency: 0.78 });
+    const wrong = pumpHorsepower(276, withoutDp, { pct: 0, efficiency: 0.78 });
+    expect(right.motorHp).toBe(10);       // what the engineer scheduled
+    expect(wrong.motorHp).toBe(7.5);      // what the app used to produce
+  });
+
+  it('adds into the head breakdown and is reported separately', () => {
+    const h = pumpHead(600, { componentHeadFt: 5, remoteDpFt: 23 });
+    expect(h.remoteDpFt).toBe(23);
+    expect(h.componentFt).toBe(5);
+    expect(h.totalFt).toBeCloseTo(h.frictionFt + 5 + 23, 1);
+  });
+
+  it('is enough on its own to produce a head — a short loop is still DP-controlled', () => {
+    expect(pumpHead(0, { remoteDpFt: 23 }).totalFt).toBe(23);
+  });
+
+  it('still returns null when there is nothing at all', () => {
+    expect(pumpHead(0, {})).toBeNull();
+    expect(pumpHead(0, { remoteDpFt: 0, componentHeadFt: 0 })).toBeNull();
+  });
+
+  it('flows through glycolHydraulics', () => {
+    const a = glycolHydraulics({ btuh: 900000, deltaT: 8, longestPathFt: 600, componentHeadFt: 5 });
+    const b = glycolHydraulics({ btuh: 900000, deltaT: 8, longestPathFt: 600, componentHeadFt: 5, remoteDpFt: 23 });
+    expect(b.head.totalFt).toBeCloseTo(a.head.totalFt + 23, 1);
+    expect(b.hp.bhp).toBeGreaterThan(a.hp.bhp);
+  });
+});
+
+describe('DP setpoint and itemised branch are the same quantity', () => {
+  it('agrees when they describe the same worst branch', () => {
+    // 10 PSI = 23.1 ft against an itemised coil 8 + CV 8 + setter 5 + strainer
+    // 3 + isolation 1.5 = 25.5 ft.
+    const c = checkDpAgainstBranch(psiToFt(10), 25.5);
+    expect(c.agree).toBe(true);
+  });
+
+  it('disagrees when one of them is plainly wrong', () => {
+    expect(checkDpAgainstBranch(psiToFt(10), 3).agree).toBe(false);
+    expect(checkDpAgainstBranch(psiToFt(2), 25.5).agree).toBe(false);
+  });
+
+  it('names the amount that would be counted twice', () => {
+    const c = checkDpAgainstBranch(23.1, 25.5);
+    expect(c.doubleCountFt).toBe(23.1);
+  });
+
+  it('says nothing when only one of them was supplied — the normal case', () => {
+    expect(checkDpAgainstBranch(23, 0)).toBeNull();
+    expect(checkDpAgainstBranch(0, 25)).toBeNull();
+    expect(checkDpAgainstBranch(0, 0)).toBeNull();
   });
 });
