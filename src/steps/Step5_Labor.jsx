@@ -397,7 +397,8 @@ export default function Step5_Labor({ onNext, onBack }) {
   function applyOtThreshold() {
     const fix = u => ({
       ...u,
-      otAfterHours: parseFloat(u.otAfterHours) > 0 ? u.otAfterHours : 8,
+      weeklyOtHours: parseFloat(u.weeklyOtHours) > 0 ? u.weeklyOtHours : STANDARD_WEEK_HOURS,
+      daysPerWeek: parseFloat(u.daysPerWeek) > 0 ? u.daysPerWeek : 5,
       otMult: parseFloat(u.otMult) > 1 ? u.otMult : 1.5,
     });
     if (laborMode === 'flat') dispatch({ type: 'SET', key: 'flatJob', value: fix(state.flatJob || {}) });
@@ -474,21 +475,48 @@ export default function Step5_Labor({ onNext, onBack }) {
         </Card>
       )}
 
-      {/* ── Long days billing straight through ── */}
-      {otWarn && (
-        <Card style={{ borderColor: `${colors.yellow}55` }}>
-          <SLabel>⏱️ Hours past eight are billing straight</SLabel>
+      {/* ── Is overtime actually owed on this schedule? ── */}
+      {otWarn && otWarn.owed === 'none' && (
+        <Card>
+          <SLabel>✓ Long days, but a {otWarn.hrsPerWeek}-hour week</SLabel>
           <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
-            {otWarn.daysAffected} day(s) on this job run longer than an eight-hour shift with no overtime
-            threshold set, so every hour is priced at straight time. Labor is{' '}
-            <strong style={{ color: colors.text }}>{fmt(otWarn.current)}</strong>; splitting the day at eight
-            hours with time-and-a-half after makes it{' '}
-            <strong style={{ color: colors.green }}>{fmt(otWarn.corrected)}</strong> —{' '}
-            <strong style={{ color: colors.red }}>{fmt(otWarn.delta)}</strong> the bid is currently short.
+            Nobody is owed overtime on this schedule. {otWarn.hrsPerWeek} hours a week is inside forty however
+            the days are arranged, so a compressed week costs the same as a five-day one —{' '}
+            <strong style={{ color: colors.text }}>{fmt(otWarn.current)}</strong> of labor either way.
+            <br />
+            <span style={{ fontSize: 11 }}>
+              Set a daily threshold only if a state rule or your agreement pays overtime past eight in a day
+              regardless of the week. That is a fact about the job, not about the hours.
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {otWarn && otWarn.owed !== 'none' && (
+        <Card style={{ borderColor: `${colors.yellow}55` }}>
+          <SLabel>
+            ⏱️ {otWarn.owed === 'weekly'
+              ? `${otWarn.hrsPerWeek} hours a week is billing straight through`
+              : 'Long days, and the week is not known'}
+          </SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
+            {otWarn.owed === 'weekly' ? (
+              <>
+                {otWarn.hrsPerWeek} hours a week is {otWarn.hrsPerWeek - 40} past forty, and no threshold is set —
+                so those hours are priced at straight time.
+              </>
+            ) : (
+              <>
+                {otWarn.daysAffected} day(s) run past eight hours, but these periods carry no days-per-week, so
+                whether the week clears forty cannot be worked out. Priced against a five-day week below.
+              </>
+            )}
+            {' '}Labor is <strong style={{ color: colors.text }}>{fmt(otWarn.current)}</strong>; with overtime past
+            forty at time-and-a-half it is <strong style={{ color: colors.green }}>{fmt(otWarn.corrected)}</strong> —{' '}
+            <strong style={{ color: colors.red }}>{fmt(otWarn.delta)}</strong> the bid is short.
             {otWarn.blanketUsed && (
-              <><br /><strong style={{ color: colors.yellow }}>A multiplier is set but no threshold</strong>, so it is
-              being applied to the WHOLE shift rather than the hours past eight — that overshoots in the other
-              direction. Set the threshold and it lands where it should.</>
+              <><br /><strong style={{ color: colors.yellow }}>A multiplier is set but no threshold</strong>, so it
+              lands on the WHOLE shift rather than the hours past forty — which overshoots in the other direction.</>
             )}
             <br />
             <span style={{ fontSize: 11 }}>
@@ -497,7 +525,7 @@ export default function Step5_Labor({ onNext, onBack }) {
             </span>
           </div>
           <Btn variant="green" size="sm" style={{ marginTop: 10 }} onClick={applyOtThreshold}>
-            Split the day at 8 hrs, 1.5× after
+            Bill overtime past 40 hrs/week at 1.5×
           </Btn>
         </Card>
       )}

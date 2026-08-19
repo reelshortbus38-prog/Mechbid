@@ -803,46 +803,79 @@ export function jobOOTTotal(state) {
   return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p, o).oot, 0);
 }
 
-// ── IS ANYONE WORKING PAST EIGHT WITHOUT BEING PAID FOR IT? ──────────────────
-// The threshold defaults to off, which means a long day quietly bills straight
-// through. Nobody goes looking for a setting they do not know exists, so the
-// Labor step is told when the job has hours past eight and no threshold set,
-// and shown what it would cost with one.
+// ── IS ANY OVERTIME ACTUALLY OWED? ───────────────────────────────────────────
+// This asked only whether anyone worked past eight in a day, and told the
+// estimator the bid was short whenever they did. On a four-ten that is wrong:
+// forty hours is forty hours, no overtime is owed federally, and the warning
+// pushed toward adding $32,400 that nobody is due. A five-eight and a four-ten
+// are the same week and must read the same.
+//
+// So the question is the WEEK, not the day. Past forty and something is owed
+// and is not being charged. At forty or under, long days are just long days —
+// unless a state daily rule or an agreement carries one, which is a fact about
+// the job that no drawing states and the app must not assume.
+//
+// A period stores total days with no calendar, so its week is unknown unless
+// daysPerWeek was set on it. Unknown is reported as unknown rather than guessed.
 export function otReview(state) {
   const flat = state?.laborMode === 'flat';
   const units = flat ? [state?.flatJob || {}] : (state?.laborPeriods || []);
-  let longHourDays = 0, missingThreshold = 0;
+
+  let daysAffected = 0, hrsPerWeek = 0, weekKnown = true, anyLongDay = false;
   for (const u of units) {
     const days = flat
       ? (parseFloat(u.weeks) || 0) * (parseFloat(u.daysPerWeek) || 5)
       : (parseFloat(u.days) || 0);
     if (!(days > 0)) continue;
-    const overEight = (u.crew || []).some(m => (parseFloat(m?.hrsPerDay) || STANDARD_DAY_HOURS) > STANDARD_DAY_HOURS);
-    if (!overEight) continue;
-    longHourDays += days;
-    if (!(parseFloat(u.otAfterHours) > 0)) missingThreshold += days;
+    const longest = (u.crew || []).reduce(
+      (mx, m) => Math.max(mx, parseFloat(m?.hrsPerDay) || STANDARD_DAY_HOURS), 0);
+    if (!(longest > 0)) continue;
+    const dpw = parseFloat(u.daysPerWeek) || 0;
+    const week = dpw > 0 ? longest * dpw : 0;
+    // Either half of the schedule can put a crew into overtime, and they are
+    // not the same half: six eights passes forty without any day passing eight.
+    const longDay = longest > STANDARD_DAY_HOURS;
+    const longWeek = week > STANDARD_WEEK_HOURS;
+    if (!longDay && !longWeek) continue;
+    anyLongDay = true;
+    if (dpw > 0) hrsPerWeek = Math.max(hrsPerWeek, week);
+    else weekKnown = false;
+    const hasThreshold = (parseFloat(u.otAfterHours) > 0)
+      || (parseFloat(u.weeklyOtHours) > 0 && dpw > 0);
+    if (!hasThreshold) daysAffected += days;
   }
-  if (!longHourDays || !missingThreshold) return null;
+  if (!anyLongDay || !daysAffected) return null;
 
-  // What the same job costs once the day splits properly. A multiplier that was
-  // never set means straight time, and 1.5 is the number to show against.
-  const withThreshold = { ...state };
+  // The week is known and inside forty: nothing is owed, and saying so is worth
+  // more than silence, because the long day looks like a problem and is not.
+  if (weekKnown && hrsPerWeek > 0 && hrsPerWeek <= STANDARD_WEEK_HOURS) {
+    return { owed: 'none', hrsPerWeek, daysAffected, current: jobLaborTotal(state) - jobOOTTotal(state) };
+  }
+
+  // Past forty, or a week nobody can work out. Price it on the weekly rule,
+  // which is the one that applies everywhere.
   const apply = u => ({
     ...u,
-    otAfterHours: parseFloat(u.otAfterHours) > 0 ? u.otAfterHours : STANDARD_DAY_HOURS,
+    weeklyOtHours: parseFloat(u.weeklyOtHours) > 0 ? u.weeklyOtHours : STANDARD_WEEK_HOURS,
+    daysPerWeek: parseFloat(u.daysPerWeek) > 0 ? u.daysPerWeek : 5,
     otMult: parseFloat(u.otMult) > 1 ? u.otMult : 1.5,
   });
-  if (flat) withThreshold.flatJob = apply(state.flatJob || {});
-  else withThreshold.laborPeriods = (state.laborPeriods || []).map(apply);
+  const corrected = { ...state };
+  if (flat) corrected.flatJob = apply(state.flatJob || {});
+  else corrected.laborPeriods = (state.laborPeriods || []).map(apply);
 
   const current = jobLaborTotal(state) - jobOOTTotal(state);
-  const corrected = jobLaborTotal(withThreshold) - jobOOTTotal(withThreshold);
-  if (current === corrected) return null;
+  const withOt = jobLaborTotal(corrected) - jobOOTTotal(corrected);
+  if (current === withOt) return null;
   return {
-    current, corrected, delta: corrected - current,
-    daysAffected: missingThreshold,
-    // A blanket multiplier is the other way this gets set, and it overshoots.
-    blanketUsed: units.some(u => parseFloat(u.otMult) > 1 && !(parseFloat(u.otAfterHours) > 0)),
+    owed: weekKnown ? 'weekly' : 'unknown',
+    hrsPerWeek: weekKnown ? hrsPerWeek : 0,
+    daysAffected,
+    current,
+    corrected: withOt,
+    delta: withOt - current,
+    blanketUsed: units.some(u => parseFloat(u.otMult) > 1
+      && !(parseFloat(u.otAfterHours) > 0) && !(parseFloat(u.weeklyOtHours) > 0)),
   };
 }
 
