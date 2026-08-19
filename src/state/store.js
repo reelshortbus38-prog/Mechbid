@@ -617,18 +617,74 @@ export function ootOpts(state) {
   };
 }
 
+// ── OVERTIME ─────────────────────────────────────────────────────────────────
+// The multiplier used to apply to the WHOLE shift, so a ten-hour day could only
+// be billed all-straight or all-premium. Neither is what a ten-hour day costs.
+// On a four-man crew at $75 over 135 days:
+//
+//   otMult 1    all straight        $405,000     short by $40,500
+//   CORRECT     8 straight + 2 OT   $445,500
+//   otMult 1.5  blanket premium     $607,500     over by $162,000
+//
+// The right answer was not expressible at all. One of those loses the job and
+// the other loses money on it.
+//
+// A WHOLE-SHIFT PREMIUM IS ALSO REAL, which is why the threshold is what
+// changes rather than the multiplier. A Saturday, a holiday, a shutdown — the
+// entire shift is at premium and no threshold applies. Night work already has
+// its own multiplier and keeps it, because a night differential genuinely does
+// cover the whole shift.
+//
+// THE THRESHOLD DEFAULTS TO OFF, so every saved bid costs exactly what it did.
+// Set it to 8 and the day splits properly.
+//
+// KNOWN LIMIT: this is DAILY overtime. Six eight-hour days is 48 hours and
+// carries weekly overtime that no daily threshold catches, because a period
+// stores total days rather than a calendar. Six tens are caught; six eights are
+// not, and that is worth knowing before leaning on it for a six-day schedule.
+export const STANDARD_DAY_HOURS = 8;
+
+// One crew's cost for one day, hour by hour.
+export function crewDayCost(crew, { otMult = 1, otAfterHours = 0, shiftMult = 1 } = {}) {
+  const t = parseFloat(otAfterHours) || 0;
+  const m = parseFloat(otMult) || 1;
+  const sm = parseFloat(shiftMult) || 1;
+  return (crew || []).reduce((s, mem) => {
+    const rate = parseFloat(mem?.rate) || 0;
+    const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
+    // No threshold set: the multiplier is a whole-shift premium, which is what
+    // it has always meant here.
+    const paidHours = t > 0
+      ? Math.min(hrs, t) + Math.max(0, hrs - t) * m
+      : hrs * m;
+    return s + rate * paidHours * sm;
+  }, 0);
+}
+
+// Straight and overtime hours in one day, for showing the split.
+export function dayHourSplit(crew, otAfterHours = 0) {
+  const t = parseFloat(otAfterHours) || 0;
+  let straight = 0, ot = 0;
+  for (const mem of crew || []) {
+    const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
+    if (t > 0) { straight += Math.min(hrs, t); ot += Math.max(0, hrs - t); }
+    else straight += hrs;
+  }
+  return { straight, ot };
+}
+
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period, opts = {}) {
-  // Each crew member contributes rate × their own hours/day. hrsPerDay defaults
-  // to 8 so existing periods are unchanged, but a 10-hour day now actually costs
-  // a 10-hour day (previously hrsPerDay was stored and ignored — always ×8).
-  const crewDayRate = (period.crew || []).reduce(
-    (s, m) => s + (parseFloat(m.rate) || 0) * (parseFloat(m.hrsPerDay) || 8), 0);
-  const otMult = parseFloat(period.otMult) || 1;
+  // Each crew member contributes rate × their own hours/day, with hours past
+  // the overtime threshold paid at the multiplier. hrsPerDay defaults to 8.
   const nightMult = period.isNight ? (parseFloat(period.nightMult) || 1.5) : 1;
   const days = parseFloat(period.days) || 0;
   const oot = ootCost(days, period.ootPerDay, period.crew, opts);
-  const labor = crewDayRate * days * otMult * nightMult;
+  const labor = crewDayCost(period.crew, {
+    otMult: period.otMult,
+    otAfterHours: period.otAfterHours,
+    shiftMult: nightMult,
+  }) * days;
   return { labor, oot, total: labor + oot };
 }
 
@@ -646,9 +702,11 @@ export function calcTotalLabor(laborPeriods, opts = {}) {
 export function calcFlatJobCost(flat, opts = {}) {
   const f = flat || {};
   const days = (parseFloat(f.weeks) || 0) * (parseFloat(f.daysPerWeek) || 5);
-  const crewDayRate = (f.crew || []).reduce(
-    (s, m) => s + (parseFloat(m.rate) || 0) * (parseFloat(m.hrsPerDay) || 8), 0);
-  const labor = crewDayRate * days;
+  // Flat mode carried NO overtime handling at all — a whole-job crew on ten-hour
+  // days billed every hour straight, and this is precisely the long-duration job
+  // where ten-hour days happen. Both fields default to absent, so a saved flat
+  // job costs exactly what it did.
+  const labor = crewDayCost(f.crew, { otMult: f.otMult, otAfterHours: f.otAfterHours }) * days;
   const oot = ootCost(days, f.ootPerDay, f.crew, opts);
   return { days, labor, oot, total: labor + oot };
 }
@@ -679,6 +737,49 @@ export function jobOOTTotal(state) {
   const o = ootOpts(state);
   if (state?.laborMode === 'flat') return calcFlatJobCost(state?.flatJob, o).oot;
   return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p, o).oot, 0);
+}
+
+// ── IS ANYONE WORKING PAST EIGHT WITHOUT BEING PAID FOR IT? ──────────────────
+// The threshold defaults to off, which means a long day quietly bills straight
+// through. Nobody goes looking for a setting they do not know exists, so the
+// Labor step is told when the job has hours past eight and no threshold set,
+// and shown what it would cost with one.
+export function otReview(state) {
+  const flat = state?.laborMode === 'flat';
+  const units = flat ? [state?.flatJob || {}] : (state?.laborPeriods || []);
+  let longHourDays = 0, missingThreshold = 0;
+  for (const u of units) {
+    const days = flat
+      ? (parseFloat(u.weeks) || 0) * (parseFloat(u.daysPerWeek) || 5)
+      : (parseFloat(u.days) || 0);
+    if (!(days > 0)) continue;
+    const overEight = (u.crew || []).some(m => (parseFloat(m?.hrsPerDay) || STANDARD_DAY_HOURS) > STANDARD_DAY_HOURS);
+    if (!overEight) continue;
+    longHourDays += days;
+    if (!(parseFloat(u.otAfterHours) > 0)) missingThreshold += days;
+  }
+  if (!longHourDays || !missingThreshold) return null;
+
+  // What the same job costs once the day splits properly. A multiplier that was
+  // never set means straight time, and 1.5 is the number to show against.
+  const withThreshold = { ...state };
+  const apply = u => ({
+    ...u,
+    otAfterHours: parseFloat(u.otAfterHours) > 0 ? u.otAfterHours : STANDARD_DAY_HOURS,
+    otMult: parseFloat(u.otMult) > 1 ? u.otMult : 1.5,
+  });
+  if (flat) withThreshold.flatJob = apply(state.flatJob || {});
+  else withThreshold.laborPeriods = (state.laborPeriods || []).map(apply);
+
+  const current = jobLaborTotal(state) - jobOOTTotal(state);
+  const corrected = jobLaborTotal(withThreshold) - jobOOTTotal(withThreshold);
+  if (current === corrected) return null;
+  return {
+    current, corrected, delta: corrected - current,
+    daysAffected: missingThreshold,
+    // A blanket multiplier is the other way this gets set, and it overshoots.
+    blanketUsed: units.some(u => parseFloat(u.otMult) > 1 && !(parseFloat(u.otAfterHours) > 0)),
+  };
 }
 
 // ── WHAT THE OTHER BASIS WOULD COST ──────────────────────────────────────────
