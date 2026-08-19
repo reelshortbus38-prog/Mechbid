@@ -6,8 +6,12 @@ import { pipeMaterialPrice } from './pipePricing.js';
 import {
   glycolMaterialLines, systemVolumeGal, glycolCharge, checkMix, pgFreezePoint,
 } from './glycolSystem.js';
-import { glycolHydraulics } from './glycolHydraulics.js';
+import { glycolHydraulics, glycolGpm } from './glycolHydraulics.js';
 import { reviewGlycolInputs, reviewSummary } from './glycolAssumptions.js';
+import {
+  COMPONENT_TYPES, SERIES, BRANCH, componentType, newComponent, seedComponents,
+  equipmentHead, naiveTotalFt, equipmentHeadSanity,
+} from './equipmentHead.js';
 
 // ── SECONDARY GLYCOL LOOP CALCULATOR ─────────────────────────────────────────
 // A secondary system's materials do not come out of the circuit table the way a
@@ -47,7 +51,11 @@ export default function GlycolCalc() {
   const [btuh, setBtuh] = useState(0);
   const [deltaT, setDeltaT] = useState(8);
   const [longestPathFt, setLongestPathFt] = useState(0);
-  const [componentHeadFt, setComponentHeadFt] = useState(25);
+  // Equipment head is itemised off the submittals and lives in the store rather
+  // than in this card — it is looked-up paperwork data, and re-keying it because
+  // a tab closed is the kind of thing that stops an estimator using a feature.
+  const components = state.glycolComponents || [];
+  const setComponents = v => { dispatch({ type: 'SET', key: 'glycolComponents', value: v }); setAdded(false); };
 
   const sized = runs.filter(r => Number(r.ft) > 0);
   const headerSize = sized.length ? Math.max(...sized.map(r => Number(r.dia))) : 2;
@@ -75,10 +83,21 @@ export default function GlycolCalc() {
   // close enough to ID at these sizes for an estimating-grade check.
   const runFt = sized.reduce((a, r) => a + (Number(r.ft) || 0), 0);
   const mainId = sized.length ? Math.max(...sized.map(r => Number(r.dia))) : 0;
+
+  // Flow first, on its own — a component's drop is corrected against the flow
+  // actually going through it, so the head cannot be computed until the GPM is.
+  const gpm = glycolGpm(Number(btuh) || 0, Number(deltaT) || 0, Number(pct) || 35) || 0;
+  const eq = equipmentHead(components, { gpm, fixtures: Number(fixtures) || 0, pct: Number(pct) || 35 });
+  const eqSanity = equipmentHeadSanity(components, eq, { fixtures: Number(fixtures) || 0 });
+  const naive = naiveTotalFt(eq, Number(fixtures) || 0);
+  // Nothing itemised yet → the old flat placeholder, so the card still works on
+  // a job where the submittals have not arrived.
+  const componentHeadFt = components.length ? eq.totalFt : 25;
+
   const hyd = glycolHydraulics({
     btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0, pct: Number(pct) || 35,
     longestPathFt: Number(longestPathFt) || 0, idInches: mainId,
-    componentHeadFt: Number(componentHeadFt) || 0,
+    componentHeadFt,
   });
 
   // What every number on this card is standing on. Placeholders and
@@ -89,7 +108,8 @@ export default function GlycolCalc() {
     coilGal: Number(coilGal) || 0, tankGal: Number(tankGal) || 0,
     fixtures: Number(fixtures) || 0,
     btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0,
-    componentHeadFt: Number(componentHeadFt) || 0,
+    componentHeadFt,
+    headFromSubmittal: eq.fromSubmittal, headTypical: eq.typical,
     longestPathFt: Number(longestPathFt) || 0, runFt,
     velocityVerdict: hyd.velocityVerdict,
   });
@@ -278,10 +298,130 @@ export default function GlycolCalc() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: colors.textDim }}>Equipment head</span>
-            {num(componentHeadFt, setComponentHeadFt, 64)}
-            <span style={{ fontSize: 11, color: colors.textDim }}>ft</span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600,
+              color: components.length ? colors.green : colors.yellow }}>
+              {componentHeadFt} ft
+            </span>
+            <span style={{ fontSize: 11, color: colors.textDim }}>
+              {components.length ? `— ${eq.fromSubmittal}/${eq.lines.length} off submittals` : '— flat placeholder'}
+            </span>
           </div>
         </Row>
+
+        {/* ── Equipment head, itemised off the submittals ── */}
+        <details open={components.length > 0} style={{ marginBottom: 12, border: `1px solid ${colors.border}`,
+          borderRadius: 8, padding: '8px 10px' }}>
+          <summary style={{ cursor: 'pointer', fontSize: 11, color: colors.textDim, fontWeight: 600 }}>
+            EQUIPMENT HEAD — the drops printed on the submittals
+          </summary>
+
+          <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, margin: '10px 0' }}>
+            Head adds up along <strong>one path</strong>, the same critical circuit the pipe length uses.
+            Things every gallon passes through — the barrel, the main strainer, the triple-duty valve — are
+            <strong> series</strong> and they add. A case coil and its valve train are <strong>branch</strong>:
+            thirty of them hang in parallel, so the pump only fights the <strong>worst one</strong>.
+            Enter that one branch, not all of them.
+          </div>
+
+          {components.map((c, i) => {
+            const t = componentType(c.key);
+            const line = eq.lines.find(l => l.id === c.id);
+            const set = (field, v) => setComponents(components.map((x, j) => (j === i ? { ...x, [field]: v } : x)));
+            return (
+              <div key={c.id} style={{ padding: '8px 0', borderTop: i ? `1px solid ${colors.border}` : 'none' }}>
+                <Row style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", flexShrink: 0,
+                    color: t && t.position === BRANCH ? colors.yellow : colors.blue,
+                    border: `1px solid ${(t && t.position === BRANCH ? colors.yellow : colors.blue)}55`,
+                    borderRadius: 4, padding: '2px 5px' }}>
+                    {t && t.position === BRANCH ? 'BRANCH' : 'SERIES'}
+                  </span>
+                  <Select value={c.key} onChange={e => {
+                    const k = e.target.value;
+                    const nt = componentType(k);
+                    // A typical value follows the type; a figure already read off
+                    // a submittal is the estimator's and is left alone.
+                    setComponents(components.map((x, j) => (j === i
+                      ? { ...x, key: k, label: nt ? nt.label : x.label, value: x.fromSubmittal ? x.value : (nt ? nt.typicalFt : 0) }
+                      : x)));
+                  }} style={{ width: 230, fontSize: 12 }}>
+                    <optgroup label="Series — every gallon goes through it">
+                      {COMPONENT_TYPES.filter(x => x.position === SERIES).map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+                    </optgroup>
+                    <optgroup label="Branch — one parallel path only">
+                      {COMPONENT_TYPES.filter(x => x.position === BRANCH).map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+                    </optgroup>
+                  </Select>
+                  <Input type="number" value={c.value} onChange={e => set('value', e.target.value)}
+                    style={{ width: 68, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                  <Select value={c.unit} onChange={e => set('unit', e.target.value)} style={{ width: 68, fontSize: 12 }}>
+                    <option value="ft">ft</option><option value="psi">psi</option><option value="kpa">kPa</option>
+                  </Select>
+                  <span style={{ fontSize: 10, color: colors.textDim }}>@</span>
+                  <Input type="number" value={c.ratedGpm} onChange={e => set('ratedGpm', e.target.value)}
+                    placeholder="GPM" style={{ width: 62, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                  <Select value={c.ratedOn} onChange={e => set('ratedOn', e.target.value)} style={{ width: 90, fontSize: 12 }}>
+                    <option value="water">on water</option><option value="glycol">on glycol</option>
+                  </Select>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
+                    color: c.fromSubmittal ? colors.green : colors.yellow, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!c.fromSubmittal} onChange={e => set('fromSubmittal', e.target.checked)} />
+                    {c.fromSubmittal ? 'from submittal' : 'typical'}
+                  </label>
+                  <span style={{ marginLeft: 'auto', fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600 }}>
+                    {line ? `${line.ft} ft` : '—'}
+                  </span>
+                  <button onClick={() => setComponents(components.filter((_, j) => j !== i))}
+                    style={{ background: 'transparent', border: 'none', color: colors.red, cursor: 'pointer', fontSize: 14 }}>×</button>
+                </Row>
+                {line && line.corrections.length > 0 && (
+                  <div style={{ fontSize: 10, color: colors.textDim, marginTop: 3, paddingLeft: 54 }}>
+                    {line.corrections.join(' · ')}
+                  </div>
+                )}
+                {t && t.note && !c.fromSubmittal && (
+                  <div style={{ fontSize: 10, color: colors.textDim, marginTop: 3, paddingLeft: 54, fontStyle: 'italic' }}>
+                    {t.note} Typical {t.typicalFt} ft (range {t.range[0]}–{t.range[1]}).
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <Row style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" size="sm" onClick={() => setComponents([...components, newComponent('caseCoil')])}>+ Component</Btn>
+            {!components.length && (
+              <Btn variant="ghost" size="sm" onClick={() => setComponents(seedComponents(loopType))}>
+                Start from a typical {loopType === 'water' ? 'water loop' : 'glycol loop'}
+              </Btn>
+            )}
+          </Row>
+
+          {components.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 12, color: colors.textDim, fontFamily: "'DM Mono', monospace", lineHeight: 1.8 }}>
+              <div>
+                <strong style={{ color: colors.green }}>{eq.totalFt} ft</strong> = {eq.seriesFt} ft series
+                {' '}+ {eq.branchFt} ft worst branch
+                {eq.branchGpm > 0 && <span> · branch flow ≈ {eq.branchGpm} GPM</span>}
+              </div>
+              {naive !== null && (
+                <div style={{ color: colors.textDim }}>
+                  Adding all {fixtures} branches would have given {naive} ft — {Math.round(naive / eq.totalFt)}× too much.
+                  That is the error this table exists to prevent.
+                </div>
+              )}
+            </div>
+          )}
+
+          {eqSanity.map((s, i) => (
+            <div key={i} style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, padding: '6px 10px', borderRadius: 6,
+              background: s.severity === 'blocker' ? 'rgba(239,68,68,0.08)' : 'rgba(234,179,8,0.06)',
+              border: `1px solid ${TONE[s.severity]}40`, color: colors.textDim }}>
+              <strong style={{ color: TONE[s.severity] }}>{s.severity === 'blocker' ? '⛔' : s.severity === 'verify' ? '⚠' : 'ℹ'} {s.label}</strong>
+              <br />{s.detail}
+            </div>
+          ))}
+        </details>
 
         {hyd.gpm === null ? (
           <div style={{ fontSize: 12, color: colors.textDim }}>
