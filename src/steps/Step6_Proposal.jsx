@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal } from '../state/store.js';
-import { computeBidTotals, bidLetterBreakdown } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
@@ -505,6 +505,10 @@ function ProposalView({ company = {} }) {
   }
 
   const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+  // What the bid actually earns, against what the estimator set. See
+  // marginAnalysis in bidTotals.js for why this reports rather than corrects.
+  const marginInfo = marginAnalysis(state, totals);
+  const targetMarkup = markupForTargetMargin(state, totals, 15);
   const markedUpMats = markupBase + markupAmt;
   const exclusions = (state.exclusions || []).filter(x => x && x.trim());
   const hvacPartGroups = mode === 'Commercial HVAC' ? groupHvacParts((state.hvacParts || []).filter(p => p.desc)) : [];
@@ -614,6 +618,35 @@ function ProposalView({ company = {} }) {
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700 }}>TOTAL BID PRICE</span>
         <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 30, fontWeight: 800, color: colors.green }}>{fmt(total)}</span>
       </div>
+
+      {/* ── What the bid actually earns ── */}
+      {marginInfo && marginInfo.statedMarkupPct > 0 && (
+        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
+          background: marginInfo.effectiveMarginPct < marginInfo.statedAsMarginPct - 3
+            ? 'rgba(234,179,8,0.07)' : 'rgba(34,197,94,0.06)',
+          border: `1px solid ${(marginInfo.effectiveMarginPct < marginInfo.statedAsMarginPct - 3 ? colors.yellow : colors.green)}40` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span style={{ color: colors.text, fontWeight: 700 }}>This bid earns</span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700,
+              color: marginInfo.effectiveMarginPct < marginInfo.statedAsMarginPct - 3 ? colors.yellow : colors.green }}>
+              {fmt(marginInfo.grossProfit)} · {marginInfo.effectiveMarginPct}% margin
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, marginTop: 5 }}>
+            On {fmt(marginInfo.cost)} of cost. The {marginInfo.statedMarkupPct}% markup lands on materials only,
+            and {marginInfo.unmarkedSharePct}% of this job is labor and subs, which carry none.
+            {targetMarkup && targetMarkup.reachable && (
+              <> A {targetMarkup.pct}% material markup would earn a true 15%.</>
+            )}
+            {targetMarkup && !targetMarkup.reachable && (
+              <> No material markup reaches 15% on a job this labor-heavy — the labor rate has to carry it.</>
+            )}
+            <br />
+            <strong>Right if your crew rates already include overhead and profit.</strong> If they are burdened
+            cost, this bid is thin by the difference.
+          </div>
+        </div>
+      )}
 
       {/* Residential rebate → net to customer */}
       {mode === 'Residential HVAC' && (parseFloat(state.resRebate) || 0) > 0 && (
