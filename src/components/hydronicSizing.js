@@ -65,6 +65,41 @@ export const sizeLabel = d => (
 // Smallest connection anyone actually runs to a terminal unit.
 export const MIN_SIZE = 0.5;
 
+// ── WHERE FRICTION STOPS GOVERNING ───────────────────────────────────────────
+// The 1"-and-up bands are constant friction and the model reproduces them. The
+// two smallest are NOT, and checking the rule against the project's own piping
+// plans showed the model wrong in BOTH directions there:
+//
+//   0.8 and 0.9 GPM   plan runs 3/4",  friction alone says 1/2"   (undersized)
+//   3.2 GPM           plan runs 3/4",  friction alone says 1"     (oversized)
+//
+// Two independent sources agree on the bands — the hose kit sizing schedule
+// prints them, and eleven tagged runouts on M4.12b follow them — so they are
+// carried as what they are: a CONVENTION, not a friction result. Down here the
+// runs are short enough that friction is not what anyone is sizing for.
+export const CONVENTION_MAX_GPM = { 0.5: 0.9, 0.75: 3.6 };
+
+// ── MINIMUM CONNECTION, WHICH IS A PROPERTY OF THE DEVICE ────────────────────
+// The same plan settles this beyond argument. At 0.5 GPM — one flow, ten tags,
+// every one of them three points from its device tag:
+//
+//   FT-M223, FT-M224, FT-M235A, FT-M236A, FT-M238A   →  3/4"
+//   PR-MH21A through PR-MH21E                        →  1/2"
+//
+// Identical flow, different pipe, because a fin tube arrives with 3/4"
+// connections on it. No flow rule produces that, and without it the app cannot
+// be right about both at once.
+export const TERMINAL_MIN_SIZE = {
+  finTube: 0.75,
+  unitHeater: 0.75,
+  reheatCoil: 0.5,
+  radiantPanel: 0.5,
+  radiantWall: 0.5,
+  caseCoil: 0.5,
+};
+
+export const terminalMinSize = kind => TERMINAL_MIN_SIZE[kind] ?? MIN_SIZE;
+
 const K = 0.2083;
 
 // ── HAZEN-WILLIAMS ───────────────────────────────────────────────────────────
@@ -85,15 +120,26 @@ export function flowAtFriction(targetPer100, idInches, material = 'copper') {
 }
 
 // ── THE ANSWER ───────────────────────────────────────────────────────────────
-// The smallest nominal size that carries this flow inside the friction target.
-export function sizeForFlow(gpm, {
-  target = DEFAULT_FRICTION_TARGET, material = 'copper', minSize = MIN_SIZE,
+// The most flow a size carries: convention where convention governs, friction
+// everywhere else. `convention: false` gets pure physics, for a caller who has
+// deliberately moved the friction target and wants it applied throughout.
+export function sizeCapacity(dia, {
+  target = DEFAULT_FRICTION_TARGET, material = 'copper', convention = true,
 } = {}) {
+  if (convention && CONVENTION_MAX_GPM[dia] !== undefined) return CONVENTION_MAX_GPM[dia];
+  return flowAtFriction(target, TYPE_L_ID[dia], material);
+}
+
+// The smallest nominal size that carries this flow — never below the device's
+// own connection size, whatever the flow says.
+export function sizeForFlow(gpm, opts = {}) {
+  const { minSize = MIN_SIZE, terminal = null } = opts;
   const q = Number(gpm);
   if (!(q > 0)) return null;
+  const floor = terminal ? Math.max(terminalMinSize(terminal), minSize) : minSize;
   for (const d of NOMINAL_SIZES) {
-    if (d < minSize) continue;
-    const cap = flowAtFriction(target, TYPE_L_ID[d], material);
+    if (d < floor) continue;
+    const cap = sizeCapacity(d, opts);
     if (cap !== null && cap >= q) return d;
   }
   // Past the table. Returning the largest is a lie; say nothing instead.
@@ -101,15 +147,19 @@ export function sizeForFlow(gpm, {
 }
 
 // The app's own version of the schedule, for showing next to the drawing's.
-export function sizingTable({ target = DEFAULT_FRICTION_TARGET, material = 'copper', minSize = MIN_SIZE } = {}) {
+export function sizingTable(opts = {}) {
+  const { minSize = MIN_SIZE } = opts;
   const rows = [];
   let floor = 0;
   for (const d of NOMINAL_SIZES) {
     if (d < minSize) continue;
-    const cap = flowAtFriction(target, TYPE_L_ID[d], material);
+    const cap = sizeCapacity(d, opts);
     if (cap === null) continue;
     const maxGpm = Math.round(cap * 10) / 10;
-    rows.push({ dia: d, label: sizeLabel(d), minGpm: Math.round(floor * 10) / 10, maxGpm });
+    rows.push({
+      dia: d, label: sizeLabel(d), minGpm: Math.round(floor * 10) / 10, maxGpm,
+      basis: (opts.convention !== false && CONVENTION_MAX_GPM[d] !== undefined) ? 'convention' : 'friction',
+    });
     floor = maxGpm;
   }
   return rows;
@@ -128,7 +178,9 @@ export function sizeMix(flows = [], opts = {}) {
     const n = Number(it.count) || 0;
     const q = Number(it.gpm);
     if (n <= 0) continue;
-    const d = sizeForFlow(q, opts);
+    // A row may name its own device kind — a fin tube and a radiant panel at the
+    // same flow are not the same connection.
+    const d = sizeForFlow(q, it.terminal ? { ...opts, terminal: it.terminal } : opts);
     if (d === null) { unsized.push({ gpm: q, count: n }); continue; }
     bySize.set(d, (bySize.get(d) || 0) + n);
   }

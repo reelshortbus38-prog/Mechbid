@@ -93,11 +93,20 @@ describe('against the Edmonds SD College Place hose kit sizing schedule', () => 
 });
 
 describe('sizeForFlow', () => {
-  it('never returns a size that would exceed the friction target', () => {
-    for (const q of [0.5, 2, 7, 15, 30, 55, 90]) {
+  it('never exceeds the friction target WHERE FRICTION GOVERNS, 1" and up', () => {
+    for (const q of [5, 7, 15, 30, 55, 90]) {
       const d = sizeForFlow(q);
+      expect(d).toBeGreaterThanOrEqual(1);
       expect(frictionPer100(q, TYPE_L_ID[d])).toBeLessThanOrEqual(DEFAULT_FRICTION_TARGET + 1e-9);
     }
+  });
+
+  it('DOES exceed it at 3/4", on purpose — convention governs there, not friction', () => {
+    // 3.2 GPM in 3/4" is 2.75 ft/100 against a 2.4 target, and it is what the
+    // plans draw. Short runs; friction is not what is being sized for.
+    const d = sizeForFlow(3.2);
+    expect(d).toBe(0.75);
+    expect(frictionPer100(3.2, TYPE_L_ID[d])).toBeGreaterThan(DEFAULT_FRICTION_TARGET);
   });
 
   it('is monotonic — more flow never picks a smaller pipe', () => {
@@ -280,5 +289,114 @@ describe('terminal mix drives the valve takeoff', () => {
     // by its description rather than by a prefix of another key.
     expect(lines.filter(l => /^Balancing valve/.test(l.desc)).length).toBe(3);
     expect(lines.filter(l => /^Ball valve/.test(l.desc)).length).toBe(3);
+  });
+});
+
+// ── VALIDATED AGAINST THE PROJECT'S OWN PIPING PLANS ─────────────────────────
+// Sheet M4.12b, HVAC PIPING PLAN - LEVEL 2 - AREA B, same Edmonds SD College
+// Place model as the schedule. Every pair below is a GPM tag read off the
+// drawing next to the runout size actually drawn for it. This is the
+// independent check: the schedule said what the rule should be, the plans say
+// what the engineer did with it.
+import { terminalMinSize, TERMINAL_MIN_SIZE, CONVENTION_MAX_GPM, sizeCapacity } from './hydronicSizing.js';
+
+describe('against the M4.12b piping plans', () => {
+  // [gpm, size drawn, device kind]
+  const TAGGED = [
+    [0.3, 0.5, 'radiantPanel'], [0.4, 0.5, 'radiantPanel'], [0.5, 0.5, 'radiantPanel'],
+    [0.5, 0.75, 'finTube'], [0.8, 0.75, 'finTube'], [0.9, 0.75, 'finTube'],
+    [1.6, 0.75, 'finTube'], [1.7, 0.75, 'finTube'], [1.9, 0.75, 'finTube'],
+    [2.2, 0.75, 'finTube'], [2.9, 0.75, 'finTube'], [3.2, 0.75, 'finTube'],
+  ];
+
+  for (const [gpm, drawn, terminal] of TAGGED) {
+    it(`${gpm} GPM at a ${terminal} is drawn ${sizeLabel(drawn)}`, () => {
+      expect(sizeForFlow(gpm, { terminal })).toBe(drawn);
+    });
+  }
+
+  it('gets the same flow right at two different devices — the case no flow rule can pass', () => {
+    // 0.5 GPM, ten tags, three points from their device tags: FT-* run 3/4",
+    // PR-* run 1/2".
+    expect(sizeForFlow(0.5, { terminal: 'finTube' })).toBe(0.75);
+    expect(sizeForFlow(0.5, { terminal: 'radiantPanel' })).toBe(0.5);
+  });
+
+  it('friction alone gets three of these wrong, in both directions', () => {
+    // This is what the plans caught, kept as the record of why convention and
+    // device minimums are here at all.
+    expect(sizeForFlow(0.9, { convention: false })).toBe(0.5);   // plan: 3/4", undersized
+    expect(sizeForFlow(3.2, { convention: false })).toBe(1);     // plan: 3/4", oversized
+    expect(sizeForFlow(0.8, { convention: false })).toBe(0.5);   // plan: 3/4", undersized
+  });
+
+  it('still reproduces the schedule bands above where convention governs', () => {
+    expect(sizeForFlow(8)).toBe(1.25);
+    expect(sizeForFlow(25)).toBe(2);
+    expect(sizeForFlow(80)).toBe(3);
+  });
+});
+
+describe('device minimum connection', () => {
+  it('a fin tube never goes below 3/4" however little it draws', () => {
+    expect(sizeForFlow(0.05, { terminal: 'finTube' })).toBe(0.75);
+  });
+
+  it('a panel may go to 1/2"', () => {
+    expect(sizeForFlow(0.05, { terminal: 'radiantPanel' })).toBe(0.5);
+  });
+
+  it('flow still wins when it exceeds the minimum', () => {
+    expect(sizeForFlow(25, { terminal: 'finTube' })).toBe(2);
+  });
+
+  it('an unknown kind falls back to the global minimum rather than throwing', () => {
+    expect(terminalMinSize('somethingElse')).toBe(MIN_SIZE);
+    expect(sizeForFlow(0.3, { terminal: 'somethingElse' })).toBe(0.5);
+  });
+
+  it('every catalogued kind is a real nominal size', () => {
+    for (const d of Object.values(TERMINAL_MIN_SIZE)) expect(NOMINAL_SIZES).toContain(d);
+  });
+
+  it('an explicit minSize can raise the floor further but not lower it', () => {
+    expect(sizeForFlow(0.3, { terminal: 'radiantPanel', minSize: 1 })).toBe(1);
+    expect(sizeForFlow(0.3, { terminal: 'finTube', minSize: 0.5 })).toBe(0.75);
+  });
+});
+
+describe('convention vs friction', () => {
+  it('the table says which basis each band came from', () => {
+    const rows = sizingTable();
+    expect(rows.find(r => r.dia === 0.5).basis).toBe('convention');
+    expect(rows.find(r => r.dia === 0.75).basis).toBe('convention');
+    expect(rows.find(r => r.dia === 2).basis).toBe('friction');
+  });
+
+  it('convention bands match the printed schedule exactly', () => {
+    expect(CONVENTION_MAX_GPM[0.5]).toBe(0.9);
+    expect(CONVENTION_MAX_GPM[0.75]).toBe(3.6);
+  });
+
+  it('convention can be switched off for a deliberately retargeted job', () => {
+    expect(sizeCapacity(0.75, { convention: true })).toBe(3.6);
+    expect(sizeCapacity(0.75, { convention: false })).toBeCloseTo(2.97, 1);
+  });
+
+  it('bands stay contiguous and climbing with convention in play', () => {
+    const rows = sizingTable();
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i].minGpm).toBe(rows[i - 1].maxGpm);
+      expect(rows[i].maxGpm).toBeGreaterThan(rows[i - 1].maxGpm);
+    }
+  });
+
+  it('a mix can name the device kind per row', () => {
+    const m = sizeMix([
+      { gpm: 0.5, count: 5, terminal: 'radiantPanel' },
+      { gpm: 0.5, count: 5, terminal: 'finTube' },
+    ]);
+    expect(m.sizes.map(s => s.dia)).toEqual([0.5, 0.75]);
+    expect(m.total).toBe(10);
   });
 });
