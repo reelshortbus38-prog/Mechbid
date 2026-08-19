@@ -43,7 +43,18 @@ export const CONTROL_VALVE = { 0.5: 240, 0.75: 265, 1: 330, 1.25: 450, 1.5: 560 
 // union, balancing valve, P/T ports — bought as one assembly. This is what the
 // sheet means by "hose kit", and it replaces the loose valves rather than
 // adding to them.
-export const HOSE_KIT = { 0.5: 195, 0.75: 215, 1: 290 };
+//
+// Sizes above 1" were added when runouts started being sized from flow rather
+// than hand-picked, because the sizing rule reaches 3" and a size the app can
+// select but not price is worse than one it cannot select. They are BUILT UP
+// from the tables above rather than invented: the balancing valve and the
+// isolation valve at that size, plus a hose-and-ports allowance carried at the
+// same share of the assembly the quoted small sizes show (roughly a third).
+// Still placeholders, like everything else in this file.
+export const HOSE_KIT = {
+  0.5: 195, 0.75: 215, 1: 290,
+  1.25: 400, 1.5: 505, 2: 750, 2.5: 1085, 3: 1435,
+};
 
 export const PT_PORT = 12;        // Pete's plug
 export const AIR_VENT = 38;       // automatic air vent, high points
@@ -77,27 +88,41 @@ export function hydronicValveLines(opts = {}) {
   const lines = [];
   const sz = n => (Number.isInteger(n) ? `${n}"` : `${n}"`.replace('0.5', '1/2').replace('0.75', '3/4').replace('1.25', '1-1/4').replace('1.5', '1-1/2').replace('2.5', '2-1/2'));
 
-  if (terminals > 0) {
+  // Terminals come either as a single hand-picked size, or — when the flows are
+  // known — as a MIX already sized from them. A job whose terminals genuinely
+  // differ prices differently at every one of these lines, and a hose kit
+  // roughly doubles every size and a half, so folding them to one size is not a
+  // rounding error.
+  const termGroups = (Array.isArray(opts.terminalMix) && opts.terminalMix.length)
+    ? opts.terminalMix.filter(g => Number(g.count) > 0).map(g => ({ dia: Number(g.dia), count: Number(g.count) }))
+    : (terminals > 0 ? [{ dia: Number(terminalSize), count: Number(terminals) }] : []);
+  // Only suffix keys when there is more than one group, so a single-size job
+  // keeps the keys it has always had.
+  const multi = termGroups.length > 1;
+  const k = (base, dia) => (multi ? `${base}-${dia}` : base);
+
+  for (const g of termGroups) {
+    const { dia, count } = g;
     if (terminalMode === 'hosekit') {
       lines.push({
-        key: 'hosekit', desc: `Hose kit, ${sz(terminalSize)} — terminal unit connection package`,
-        qty: terminals, unit: 'ea', defaultPrice: nearest(HOSE_KIT, terminalSize),
+        key: k('hosekit', dia), desc: `Hose kit, ${sz(dia)} — terminal unit connection package`,
+        qty: count, unit: 'ea', defaultPrice: nearest(HOSE_KIT, dia),
         notes: 'flex hoses + ball valve w/ union + balancing valve + P/T ports, one per terminal unit',
       });
     } else {
       lines.push({
-        key: 'termball', desc: `Ball valve, ${sz(terminalSize)} — terminal isolation`,
-        qty: terminals * 2, unit: 'ea', defaultPrice: nearest(BALL_VALVE, terminalSize),
+        key: k('termball', dia), desc: `Ball valve, ${sz(dia)} — terminal isolation`,
+        qty: count * 2, unit: 'ea', defaultPrice: nearest(BALL_VALVE, dia),
         notes: 'two per terminal unit — supply and return',
       });
       lines.push({
-        key: 'termbal', desc: `Balancing valve, ${sz(terminalSize)} — terminal`,
-        qty: terminals, unit: 'ea', defaultPrice: nearest(BALANCING_VALVE, terminalSize),
+        key: k('termbal', dia), desc: `Balancing valve, ${sz(dia)} — terminal`,
+        qty: count, unit: 'ea', defaultPrice: nearest(BALANCING_VALVE, dia),
         notes: 'one per terminal unit, return side',
       });
       lines.push({
-        key: 'termpt', desc: 'P/T test port (Pete\'s plug)',
-        qty: terminals * 2, unit: 'ea', defaultPrice: PT_PORT,
+        key: k('termpt', dia), desc: 'P/T test port (Pete\'s plug)',
+        qty: count * 2, unit: 'ea', defaultPrice: PT_PORT,
         notes: 'both sides of the coil — the sheet calls for these at control sensing equipment',
       });
     }
@@ -105,10 +130,10 @@ export function hydronicValveLines(opts = {}) {
     if (controlValves !== 'none') {
       const byOthers = controlValves === 'byOthers';
       lines.push({
-        key: 'controlvalve',
-        desc: `Control valve, ${sz(terminalSize)} — 2-way modulating w/ actuator${byOthers ? ' (FURNISHED BY CONTROLS — install only)' : ''}`,
-        qty: terminals, unit: 'ea',
-        defaultPrice: byOthers ? 0 : nearest(CONTROL_VALVE, terminalSize),
+        key: k('controlvalve', dia),
+        desc: `Control valve, ${sz(dia)} — 2-way modulating w/ actuator${byOthers ? ' (FURNISHED BY CONTROLS — install only)' : ''}`,
+        qty: count, unit: 'ea',
+        defaultPrice: byOthers ? 0 : nearest(CONTROL_VALVE, dia),
         notes: byOthers
           ? 'material by the controls contractor (Div 23 09 00) — this line carries the INSTALL, so price labor not material'
           : 'one per terminal unit — confirm against the controls scope before pricing, these are commonly furnished by Div 23 09 00',
