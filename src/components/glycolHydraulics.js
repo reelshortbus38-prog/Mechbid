@@ -103,6 +103,38 @@ export const DEFAULT_FRICTION_PER_100FT = 3;   // ft of head per 100 ft, typical
 export const DEFAULT_FITTINGS_PCT = 50;        // equivalent length added for fittings
 export const DEFAULT_PUMP_EFFICIENCY = 0.65;
 
+// ── THE TERM THAT WAS MISSING: MAINTAINED REMOTE DIFFERENTIAL PRESSURE ───────
+// A variable-speed pump on DP control does not just overcome friction. It holds
+// a set differential pressure at a sensor out at the worst-case branch, and
+// that setpoint is head the pump develops no matter how short the pipe is.
+//
+// FOUND BY DECOMPOSING A REAL SELECTION. Edmonds SD College Place, HWP-01,
+// 276 GPM at 83 ft, against its own riser diagram and control sequence:
+//
+//   ~5 ft    plant equipment   air separator 3.0 + boiler 1.0 + fittings
+//   50-60 ft distribution friction
+//   18.5-27.7 ft  held at the remote sensor  ("HW Differential Pressure STPT
+//                 ... initially set from 8-12 PSI")
+//   ─────────
+//   83 ft
+//
+// Without the DP term the same job computes about 60 ft, selects at 5.4 bhp
+// instead of 7.4, and buys a 7.5 HP motor where the engineer scheduled 10.
+// One frame light, from a number that never appears on a piping plan.
+//
+// IT IS NOT AN EXTRA ON TOP OF THE BRANCH — IT IS THE BRANCH.
+// The setpoint exists to push design flow through the worst terminal's valve
+// train, so it is the same quantity the branch components add up to, stated as
+// a control setpoint instead of itemised. This job's 8-12 PSI is 18.5-27.7 ft
+// against a typical itemised branch of coil 8 + control valve 8 + circuit
+// setter 5 + strainer 3 + isolation 1.5 = 25.5 ft. The same number twice.
+//
+// So a caller supplies ONE of them: the itemised branch, or the setpoint off
+// the control diagram. Passing both is double counting, and checkDpAgainstBranch
+// exists to catch it.
+export const FT_PER_PSI = 2.31;
+export const psiToFt = psi => (Number(psi) > 0 ? Math.round(Number(psi) * FT_PER_PSI * 10) / 10 : 0);
+
 // longestPathFt is the CRITICAL CIRCUIT — out to the furthest case and back —
 // NOT the total pipe in the building. A pump only has to overcome the worst
 // path; the rest of the loop is in parallel with it. Feeding total footage in
@@ -111,18 +143,42 @@ export function pumpHead(longestPathFt, {
   frictionPer100 = DEFAULT_FRICTION_PER_100FT,
   fittingsPct = DEFAULT_FITTINGS_PCT,
   componentHeadFt = 0,
+  remoteDpFt = 0,
   pct = 35,
 } = {}) {
   const L = Number(longestPathFt) || 0;
-  if (L <= 0 && !(Number(componentHeadFt) > 0)) return null;
+  const comp = Number(componentHeadFt) || 0;
+  const dp = Number(remoteDpFt) || 0;
+  if (L <= 0 && !(comp > 0) && !(dp > 0)) return null;
   const developed = L * (1 + (Number(fittingsPct) || 0) / 100);
   const friction = developed * ((Number(frictionPer100) || 0) / 100) * (viscosityFactor(pct) || 1);
-  const total = friction + (Number(componentHeadFt) || 0);
+  const total = friction + comp + dp;
   return {
     developedFt: Math.round(developed),
     frictionFt: Math.round(friction * 10) / 10,
-    componentFt: Number(componentHeadFt) || 0,
+    componentFt: comp,
+    remoteDpFt: dp,
     totalFt: Math.round(total * 10) / 10,
+  };
+}
+
+// The two ways of naming the same quantity, compared. Returns null when only
+// one of them is present, which is the normal case and not worth a message.
+export const DP_BRANCH_TOLERANCE = 0.4;   // 40% apart before it is worth raising
+
+export function checkDpAgainstBranch(remoteDpFt, branchHeadFt) {
+  const dp = Number(remoteDpFt) || 0;
+  const br = Number(branchHeadFt) || 0;
+  if (!(dp > 0) || !(br > 0)) return null;
+  const ratio = dp / br;
+  const off = Math.abs(ratio - 1);
+  return {
+    dpFt: Math.round(dp * 10) / 10,
+    branchFt: Math.round(br * 10) / 10,
+    ratio: Math.round(ratio * 100) / 100,
+    agree: off <= DP_BRANCH_TOLERANCE,
+    // Only ONE of them belongs in the total.
+    doubleCountFt: Math.round(Math.min(dp, br) * 10) / 10,
   };
 }
 
@@ -180,12 +236,13 @@ export function glycolHydraulics({
   frictionPer100 = DEFAULT_FRICTION_PER_100FT,
   fittingsPct = DEFAULT_FITTINGS_PCT,
   componentHeadFt = 0,
+  remoteDpFt = 0,
   efficiency = DEFAULT_PUMP_EFFICIENCY,
   redundant = true,
 } = {}) {
   const gpm = glycolGpm(btuh, deltaT, pct);
   const onWater = waterGpm(btuh, deltaT);
-  const head = pumpHead(longestPathFt, { frictionPer100, fittingsPct, componentHeadFt, pct });
+  const head = pumpHead(longestPathFt, { frictionPer100, fittingsPct, componentHeadFt, remoteDpFt, pct });
   const hp = gpm && head ? pumpHorsepower(gpm, head.totalFt, { pct, efficiency }) : null;
   const vel = velocityFtSec(gpm, idInches);
   return {

@@ -6,7 +6,7 @@ import { pipeMaterialPrice } from './pipePricing.js';
 import {
   glycolMaterialLines, systemVolumeGal, glycolCharge, checkMix, pgFreezePoint,
 } from './glycolSystem.js';
-import { glycolHydraulics, glycolGpm } from './glycolHydraulics.js';
+import { glycolHydraulics, glycolGpm, psiToFt, checkDpAgainstBranch } from './glycolHydraulics.js';
 import { reviewGlycolInputs, reviewSummary } from './glycolAssumptions.js';
 import {
   COMPONENT_TYPES, SERIES, BRANCH, componentType, newComponent, seedComponents,
@@ -51,6 +51,9 @@ export default function GlycolCalc() {
   const [btuh, setBtuh] = useState(0);
   const [deltaT, setDeltaT] = useState(8);
   const [longestPathFt, setLongestPathFt] = useState(0);
+  // Off the control diagram, not the piping plan — "HW Differential Pressure
+  // STPT" or similar. Blank on a constant-speed system, which has no such thing.
+  const [remoteDpPsi, setRemoteDpPsi] = useState(0);
   // Equipment head is itemised off the submittals and lives in the store rather
   // than in this card — it is looked-up paperwork data, and re-keying it because
   // a tab closed is the kind of thing that stops an estimator using a feature.
@@ -90,14 +93,22 @@ export default function GlycolCalc() {
   const eq = equipmentHead(components, { gpm, fixtures: Number(fixtures) || 0, pct: Number(pct) || 35 });
   const eqSanity = equipmentHeadSanity(components, eq, { fixtures: Number(fixtures) || 0, gpm });
   const naive = naiveTotalFt(eq, Number(fixtures) || 0);
+  // A DP setpoint off the control diagram STANDS IN FOR the itemised branch —
+  // it is the same quantity, stated as a control value. So when one is entered
+  // the branch total is left out and only the series side is carried, which is
+  // the difference between modelling it and counting it twice.
+  const remoteDpFt = psiToFt(remoteDpPsi);
+  const dpCheck = checkDpAgainstBranch(remoteDpFt, eq.branchFt);
   // Nothing itemised yet → the old flat placeholder, so the card still works on
   // a job where the submittals have not arrived.
-  const componentHeadFt = components.length ? eq.totalFt : 25;
+  const componentHeadFt = components.length
+    ? (remoteDpFt > 0 ? eq.seriesFt : eq.totalFt)
+    : 25;
 
   const hyd = glycolHydraulics({
     btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0, pct: Number(pct) || 35,
     longestPathFt: Number(longestPathFt) || 0, idInches: mainId,
-    componentHeadFt,
+    componentHeadFt, remoteDpFt,
   });
 
   // What every number on this card is standing on. Placeholders and
@@ -297,6 +308,13 @@ export default function GlycolCalc() {
             <span style={{ fontSize: 11, color: colors.textDim }}>ft</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Remote DP setpoint</span>
+            {num(remoteDpPsi, setRemoteDpPsi, 60)}
+            <span style={{ fontSize: 11, color: colors.textDim }}>
+              PSI{remoteDpFt > 0 ? ` = ${remoteDpFt} ft` : ''}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: colors.textDim }}>Equipment head</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600,
               color: components.length ? colors.green : colors.yellow }}>
@@ -444,6 +462,23 @@ export default function GlycolCalc() {
           ))}
         </details>
 
+        {dpCheck && (
+          <div style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 10, padding: '8px 12px', borderRadius: 8,
+            background: dpCheck.agree ? 'rgba(34,197,94,0.06)' : 'rgba(234,179,8,0.06)',
+            border: `1px solid ${(dpCheck.agree ? colors.green : colors.yellow)}40`, color: colors.textDim }}>
+            <strong style={{ color: dpCheck.agree ? colors.green : colors.yellow }}>
+              {dpCheck.agree ? '✓' : '⚠'} DP setpoint {dpCheck.dpFt} ft vs itemised branch {dpCheck.branchFt} ft
+            </strong>
+            <br />
+            These are <strong>the same quantity</strong> — the setpoint exists to push design flow through the
+            worst terminal's valve train, which is exactly what the branch components add up to. Only the DP
+            setpoint is being counted; the {dpCheck.doubleCountFt} ft of branch is left out rather than added
+            twice. {dpCheck.agree
+              ? 'They agree, which is a good sign that both were read right.'
+              : `They are ${dpCheck.ratio}× apart, so one of them is wrong — worth resolving before this prices a motor.`}
+          </div>
+        )}
+
         {hyd.gpm === null ? (
           <div style={{ fontSize: 12, color: colors.textDim }}>
             Enter the load and ΔT to size the flow — the spec's 20–24°F supply against a 28–32°F return is about 8°F.
@@ -451,7 +486,13 @@ export default function GlycolCalc() {
         ) : (
           <div style={{ fontSize: 12, color: colors.textDim, fontFamily: "'DM Mono', monospace", lineHeight: 1.9 }}>
             <div><strong style={{ color: colors.green }}>{hyd.gpm} GPM</strong> — {hyd.extraFlowPct}% more than the {hyd.waterGpm} GPM the same load would need on water</div>
-            {hyd.head && <div>head {hyd.head.totalFt} ft ({hyd.head.frictionFt} friction over {hyd.head.developedFt} ft developed + {hyd.head.componentFt} equipment)</div>}
+            {hyd.head && (
+              <div>
+                head {hyd.head.totalFt} ft ({hyd.head.frictionFt} friction over {hyd.head.developedFt} ft developed
+                {' '}+ {hyd.head.componentFt} equipment
+                {hyd.head.remoteDpFt > 0 && <> + {hyd.head.remoteDpFt} held at the remote sensor</>})
+              </div>
+            )}
             {hyd.hp && (
               <div>
                 <strong style={{ color: colors.green }}>{hyd.hp.motorHp} HP</strong> motor ({hyd.hp.bhp} bhp
