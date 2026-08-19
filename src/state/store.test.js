@@ -429,45 +429,57 @@ describe('overtime on a long day', () => {
   });
 });
 
-describe('overtime review', () => {
-  const CREW = Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: 10 }));
-  const flatState = h => ({ laborMode: 'flat', flatJob: { crew: CREW.map(m => ({ ...m, hrsPerDay: h })), weeks: 27, daysPerWeek: 5 } });
+describe('overtime review asks about the WEEK, not the day', () => {
+  const crew = h => Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: h }));
+  const flatState = (d, h, extra = {}) => ({
+    laborMode: 'flat',
+    flatJob: { crew: crew(h), weeks: 27, daysPerWeek: d, ...extra },
+  });
 
-  it('speaks up when a long day is billing straight through', () => {
-    const r = otReview(flatState(10));
-    expect(r.current).toBe(405000);
-    expect(r.corrected).toBe(445500);
+  it('says nothing about a four-ten — forty hours is forty hours', () => {
+    // This warned "the bid is short $32,400" and offered to add overtime that
+    // is not owed. A five-eight and a four-ten are the same week.
+    const r = otReview(flatState(4, 10));
+    expect(r.owed).toBe('none');
+    expect(r.delta).toBeUndefined();
+    expect(r.hrsPerWeek).toBe(40);
+  });
+
+  it('is silent on a five-eight, where there is nothing to remark on at all', () => {
+    expect(otReview(flatState(5, 8))).toBeNull();
+  });
+
+  it('flags a five-ten, which really is fifty hours', () => {
+    const r = otReview(flatState(5, 10));
+    expect(r.owed).toBe('weekly');
     expect(r.delta).toBe(40500);
-    expect(r.daysAffected).toBe(135);
   });
 
-  it('stays quiet on eight-hour days — there is nothing past eight', () => {
-    expect(otReview(flatState(8))).toBeNull();
+  it('flags six eights, where no DAY passes eight but the week passes forty', () => {
+    const r = otReview(flatState(6, 8));
+    expect(r.owed).toBe('weekly');
+    expect(r.delta).toBeCloseTo(32400, 6);
   });
 
-  it('stays quiet once a threshold is set', () => {
-    const s = flatState(10);
-    s.flatJob.otAfterHours = 8;
-    s.flatJob.otMult = 1.5;
-    expect(otReview(s)).toBeNull();
+  it('goes quiet once a threshold is set', () => {
+    expect(otReview(flatState(5, 10, { weeklyOtHours: 40, otMult: 1.5 }))).toBeNull();
+    expect(otReview(flatState(5, 10, { otAfterHours: 8, otMult: 1.5 }))).toBeNull();
   });
 
-  it('notices a blanket multiplier being used instead of a threshold', () => {
-    const s = flatState(10);
-    s.flatJob.otMult = 1.5;
-    expect(otReview(s).blanketUsed).toBe(true);
+  it('reports an unknown week rather than assuming one', () => {
+    // A period stores total days with no calendar on it.
+    const r = otReview({ laborMode: 'periods', laborPeriods: [{ crew: crew(10), days: 20 }] });
+    expect(r.owed).toBe('unknown');
+    expect(r.hrsPerWeek).toBe(0);
   });
 
-  it('works across phased periods and counts only the affected days', () => {
-    const state = {
-      laborMode: 'periods',
-      laborPeriods: [
-        { crew: CREW, days: 20 },                                            // 10s, no threshold
-        { crew: CREW.map(m => ({ ...m, hrsPerDay: 8 })), days: 30 },         // 8s, nothing to fix
-        { crew: CREW, days: 10, otAfterHours: 8, otMult: 1.5 },              // already right
-      ],
-    };
-    expect(otReview(state).daysAffected).toBe(20);
+  it('uses a period\'s own days per week when it has one', () => {
+    const r = otReview({ laborMode: 'periods', laborPeriods: [{ crew: crew(10), days: 20, daysPerWeek: 4 }] });
+    expect(r.owed).toBe('none');
+  });
+
+  it('notices a blanket multiplier standing in for a threshold', () => {
+    expect(otReview(flatState(5, 10, { otMult: 1.5 })).blanketUsed).toBe(true);
   });
 
   it('says nothing about a job with no labor entered', () => {
@@ -476,12 +488,9 @@ describe('overtime review', () => {
   });
 
   it('excludes out-of-town from the comparison — this is a labor question', () => {
-    const s = flatState(10);
-    s.flatJob.ootPerDay = 150;
+    const s = flatState(5, 10, { ootPerDay: 150 });
     s.ootBasis = 'person';
-    const r = otReview(s);
-    expect(r.current).toBe(405000);
-    expect(r.delta).toBe(40500);
+    expect(otReview(s).delta).toBe(40500);
   });
 });
 
