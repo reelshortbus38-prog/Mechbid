@@ -1246,6 +1246,42 @@ export default function Step1_Setup({ onNext }) {
         </div>
       )}
 
+      {/* Secondary loop — a SEPARATE axis from the refrigerant above, not a third
+          option on it. A glycol store still has a primary circuit in the machine
+          room; glycol is what that circuit cools, not what it runs on. CO₂ low
+          temp alongside a glycol medium temp is a common modern layout, and a
+          single toggle would force a choice between them that the job does not
+          make. */}
+      {state.mode === 'Commercial Refrigeration' && (
+        <div>
+          <SLabel>Secondary Loop</SLabel>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+            {(state.secondaryLoop || 'none') === 'glycol'
+              ? 'Chilled glycol out to case coils — no suction or liquid line per case. Adds the loop takeoff on the Materials step: pipe, insulation on every foot, a valve set at each case, and the fluid charge.'
+              : (state.secondaryLoop || 'none') === 'water'
+                ? 'Ambient water loop serving self-contained cases — NOT insulated, and no refrigerant piping by you. The plant is a fluid cooler rather than a chiller barrel.'
+                : 'Direct expansion — refrigerant piped to every case. This is the traditional layout, and it is what the circuit table describes.'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            {[{ k: 'none', label: '🧊 DX (none)' }, { k: 'glycol', label: '💧 Glycol' }, { k: 'water', label: '🌊 Water loop' }].map(o => (
+              <div key={o.k} onClick={() => setField('secondaryLoop', o.k)} style={{
+                border: `2px solid ${(state.secondaryLoop || 'none') === o.k ? colors.green : colors.border}`,
+                background: (state.secondaryLoop || 'none') === o.k ? colors.greenFaint : colors.card2,
+                borderRadius: 10, padding: '12px', cursor: 'pointer', textAlign: 'center',
+                fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700,
+                color: (state.secondaryLoop || 'none') === o.k ? colors.green : colors.text,
+              }}>{o.label}</div>
+            ))}
+          </div>
+          {(state.secondaryLoop || 'none') !== 'none' && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8, lineHeight: 1.5 }}>
+              The refrigerant above still applies — it is what the chiller barrel runs on. A CO₂ low-temp rack
+              feeding a glycol medium-temp loop is one job, not two.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* New store vs remodel — set BEFORE analyzing. On a remodel only the
           highlighted circuits on the legend are new work; on a new store the
           legend isn't highlighted because EVERYTHING runs, so the excel parser

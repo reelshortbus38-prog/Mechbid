@@ -31,7 +31,9 @@ export default function GlycolCalc() {
 
   const [runs, setRuns] = useState([{ dia: 3, ft: 0 }, { dia: 2, ft: 0 }, { dia: 1, ft: 0 }, { dia: 0.75, ft: 0 }]);
   const [material, setMaterial] = useState('copper');
-  const [loopType, setLoopType] = useState('chilled');
+  // Driven by the Setup page's Secondary Loop choice rather than duplicated
+  // here — two places to set the same thing is two places to set it wrong.
+  const loopType = (state.secondaryLoop || 'none') === 'water' ? 'water' : 'chilled';
   const [freezeExposedFt, setFreezeExposedFt] = useState(0);
   const [pct, setPct] = useState(32);
   const [protectTo, setProtectTo] = useState(15);
@@ -120,6 +122,7 @@ export default function GlycolCalc() {
     <Card style={{ background: colors.surface }}>
       <SLabel>🧊 Secondary Loop — Glycol or Water</SLabel>
       <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
+        Set to <strong>{loopType === 'water' ? 'ambient water loop' : 'chilled glycol'}</strong> on the Setup step.
         A secondary loop has no suction or liquid line per case, so none of it comes out of the circuit table.
         What it does have: header out and back, <strong>insulation on every foot</strong>, a valve set at each case,
         and <strong>several hundred gallons of fluid</strong> that a copper takeoff has nowhere to put.
@@ -149,13 +152,6 @@ export default function GlycolCalc() {
       </div>
 
       <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, color: colors.textDim }}>Loop type</span>
-          <Select value={loopType} onChange={e => { setLoopType(e.target.value); setAdded(false); }} style={{ width: 260 }}>
-            <option value="chilled">Chilled glycol — cold fluid to case coils</option>
-            <option value="water">Ambient water loop — self-contained cases</option>
-          </Select>
-        </div>
         {loopType === 'water' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: colors.textDim }}>Freeze-exposed</span>

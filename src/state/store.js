@@ -178,6 +178,12 @@ export const initialState = {
   // alloy and high-pressure (1300+ psi) fittings instead of standard ACR copper,
   // so the generated material list and refrigerant change with it.
   systemType: 'HFC',   // 'HFC' | 'CO2'
+  // Secondary loop is a SEPARATE axis from the refrigerant above. A glycol store
+  // still has a primary circuit in the machine room — glycol is what that
+  // circuit cools, not what it runs on — so CO₂ low temp alongside a glycol
+  // medium temp is one job, and a single three-way toggle would have forced a
+  // choice the job does not make.
+  secondaryLoop: 'none',   // 'none' | 'glycol' | 'water'
   projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
   // Key bid dates a refrigeration estimator needs up front.
   preconDate: '',       // pre-construction meeting
