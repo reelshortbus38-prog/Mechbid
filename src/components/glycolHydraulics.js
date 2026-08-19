@@ -129,12 +129,47 @@ export function pumpHead(longestPathFt, {
 // Brake horsepower at the shaft. NEMA sizes exist because you cannot buy 2.3 hp.
 export const NEMA_HP = [1 / 6, 1 / 4, 1 / 3, 1 / 2, 3 / 4, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 40, 50];
 
-export function pumpHorsepower(gpm, headFt, { pct = 35, efficiency = DEFAULT_PUMP_EFFICIENCY } = {}) {
+// ── THE MOTOR YOU BUY IS NOT THE NEXT SIZE ABOVE BHP ─────────────────────────
+// This module used to hand back the first NEMA frame that cleared the computed
+// brake horsepower, which is arithmetically tidy and wrong at the counter.
+// Engineers select pumps NON-OVERLOADING: the motor has to carry the shaft load
+// anywhere on the curve, not only at the design point. Ride out to runout — a
+// balance valve open further than designed, a filter clean instead of loaded —
+// and bhp climbs past where it sat on the schedule. A motor picked to just clear
+// the design point trips on the day the system is at its best.
+//
+// CALIBRATED AGAINST A REAL SCHEDULE. Edmonds SD College Place, hydronic pump
+// schedule, two independent selections by the engineer of record:
+//
+//   HWP-01  276 GPM @ 83 ft,  78% eff, water     → 7.42 bhp, scheduled 10 HP
+//   CWP-01  455 GPM @ 125 ft, 75% eff, 20% PG    → 19.44 bhp, scheduled 25 HP
+//
+// The bare next-size answer is 7.5 and 20 — one frame light in both cases. A
+// 15% margin ahead of the frame lookup reproduces both selections exactly.
+//
+// This matters past the pump itself: the motor size drives the VFD, the starter,
+// the feeder and the breaker. Two data points from one engineer is thin
+// calibration, so both figures come back and the caller shows the gap.
+export const NON_OVERLOADING_MARGIN = 0.15;
+
+export const nemaAtLeast = hp => NEMA_HP.find(x => x >= hp) ?? NEMA_HP[NEMA_HP.length - 1];
+
+export function pumpHorsepower(gpm, headFt, {
+  pct = 35, efficiency = DEFAULT_PUMP_EFFICIENCY, margin = NON_OVERLOADING_MARGIN,
+} = {}) {
   const g = Number(gpm), h = Number(headFt), e = Number(efficiency);
   if (!(g > 0) || !(h > 0) || !(e > 0)) return null;
   const bhp = (g * h * (specificGravity(pct) || 1)) / (3960 * e);
-  const motor = NEMA_HP.find(x => x >= bhp) ?? NEMA_HP[NEMA_HP.length - 1];
-  return { bhp: Math.round(bhp * 100) / 100, motorHp: motor };
+  const m = Number(margin) >= 0 ? Number(margin) : NON_OVERLOADING_MARGIN;
+  return {
+    bhp: Math.round(bhp * 100) / 100,
+    // What you buy.
+    motorHp: nemaAtLeast(bhp * (1 + m)),
+    // The frame that merely clears the design point — kept so the difference is
+    // visible rather than folded away, and so a bare selection can be spotted.
+    minMotorHp: nemaAtLeast(bhp),
+    marginPct: Math.round(m * 100),
+  };
 }
 
 // One call for the card: load and ΔT in, flow, head, horsepower out.
