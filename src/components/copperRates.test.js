@@ -73,3 +73,55 @@ describe('unratedCopperSizes', () => {
     expect(unratedNote('9-1/8')).toMatch(/priced at \$0 and is NOT in your total/);
   });
 });
+
+// ── THE VIRGINIA COPPER PRICING ──────────────────────────────────────────────
+// Replaced 2026-08-19 from supplier pricing the estimator pulled for their own
+// market. The shipped table had been roughly a THIRD of these, which made every
+// refrigeration bid built on it materially light.
+
+describe('the copper table matches the quoted market pricing', () => {
+  const QUOTED_MIDPOINTS = { '3/8': 5.00, '1/2': 6.00, '5/8': 8.25, '7/8': 10.00, '1-1/8': 18.00, '2-1/8': 38.00 };
+
+  it('uses the quoted midpoint for every size that was quoted', () => {
+    for (const [size, price] of Object.entries(QUOTED_MIDPOINTS)) {
+      expect(DEFAULT_CU_RATES[size], size).toBe(price);
+    }
+  });
+
+  it('each quoted size sits inside the range it came from', () => {
+    const RANGES = { '3/8': [4.50, 5.50], '1/2': [5, 7], '5/8': [7.50, 9], '7/8': [9, 11], '1-1/8': [15, 21] };
+    for (const [size, [lo, hi]] of Object.entries(RANGES)) {
+      expect(DEFAULT_CU_RATES[size], size).toBeGreaterThanOrEqual(lo);
+      expect(DEFAULT_CU_RATES[size], size).toBeLessThanOrEqual(hi);
+    }
+  });
+
+  it('keeps the derived large sizes inside the source s own $38-$105+ band', () => {
+    // The same source gives "2-1/8 to 3-1/8+: $38 to $105+" as one coarse band.
+    // Scaling by weight off the 2-1/8 anchor has to land inside it.
+    expect(DEFAULT_CU_RATES['3-5/8']).toBeGreaterThan(38);
+    expect(DEFAULT_CU_RATES['3-5/8']).toBeLessThanOrEqual(105);
+  });
+
+  it('still climbs with every size step', () => {
+    const order = ['1/4', '3/8', '1/2', '5/8', '7/8', '1-1/8', '1-3/8', '1-5/8', '2-1/8', '2-5/8', '3-1/8', '3-5/8', '4-1/8', '5-1/8', '6-1/8'];
+    for (let i = 1; i < order.length; i++) {
+      expect(DEFAULT_CU_RATES[order[i]], order[i]).toBeGreaterThan(DEFAULT_CU_RATES[order[i - 1]]);
+    }
+  });
+
+  it('shows $/lb FALLING as the tube grows, which is what the quotes do', () => {
+    // Small tube carries coil and handling overhead a hard length does not, so
+    // this is a real effect and not a fitting artefact.
+    const lb = (od, w) => Math.PI * (od - w) * w * 12 * 0.323;
+    const perLbSmall = DEFAULT_CU_RATES['3/8'] / lb(0.375, 0.032);
+    const perLbLarge = DEFAULT_CU_RATES['2-1/8'] / lb(2.125, 0.070);
+    expect(perLbSmall).toBeGreaterThan(perLbLarge * 1.4);
+  });
+
+  it('is a real multiple of what shipped before, which is the point', () => {
+    // Guard against a silent revert to the old, light table.
+    expect(DEFAULT_CU_RATES['7/8']).toBeGreaterThan(8);
+    expect(DEFAULT_CU_RATES['2-1/8']).toBeGreaterThan(30);
+  });
+});
