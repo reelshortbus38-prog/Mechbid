@@ -10,7 +10,10 @@ const DEFAULT_ROLES = [
   { role: 'Apprentice', rate: 40 },
 ];
 
-export default function CrewBuilder({ crew, onChange, compact = false }) {
+// showTravel: on a travelling job, who is actually away. Per diem is per person,
+// so a local hand on the crew must be able to sit out of it — and the default is
+// travelling, because that is what a figure entered before this existed assumed.
+export default function CrewBuilder({ crew, onChange, compact = false, showTravel = false }) {
   const [customRole, setCustomRole] = useState('');
   const [customRate, setCustomRate] = useState('');
 
@@ -23,7 +26,9 @@ export default function CrewBuilder({ crew, onChange, compact = false }) {
   }
 
   function updateMember(id, field, value) {
-    onChange(crew.map(m => m.id === id ? { ...m, [field]: (field === 'rate' || field === 'hrsPerDay') ? parseFloat(value) || 0 : value } : m));
+    onChange(crew.map(m => m.id === id
+      ? { ...m, [field]: (field === 'rate' || field === 'hrsPerDay') ? parseFloat(value) || 0 : value }
+      : m));
   }
 
   const crewRate = crew.reduce((s, m) => s + (parseFloat(m.rate) || 0), 0);
@@ -79,6 +84,15 @@ export default function CrewBuilder({ crew, onChange, compact = false }) {
                 onChange={e => updateMember(m.id, 'role', e.target.value)}
                 style={{ flex: 1, background: 'transparent', border: 'none', color: colors.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' }}
               />
+              {showTravel && (
+                <label title="Away on this job — counts toward per diem"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, cursor: 'pointer',
+                    fontSize: 10, color: m.travels === false ? colors.textDim : colors.green }}>
+                  <input type="checkbox" checked={m.travels !== false}
+                    onChange={e => updateMember(m.id, 'travels', e.target.checked)} />
+                  {m.travels === false ? 'local' : 'away'}
+                </label>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <span style={{ fontSize: 12, color: colors.textDim }}>$</span>
                 <input
