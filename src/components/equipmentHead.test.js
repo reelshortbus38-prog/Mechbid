@@ -117,6 +117,118 @@ describe('series vs branch — the whole point of the module', () => {
   });
 });
 
+describe('per-component flow override', () => {
+  it('uses the entered flow instead of the even split', () => {
+    // Even split would be 180/30 = 6 GPM. This walk-in actually draws 18.
+    const parts = [sub('walkinCoil', 10, { ratedGpm: 6, actualGpm: 18 })];
+    const r = equipmentHead(parts, { gpm: 180, fixtures: 30, pct: 0 });
+    // 10 × (18/6)² = 90
+    expect(r.branchFt).toBeCloseTo(90, 1);
+  });
+
+  it('falls back to the even split when no override is entered', () => {
+    const parts = [sub('walkinCoil', 10, { ratedGpm: 6 })];
+    const r = equipmentHead(parts, { gpm: 180, fixtures: 30, pct: 0 });
+    expect(r.branchFt).toBeCloseTo(10, 1);
+    expect(r.lines[0].flowBasis).toBe('even-split');
+  });
+
+  it('records where the flow came from', () => {
+    const line = k => equipmentHead([sub(k.key, 8, k)], { gpm: 180, fixtures: 30, pct: 0 }).lines[0];
+    expect(line({ key: 'caseCoil', ratedGpm: 6 }).flowBasis).toBe('even-split');
+    expect(line({ key: 'caseCoil', ratedGpm: 6, actualGpm: 9 }).flowBasis).toBe('override');
+    expect(line({ key: 'chillerBarrel', ratedGpm: 180 }).flowBasis).toBe('loop');
+  });
+
+  it('keeps the derived figure alongside the override, so they can be compared', () => {
+    const parts = [sub('walkinCoil', 10, { ratedGpm: 6, actualGpm: 18 })];
+    const l = equipmentHead(parts, { gpm: 180, fixtures: 30, pct: 0 }).lines[0];
+    expect(l.actualGpm).toBe(18);
+    expect(l.derivedGpm).toBe(6);
+  });
+
+  it('overrides a series component too', () => {
+    const parts = [sub('mainStrainer', 5, { ratedGpm: 100, actualGpm: 200 })];
+    const r = equipmentHead(parts, { gpm: 100, fixtures: 30, pct: 0 });
+    expect(r.seriesFt).toBeCloseTo(20, 1);
+  });
+
+  it('lets flow correction work before any load is entered', () => {
+    // No btuh yet → gpm 0 → no even split. An override still gives a real number.
+    const parts = [sub('caseCoil', 8, { ratedGpm: 6, actualGpm: 9 })];
+    const r = equipmentHead(parts, { gpm: 0, fixtures: 0, pct: 0 });
+    expect(r.branchFt).toBeCloseTo(8 * 2.25, 1);
+  });
+
+  it('says in the correction line that the flow was entered rather than assumed', () => {
+    const c = sub('caseCoil', 8, { ratedGpm: 6, actualGpm: 9 });
+    const r = resolveComponent(c, { gpm: 180, branchGpm: 6, pct: 0 });
+    expect(r.corrections.join(' ')).toMatch(/entered/);
+  });
+
+  it('ignores a zero or blank override', () => {
+    for (const v of [0, '', null]) {
+      const parts = [sub('caseCoil', 8, { ratedGpm: 6, actualGpm: v })];
+      expect(equipmentHead(parts, { gpm: 180, fixtures: 30, pct: 0 }).lines[0].flowBasis).toBe('even-split');
+    }
+  });
+});
+
+describe('sanity on the override', () => {
+  const san = (parts, opts) => equipmentHeadSanity(parts, equipmentHead(parts, { ...opts, pct: 0 }), opts);
+
+  it('blocks a branch flow larger than the whole loop', () => {
+    const parts = [sub('caseCoil', 8, { ratedGpm: 6, actualGpm: 400 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /exceed the whole loop/.test(x.label));
+    expect(hit).toBeTruthy();
+    expect(hit.severity).toBe('blocker');
+  });
+
+  it('asks about an override far off the even split', () => {
+    const parts = [sub('walkinCoil', 10, { ratedGpm: 6, actualGpm: 18 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /even split/.test(x.label));
+    expect(hit).toBeTruthy();
+    expect(hit.severity).toBe('verify');
+    expect(hit.label).toMatch(/3×/);
+  });
+
+  it('stays quiet when the override roughly confirms the even split', () => {
+    const parts = [sub('caseCoil', 8, { ratedGpm: 6, actualGpm: 7 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /even split/.test(x.label));
+    expect(hit).toBeUndefined();
+  });
+
+  it('does not double-report an impossible flow as merely skewed', () => {
+    const parts = [sub('caseCoil', 8, { ratedGpm: 6, actualGpm: 400 })];
+    const hits = san(parts, { gpm: 180, fixtures: 30 }).filter(x => /even split|exceed the whole/.test(x.label));
+    expect(hits.length).toBe(1);
+  });
+
+  it('questions a series component overridden off the loop flow', () => {
+    const parts = [sub('mainStrainer', 5, { ratedGpm: 180, actualGpm: 60 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /series component/.test(x.label));
+    expect(hit).toBeTruthy();
+  });
+
+  it('accepts a series override that matches the loop flow', () => {
+    const parts = [sub('mainStrainer', 5, { ratedGpm: 180, actualGpm: 180 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /series component/.test(x.label));
+    expect(hit).toBeUndefined();
+  });
+
+  it('mentions the even-split assumption when a rated flow makes it matter', () => {
+    const parts = [sub('caseCoil', 8, { ratedGpm: 6 })];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /even split of the loop/i.test(x.label));
+    expect(hit.severity).toBe('fyi');
+  });
+
+  it('stays quiet about the split when no rated flow makes it bite', () => {
+    const parts = [sub('caseCoil', 8)];
+    const hit = san(parts, { gpm: 180, fixtures: 30 }).find(x => /even split of the loop/i.test(x.label));
+    expect(hit).toBeUndefined();
+  });
+});
+
 describe('resolveComponent explains itself', () => {
   it('records every correction it applied', () => {
     const c = sub('caseCoil', 4, { unit: 'psi', ratedGpm: 5, ratedOn: 'water' });

@@ -91,6 +91,12 @@ export function newComponent(key = 'seriesOther') {
     value: t ? t.typicalFt : 0,
     unit: 'ft',            // 'ft' | 'psi' | 'kpa'
     ratedGpm: 0,           // 0 = the submittal's flow was not noted, so no flow correction
+    // What is ACTUALLY going through this component. 0 = derive it: a series
+    // item sees the whole loop, a branch item sees an even split of it. The
+    // override is for when the even split is a lie — a 40 MBH walk-in on the
+    // same loop as twenty reach-ins carries far more than 1/21st of the flow,
+    // and it is the worst branch precisely because it does.
+    actualGpm: 0,
     ratedOn: 'water',      // 'water' | 'glycol' — what the published drop was measured with
     fromSubmittal: false,  // true once the estimator has actually read it off a sheet
   };
@@ -159,11 +165,22 @@ export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = 
     corrections.push(`${c.value} ${c.unit} → ${round1(raw)} ft of ${pct}% glycol`);
   }
 
-  // A branch component sees its own share of the flow, not the whole loop's.
-  const actual = position === BRANCH ? Number(branchGpm) || 0 : Number(gpm) || 0;
+  // A branch component sees its own share of the flow, not the whole loop's —
+  // unless the estimator has said otherwise, which is the only way to be right
+  // about a loop whose branches are not equal.
+  const override = Number(c.actualGpm) > 0 ? Number(c.actualGpm) : 0;
+  const derived = position === BRANCH ? Number(branchGpm) || 0 : Number(gpm) || 0;
+  const actual = override || derived;
+  const flowBasis = override ? 'override' : position === BRANCH ? 'even-split' : 'loop';
+
   const flowed = flowCorrect(raw, c.ratedGpm, actual);
   if (flowed !== raw) {
-    corrections.push(`rated at ${c.ratedGpm} GPM, running ${round1(actual)} GPM → ×${round1(Math.pow(actual / Number(c.ratedGpm), 2) * 10) / 10}`);
+    const how = flowBasis === 'override' ? 'entered'
+      : flowBasis === 'even-split' ? 'even split of the loop'
+        : 'full loop flow';
+    corrections.push(
+      `rated at ${c.ratedGpm} GPM, running ${round1(actual)} GPM (${how})`
+      + ` → ×${Math.round(Math.pow(actual / Number(c.ratedGpm), 2) * 100) / 100}`);
   }
 
   const ft = fluidCorrect(flowed, c.ratedOn, pct);
@@ -176,6 +193,12 @@ export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = 
     position,
     ft: round1(ft),
     basis: c.fromSubmittal ? 'submittal' : 'typical',
+    // The flow the correction ran against, and where that flow came from — so
+    // an override can be told apart from an assumption at a glance.
+    actualGpm: round1(actual),
+    derivedGpm: round1(derived),
+    ratedGpm: Number(c.ratedGpm) || 0,
+    flowBasis,
     corrections,
   };
 }
@@ -216,7 +239,12 @@ export function naiveTotalFt(result, fixtures = 0) {
 // size. severity mirrors the glycol review card: 'blocker' | 'verify' | 'fyi'.
 export const COIL_KEYS = ['caseCoil', 'walkinCoil'];
 
-export function equipmentHeadSanity(components = [], result = null, { fixtures = 0 } = {}) {
+// How far a branch override departs from the even split before it is worth
+// remarking on. Under this, the two agree closely enough that the override is
+// just confirming the estimate.
+export const SPLIT_TOLERANCE = 1.5;
+
+export function equipmentHeadSanity(components = [], result = null, { fixtures = 0, gpm = 0 } = {}) {
   const out = [];
   const add = (severity, label, detail) => out.push({ severity, label, detail });
 
@@ -254,6 +282,52 @@ export function equipmentHeadSanity(components = [], result = null, { fixtures =
     add('fyi', `${noFlow.length} component(s) have no rated flow noted`,
       'A published drop is published at a stated flow, and drop climbs with the square of it. Without the '
       + 'rated GPM the figure is taken at face value, which is right only if the design flow matches.');
+  }
+
+  // ── What the flow override can get wrong ───────────────────────────────────
+  const lines = (result && result.lines) || [];
+  const overBranch = lines.filter(l => l.position === BRANCH && l.flowBasis === 'override');
+
+  // A branch cannot carry more than the loop. That is a units slip or a
+  // component on the wrong side of the series/branch line.
+  const impossible = overBranch.filter(l => Number(gpm) > 0 && l.actualGpm > Number(gpm));
+  if (impossible.length) {
+    add('blocker', `${impossible.length} branch flow(s) exceed the whole loop`,
+      `The loop moves ${round1(Number(gpm))} GPM total, so no single branch off it can carry more. Either the `
+      + 'figure is in the wrong units, or the component belongs in SERIES — where full loop flow is exactly right.');
+  }
+
+  // An override far off the even split is the reason the override exists, but
+  // it is also what a mis-typed number looks like, so it gets said out loud.
+  const skewed = overBranch.filter(l => l.derivedGpm > 0 && !impossible.includes(l)
+    && (l.actualGpm / l.derivedGpm > SPLIT_TOLERANCE || l.derivedGpm / l.actualGpm > SPLIT_TOLERANCE));
+  if (skewed.length) {
+    const w = skewed[0];
+    add('verify', `Branch flow is ${round1(w.actualGpm / w.derivedGpm)}× the even split`,
+      `${w.actualGpm} GPM entered against ${w.derivedGpm} GPM if every fixture drew the same. On a loop with a `
+      + 'few large walk-ins among small cases that is expected — it is why this branch is the worst one. Worth '
+      + 'a second look only because a mis-keyed flow reads the same way, and drop moves with its square.');
+  }
+
+  // Full flow goes through a series component by definition. An override that
+  // disagrees usually means the component is really on a branch.
+  const seriesOff = lines.filter(l => l.position === SERIES && l.flowBasis === 'override'
+    && Number(gpm) > 0 && Math.abs(l.actualGpm - Number(gpm)) / Number(gpm) > 0.1);
+  if (seriesOff.length) {
+    add('verify', `${seriesOff.length} series component(s) overridden off the loop flow`,
+      `Series means every gallon passes through it, so it should see the loop's ${round1(Number(gpm))} GPM. A `
+      + 'lower figure usually means the component is on a branch after all — which also changes whether its '
+      + 'drop should be adding to the total at all.');
+  }
+
+  // Only worth saying when a rated flow is present, because that is the only
+  // case where the assumed branch flow is actually moving the number.
+  if (Number(fixtures) > 1 && Number(gpm) > 0 && !overBranch.length
+      && lines.some(l => l.position === BRANCH && l.flowBasis === 'even-split' && l.ratedGpm > 0)) {
+    add('fyi', 'Branch flow is an even split of the loop',
+      `${round1(Number(gpm) / Number(fixtures))} GPM per fixture, which assumes every case draws the same. If a `
+      + 'couple of large walk-ins share the loop with small reach-ins, enter the real flow on the worst branch '
+      + 'instead — the even split understates it.');
   }
 
   if (result && result.branchFt > result.seriesFt && result.seriesFt > 0) {

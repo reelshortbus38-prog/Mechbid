@@ -88,7 +88,7 @@ export default function GlycolCalc() {
   // actually going through it, so the head cannot be computed until the GPM is.
   const gpm = glycolGpm(Number(btuh) || 0, Number(deltaT) || 0, Number(pct) || 35) || 0;
   const eq = equipmentHead(components, { gpm, fixtures: Number(fixtures) || 0, pct: Number(pct) || 35 });
-  const eqSanity = equipmentHeadSanity(components, eq, { fixtures: Number(fixtures) || 0 });
+  const eqSanity = equipmentHeadSanity(components, eq, { fixtures: Number(fixtures) || 0, gpm });
   const naive = naiveTotalFt(eq, Number(fixtures) || 0);
   // Nothing itemised yet → the old flat placeholder, so the card still works on
   // a job where the submittals have not arrived.
@@ -321,6 +321,10 @@ export default function GlycolCalc() {
             <strong> series</strong> and they add. A case coil and its valve train are <strong>branch</strong>:
             thirty of them hang in parallel, so the pump only fights the <strong>worst one</strong>.
             Enter that one branch, not all of them.
+            <br />
+            <strong>Actual</strong> is left blank to derive — series sees the whole loop, branch an even split of it.
+            Fill it in when the split is a lie: a big walk-in among small reach-ins draws far more than its share,
+            which is exactly why it is the worst branch.
           </div>
 
           {components.map((c, i) => {
@@ -357,12 +361,18 @@ export default function GlycolCalc() {
                   <Select value={c.unit} onChange={e => set('unit', e.target.value)} style={{ width: 68, fontSize: 12 }}>
                     <option value="ft">ft</option><option value="psi">psi</option><option value="kpa">kPa</option>
                   </Select>
-                  <span style={{ fontSize: 10, color: colors.textDim }}>@</span>
+                  <span style={{ fontSize: 10, color: colors.textDim }}>rated @</span>
                   <Input type="number" value={c.ratedGpm} onChange={e => set('ratedGpm', e.target.value)}
                     placeholder="GPM" style={{ width: 62, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
                   <Select value={c.ratedOn} onChange={e => set('ratedOn', e.target.value)} style={{ width: 90, fontSize: 12 }}>
                     <option value="water">on water</option><option value="glycol">on glycol</option>
                   </Select>
+                  <span style={{ fontSize: 10, color: colors.textDim }}>actual</span>
+                  <Input type="number" value={c.actualGpm || ''} onChange={e => set('actualGpm', e.target.value)}
+                    placeholder={line && line.derivedGpm ? String(line.derivedGpm) : 'GPM'}
+                    title="Leave blank to derive it — a series item sees the whole loop, a branch item an even split of it."
+                    style={{ width: 62, textAlign: 'center', fontFamily: "'DM Mono', monospace",
+                      borderColor: line && line.flowBasis === 'override' ? colors.green : undefined }} />
                   <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
                     color: c.fromSubmittal ? colors.green : colors.yellow, cursor: 'pointer' }}>
                     <input type="checkbox" checked={!!c.fromSubmittal} onChange={e => set('fromSubmittal', e.target.checked)} />
