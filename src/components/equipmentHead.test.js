@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SERIES, BRANCH, COMPONENT_TYPES, componentType, positionOf, seedComponents, newComponent,
   feetOfHead, flowCorrect, fluidCorrect, resolveComponent, equipmentHead, naiveTotalFt,
-  equipmentHeadSanity, equipmentHeadNote, FT_PER_PSI_WATER,
+  equipmentHeadSanity, equipmentHeadNote, FT_PER_PSI_WATER, cvHeadFt,
 } from './equipmentHead.js';
 import { specificGravity, viscosityFactor, pumpHorsepower } from './glycolHydraulics.js';
 
@@ -114,6 +114,77 @@ describe('series vs branch — the whole point of the module', () => {
     expect(r.branchFt).toBeCloseTo(8, 1);
     // Had it used the loop's 180 GPM it would be 8 × 30² = 7200 ft.
     expect(r.branchFt).toBeLessThan(20);
+  });
+});
+
+describe('Cv', () => {
+  it('turns a coefficient and a flow into feet', () => {
+    // 2.31 × (20/10)² = 9.24
+    expect(cvHeadFt(10, 20)).toBeCloseTo(9.24, 2);
+  });
+
+  it('is zero with no flow through it — a valve nothing passes through drops nothing', () => {
+    expect(cvHeadFt(10, 0)).toBe(0);
+  });
+
+  it('returns null for a missing coefficient rather than dividing by it', () => {
+    expect(cvHeadFt(0, 20)).toBeNull();
+    expect(cvHeadFt('', 20)).toBeNull();
+  });
+
+  it('gives the same FEET on glycol as on water — specific gravity cancels', () => {
+    const parts = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20 })];
+    const onWater = equipmentHead(parts, { gpm: 0, fixtures: 0, pct: 0 });
+    const onGlycol = equipmentHead(parts, { gpm: 0, fixtures: 0, pct: 40 });
+    expect(onGlycol.branchFt).toBeCloseTo(onWater.branchFt, 4);
+  });
+
+  it('does NOT apply the flow-square correction on top — that would square it twice', () => {
+    // Cv 10 at 20 GPM is 9.24 ft. A stray ratedGpm must not turn it into 9.24 × 4.
+    const withRated = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20, ratedGpm: 10 })];
+    const without = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20 })];
+    expect(equipmentHead(withRated, { pct: 0 }).branchFt)
+      .toBeCloseTo(equipmentHead(without, { pct: 0 }).branchFt, 4);
+  });
+
+  it('does NOT apply the water-to-glycol multiplier on top either', () => {
+    const w = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20, ratedOn: 'water' })];
+    const g = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20, ratedOn: 'glycol' })];
+    expect(equipmentHead(w, { pct: 40 }).branchFt).toBeCloseTo(equipmentHead(g, { pct: 40 }).branchFt, 4);
+  });
+
+  it('uses the derived branch flow when no override is given', () => {
+    // 180 GPM over 30 cases = 6 GPM. 2.31 × (6/10)² = 0.83
+    const parts = [sub('controlValve', 10, { unit: 'cv' })];
+    expect(equipmentHead(parts, { gpm: 180, fixtures: 30, pct: 0 }).branchFt).toBeCloseTo(0.8, 1);
+  });
+
+  it('says so in the correction line', () => {
+    const r = resolveComponent(sub('controlValve', 10, { unit: 'cv', actualGpm: 20 }), { pct: 0 });
+    expect(r.isCv).toBe(true);
+    expect(r.corrections.join(' ')).toMatch(/Cv 10 at 20 GPM/);
+  });
+
+  it('blocks a Cv row that has no flow through it, instead of quietly reading 0 ft', () => {
+    const parts = [sub('controlValve', 10, { unit: 'cv' })];
+    const hit = equipmentHeadSanity(parts, equipmentHead(parts, { gpm: 0, fixtures: 0, pct: 0 }), {})
+      .find(x => /no flow through them/.test(x.label));
+    expect(hit.severity).toBe('blocker');
+  });
+
+  it('blocks a drop typed into a Cv field', () => {
+    // Cv 8 at 240 GPM → 2.31 × 30² = 2,079 ft. No valve does that.
+    const parts = [sub('controlValve', 8, { unit: 'cv', actualGpm: 240 })];
+    const hit = equipmentHeadSanity(parts, equipmentHead(parts, { gpm: 240, fixtures: 1, pct: 0 }), {})
+      .find(x => /Cv row is computing/.test(x.label));
+    expect(hit.severity).toBe('blocker');
+  });
+
+  it('does not nag a Cv row for a missing rated flow — a Cv has none', () => {
+    const parts = [sub('controlValve', 10, { unit: 'cv', actualGpm: 20 })];
+    const hit = equipmentHeadSanity(parts, equipmentHead(parts, { gpm: 180, pct: 0 }), { fixtures: 30 })
+      .find(x => /no rated flow noted/.test(x.label));
+    expect(hit).toBeUndefined();
   });
 });
 
