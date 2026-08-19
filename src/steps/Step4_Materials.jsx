@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
+import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
 import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
@@ -15,7 +16,9 @@ import { estimateRefrigerantLbs, REFRIGERANTS } from '../components/refrigerant.
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
-const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
+// Reaches the loop-system sizes the rate table does, so a header fitting can be
+// picked at all.
+const PIPE_SIZES = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8','3-5/8','4-1/8'];
 const FITTING_TYPES = ['Coupling','Elbow 90°','Elbow 45°','Tee','Bushing','Reducer','P-Trap','Wye','Cap','Union','Street Ell','Sweat Adapter'];
 const RES_EQUIP_TYPES = ['Heat Pump','Mini Split','Package Unit','Split System AC','Air Handler','Condenser','Gas Furnace','Heat Strip','ERV/HRV'];
 
@@ -651,7 +654,18 @@ function BidMaterials({ onGenerate }) {
     const needsSecond = fittingType.match(/Bushing|Reducer|Street/i);
     if (!fittingSize || !fittingType || (needsSecond && !fittingSize2)) return;
     const desc = needsSecond ? `${fittingSize}" × ${fittingSize2}" ${fittingType}` : `${fittingSize}" ${fittingType}`;
-    dispatch({ type: 'SET', key: 'lineItems', value: [...state.lineItems, { id: uid(), section:'Fittings', desc, qty:0, unit:'ea', unitCost:0, total:0 }] });
+    // Priced, rather than added at $0. Itemizing fittings used to mean pricing
+    // every piece by hand, which is the only reason the percentage allowance was
+    // the sensible default. The price book still wins where it knows the item.
+    const book = findPriceMatch(loadPriceBook(), { desc });
+    const hit = needsSecond
+      ? fittingPriceForPair(fittingType, fittingSize, fittingSize2)
+      : fittingPrice(fittingType, fittingSize);
+    const unitCost = book ? (parseFloat(book.entry.price) || 0) : (hit ? hit.price : 0);
+    dispatch({ type: 'SET', key: 'lineItems', value: [...state.lineItems, {
+      id: uid(), section:'Fittings', desc, qty:0, unit:'ea', unitCost, total:0,
+      notes: book ? '' : fittingNote(hit),
+    }] });
     setShowFittingPicker(false); setFittingSize(''); setFittingSize2(''); setFittingType('');
   }
 
