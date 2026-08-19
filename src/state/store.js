@@ -638,39 +638,96 @@ export function ootOpts(state) {
 // THE THRESHOLD DEFAULTS TO OFF, so every saved bid costs exactly what it did.
 // Set it to 8 and the day splits properly.
 //
-// KNOWN LIMIT: this is DAILY overtime. Six eight-hour days is 48 hours and
-// carries weekly overtime that no daily threshold catches, because a period
-// stores total days rather than a calendar. Six tens are caught; six eights are
-// not, and that is worth knowing before leaning on it for a six-day schedule.
+// DAILY AND WEEKLY ARE DIFFERENT RULES AND THEY DISAGREE ON REAL SCHEDULES.
+// Overtime is owed past eight in a day (California, many union agreements) or
+// past forty in a week (the federal default), and the compressed schedules
+// contractors actually run land on opposite sides of that:
+//
+//   sched   hrs/wk   OT by daily>8   OT by weekly>40
+//   4x10      40           8                0        <- daily OVERcharges
+//   5x10      50          10               10           they agree
+//   6x8       48           0                8        <- daily UNDERcharges
+//   5x8       40           0                0           they agree
+//
+// A four-ten is exactly forty hours and owes nothing federally, but a daily
+// threshold bills eight overtime hours a week — $32,400 on a four-man crew at
+// $75 over 27 weeks. Six eights is the reverse and was the limitation this
+// module carried until now.
+//
+// So both thresholds exist and each is optional. Set the one your jurisdiction
+// or agreement uses; set both and the greater of the two applies, which is how
+// a state with a daily rule stacks on top of the federal weekly one.
 export const STANDARD_DAY_HOURS = 8;
+export const STANDARD_WEEK_HOURS = 40;
+export const DAYS_PER_WEEK_OPTIONS = [4, 5, 6];
+
+// Overtime hours ONE person works in ONE day, under whichever rules are set.
+// Weekly overtime is spread back across the week's days so that a period of
+// part-weeks costs correctly rather than only whole ones.
+export function memberOtHours(member, { otAfterHours = 0, weeklyOtHours = 0, daysPerWeek = 0 } = {}) {
+  const hrs = parseFloat(member?.hrsPerDay) || STANDARD_DAY_HOURS;
+  const t = parseFloat(otAfterHours) || 0;
+  const w = parseFloat(weeklyOtHours) || 0;
+  const dpw = parseFloat(daysPerWeek) || 0;
+  const daily = t > 0 ? Math.max(0, hrs - t) : 0;
+  const weekly = (w > 0 && dpw > 0) ? Math.max(0, hrs * dpw - w) / dpw : 0;
+  return Math.max(daily, weekly);
+}
 
 // One crew's cost for one day, hour by hour.
-export function crewDayCost(crew, { otMult = 1, otAfterHours = 0, shiftMult = 1 } = {}) {
-  const t = parseFloat(otAfterHours) || 0;
+export function crewDayCost(crew, {
+  otMult = 1, otAfterHours = 0, weeklyOtHours = 0, daysPerWeek = 0, shiftMult = 1,
+} = {}) {
   const m = parseFloat(otMult) || 1;
   const sm = parseFloat(shiftMult) || 1;
+  const anyThreshold = (parseFloat(otAfterHours) || 0) > 0
+    || ((parseFloat(weeklyOtHours) || 0) > 0 && (parseFloat(daysPerWeek) || 0) > 0);
   return (crew || []).reduce((s, mem) => {
     const rate = parseFloat(mem?.rate) || 0;
     const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
-    // No threshold set: the multiplier is a whole-shift premium, which is what
-    // it has always meant here.
-    const paidHours = t > 0
-      ? Math.min(hrs, t) + Math.max(0, hrs - t) * m
-      : hrs * m;
-    return s + rate * paidHours * sm;
+    // No threshold at all: the multiplier is a whole-shift premium, which is
+    // what it has always meant here.
+    if (!anyThreshold) return s + rate * hrs * m * sm;
+    const ot = memberOtHours(mem, { otAfterHours, weeklyOtHours, daysPerWeek });
+    return s + rate * ((hrs - ot) + ot * m) * sm;
   }, 0);
 }
 
 // Straight and overtime hours in one day, for showing the split.
-export function dayHourSplit(crew, otAfterHours = 0) {
-  const t = parseFloat(otAfterHours) || 0;
+export function dayHourSplit(crew, otAfterHours = 0, opts = {}) {
+  const cfg = typeof otAfterHours === 'object'
+    ? otAfterHours
+    : { otAfterHours, ...opts };
   let straight = 0, ot = 0;
   for (const mem of crew || []) {
     const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
-    if (t > 0) { straight += Math.min(hrs, t); ot += Math.max(0, hrs - t); }
-    else straight += hrs;
+    const o = memberOtHours(mem, cfg);
+    straight += hrs - o;
+    ot += o;
   }
   return { straight, ot };
+}
+
+// Do the two rules disagree on this schedule? Returns null when only one is in
+// play, or when they land on the same answer — 5x10 and 5x8 both agree, and
+// there is nothing to say about those.
+export function otRuleConflict(crew, { daysPerWeek = 0, otAfterHours = 0, weeklyOtHours = STANDARD_WEEK_HOURS } = {}) {
+  const dpw = parseFloat(daysPerWeek) || 0;
+  const t = parseFloat(otAfterHours) || 0;
+  const w = parseFloat(weeklyOtHours) || 0;
+  if (!(dpw > 0) || !(t > 0) || !(w > 0)) return null;
+  let daily = 0, weekly = 0, hrsPerWeek = 0;
+  for (const mem of crew || []) {
+    const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
+    daily += Math.max(0, hrs - t) * dpw;
+    weekly += Math.max(0, hrs * dpw - w);
+    hrsPerWeek = Math.max(hrsPerWeek, hrs * dpw);
+  }
+  if (daily === weekly) return null;
+  return {
+    dailyOtHours: daily, weeklyOtHours: weekly, hrsPerWeek,
+    dailyHigher: daily > weekly,
+  };
 }
 
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
@@ -683,6 +740,8 @@ export function calcLaborPeriodCost(period, opts = {}) {
   const labor = crewDayCost(period.crew, {
     otMult: period.otMult,
     otAfterHours: period.otAfterHours,
+    weeklyOtHours: period.weeklyOtHours,
+    daysPerWeek: period.daysPerWeek,
     shiftMult: nightMult,
   }) * days;
   return { labor, oot, total: labor + oot };
@@ -706,7 +765,12 @@ export function calcFlatJobCost(flat, opts = {}) {
   // days billed every hour straight, and this is precisely the long-duration job
   // where ten-hour days happen. Both fields default to absent, so a saved flat
   // job costs exactly what it did.
-  const labor = crewDayCost(f.crew, { otMult: f.otMult, otAfterHours: f.otAfterHours }) * days;
+  const labor = crewDayCost(f.crew, {
+    otMult: f.otMult,
+    otAfterHours: f.otAfterHours,
+    weeklyOtHours: f.weeklyOtHours,
+    daysPerWeek: f.daysPerWeek,
+  }) * days;
   const oot = ootCost(days, f.ootPerDay, f.crew, opts);
   return { days, labor, oot, total: labor + oot };
 }

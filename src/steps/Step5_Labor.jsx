@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -383,6 +383,14 @@ export default function Step5_Labor({ onNext, onBack }) {
   const totalOOT = jobOOTTotal(state);
   const ootCompare = ootBasisComparison(state);
   const otWarn = otReview(state);
+  // Only flat mode knows its own week; a period stores total days.
+  const otClash = laborMode === 'flat'
+    ? otRuleConflict(flat.crew, {
+      daysPerWeek: flat.daysPerWeek,
+      otAfterHours: flat.otAfterHours,
+      weeklyOtHours: STANDARD_WEEK_HOURS,
+    })
+    : null;
 
   // One click rather than opening every period. A multiplier already set is
   // left alone; only a missing one gets the standard 1.5.
@@ -425,6 +433,46 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* ── The two overtime rules disagreeing on this schedule ── */}
+      {otClash && (
+        <Card style={{ borderColor: `${colors.yellow}55` }}>
+          <SLabel>📅 The two overtime rules disagree on a {flat.daysPerWeek}-day week</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
+            This crew works <strong style={{ color: colors.text }}>{otClash.hrsPerWeek} hours a week</strong>.
+            Past eight in a day that is <strong>{otClash.dailyOtHours} overtime hours</strong>; past forty in a
+            week it is <strong>{otClash.weeklyOtHours}</strong>.
+            {otClash.dailyHigher ? (
+              <>
+                {' '}The bid is currently charging the higher one. A {flat.daysPerWeek}×
+                {Math.round(otClash.hrsPerWeek / (parseFloat(flat.daysPerWeek) || 1))} lands on{' '}
+                {otClash.hrsPerWeek} hours, so <strong style={{ color: colors.yellow }}>no overtime is owed
+                federally</strong> — it is owed in states with a daily rule, and under agreements that carry one.
+                Clear the daily threshold to bill it at forty.
+              </>
+            ) : (
+              <>
+                {' '}The daily threshold cannot see this — nobody passes eight in a day, but the week is over
+                forty. <strong style={{ color: colors.yellow }}>Set the weekly threshold to 40</strong> or the
+                bid is short those hours.
+              </>
+            )}
+            <br />
+            <span style={{ fontSize: 11 }}>
+              Which applies is your jurisdiction and your agreement. Set both and the greater is used, which is
+              how a state daily rule stacks on the federal weekly one.
+            </span>
+          </div>
+          <Row style={{ gap: 8, marginTop: 10 }}>
+            <Btn variant="green" size="sm" onClick={() => setFlat({ weeklyOtHours: STANDARD_WEEK_HOURS, otAfterHours: 0, otMult: flat.otMult > 1 ? flat.otMult : 1.5 })}>
+              Bill at 40 hrs/week
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={() => setFlat({ otAfterHours: 8, weeklyOtHours: 0, otMult: flat.otMult > 1 ? flat.otMult : 1.5 })}>
+              Bill at 8 hrs/day
+            </Btn>
+          </Row>
+        </Card>
+      )}
 
       {/* ── Long days billing straight through ── */}
       {otWarn && (
@@ -554,7 +602,21 @@ export default function Step5_Labor({ onNext, onBack }) {
             </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Days / Week</div>
-              <Input type="number" value={flat.daysPerWeek || ''} onChange={e => setFlat({ daysPerWeek: parseFloat(e.target.value) || 0 })} placeholder="5" />
+              <div style={{ display: 'flex', gap: 4 }}>
+                {DAYS_PER_WEEK_OPTIONS.map(d => (
+                  <button key={d} onClick={() => setFlat({ daysPerWeek: d })}
+                    style={{ flex: 1, padding: '9px 0', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                      fontFamily: "'DM Mono', monospace",
+                      border: `2px solid ${Number(flat.daysPerWeek) === d ? colors.green : colors.border}`,
+                      background: Number(flat.daysPerWeek) === d ? colors.greenFaint : colors.card2,
+                      color: Number(flat.daysPerWeek) === d ? colors.green : colors.text }}>
+                    {d}
+                  </button>
+                ))}
+                <Input type="number" value={flat.daysPerWeek || ''}
+                  onChange={e => setFlat({ daysPerWeek: parseFloat(e.target.value) || 0 })}
+                  placeholder="5" style={{ width: 58, textAlign: 'center' }} />
+              </div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
@@ -571,6 +633,11 @@ export default function Step5_Labor({ onNext, onBack }) {
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT Multiplier (×)</div>
               <Input type="number" value={flat.otMult || ''}
                 onChange={e => setFlat({ otMult: parseFloat(e.target.value) || 1 })} step="0.1" placeholder="1.5" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/week)</div>
+              <Input type="number" value={flat.weeklyOtHours || ''}
+                onChange={e => setFlat({ weeklyOtHours: parseFloat(e.target.value) || 0 })} placeholder="40" />
             </div>
           </div>
 
