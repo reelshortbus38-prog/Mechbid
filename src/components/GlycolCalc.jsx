@@ -325,6 +325,10 @@ export default function GlycolCalc() {
             <strong>Actual</strong> is left blank to derive — series sees the whole loop, branch an even split of it.
             Fill it in when the split is a lie: a big walk-in among small reach-ins draws far more than its share,
             which is exactly why it is the worst branch.
+            <br />
+            Valve schedules give <strong>Cv</strong> rather than a drop — pick it in the units and the head comes
+            out of the flow: <span style={{ fontFamily: "'DM Mono', monospace" }}>2.31 × (GPM ÷ Cv)²</span>.
+            Bigger Cv means <em>less</em> restriction, and the answer in feet is the same on glycol as on water.
           </div>
 
           {components.map((c, i) => {
@@ -359,14 +363,21 @@ export default function GlycolCalc() {
                   <Input type="number" value={c.value} onChange={e => set('value', e.target.value)}
                     style={{ width: 68, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
                   <Select value={c.unit} onChange={e => set('unit', e.target.value)} style={{ width: 68, fontSize: 12 }}>
-                    <option value="ft">ft</option><option value="psi">psi</option><option value="kpa">kPa</option>
+                    <option value="ft">ft</option><option value="psi">psi</option>
+                    <option value="kpa">kPa</option><option value="cv">Cv</option>
                   </Select>
-                  <span style={{ fontSize: 10, color: colors.textDim }}>rated @</span>
-                  <Input type="number" value={c.ratedGpm} onChange={e => set('ratedGpm', e.target.value)}
-                    placeholder="GPM" style={{ width: 62, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
-                  <Select value={c.ratedOn} onChange={e => set('ratedOn', e.target.value)} style={{ width: 90, fontSize: 12 }}>
-                    <option value="water">on water</option><option value="glycol">on glycol</option>
-                  </Select>
+                  {/* A Cv has no rated flow and no test fluid — it is a property of
+                      the valve, and the drop comes out of the actual flow alone. */}
+                  {!(line && line.isCv) && (
+                    <>
+                      <span style={{ fontSize: 10, color: colors.textDim }}>rated @</span>
+                      <Input type="number" value={c.ratedGpm} onChange={e => set('ratedGpm', e.target.value)}
+                        placeholder="GPM" style={{ width: 62, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                      <Select value={c.ratedOn} onChange={e => set('ratedOn', e.target.value)} style={{ width: 90, fontSize: 12 }}>
+                        <option value="water">on water</option><option value="glycol">on glycol</option>
+                      </Select>
+                    </>
+                  )}
                   <span style={{ fontSize: 10, color: colors.textDim }}>actual</span>
                   <Input type="number" value={c.actualGpm || ''} onChange={e => set('actualGpm', e.target.value)}
                     placeholder={line && line.derivedGpm ? String(line.derivedGpm) : 'GPM'}

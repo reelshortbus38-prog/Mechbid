@@ -109,6 +109,34 @@ export function newComponent(key = 'seriesOther') {
 export const FT_PER_PSI_WATER = 2.31;
 export const FT_PER_KPA_WATER = 0.334552;
 
+// ── Cv IS NOT A PRESSURE DROP ────────────────────────────────────────────────
+// Valve schedules give Cv, not feet, and it is a different KIND of number: the
+// flow a valve passes at 1 psi drop. So it does not describe a drop at all — it
+// describes the valve, and the drop follows from whatever flow is actually
+// going through it:
+//
+//   Q = Cv × √(ΔP / SG)   →   ΔP(psi) = SG × (Q / Cv)²
+//
+// Converted to feet of the fluid being pumped, ΔP × 2.31 / SG, the specific
+// gravity CANCELS:
+//
+//   head(ft) = 2.31 × (Q / Cv)²
+//
+// which is worth knowing — a valve's head loss in feet is the same on glycol as
+// on water at the same flow. The glycol penalty on a valve shows up in the psi
+// it takes to get that head, not in the head itself.
+//
+// TWO THINGS FOLLOW, and both are handled in resolveComponent rather than here:
+// a Cv row must NOT get the flow-square correction on top (the formula already
+// uses actual flow — correcting again would square it twice), and it must not
+// get the water-to-glycol multiplier either, for the cancellation above.
+export function cvHeadFt(cv, gpm) {
+  const c = Number(cv), q = Number(gpm);
+  if (!(c > 0)) return null;
+  if (!(q > 0)) return 0;   // no flow through it, no drop across it
+  return FT_PER_PSI_WATER * Math.pow(q / c, 2);
+}
+
 export function feetOfHead(value, unit = 'ft', pct = 35) {
   // A blank field is 0 ft ON PURPOSE — an unentered component contributes
   // nothing and should still show in the list rather than vanish from it. The
@@ -157,13 +185,8 @@ const round1 = n => Math.round(n * 10) / 10;
 export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = {}) {
   const type = BY_KEY[c.key] || null;
   const position = type ? type.position : SERIES;
-  const raw = feetOfHead(c.value, c.unit, pct);
-  if (raw === null) return null;
-
-  const corrections = [];
-  if (String(c.unit || 'ft').toLowerCase() !== 'ft') {
-    corrections.push(`${c.value} ${c.unit} → ${round1(raw)} ft of ${pct}% glycol`);
-  }
+  const unit = String(c.unit || 'ft').toLowerCase();
+  const isCv = unit === 'cv';
 
   // A branch component sees its own share of the flow, not the whole loop's —
   // unless the estimator has said otherwise, which is the only way to be right
@@ -172,19 +195,36 @@ export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = 
   const derived = position === BRANCH ? Number(branchGpm) || 0 : Number(gpm) || 0;
   const actual = override || derived;
   const flowBasis = override ? 'override' : position === BRANCH ? 'even-split' : 'loop';
+  const how = flowBasis === 'override' ? 'entered'
+    : flowBasis === 'even-split' ? 'even split of the loop'
+      : 'full loop flow';
 
-  const flowed = flowCorrect(raw, c.ratedGpm, actual);
-  if (flowed !== raw) {
-    const how = flowBasis === 'override' ? 'entered'
-      : flowBasis === 'even-split' ? 'even split of the loop'
-        : 'full loop flow';
-    corrections.push(
-      `rated at ${c.ratedGpm} GPM, running ${round1(actual)} GPM (${how})`
-      + ` → ×${Math.round(Math.pow(actual / Number(c.ratedGpm), 2) * 100) / 100}`);
+  const corrections = [];
+  let ft;
+
+  if (isCv) {
+    // The drop comes out of the flow and the coefficient together. No flow
+    // correction on top — the formula already used actual flow, and applying
+    // the square again would square it twice. No fluid correction either;
+    // specific gravity cancels out of head in feet.
+    ft = cvHeadFt(c.value, actual);
+    if (ft === null) return null;
+    corrections.push(`Cv ${c.value} at ${round1(actual)} GPM (${how}) → ${round1(ft)} ft`);
+  } else {
+    const raw = feetOfHead(c.value, c.unit, pct);
+    if (raw === null) return null;
+    if (unit !== 'ft') corrections.push(`${c.value} ${c.unit} → ${round1(raw)} ft of ${pct}% glycol`);
+
+    const flowed = flowCorrect(raw, c.ratedGpm, actual);
+    if (flowed !== raw) {
+      corrections.push(
+        `rated at ${c.ratedGpm} GPM, running ${round1(actual)} GPM (${how})`
+        + ` → ×${Math.round(Math.pow(actual / Number(c.ratedGpm), 2) * 100) / 100}`);
+    }
+
+    ft = fluidCorrect(flowed, c.ratedOn, pct);
+    if (ft !== flowed) corrections.push(`published on water → ×${Math.round((viscosityFactor(pct) || 1) * 100) / 100} for glycol`);
   }
-
-  const ft = fluidCorrect(flowed, c.ratedOn, pct);
-  if (ft !== flowed) corrections.push(`published on water → ×${Math.round((viscosityFactor(pct) || 1) * 100) / 100} for glycol`);
 
   return {
     id: c.id,
@@ -199,6 +239,7 @@ export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = 
     derivedGpm: round1(derived),
     ratedGpm: Number(c.ratedGpm) || 0,
     flowBasis,
+    isCv,
     corrections,
   };
 }
@@ -244,6 +285,9 @@ export const COIL_KEYS = ['caseCoil', 'walkinCoil'];
 // just confirming the estimate.
 export const SPLIT_TOLERANCE = 1.5;
 
+// Past this, a Cv row is not a tight valve — it is a drop typed into a Cv field.
+export const CV_IMPLAUSIBLE_FT = 100;
+
 export function equipmentHeadSanity(components = [], result = null, { fixtures = 0, gpm = 0 } = {}) {
   const out = [];
   const add = (severity, label, detail) => out.push({ severity, label, detail });
@@ -277,15 +321,41 @@ export function equipmentHeadSanity(components = [], result = null, { fixtures =
       + 'meaningful drop, and a hole in the estimate if the figure simply has not been looked up yet.');
   }
 
-  const noFlow = components.filter(c => !(Number(c.ratedGpm) > 0));
+  // Cv rows are exempt — a Cv has no rated flow to note, which is the point of it.
+  const noFlow = components.filter(c => !(Number(c.ratedGpm) > 0)
+    && String(c.unit || 'ft').toLowerCase() !== 'cv');
   if (noFlow.length && Number(fixtures) > 0) {
     add('fyi', `${noFlow.length} component(s) have no rated flow noted`,
       'A published drop is published at a stated flow, and drop climbs with the square of it. Without the '
       + 'rated GPM the figure is taken at face value, which is right only if the design flow matches.');
   }
 
-  // ── What the flow override can get wrong ───────────────────────────────────
+  // ── What Cv gets wrong ─────────────────────────────────────────────────────
   const lines = (result && result.lines) || [];
+  const cvLines = lines.filter(l => l.isCv);
+
+  // A Cv row with no flow through it computes 0 ft and looks settled. It is not
+  // settled — it is waiting on a load, and it is the one unit that cannot fall
+  // back on a stated figure, because a Cv IS NOT a drop.
+  const cvNoFlow = cvLines.filter(l => !(l.actualGpm > 0));
+  if (cvNoFlow.length) {
+    add('blocker', `${cvNoFlow.length} Cv component(s) have no flow through them`,
+      'A Cv is the flow a valve passes at 1 psi — it only becomes a pressure drop once there is a flow to '
+      + 'put through it, so these are contributing 0 ft. Enter the load and ΔT, or type the actual GPM on '
+      + 'the row.');
+  }
+
+  // Absurd head off a Cv row is nearly always a drop typed where a coefficient
+  // belongs. Cv 8 at 240 GPM is 2,000 ft, which no valve does.
+  const cvWild = cvLines.filter(l => l.ft > CV_IMPLAUSIBLE_FT);
+  if (cvWild.length) {
+    add('blocker', `A Cv row is computing ${round1(cvWild[0].ft)} ft`,
+      'That is far past what a valve does, and it is what a pressure DROP typed into a Cv field looks like. '
+      + 'Cv is the valve coefficient off the schedule — bigger Cv means less restriction, so the number is '
+      + 'usually larger than the drop it replaces, not smaller.');
+  }
+
+  // ── What the flow override can get wrong ───────────────────────────────────
   const overBranch = lines.filter(l => l.position === BRANCH && l.flowBasis === 'override');
 
   // A branch cannot carry more than the loop. That is a units slip or a
