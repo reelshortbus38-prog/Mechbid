@@ -111,12 +111,42 @@ export function defaultHvacPrice(desc) {
   return hit ? hit[1] : 0;
 }
 
+// ── INSULATION WALL THICKNESS — ONE SOURCE OF TRUTH ─────────────────────────
+// The wall was hardcoded in three places and they did not agree. The rate table
+// described medium-temp suction as 1/2" wall while both the rates panel and the
+// generated bid line called it 3/4". Those are different products at meaningfully
+// different prices, so the bid was advertising one and priced against the other —
+// and nothing on screen showed the disagreement.
+//
+// Wall now lives here, and the label everywhere else is built from it. Changing
+// it changes what the line says, which is the point: the RATE has to be for the
+// wall named beside it, and if one moves the other has to.
+//
+// These defaults are the common supermarket specification. The actual wall comes
+// off the job spec — unconditioned space and outdoor runs usually step up — so
+// treat them as a starting point, not a rule.
+export const INSUL_WALL = {
+  medSuction: '3/4"',
+  lowSuction: '1"',
+  lowLiquid: '1/2"',
+};
+
+export const INSUL_CATEGORY_LABEL = {
+  medSuction: `Med Temp Suction (${INSUL_WALL.medSuction} wall)`,
+  lowSuction: `Low Temp Suction (${INSUL_WALL.lowSuction} wall)`,
+  lowLiquid: `Low Temp Liquid (${INSUL_WALL.lowLiquid} wall)`,
+};
+
+// Elastomeric (Armaflex-type) $/ft by pipe size, for the wall named above.
+//
+// UNVERIFIED. Unlike the copper table, which was replaced from supplier pricing
+// the estimator pulled for their own market, nobody has quoted these — and they
+// look low for the walls they are now labelled with: medium-temp suction at
+// $2.00/ft for 7/8" reads like a 1/2" wall number rather than 3/4". Check two
+// sizes against an invoice before bidding off them.
 export const DEFAULT_INSUL_RATES = {
-  // 1/2" wall Armaflex, medium-temp suction.
   medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40, '3-5/8': 7.40, '4-1/8': 8.40, '5-1/8': 10.40, '6-1/8': 12.40 },
-  // 3/4"–1" wall for low-temp suction — thicker, ~35% more.
   lowSuction: { '1/4': 1.20, '3/8': 1.40, '1/2': 1.70, '5/8': 2.10, '7/8': 2.70, '1-1/8': 3.30, '1-3/8': 4.00, '1-5/8': 4.65, '2-1/8': 5.95, '2-5/8': 7.30, '3-1/8': 8.65, '3-5/8': 10.00, '4-1/8': 11.35, '5-1/8': 14.05, '6-1/8': 16.75 },
-  // Low-temp liquid lines — insulated but smaller sizes dominate.
   lowLiquid: { '1/4': 0.95, '3/8': 1.10, '1/2': 1.35, '5/8': 1.65, '7/8': 2.15, '1-1/8': 2.60, '1-3/8': 3.15, '1-5/8': 3.70, '2-1/8': 4.70, '2-5/8': 5.75, '3-1/8': 6.85, '3-5/8': 7.95, '4-1/8': 9.05, '5-1/8': 11.25, '6-1/8': 13.45 },
 };
 

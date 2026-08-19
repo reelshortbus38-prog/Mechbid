@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
@@ -1000,9 +1001,9 @@ export default function Step4_Materials({ onNext, onBack }) {
         items.push({ id: uid(), section: 'Insulation', desc: `${size}" ${label}`, qty: q, unit: 'ft', unitCost: r, total: q * r, pipeSize: size, insulCategory: category });
       });
     }
-    pushInsulLines(medSucBySize, 'medSuction', 'Suction Insulation — Med Temp (3/4" wall)');
-    pushInsulLines(lowSucBySize, 'lowSuction', 'Suction Insulation — Low Temp (1" wall)');
-    pushInsulLines(lowLiqBySize, 'lowLiquid', 'Liquid Insulation — Low Temp (1/2" wall)');
+    pushInsulLines(medSucBySize, 'medSuction', `Suction Insulation — Med Temp (${INSUL_WALL.medSuction} wall)`);
+    pushInsulLines(lowSucBySize, 'lowSuction', `Suction Insulation — Low Temp (${INSUL_WALL.lowSuction} wall)`);
+    pushInsulLines(lowLiqBySize, 'lowLiquid', `Liquid Insulation — Low Temp (${INSUL_WALL.lowLiquid} wall)`);
 
     // ── Hardware & consumables ────────────────────────────────────────────
     // Hangers carry every horizontal foot of pipe, not just the single longest
@@ -1188,11 +1189,10 @@ export default function Step4_Materials({ onNext, onBack }) {
 // Must reach as far as the rate table does, or the large sizes have rates
 // nobody can see or edit — which is how a wrong number survives.
 const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8','3-5/8','4-1/8','5-1/8','6-1/8'];
-const INSUL_CATEGORIES = [
-  { key: 'medSuction', label: 'Med Temp Suction (3/4" wall)' },
-  { key: 'lowSuction', label: 'Low Temp Suction (1" wall)' },
-  { key: 'lowLiquid', label: 'Low Temp Liquid (1/2" wall)' },
-];
+// Labels come from INSUL_WALL so the rates panel and the bid line can never
+// again advertise a different wall thickness than the rate was written for.
+const INSUL_CATEGORIES = ['medSuction', 'lowSuction', 'lowLiquid']
+  .map(key => ({ key, label: INSUL_CATEGORY_LABEL[key] }));
 
 function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, updateCopperRate, updateInsulRate }) {
   const [openInsulCat, setOpenInsulCat] = useState(null);

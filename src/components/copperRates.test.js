@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rateLookup, copperRate, insulRate, unratedCopperSizes, unratedNote } from './copperRates.js';
-import { DEFAULT_CU_RATES, DEFAULT_INSUL_RATES } from '../state/store.js';
+import { DEFAULT_CU_RATES, DEFAULT_INSUL_RATES, INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 
 // ── A 4-1/8 SUCTION MAIN PRICED AT ZERO ──────────────────────────────────────
 // Supermarket LOOP systems — the layout Kroger and Walmart run, where a large
@@ -123,5 +123,47 @@ describe('the copper table matches the quoted market pricing', () => {
     // Guard against a silent revert to the old, light table.
     expect(DEFAULT_CU_RATES['7/8']).toBeGreaterThan(8);
     expect(DEFAULT_CU_RATES['2-1/8']).toBeGreaterThan(30);
+  });
+});
+
+// ── INSULATION WALL THICKNESS ────────────────────────────────────────────────
+// The wall was hardcoded in three places and they disagreed: the rate table
+// called medium-temp suction 1/2" wall while the rates panel and the generated
+// bid line both called it 3/4". Different products, different prices — the bid
+// advertised one and was priced against the other, with nothing on screen
+// showing the disagreement.
+
+describe('wall thickness has one source of truth', () => {
+  it('names a wall for every insulation category', () => {
+    for (const k of ['medSuction', 'lowSuction', 'lowLiquid']) {
+      expect(INSUL_WALL[k], k).toBeTruthy();
+    }
+  });
+
+  it('builds every label from that one wall', () => {
+    for (const k of ['medSuction', 'lowSuction', 'lowLiquid']) {
+      expect(INSUL_CATEGORY_LABEL[k], k).toContain(INSUL_WALL[k]);
+    }
+  });
+
+  it('has a rate table for exactly the categories that have a wall', () => {
+    expect(Object.keys(DEFAULT_INSUL_RATES).sort()).toEqual(Object.keys(INSUL_WALL).sort());
+  });
+
+  it('keeps low-temp suction thicker than medium-temp, which is why it costs more', () => {
+    // A thicker wall has to price higher at the same pipe size, or the tables
+    // have drifted apart from the walls they claim.
+    for (const s of ['7/8', '1-5/8', '2-1/8']) {
+      expect(DEFAULT_INSUL_RATES.lowSuction[s], s)
+        .toBeGreaterThan(DEFAULT_INSUL_RATES.medSuction[s]);
+    }
+  });
+
+  it('covers every size the copper table does, so no run insulates at $0', () => {
+    for (const size of Object.keys(DEFAULT_CU_RATES)) {
+      expect(DEFAULT_INSUL_RATES.medSuction[size], size).toBeGreaterThan(0);
+      expect(DEFAULT_INSUL_RATES.lowSuction[size], size).toBeGreaterThan(0);
+      expect(DEFAULT_INSUL_RATES.lowLiquid[size], size).toBeGreaterThan(0);
+    }
   });
 });
