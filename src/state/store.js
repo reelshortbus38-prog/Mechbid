@@ -138,16 +138,34 @@ export const INSUL_CATEGORY_LABEL = {
 };
 
 // Elastomeric (Armaflex-type) $/ft by pipe size, for the wall named above.
+// Replaced 2026-08-19 from Virginia market pricing the estimator pulled, quoted
+// by SIZE BAND against all three wall thicknesses.
 //
-// UNVERIFIED. Unlike the copper table, which was replaced from supplier pricing
-// the estimator pulled for their own market, nobody has quoted these — and they
-// look low for the walls they are now labelled with: medium-temp suction at
-// $2.00/ft for 7/8" reads like a 1/2" wall number rather than 3/4". Check two
-// sizes against an invoice before bidding off them.
+// It settled the mismatch this table already carried. Medium-temp suction was
+// $2.00/ft at 7/8", which lands inside the source's 1/2"-WALL band ($1.15-2.10)
+// and below its 3/4" band ($2.25-3.40) — so the app had been pricing thin wall
+// while the bid line advertised thick, exactly as suspected.
+//
+// The source gives four bands with a low and a high, e.g. 7/8"-1-3/8" at
+// $2.25-3.40 for 3/4" wall. Read as the range spanning the sizes IN that band —
+// low end is the smallest size, high end the largest — and the sizes between
+// interpolate. That is a reading of the source, not something it states.
+//
+// Outside the quoted bands (1/4", and 5-1/8" and up) cost scales on the
+// insulation cross-section, which tracks OD + wall: a bigger tube takes a longer
+// sleeve of the same thickness.
+//
+// Not every category moved the same way. Suction went UP — low-temp suction at
+// 7/8" from $2.70 to $4.00, because 1" wall costs what 1" wall costs. Liquid
+// went DOWN, $2.15 to $1.15 at the same size, because the old number was never a
+// 1/2"-wall price. Both were wrong; they were wrong in opposite directions.
 export const DEFAULT_INSUL_RATES = {
-  medSuction: { '1/4': 0.90, '3/8': 1.05, '1/2': 1.25, '5/8': 1.55, '7/8': 2.00, '1-1/8': 2.45, '1-3/8': 2.95, '1-5/8': 3.45, '2-1/8': 4.40, '2-5/8': 5.40, '3-1/8': 6.40, '3-5/8': 7.40, '4-1/8': 8.40, '5-1/8': 10.40, '6-1/8': 12.40 },
-  lowSuction: { '1/4': 1.20, '3/8': 1.40, '1/2': 1.70, '5/8': 2.10, '7/8': 2.70, '1-1/8': 3.30, '1-3/8': 4.00, '1-5/8': 4.65, '2-1/8': 5.95, '2-5/8': 7.30, '3-1/8': 8.65, '3-5/8': 10.00, '4-1/8': 11.35, '5-1/8': 14.05, '6-1/8': 16.75 },
-  lowLiquid: { '1/4': 0.95, '3/8': 1.10, '1/2': 1.35, '5/8': 1.65, '7/8': 2.15, '1-1/8': 2.60, '1-3/8': 3.15, '1-5/8': 3.70, '2-1/8': 4.70, '2-5/8': 5.75, '3-1/8': 6.85, '3-5/8': 7.95, '4-1/8': 9.05, '5-1/8': 11.25, '6-1/8': 13.45 },
+  // 3/4" wall — see INSUL_WALL.medSuction.
+  medSuction: { '1/4': 1.42, '3/8': 1.60, '1/2': 1.88, '5/8': 2.15, '7/8': 2.25, '1-1/8': 2.83, '1-3/8': 3.40, '1-5/8': 3.65, '2-1/8': 4.90, '2-5/8': 5.50, '3-1/8': 6.67, '3-5/8': 7.83, '4-1/8': 9.00, '5-1/8': 10.85, '6-1/8': 12.69 },
+  // 1" wall — the thickest, and the one low-temp suction actually gets.
+  lowSuction: { '1/4': 2.73, '3/8': 3.00, '1/2': 3.45, '5/8': 3.90, '7/8': 4.00, '1-1/8': 4.78, '1-3/8': 5.55, '1-5/8': 5.80, '2-1/8': 7.50, '2-5/8': 9.50, '3-1/8': 11.67, '3-5/8': 13.83, '4-1/8': 16.00, '5-1/8': 19.12, '6-1/8': 22.24 },
+  // 1/2" wall — low-temp liquid.
+  lowLiquid: { '1/4': 0.60, '3/8': 0.70, '1/2': 0.90, '5/8': 1.10, '7/8': 1.15, '1-1/8': 1.63, '1-3/8': 2.10, '1-5/8': 2.20, '2-1/8': 3.30, '2-5/8': 3.80, '3-1/8': 4.70, '3-5/8': 5.60, '4-1/8': 6.50, '5-1/8': 7.91, '6-1/8': 9.31 },
 };
 
 // ── INITIAL STATE ──────────────────────────────────────────────────────────────

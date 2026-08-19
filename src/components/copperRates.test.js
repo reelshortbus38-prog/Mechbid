@@ -167,3 +167,62 @@ describe('wall thickness has one source of truth', () => {
     }
   });
 });
+
+// ── THE VIRGINIA INSULATION PRICING ──────────────────────────────────────────
+// Replaced 2026-08-19 from market pricing quoted by SIZE BAND against all three
+// wall thicknesses. It settled the mismatch this table already carried: medium-
+// temp suction at $2.00/ft for 7/8" sat inside the source's 1/2"-wall band and
+// below its 3/4" band, so the app had been pricing thin wall while the bid line
+// advertised thick.
+
+describe('insulation matches the quoted bands at the wall each category uses', () => {
+  const BAND = {
+    // size → [1/2" wall, 3/4" wall, 1" wall] endpoints quoted by the source
+    '3/8':   { half: 0.70, threeQ: 1.60, one: 3.00 },   // low end of band 1
+    '5/8':   { half: 1.10, threeQ: 2.15, one: 3.90 },   // high end of band 1
+    '7/8':   { half: 1.15, threeQ: 2.25, one: 4.00 },   // low end of band 2
+    '1-3/8': { half: 2.10, threeQ: 3.40, one: 5.55 },   // high end of band 2
+    '1-5/8': { half: 2.20, threeQ: 3.65, one: 5.80 },   // low end of band 3
+    '2-1/8': { half: 3.30, threeQ: 4.90, one: 7.50 },   // high end of band 3
+    '2-5/8': { half: 3.80, threeQ: 5.50, one: 9.50 },   // low end of band 4
+    '4-1/8': { half: 6.50, threeQ: 9.00, one: 16.00 },  // high end of band 4
+  };
+
+  it('lands every band endpoint exactly, at the right wall', () => {
+    for (const [size, q] of Object.entries(BAND)) {
+      expect(DEFAULT_INSUL_RATES.lowLiquid[size], `${size} 1/2"`).toBe(q.half);
+      expect(DEFAULT_INSUL_RATES.medSuction[size], `${size} 3/4"`).toBe(q.threeQ);
+      expect(DEFAULT_INSUL_RATES.lowSuction[size], `${size} 1"`).toBe(q.one);
+    }
+  });
+
+  it('keeps the sizes between endpoints inside their band', () => {
+    // 1-1/8 sits between the 7/8 and 1-3/8 endpoints of band 2.
+    for (const [cat, lo, hi] of [['lowLiquid', 1.15, 2.10], ['medSuction', 2.25, 3.40], ['lowSuction', 4.00, 5.55]]) {
+      expect(DEFAULT_INSUL_RATES[cat]['1-1/8'], cat).toBeGreaterThan(lo);
+      expect(DEFAULT_INSUL_RATES[cat]['1-1/8'], cat).toBeLessThan(hi);
+    }
+  });
+
+  it('scales past the quoted bands rather than stopping', () => {
+    for (const cat of ['medSuction', 'lowSuction', 'lowLiquid']) {
+      expect(DEFAULT_INSUL_RATES[cat]['6-1/8'], cat).toBeGreaterThan(DEFAULT_INSUL_RATES[cat]['4-1/8']);
+      expect(DEFAULT_INSUL_RATES[cat]['1/4'], cat).toBeLessThan(DEFAULT_INSUL_RATES[cat]['3/8']);
+    }
+  });
+
+  it('prices thicker wall above thinner at every single size', () => {
+    // The check that a category never drifts off the wall it claims.
+    for (const size of Object.keys(DEFAULT_CU_RATES)) {
+      expect(DEFAULT_INSUL_RATES.medSuction[size], size).toBeGreaterThan(DEFAULT_INSUL_RATES.lowLiquid[size]);
+      expect(DEFAULT_INSUL_RATES.lowSuction[size], size).toBeGreaterThan(DEFAULT_INSUL_RATES.medSuction[size]);
+    }
+  });
+
+  it('records that liquid went DOWN while suction went UP', () => {
+    // Both old numbers were wrong, in opposite directions — worth pinning so
+    // neither gets "corrected" back toward the other.
+    expect(DEFAULT_INSUL_RATES.lowLiquid['7/8']).toBeLessThan(2.15);   // was 2.15
+    expect(DEFAULT_INSUL_RATES.lowSuction['7/8']).toBeGreaterThan(2.70); // was 2.70
+  });
+});
