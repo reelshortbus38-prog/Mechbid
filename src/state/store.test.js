@@ -8,6 +8,7 @@ import {
   ootCost, crewTravelCount, ootBasisComparison, jobOOTTotal,
   calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
   crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
+  memberOtHours, otRuleConflict, STANDARD_WEEK_HOURS, DAYS_PER_WEEK_OPTIONS,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -481,5 +482,103 @@ describe('overtime review', () => {
     const r = otReview(s);
     expect(r.current).toBe(405000);
     expect(r.delta).toBe(40500);
+  });
+});
+
+// ── DAILY vs WEEKLY OVERTIME ─────────────────────────────────────────────────
+// The compressed schedules contractors run land on opposite sides of the two
+// rules, so a four-day week is not just a smaller number of days.
+describe('daily and weekly overtime rules', () => {
+  const crew = h => Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: h }));
+  const week = (d, h, cfg) => crewDayCost(crew(h), { otMult: 1.5, daysPerWeek: d, ...cfg }) * d;
+
+  it('a four-ten is exactly forty hours and owes no weekly overtime', () => {
+    expect(week(4, 10, { weeklyOtHours: 40 })).toBe(4 * 75 * 40);
+  });
+
+  it('but a daily threshold bills eight overtime hours on that same week', () => {
+    // 4 men × $75 × (8 + 2×1.5) × 4 days
+    expect(week(4, 10, { otAfterHours: 8 })).toBe(13200);
+    expect(week(4, 10, { otAfterHours: 8 })).toBeGreaterThan(week(4, 10, { weeklyOtHours: 40 }));
+  });
+
+  it('the weekly rule catches six eights, which the daily rule cannot see', () => {
+    // 48 hours: 40 straight + 8 over. This was the documented limitation.
+    // Spreading 8 weekly OT hours across 6 days and multiplying back does not
+    // land on an exact binary fraction, so this is close-to rather than equal.
+    expect(week(6, 8, { weeklyOtHours: 40 })).toBeCloseTo(4 * 75 * (40 + 8 * 1.5), 6);
+    expect(week(6, 8, { otAfterHours: 8 })).toBe(4 * 75 * 48);
+  });
+
+  it('the two rules agree on a five-ten, which is why nobody noticed', () => {
+    expect(week(5, 10, { otAfterHours: 8 })).toBe(week(5, 10, { weeklyOtHours: 40 }));
+  });
+
+  it('and on a plain five-eight, where there is no overtime either way', () => {
+    expect(week(5, 8, { otAfterHours: 8 })).toBe(week(5, 8, { weeklyOtHours: 40 }));
+    expect(week(5, 8, { otAfterHours: 8 })).toBe(4 * 75 * 40);
+  });
+
+  it('with both set, the greater applies — a state rule stacking on the federal one', () => {
+    expect(week(4, 10, { otAfterHours: 8, weeklyOtHours: 40 })).toBe(week(4, 10, { otAfterHours: 8 }));
+    expect(week(6, 8, { otAfterHours: 8, weeklyOtHours: 40 })).toBe(week(6, 8, { weeklyOtHours: 40 }));
+  });
+
+  it('spreads weekly overtime across the week, so part-weeks cost correctly', () => {
+    // Two and a half weeks of 6x8 is not two weeks.
+    const perDay = crewDayCost(crew(8), { otMult: 1.5, weeklyOtHours: 40, daysPerWeek: 6 });
+    expect(perDay * 15).toBeCloseTo((4 * 75 * (40 + 8 * 1.5)) * 2.5, 6);
+  });
+
+  it('a weekly threshold does nothing without knowing the days in a week', () => {
+    expect(crewDayCost(crew(10), { otMult: 1.5, weeklyOtHours: 40 }))
+      .toBe(crewDayCost(crew(10), { otMult: 1.5 }));
+  });
+
+  it('still defaults to the whole-shift premium when no threshold is set at all', () => {
+    expect(crewDayCost(crew(10), { otMult: 1.5, daysPerWeek: 4 })).toBe(4 * 75 * 10 * 1.5);
+  });
+
+  it('reports overtime hours per person per day', () => {
+    expect(memberOtHours({ hrsPerDay: 10 }, { otAfterHours: 8 })).toBe(2);
+    expect(memberOtHours({ hrsPerDay: 10 }, { weeklyOtHours: 40, daysPerWeek: 4 })).toBe(0);
+    expect(memberOtHours({ hrsPerDay: 8 }, { weeklyOtHours: 40, daysPerWeek: 6 })).toBeCloseTo(8 / 6, 6);
+  });
+
+  it('flows through a flat job and a period alike', () => {
+    const flat = { crew: crew(10), weeks: 27, daysPerWeek: 4, otMult: 1.5, weeklyOtHours: 40 };
+    expect(calcFlatJobCost(flat).days).toBe(108);
+    expect(calcFlatJobCost(flat).labor).toBe(4 * 75 * 40 * 27);
+    const period = { crew: crew(10), days: 4, daysPerWeek: 4, otMult: 1.5, weeklyOtHours: 40 };
+    expect(calcLaborPeriodCost(period).labor).toBe(4 * 75 * 40);
+  });
+});
+
+describe('warning when the two rules disagree', () => {
+  const crew = h => Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: h }));
+
+  it('fires on a four-ten, where the daily rule charges more', () => {
+    const c = otRuleConflict(crew(10), { daysPerWeek: 4, otAfterHours: 8 });
+    expect(c.dailyOtHours).toBe(32);
+    expect(c.weeklyOtHours).toBe(0);
+    expect(c.hrsPerWeek).toBe(40);
+    expect(c.dailyHigher).toBe(true);
+  });
+
+  it('fires on six eights, where the weekly rule charges more', () => {
+    const c = otRuleConflict(crew(8), { daysPerWeek: 6, otAfterHours: 8 });
+    expect(c.dailyHigher).toBe(false);
+    expect(c.weeklyOtHours).toBe(32);
+  });
+
+  it('stays quiet where the rules agree', () => {
+    expect(otRuleConflict(crew(10), { daysPerWeek: 5, otAfterHours: 8 })).toBeNull();
+    expect(otRuleConflict(crew(8), { daysPerWeek: 5, otAfterHours: 8 })).toBeNull();
+  });
+
+  it('stays quiet when there is nothing to compare', () => {
+    expect(otRuleConflict(crew(10), { daysPerWeek: 4 })).toBeNull();
+    expect(otRuleConflict(crew(10), { otAfterHours: 8 })).toBeNull();
+    expect(otRuleConflict([], { daysPerWeek: 4, otAfterHours: 8 })).toBeNull();
   });
 });
