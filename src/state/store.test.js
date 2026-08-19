@@ -7,6 +7,7 @@ import {
   estimateCircuitLabor, DEFAULT_LABOR_UNITS, defaultHvacPrice,
   ootCost, crewTravelCount, ootBasisComparison, jobOOTTotal,
   calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
+  crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -368,5 +369,117 @@ describe('the bid decomposition holds on either basis', () => {
     const state = { ...base, ootBasis: 'person', outOfTown: false };
     expect(jobOOTTotal(state)).toBe(0);
     expect(jobLaborTotal(state)).toBe(CREW.reduce((s, m) => s + m.rate * m.hrsPerDay, 0) * 135);
+  });
+});
+
+// ── OVERTIME ─────────────────────────────────────────────────────────────────
+describe('overtime on a long day', () => {
+  const CREW = Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: 10 }));
+  const DAYS = 135;
+
+  it('the right answer was not expressible before — now it is', () => {
+    // 4 men, $75, 10-hour days, 135 days.
+    expect(crewDayCost(CREW, { otMult: 1 }) * DAYS).toBe(405000);              // all straight, short
+    expect(crewDayCost(CREW, { otMult: 1.5 }) * DAYS).toBe(607500);            // blanket, over
+    expect(crewDayCost(CREW, { otMult: 1.5, otAfterHours: 8 }) * DAYS).toBe(445500);
+  });
+
+  it('splits each man at his own hours, not the crew average', () => {
+    const mixed = [{ rate: 100, hrsPerDay: 12 }, { rate: 50, hrsPerDay: 8 }];
+    // 100 × (8 + 4×1.5) + 50 × 8 = 1400 + 400
+    expect(crewDayCost(mixed, { otMult: 1.5, otAfterHours: 8 })).toBe(1800);
+  });
+
+  it('leaves an eight-hour day alone whatever the multiplier', () => {
+    const eights = [{ rate: 75, hrsPerDay: 8 }];
+    expect(crewDayCost(eights, { otMult: 1.5, otAfterHours: 8 })).toBe(600);
+  });
+
+  it('with no threshold the multiplier is a whole-shift premium — the old meaning', () => {
+    // A Saturday or a shutdown: every hour is at premium and no threshold applies.
+    expect(crewDayCost(CREW, { otMult: 1.5 })).toBe(crewDayCost(CREW, { otMult: 1 }) * 1.5);
+  });
+
+  it('defaults to the old behaviour, so no saved bid reprices itself', () => {
+    expect(crewDayCost(CREW)).toBe(4 * 75 * 10);
+    expect(calcLaborPeriodCost({ crew: CREW, days: 1 }).labor).toBe(3000);
+  });
+
+  it('a night shift premium still covers the whole shift, overtime and all', () => {
+    const night = calcLaborPeriodCost({ crew: CREW, days: 1, isNight: true, nightMult: 1.5, otAfterHours: 8, otMult: 1.5 });
+    const day = calcLaborPeriodCost({ crew: CREW, days: 1, otAfterHours: 8, otMult: 1.5 });
+    expect(night.labor).toBe(day.labor * 1.5);
+  });
+
+  it('flat mode honours overtime, which it previously ignored entirely', () => {
+    const flat = { crew: CREW, weeks: 27, daysPerWeek: 5 };
+    expect(calcFlatJobCost(flat).labor).toBe(405000);
+    expect(calcFlatJobCost({ ...flat, otMult: 1.5, otAfterHours: 8 }).labor).toBe(445500);
+  });
+
+  it('reports the hour split for showing on screen', () => {
+    expect(dayHourSplit(CREW, 8)).toEqual({ straight: 32, ot: 8 });
+    expect(dayHourSplit(CREW, 0)).toEqual({ straight: 40, ot: 0 });
+  });
+
+  it('handles a crew with no hours entered as standard days', () => {
+    expect(crewDayCost([{ rate: 100 }], { otAfterHours: 8, otMult: 1.5 })).toBe(800);
+    expect(crewDayCost([], { otAfterHours: 8 })).toBe(0);
+  });
+});
+
+describe('overtime review', () => {
+  const CREW = Array.from({ length: 4 }, () => ({ rate: 75, hrsPerDay: 10 }));
+  const flatState = h => ({ laborMode: 'flat', flatJob: { crew: CREW.map(m => ({ ...m, hrsPerDay: h })), weeks: 27, daysPerWeek: 5 } });
+
+  it('speaks up when a long day is billing straight through', () => {
+    const r = otReview(flatState(10));
+    expect(r.current).toBe(405000);
+    expect(r.corrected).toBe(445500);
+    expect(r.delta).toBe(40500);
+    expect(r.daysAffected).toBe(135);
+  });
+
+  it('stays quiet on eight-hour days — there is nothing past eight', () => {
+    expect(otReview(flatState(8))).toBeNull();
+  });
+
+  it('stays quiet once a threshold is set', () => {
+    const s = flatState(10);
+    s.flatJob.otAfterHours = 8;
+    s.flatJob.otMult = 1.5;
+    expect(otReview(s)).toBeNull();
+  });
+
+  it('notices a blanket multiplier being used instead of a threshold', () => {
+    const s = flatState(10);
+    s.flatJob.otMult = 1.5;
+    expect(otReview(s).blanketUsed).toBe(true);
+  });
+
+  it('works across phased periods and counts only the affected days', () => {
+    const state = {
+      laborMode: 'periods',
+      laborPeriods: [
+        { crew: CREW, days: 20 },                                            // 10s, no threshold
+        { crew: CREW.map(m => ({ ...m, hrsPerDay: 8 })), days: 30 },         // 8s, nothing to fix
+        { crew: CREW, days: 10, otAfterHours: 8, otMult: 1.5 },              // already right
+      ],
+    };
+    expect(otReview(state).daysAffected).toBe(20);
+  });
+
+  it('says nothing about a job with no labor entered', () => {
+    expect(otReview({ laborMode: 'flat', flatJob: {} })).toBeNull();
+    expect(otReview({ laborMode: 'periods', laborPeriods: [] })).toBeNull();
+  });
+
+  it('excludes out-of-town from the comparison — this is a labor question', () => {
+    const s = flatState(10);
+    s.flatJob.ootPerDay = 150;
+    s.ootBasis = 'person';
+    const r = otReview(s);
+    expect(r.current).toBe(405000);
+    expect(r.delta).toBe(40500);
   });
 });

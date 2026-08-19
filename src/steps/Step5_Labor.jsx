@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -141,6 +141,12 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
                 <Input type="number" value={period.otMult} onChange={e => onUpdate('otMult', parseFloat(e.target.value) || 1)} step="0.1" placeholder="1.5" />
               </div>
             )}
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/day)</div>
+              <Input type="number" value={period.otAfterHours || ''}
+                onChange={e => onUpdate('otAfterHours', parseFloat(e.target.value) || 0)}
+                placeholder="whole shift" />
+            </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
               <Input type="number" value={period.ootPerDay || ''} onChange={e => onUpdate('ootPerDay', parseFloat(e.target.value) || 0)} placeholder="0" />
@@ -376,6 +382,19 @@ export default function Step5_Labor({ onNext, onBack }) {
   // in-town switch — the header read one number while the bid carried another.
   const totalOOT = jobOOTTotal(state);
   const ootCompare = ootBasisComparison(state);
+  const otWarn = otReview(state);
+
+  // One click rather than opening every period. A multiplier already set is
+  // left alone; only a missing one gets the standard 1.5.
+  function applyOtThreshold() {
+    const fix = u => ({
+      ...u,
+      otAfterHours: parseFloat(u.otAfterHours) > 0 ? u.otAfterHours : 8,
+      otMult: parseFloat(u.otMult) > 1 ? u.otMult : 1.5,
+    });
+    if (laborMode === 'flat') dispatch({ type: 'SET', key: 'flatJob', value: fix(state.flatJob || {}) });
+    else dispatch({ type: 'SET', key: 'laborPeriods', value: (state.laborPeriods || []).map(fix) });
+  }
   const totalPeople = laborMode === 'flat' ? flat.crew.length : Math.max(...state.laborPeriods.map(p => p.crew.length), 0);
 
   function setFlat(updates) {
@@ -406,6 +425,34 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* ── Long days billing straight through ── */}
+      {otWarn && (
+        <Card style={{ borderColor: `${colors.yellow}55` }}>
+          <SLabel>⏱️ Hours past eight are billing straight</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
+            {otWarn.daysAffected} day(s) on this job run longer than an eight-hour shift with no overtime
+            threshold set, so every hour is priced at straight time. Labor is{' '}
+            <strong style={{ color: colors.text }}>{fmt(otWarn.current)}</strong>; splitting the day at eight
+            hours with time-and-a-half after makes it{' '}
+            <strong style={{ color: colors.green }}>{fmt(otWarn.corrected)}</strong> —{' '}
+            <strong style={{ color: colors.red }}>{fmt(otWarn.delta)}</strong> the bid is currently short.
+            {otWarn.blanketUsed && (
+              <><br /><strong style={{ color: colors.yellow }}>A multiplier is set but no threshold</strong>, so it is
+              being applied to the WHOLE shift rather than the hours past eight — that overshoots in the other
+              direction. Set the threshold and it lands where it should.</>
+            )}
+            <br />
+            <span style={{ fontSize: 11 }}>
+              Leave it alone if these really are straight-time hours, or if the multiplier is meant as a
+              whole-shift premium for a Saturday or a shutdown.
+            </span>
+          </div>
+          <Btn variant="green" size="sm" style={{ marginTop: 10 }} onClick={applyOtThreshold}>
+            Split the day at 8 hrs, 1.5× after
+          </Btn>
+        </Card>
+      )}
 
       {/* ── Out-of-town expense: is it a travelling job, and per what? ── */}
       <Card>
@@ -512,6 +559,18 @@ export default function Step5_Labor({ onNext, onBack }) {
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
               <Input type="number" value={flat.ootPerDay || ''} onChange={e => setFlat({ ootPerDay: parseFloat(e.target.value) || 0 })} placeholder="0" />
+            </div>
+            {/* Flat mode had no overtime inputs at all, which is why a whole-job
+                crew on ten-hour days billed every hour straight. */}
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/day)</div>
+              <Input type="number" value={flat.otAfterHours || ''}
+                onChange={e => setFlat({ otAfterHours: parseFloat(e.target.value) || 0 })} placeholder="whole shift" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT Multiplier (×)</div>
+              <Input type="number" value={flat.otMult || ''}
+                onChange={e => setFlat({ otMult: parseFloat(e.target.value) || 1 })} step="0.1" placeholder="1.5" />
             </div>
           </div>
 
