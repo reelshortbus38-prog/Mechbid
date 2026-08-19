@@ -35,6 +35,7 @@ export function reviewGlycolInputs(input = {}) {
     loopType = 'chilled', pct, protectTo, mix,
     coilGal = 0, tankGal = 0, fixtures = 0,
     btuh = 0, deltaT = 0, componentHeadFt = DEFAULT_COMPONENT_HEAD_FT,
+    headFromSubmittal = 0, headTypical = 0,
     frictionPer100 = DEFAULT_FRICTION_PER_100FT,
     fittingsPct = DEFAULT_FITTINGS_PCT,
     efficiency = DEFAULT_PUMP_EFFICIENCY,
@@ -51,11 +52,22 @@ export function reviewGlycolInputs(input = {}) {
       + 'and at zero the glycol buy is short by that much. It is on the equipment submittals — nothing '
       + 'on a drawing gives it.');
   }
-  if (!isWater && Number(componentHeadFt) === DEFAULT_COMPONENT_HEAD_FT) {
+  // Equipment head is itemised now, so the question is no longer "is it still
+  // the default" but "how much of it has actually been read off a sheet".
+  const headLines = Number(headFromSubmittal) + Number(headTypical);
+  if (!isWater && !headLines && Number(componentHeadFt) === DEFAULT_COMPONENT_HEAD_FT) {
     add('verify', 'submittal', `Equipment head is the ${DEFAULT_COMPONENT_HEAD_FT} ft default`,
       'Pressure drop through the chiller heat exchanger, the case coils and the control valves. '
       + 'It is often the LARGER half of total head on a compact loop, and it comes off the submittals. '
       + 'Until it does, the pump size is a placeholder.');
+  } else if (!isWater && Number(headTypical) > 0) {
+    add('verify', 'submittal', `${headTypical} of ${headLines} equipment drops are still trade-typical`,
+      `They add up to ${componentHeadFt} ft, which is real weight in the pump selection. Each one is printed `
+      + 'on a submittal — tick them off as the real figures go in.');
+  } else if (!isWater && Number(headFromSubmittal) > 0) {
+    add('fyi', 'submittal', `Equipment head is ${componentHeadFt} ft, all off submittals`,
+      'Every drop in the list has been read off a sheet rather than assumed, which is what makes the pump '
+      + 'selection defensible.');
   }
   if (!(Number(fixtures) > 0)) {
     add('blocker', 'submittal', 'No case or walk-in coil count',

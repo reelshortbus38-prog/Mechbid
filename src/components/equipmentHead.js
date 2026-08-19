@@ -1,0 +1,273 @@
+// ── EQUIPMENT HEAD, READ OFF THE SUBMITTALS ──────────────────────────────────
+// Until now the pump sizing carried a flat 25 ft for "everything that is not
+// pipe" — the chiller barrel, the case coils, the valve train. That number was
+// a placeholder wearing the same font as the computed ones, and on a compact
+// loop it is frequently the LARGER half of total head. This replaces it with
+// the figures that are actually printed on the equipment submittals.
+//
+// THE MISTAKE THIS MODULE EXISTS TO PREVENT.
+// Head does not add up across everything in the building. It adds up along ONE
+// path — the same critical circuit the pipe length uses. A pump has to overcome
+// the worst route through the system, and everything hanging in parallel with
+// that route is not in its way.
+//
+//   SERIES   — every gallon goes through it. The chiller barrel, the main
+//              strainer, the triple-duty valve at the pump. These ADD.
+//   BRANCH   — one of many parallel paths. A case coil, its circuit setter, its
+//              control valve. Only the WORST ONE counts.
+//
+// Add up thirty case coils at 8 ft each and you get 240 ft of head that does
+// not exist, a 40 HP motor for a 7.5 HP job, and a bid with a service upgrade
+// in it that nobody asked for. This is the same error as feeding total pipe
+// footage in where the longest path belongs, and it is made the same way: by
+// adding what is actually in parallel.
+//
+// THREE CORRECTIONS THE SUBMITTAL DOES NOT MAKE FOR YOU.
+//   1. Units. Manufacturers quote feet, psi, or kPa as they please, and psi to
+//      feet is fluid-dependent — 2.31 ft per psi is a WATER number.
+//   2. Flow. Every quoted drop is quoted AT A STATED FLOW. Push more through it
+//      and the drop climbs with the square. A coil rated 8 ft at 20 GPM is
+//      12.5 ft at 25 GPM, and that is not a rounding difference.
+//   3. Fluid. Coil ratings are usually published on water. Cold glycol is
+//      thicker and costs more to push through the same coil.
+//
+// Pure — no React.
+
+import { viscosityFactor, specificGravity } from './glycolHydraulics.js';
+
+export const SERIES = 'series';
+export const BRANCH = 'branch';
+
+// The catalogue. `typicalFt` is a trade-typical placeholder for before the
+// submittals arrive — every one of them is a round number nobody here has read
+// off a real sheet, and the app says so until the estimator overwrites it.
+export const COMPONENT_TYPES = [
+  { key: 'chillerBarrel', label: 'Chiller barrel / heat exchanger', position: SERIES, typicalFt: 15, range: [8, 25],
+    note: 'Usually the single largest item. Plate-and-frame runs higher than shell-and-tube.' },
+  { key: 'fluidCooler', label: 'Fluid cooler coil', position: SERIES, typicalFt: 12, range: [8, 20],
+    note: 'The water-loop equivalent of the barrel — it is what the loop rejects heat through.' },
+  { key: 'mainStrainer', label: 'Main basket strainer', position: SERIES, typicalFt: 5, range: [3, 8],
+    note: 'Clean. A loaded strainer is worse, which is why the pump gets some margin.' },
+  { key: 'suctionDiffuser', label: 'Suction diffuser', position: SERIES, typicalFt: 3, range: [2, 5] },
+  { key: 'tripleDuty', label: 'Triple-duty valve', position: SERIES, typicalFt: 10, range: [8, 14],
+    note: 'Check, balance and shutoff in one body — and it charges head for all three.' },
+  { key: 'flowMeter', label: 'Flow meter / venturi', position: SERIES, typicalFt: 3, range: [2, 6] },
+  { key: 'seriesOther', label: 'Other — every gallon goes through it', position: SERIES, typicalFt: 0, range: [0, 0] },
+
+  { key: 'caseCoil', label: 'Case coil (worst case on the loop)', position: BRANCH, typicalFt: 8, range: [4, 12],
+    note: 'ONE of them. The other twenty-nine are in parallel with this one, not behind it.' },
+  { key: 'walkinCoil', label: 'Walk-in unit cooler coil', position: BRANCH, typicalFt: 10, range: [6, 15] },
+  { key: 'circuitSetter', label: 'Circuit setter / balance valve', position: BRANCH, typicalFt: 5, range: [3, 9],
+    note: 'At its design setting. Set further closed it is higher, which is the whole point of it.' },
+  { key: 'controlValve', label: '2-way control valve', position: BRANCH, typicalFt: 8, range: [4, 14],
+    note: 'Sized for authority — deliberately a real share of the branch drop, or it cannot control.' },
+  { key: 'solenoid', label: 'Solenoid valve', position: BRANCH, typicalFt: 3, range: [2, 6] },
+  { key: 'branchStrainer', label: 'Branch strainer', position: BRANCH, typicalFt: 3, range: [2, 5] },
+  { key: 'branchValves', label: 'Branch isolation valves', position: BRANCH, typicalFt: 1.5, range: [1, 3] },
+  { key: 'branchOther', label: 'Other — on one branch only', position: BRANCH, typicalFt: 0, range: [0, 0] },
+];
+
+const BY_KEY = Object.fromEntries(COMPONENT_TYPES.map(t => [t.key, t]));
+export const componentType = key => BY_KEY[key] || null;
+export const positionOf = key => (BY_KEY[key] ? BY_KEY[key].position : SERIES);
+
+// What a fresh card starts with — the spine of a loop, no branch items yet,
+// because the branch is where the estimator has to make a judgement about which
+// case is worst and the app should not make it for them.
+export function seedComponents(loopType = 'chilled') {
+  const spine = loopType === 'water'
+    ? ['fluidCooler', 'mainStrainer', 'tripleDuty']
+    : ['chillerBarrel', 'mainStrainer', 'tripleDuty'];
+  return spine.map(key => newComponent(key));
+}
+
+let seq = 0;
+export function newComponent(key = 'seriesOther') {
+  const t = BY_KEY[key];
+  return {
+    id: `eh${Date.now().toString(36)}${(seq++).toString(36)}`,
+    key,
+    label: t ? t.label : 'Component',
+    value: t ? t.typicalFt : 0,
+    unit: 'ft',            // 'ft' | 'psi' | 'kpa'
+    ratedGpm: 0,           // 0 = the submittal's flow was not noted, so no flow correction
+    ratedOn: 'water',      // 'water' | 'glycol' — what the published drop was measured with
+    fromSubmittal: false,  // true once the estimator has actually read it off a sheet
+  };
+}
+
+// ── UNIT CONVERSION ──────────────────────────────────────────────────────────
+// Pump head is expressed in feet OF THE FLUID BEING PUMPED, which is why pump
+// curves do not mention density. So a psi drop becomes fewer feet in a denser
+// fluid: the same pressure is a shorter column of heavier stuff.
+export const FT_PER_PSI_WATER = 2.31;
+export const FT_PER_KPA_WATER = 0.334552;
+
+export function feetOfHead(value, unit = 'ft', pct = 35) {
+  // A blank field is 0 ft ON PURPOSE — an unentered component contributes
+  // nothing and should still show in the list rather than vanish from it. The
+  // sanity pass is what says a row is sitting at zero; Number('') doing this
+  // by accident is not a good enough reason for it to be right.
+  if (value === '' || value === null || value === undefined) return 0;
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  const u = String(unit || 'ft').toLowerCase();
+  if (u === 'ft') return v;
+  const sg = specificGravity(pct) || 1;
+  if (u === 'psi') return (v * FT_PER_PSI_WATER) / sg;
+  if (u === 'kpa') return (v * FT_PER_KPA_WATER) / sg;
+  return null;
+}
+
+// ── FLOW CORRECTION ──────────────────────────────────────────────────────────
+// Turbulent pressure drop goes with the square of velocity, so a component
+// pushed past its rated flow costs disproportionately more head. Returns the ft
+// unchanged when the rated flow was not recorded — a correction against an
+// unknown baseline is worse than no correction.
+export function flowCorrect(ft, ratedGpm, actualGpm) {
+  const f = Number(ft), r = Number(ratedGpm), a = Number(actualGpm);
+  if (!Number.isFinite(f)) return null;
+  if (!(r > 0) || !(a > 0)) return f;
+  return f * Math.pow(a / r, 2);
+}
+
+// ── FLUID CORRECTION ─────────────────────────────────────────────────────────
+// A drop published on water understates a glycol loop. This uses the same
+// lumped viscosity factor the pipe friction uses — it is an estimating
+// approximation for a coil rather than a manufacturer's curve, and it lands in
+// the same 10–30% band manufacturers publish as their own glycol multiplier.
+export function fluidCorrect(ft, ratedOn = 'water', pct = 35) {
+  const f = Number(ft);
+  if (!Number.isFinite(f)) return null;
+  if (String(ratedOn) !== 'water') return f;   // already measured on the real fluid
+  return f * (viscosityFactor(pct) || 1);
+}
+
+const round1 = n => Math.round(n * 10) / 10;
+
+// One component → the feet of head it actually contributes, plus a plain
+// account of every correction applied on the way, so a number that moved can be
+// explained rather than merely trusted.
+export function resolveComponent(c = {}, { gpm = 0, branchGpm = 0, pct = 35 } = {}) {
+  const type = BY_KEY[c.key] || null;
+  const position = type ? type.position : SERIES;
+  const raw = feetOfHead(c.value, c.unit, pct);
+  if (raw === null) return null;
+
+  const corrections = [];
+  if (String(c.unit || 'ft').toLowerCase() !== 'ft') {
+    corrections.push(`${c.value} ${c.unit} → ${round1(raw)} ft of ${pct}% glycol`);
+  }
+
+  // A branch component sees its own share of the flow, not the whole loop's.
+  const actual = position === BRANCH ? Number(branchGpm) || 0 : Number(gpm) || 0;
+  const flowed = flowCorrect(raw, c.ratedGpm, actual);
+  if (flowed !== raw) {
+    corrections.push(`rated at ${c.ratedGpm} GPM, running ${round1(actual)} GPM → ×${round1(Math.pow(actual / Number(c.ratedGpm), 2) * 10) / 10}`);
+  }
+
+  const ft = fluidCorrect(flowed, c.ratedOn, pct);
+  if (ft !== flowed) corrections.push(`published on water → ×${Math.round((viscosityFactor(pct) || 1) * 100) / 100} for glycol`);
+
+  return {
+    id: c.id,
+    key: c.key,
+    label: c.label || (type ? type.label : 'Component'),
+    position,
+    ft: round1(ft),
+    basis: c.fromSubmittal ? 'submittal' : 'typical',
+    corrections,
+  };
+}
+
+// ── THE TOTAL ────────────────────────────────────────────────────────────────
+// Series items add. Branch items add to each other — they are all on the ONE
+// critical branch, in series with one another along it — and that single branch
+// total adds to the series total. Nothing is multiplied by the fixture count,
+// which is the whole point.
+export function equipmentHead(components = [], { gpm = 0, fixtures = 0, pct = 35 } = {}) {
+  const branchGpm = Number(fixtures) > 0 && Number(gpm) > 0 ? Number(gpm) / Number(fixtures) : 0;
+  const lines = components.map(c => resolveComponent(c, { gpm, branchGpm, pct })).filter(Boolean);
+  const seriesFt = lines.filter(l => l.position === SERIES).reduce((s, l) => s + l.ft, 0);
+  const branchFt = lines.filter(l => l.position === BRANCH).reduce((s, l) => s + l.ft, 0);
+  const fromSubmittal = lines.filter(l => l.basis === 'submittal').length;
+  return {
+    lines,
+    seriesFt: round1(seriesFt),
+    branchFt: round1(branchFt),
+    totalFt: round1(seriesFt + branchFt),
+    branchGpm: branchGpm ? round1(branchGpm) : 0,
+    fromSubmittal,
+    typical: lines.length - fromSubmittal,
+  };
+}
+
+// What the naive addition would have produced, so the difference is visible
+// rather than merely avoided. On a thirty-case loop this is a large number and
+// seeing it is the fastest way to understand why the branch is not multiplied.
+export function naiveTotalFt(result, fixtures = 0) {
+  const n = Number(fixtures) || 0;
+  if (!result || n <= 1 || !(result.branchFt > 0)) return null;
+  return round1(result.seriesFt + result.branchFt * n);
+}
+
+// ── SANITY ───────────────────────────────────────────────────────────────────
+// The ways this input goes wrong in practice, caught before it reaches a motor
+// size. severity mirrors the glycol review card: 'blocker' | 'verify' | 'fyi'.
+export const COIL_KEYS = ['caseCoil', 'walkinCoil'];
+
+export function equipmentHeadSanity(components = [], result = null, { fixtures = 0 } = {}) {
+  const out = [];
+  const add = (severity, label, detail) => out.push({ severity, label, detail });
+
+  if (!components.length) {
+    add('blocker', 'No equipment head entered',
+      'Pipe friction alone is not the pump. The barrel, the coils and the valve train are frequently the '
+      + 'larger half of total head on a compact loop, and every one of those figures is printed on a submittal.');
+    return out;
+  }
+
+  const coils = components.filter(c => COIL_KEYS.includes(c.key));
+  if (coils.length > 1) {
+    add('blocker', `${coils.length} coils entered as branch components`,
+      'Case and walk-in coils hang in PARALLEL off the loop. The pump overcomes the worst one, not the sum '
+      + 'of all of them. Enter only the worst branch — delete the rest, or the motor comes out several sizes '
+      + 'too big and the bid carries an electrical upgrade nobody asked for.');
+  }
+
+  const typical = components.filter(c => !c.fromSubmittal);
+  if (typical.length) {
+    add('verify', `${typical.length} of ${components.length} still on trade-typical numbers`,
+      'These are round figures nobody here has read off a sheet. Tick "from submittal" as each real number '
+      + 'goes in — the pump size is provisional until they all are.');
+  }
+
+  const zero = components.filter(c => !(Number(c.value) > 0));
+  if (zero.length) {
+    add('verify', `${zero.length} component(s) sitting at zero`,
+      'A blank row contributes nothing to the pump. That is correct if the component genuinely has no '
+      + 'meaningful drop, and a hole in the estimate if the figure simply has not been looked up yet.');
+  }
+
+  const noFlow = components.filter(c => !(Number(c.ratedGpm) > 0));
+  if (noFlow.length && Number(fixtures) > 0) {
+    add('fyi', `${noFlow.length} component(s) have no rated flow noted`,
+      'A published drop is published at a stated flow, and drop climbs with the square of it. Without the '
+      + 'rated GPM the figure is taken at face value, which is right only if the design flow matches.');
+  }
+
+  if (result && result.branchFt > result.seriesFt && result.seriesFt > 0) {
+    add('verify', 'The branch outweighs the machine room',
+      `${result.branchFt} ft on one branch against ${result.seriesFt} ft series. That happens on jobs with `
+      + 'aggressive control-valve authority, but it is worth a second look — a coil entered where a barrel '
+      + 'belongs reads exactly like this.');
+  }
+
+  return out;
+}
+
+export function equipmentHeadNote(result) {
+  if (!result || !result.lines.length) return '';
+  return `${result.totalFt} ft = ${result.seriesFt} ft series (every gallon) + ${result.branchFt} ft `
+    + `on the worst branch. ${result.fromSubmittal} of ${result.lines.length} from submittals.`;
+}

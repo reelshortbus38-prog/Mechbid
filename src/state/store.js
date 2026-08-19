@@ -203,6 +203,11 @@ export const initialState = {
   // run length it would be bought once per circuit.
   // Shape: { id, label, size, lengthFt, lineType: 'suction'|'liquid', tempType }
   headers: [],
+  // Equipment pressure drops read off the submittals — chiller barrel, coils,
+  // valve train. Persisted rather than held in the card because it is paperwork
+  // data: it costs real time to look up and nobody should re-key it because a
+  // tab was closed. Shape is newComponent() in components/equipmentHead.js.
+  glycolComponents: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
   supplyItems: [],
