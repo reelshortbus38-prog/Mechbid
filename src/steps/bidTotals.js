@@ -95,3 +95,69 @@ export function bidLetterBreakdown(state, totals) {
     total: totals.total,
   };
 }
+
+// ── WHAT THE BID ACTUALLY EARNS ──────────────────────────────────────────────
+// Markup is applied to MATERIALS ONLY. Labor, rack labor and field tasks all
+// enter the subtotal at cost and carry none. On a job that is mostly labor —
+// which most refrigeration work is — that means the number the estimator set is
+// not the number the bid makes:
+//
+//   materials $200,000 · labor $378,000 · "20% markup"
+//   → bid $618,000, cost $578,000, gross profit $40,000 = 6.5%
+//
+// Three things compound there. The markup lands on a third of the cost; a 20%
+// MARKUP on cost is a 16.7% MARGIN on the sell price whatever it lands on; and
+// the scenario picker calls all of it "margin".
+//
+// WHETHER THAT IS WRONG DEPENDS ON THE SHOP, WHICH IS WHY THIS REPORTS RATHER
+// THAN CHANGES ANYTHING. Plenty of contractors sell labor at a billing rate
+// with overhead and profit already inside it, and for them marking it up again
+// would double-count. Plenty of others enter burdened cost and expect the
+// markup to carry the whole job. The app cannot tell which from a rate that is
+// labelled only "Rate/hr" — but it can show what the bid earns, and let the
+// estimator see whether that is the number they meant.
+export function marginAnalysis(state, totals) {
+  const t = totals || {};
+  const laborCost = (t.laborTotal || 0) + (t.rackLaborTotal || 0) + (t.fieldTasksTotal || 0);
+  const matCost = t.markupBase || 0;
+  const passThrough = (t.taxAmt || 0) + (t.bondAmt || 0) + (t.permitFee || 0);
+  const cost = matCost + laborCost + (t.subsBase || 0) + passThrough;
+  const sell = t.total || 0;
+  if (!(sell > 0)) return null;
+
+  const grossProfit = sell - cost;
+  // The share of cost the markup never touches.
+  const unmarked = laborCost + (t.subsBase || 0);
+  return {
+    cost, sell, grossProfit,
+    effectiveMarginPct: Math.round((grossProfit / sell) * 1000) / 10,
+    statedMarkupPct: parseFloat(state?.markupPct) || 0,
+    // The same stated figure expressed as a margin, so the two are comparable.
+    statedAsMarginPct: (() => {
+      const m = parseFloat(state?.markupPct) || 0;
+      return Math.round((m / (100 + m)) * 1000) / 10;
+    })(),
+    laborCost, matCost,
+    unmarkedCost: unmarked,
+    unmarkedSharePct: cost > 0 ? Math.round((unmarked / cost) * 1000) / 10 : 0,
+  };
+}
+
+// What the material markup would have to be for the WHOLE bid to earn a target
+// margin, given that labor carries none. Returns null when it cannot get there
+// — past a point no material markup covers a labour-heavy job, and saying so is
+// more use than printing 400%.
+export const MAX_SENSIBLE_MARKUP_PCT = 200;
+
+export function markupForTargetMargin(state, totals, targetMarginPct) {
+  const a = marginAnalysis(state, totals);
+  const target = parseFloat(targetMarginPct) || 0;
+  if (!a || !(target > 0) || target >= 100) return null;
+  if (!(a.matCost > 0)) return null;
+  // sell = cost + matCost×m  and  margin = (sell − cost)/sell
+  // → matCost×m = margin×sell = margin×(cost + matCost×m)
+  const f = target / 100;
+  const needed = (f * a.cost) / (a.matCost * (1 - f));
+  const pct = Math.round(needed * 1000) / 10;
+  return pct > MAX_SENSIBLE_MARKUP_PCT ? { pct, reachable: false } : { pct, reachable: true };
+}

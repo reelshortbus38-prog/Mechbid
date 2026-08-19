@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBidTotals, bidLetterBreakdown } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin } from './bidTotals.js';
 
 // The proposal shows these component lines and a grand total. If `total` ever
 // drifts from the sum of the lines, a customer's bid silently adds up wrong —
@@ -174,5 +174,108 @@ describe('computeBidTotals reconciliation', () => {
     // subtotal = 1000 materials + 6400 labor = 7400; bond = 10% = 740
     expect(round(t.bondAmt)).toBe(740);
     expect(round(t.total)).toBe(round(7400 + 740));
+  });
+});
+
+// ── WHAT THE BID ACTUALLY EARNS ──────────────────────────────────────────────
+describe('margin analysis', () => {
+  const crew = [{ rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }];
+  const job = (over = {}) => ({
+    mode: 'Commercial Refrigeration', laborMode: 'flat',
+    flatJob: { crew, weeks: 27, daysPerWeek: 5, ootPerDay: 150 },
+    ootBasis: 'person', outOfTown: true,
+    lineItems: [{ total: 200000 }],
+    rackParts: [], rackTasks: [], fieldTasks: [], subcontractors: [],
+    markupPct: 20, materialsTaxPct: 0, bondPct: 0, permitFee: 0,
+    ...over,
+  });
+
+  it('a "20% markup" on a labour-heavy job earns 6.5%', () => {
+    const state = job();
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    expect(a.statedMarkupPct).toBe(20);
+    expect(a.effectiveMarginPct).toBe(6.5);
+  });
+
+  it('names the share of cost the markup never touches', () => {
+    const state = job();
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    expect(a.unmarkedCost).toBe(378000);
+    expect(a.unmarkedSharePct).toBe(65.4);
+  });
+
+  it('converts the stated markup to the margin it is, which is not the same number', () => {
+    const state = job();
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    // 20% markup on cost is 16.7% margin on the sell price.
+    expect(a.statedAsMarginPct).toBe(16.7);
+  });
+
+  it('gross profit is exactly the markup, because nothing else earns anything', () => {
+    const state = job();
+    const t = computeBidTotals(state, 20);
+    const a = marginAnalysis(state, t);
+    expect(a.grossProfit).toBeCloseTo(t.markupAmt, 6);
+  });
+
+  it('counts a sub markup as profit and the sub cost as cost', () => {
+    const state = job({ subcontractors: [{ cost: 50000 }], subMarkupPct: 10 });
+    const t = computeBidTotals(state, 20);
+    const a = marginAnalysis(state, t);
+    expect(a.grossProfit).toBeCloseTo(t.markupAmt + 5000, 6);
+  });
+
+  it('treats tax, bond and permit as pass-through cost, not profit', () => {
+    const state = job({ materialsTaxPct: 7, bondPct: 1.5, permitFee: 2500 });
+    const t = computeBidTotals(state, 20);
+    const a = marginAnalysis(state, t);
+    expect(a.grossProfit).toBeCloseTo(t.markupAmt, 6);
+  });
+
+  it('reaches the whole bid: cost plus profit is the total', () => {
+    const state = job({ materialsTaxPct: 7, bondPct: 1.5, permitFee: 2500, subcontractors: [{ cost: 50000 }], subMarkupPct: 10 });
+    const t = computeBidTotals(state, 20);
+    const a = marginAnalysis(state, t);
+    expect(a.cost + a.grossProfit).toBeCloseTo(t.total, 6);
+    expect(a.sell).toBe(t.total);
+  });
+
+  it('says nothing about an empty bid', () => {
+    expect(marginAnalysis({}, { total: 0 })).toBeNull();
+  });
+});
+
+describe('markup needed for a target margin', () => {
+  const crew = [{ rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }];
+  const state = {
+    mode: 'Commercial Refrigeration', laborMode: 'flat',
+    flatJob: { crew, weeks: 27, daysPerWeek: 5, ootPerDay: 150 },
+    ootBasis: 'person', outOfTown: true,
+    lineItems: [{ total: 200000 }],
+    rackParts: [], rackTasks: [], fieldTasks: [], subcontractors: [],
+    markupPct: 20, materialsTaxPct: 0, bondPct: 0, permitFee: 0,
+  };
+  const totals = computeBidTotals(state, 20);
+
+  it('solves for the material markup that hits a target', () => {
+    const r = markupForTargetMargin(state, totals, 15);
+    expect(r.pct).toBeCloseTo(51, 0);
+    expect(r.reachable).toBe(true);
+  });
+
+  it('the answer actually lands on the target when applied', () => {
+    const r = markupForTargetMargin(state, totals, 15);
+    const t2 = computeBidTotals({ ...state, markupPct: r.pct }, r.pct);
+    expect(marginAnalysis({ ...state, markupPct: r.pct }, t2).effectiveMarginPct).toBeCloseTo(15, 1);
+  });
+
+  it('says a target is out of reach rather than printing an absurd number', () => {
+    const r = markupForTargetMargin(state, totals, 60);
+    expect(r.reachable).toBe(false);
+  });
+
+  it('returns null when there is no material to mark up', () => {
+    const bare = { ...state, lineItems: [] };
+    expect(markupForTargetMargin(bare, computeBidTotals(bare, 20), 15)).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { marginAnalysis } from '../steps/bidTotals.js';
 // ── BID READINESS (PRE-FLIGHT) ───────────────────────────────────────────────
 // The takeoff can be perfect and the bid still catastrophically wrong, because
 // nothing stopped the estimator from printing before the numbers were filled
@@ -121,6 +122,24 @@ export function checkBidReadiness(state = {}, totals = {}) {
       key: 'noMarkup', severity: 'warn',
       title: 'Markup is zero — this bid sells material and equipment at cost',
       detail: 'Intentional on a cost-plus job. Otherwise set a markup on this step.',
+      count: 0,
+    });
+  }
+
+  // 5b. The markup lands on materials only, so on a labour-heavy job the number
+  // the estimator set is not the number the bid earns. Whether that is wrong
+  // depends on whether their crew rates already carry overhead and profit —
+  // which the app cannot know — so this states the gap and does not judge it.
+  const margin = marginAnalysis(state, totals);
+  if (margin && margin.statedMarkupPct > 0 && margin.unmarkedSharePct >= 40
+      && margin.effectiveMarginPct < margin.statedAsMarginPct - 3) {
+    issues.push({
+      key: 'effectiveMargin', severity: 'warn',
+      title: `Bid earns ${margin.effectiveMarginPct}% — the markup is set to ${margin.statedMarkupPct}%`,
+      detail: `Markup lands on materials only, and ${margin.unmarkedSharePct}% of this job's cost is labor and `
+        + `subs, which carry none. Gross profit is ${Math.round(margin.grossProfit).toLocaleString()} on a `
+        + `${Math.round(margin.cost).toLocaleString()} job. That is correct IF your crew rates already include `
+        + 'overhead and profit — if they are burdened cost, this bid is thin.',
       count: 0,
     });
   }
