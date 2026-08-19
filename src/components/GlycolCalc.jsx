@@ -7,6 +7,7 @@ import {
   glycolMaterialLines, systemVolumeGal, glycolCharge, checkMix, pgFreezePoint,
 } from './glycolSystem.js';
 import { glycolHydraulics } from './glycolHydraulics.js';
+import { reviewGlycolInputs, reviewSummary } from './glycolAssumptions.js';
 
 // ── SECONDARY GLYCOL LOOP CALCULATOR ─────────────────────────────────────────
 // A secondary system's materials do not come out of the circuit table the way a
@@ -70,12 +71,29 @@ export default function GlycolCalc() {
 
   // Inside diameter of the largest run, for the velocity check. Nominal size is
   // close enough to ID at these sizes for an estimating-grade check.
+  const runFt = sized.reduce((a, r) => a + (Number(r.ft) || 0), 0);
   const mainId = sized.length ? Math.max(...sized.map(r => Number(r.dia))) : 0;
   const hyd = glycolHydraulics({
     btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0, pct: Number(pct) || 35,
     longestPathFt: Number(longestPathFt) || 0, idInches: mainId,
     componentHeadFt: Number(componentHeadFt) || 0,
   });
+
+  // What every number on this card is standing on. Placeholders and
+  // submittal-only figures wear the same font as the computed ones, which is
+  // exactly what makes them dangerous — so they get named.
+  const review = reviewGlycolInputs({
+    loopType, pct, protectTo, mix,
+    coilGal: Number(coilGal) || 0, tankGal: Number(tankGal) || 0,
+    fixtures: Number(fixtures) || 0,
+    btuh: Number(btuh) || 0, deltaT: Number(deltaT) || 0,
+    componentHeadFt: Number(componentHeadFt) || 0,
+    longestPathFt: Number(longestPathFt) || 0, runFt,
+    velocityVerdict: hyd.velocityVerdict,
+  });
+  const summary = reviewSummary(review);
+  const TONE = { blocker: colors.red, verify: colors.yellow, fyi: colors.textDim, ok: colors.green };
+  const SRC = { physics: 'PHYSICS', yours: 'YOUR QUOTE', placeholder: 'PLACEHOLDER', submittal: 'FROM SUBMITTALS' };
 
   const setRun = (i, field, v) => {
     setRuns(runs.map((r, j) => (j === i ? { ...r, [field]: field === 'dia' ? Number(v) : v } : r)));
@@ -286,6 +304,28 @@ export default function GlycolCalc() {
           </div>
         )}
       </div>
+
+      {/* ── What these numbers are standing on ── */}
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: TONE[summary.tone], fontWeight: 600 }}>
+          {summary.tone === 'ok' ? '✓' : summary.tone === 'blocker' ? '⛔' : '⚠'} {summary.text} — what these numbers are standing on
+        </summary>
+        <div style={{ marginTop: 10 }}>
+          {review.map((r, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0',
+              borderTop: i ? `1px solid ${colors.border}` : 'none' }}>
+              <span style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", color: TONE[r.severity],
+                border: `1px solid ${TONE[r.severity]}55`, borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {SRC[r.source]}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: r.severity === 'fyi' ? colors.textDim : colors.text }}>{r.label}</div>
+                <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.5 }}>{r.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
 
       <Btn variant={added ? 'ghost' : 'green'} size="sm" onClick={addLines} disabled={!lines.length}>
         {added ? '✓ Added — click again to update' : `Add ${lines.length} glycol line(s) — ${fmt(total)}`}
