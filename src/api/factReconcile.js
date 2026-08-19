@@ -29,14 +29,27 @@ import { FACT_KINDS, factLabel, subjectKey } from './jobFacts.js';
 import { pumpHorsepower, psiToFt } from '../components/glycolHydraulics.js';
 
 // ── CONFLICT ─────────────────────────────────────────────────────────────────
-// Same kind, same subject, different value, DIFFERENT SHEETS. Two rows of one
-// schedule holding the same figure are not a conflict, they are a schedule.
+// The same identity carrying two different values.
+//
+// IDENTITY IS NOT THE SHEET. An early version required the two statements to
+// come from different drawings, on the theory that one document does not argue
+// with itself. It does: the live case is a heat pump schedule selected on 25%
+// glycol and a make-up unit specified 20% PG, printed side by side on ONE
+// sheet. Requiring two sheets suppressed exactly the finding this exists for.
+//
+// What actually distinguishes a conflict from a schedule is whether the two
+// figures are about the SAME THING — which is what kind, subject and loop are
+// for. Six heat pumps all reading 25% are one fact stated six times.
 export function conflicts(ledger = []) {
   const groups = new Map();
   for (const f of ledger) {
-    // System is part of the identity: two loops may legitimately run
-    // different glycol, and that is not a disagreement.
-    const k = `${f.kind}|${f.system}|${subjectKey(f.subject)}`;
+    // A job-scoped kind is compared across subjects and loops, because it
+    // describes one thing the whole job shares. Everything else is identified
+    // by its subject and its loop: two loops may legitimately run different
+    // glycol, and that is not a disagreement.
+    const k = FACT_KINDS[f.kind]?.jobScoped
+      ? f.kind
+      : `${f.kind}|${f.system}|${subjectKey(f.subject)}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(f);
   }
@@ -44,7 +57,14 @@ export function conflicts(ledger = []) {
   for (const [, facts] of groups) {
     if (facts.length < 2) continue;
     const sheets = new Set(facts.map(f => f.sheet));
-    if (sheets.size < 2) continue;
+    // For a job-scoped kind, two statements that each NAME a different loop are
+    // describing different fluids and are allowed to differ. A statement that
+    // names no loop is about the job's glycol and is comparable to any of them.
+    if (FACT_KINDS[facts[0].kind]?.jobScoped) {
+      const named = new Set(facts.filter(f => f.system).map(f => f.system));
+      const anyUnscoped = facts.some(f => !f.system);
+      if (named.size > 1 && !anyUnscoped) continue;
+    }
     const values = facts.map(f => f.value);
     const lo = Math.min(...values), hi = Math.max(...values);
     if (lo === hi) continue;
@@ -55,9 +75,13 @@ export function conflicts(ledger = []) {
       severity: 'blocker',
       kind: facts[0].kind,
       subject: facts[0].subject,
-      label: `${factLabel(facts[0].kind)}${facts[0].subject ? ` — ${facts[0].subject}` : ''} is stated two ways`,
+      // A job-scoped kind is not about any one subject, so naming the first one
+      // would read as though that piece of equipment were the problem.
+      label: FACT_KINDS[facts[0].kind]?.jobScoped
+        ? `${factLabel(facts[0].kind)} is stated two ways on this job`
+        : `${factLabel(facts[0].kind)}${facts[0].subject ? ` — ${facts[0].subject}` : ''} is stated two ways`,
       detail: facts
-        .map(f => `${f.sheet || 'unknown sheet'}: ${f.value} ${f.unit}`)
+        .map(f => `${f.value} ${f.unit} — ${f.subject || 'job'}${f.system ? ` (${f.system})` : ''}, ${f.sheet || 'unknown sheet'}`)
         .filter((v, i, a) => a.indexOf(v) === i)
         .join('  ·  '),
       facts,

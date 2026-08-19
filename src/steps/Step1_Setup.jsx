@@ -506,6 +506,9 @@ export default function Step1_Setup({ onNext }) {
           // these documents are field tasks/scope, not priced circuit data.
           sourceType = 'vision';
           parsed = await analyzeRedlinePdf(file, fileMeta.name);
+          // The ledger is not mode-specific — a refrigeration sheet's schedules
+          // cross-check the same way an HVAC one's do.
+          if ((parsed?.facts || []).length) factsByFile.set(fileMeta.name, parsed.facts);
           const taskCount = parsed?.fieldTasks?.length || 0;
           newResults.push(`📐 ${fileMeta.name}: Analyzed as redline/plan — ${taskCount} field task(s) found (AI read scanned pages — review carefully)`);
 

@@ -11,17 +11,21 @@
 // welded to its tail. Anything read here has to survive that, so nothing is
 // parsed positionally from the end of a line.
 //
-// WHAT IS NOT EXTRACTED, AND WHY. The heat pump schedule states 25% glycol in a
-// GLYCOL % column. Nothing in the flat text marks that 25 as the glycol figure
-// rather than one of the twenty other numbers in the row — the header is on a
-// different line and only column geometry connects them. It is left alone. A
-// fact invented from a column guess would enter the ledger looking exactly like
-// a read one, and the ledger's whole value is that its contents were actually
-// on the page.
+// FLAT TEXT AND COLUMNS ARE TWO DIFFERENT READS. Everything keyed off words —
+// a pump row, a control setpoint, a stated "20% PG" — comes out of the flat
+// text. Anything that is only a number under a header needs the positions kept,
+// and that read lives at the bottom of this file against sheetColumns.js.
+//
+// What is still NOT extracted is anything neither read can support. A pressure
+// gauge's "0-160 PSIG" is not a setpoint, and a bare column number whose units
+// are on the header line is not a pressure drop. A fact invented to fill a gap
+// would enter the ledger looking exactly like a read one, and the ledger's
+// whole value is that its contents were actually on the page.
 //
 // Pure — no pdf.js, no React.
 
 import { newFact, systemOf } from './jobFacts.js';
+import { findHeaders, groupOver, tableRows, rowsFrom, markOf, valueUnder } from './sheetColumns.js';
 
 const lines = text => String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -178,6 +182,53 @@ export function equipHeadFacts(text, sheet = '') {
         sheet, raw: line.slice(0, 160), system: systemOf(line),
       });
       if (f) out.push(f);
+    }
+  }
+  return out;
+}
+
+// ── COLUMNS ──────────────────────────────────────────────────────────────────
+// Everything above reads flat text, which is all a schedule leaves once the
+// positions are thrown away. With the positions kept, a column can be read
+// properly — see sheetColumns.js for the geometry.
+//
+// Each spec names a header, a fact kind, and whether the loop may be inferred
+// from the row. That last flag is not a detail. On the sheet this was written
+// against, the row text says "HYDRONIC WATER SYSTEM" while the GLYCOL % column
+// stands outside both the SOURCE WATER and LOAD WATER header bands — so the
+// sheet does not state which side the glycol is in, and reading it off the row
+// would confidently scope it to the wrong half of the machine. The column is
+// checked for a group band, and where there is none the loop stays unknown.
+export const COLUMN_SPECS = [
+  {
+    header: /^GLYCOL\s*%$/i,
+    kind: 'fluidPct',
+    // A percentage or it is not a concentration.
+    accept: v => v > 0 && v <= 60,
+  },
+];
+
+// Group bands a schedule stacks over its columns.
+export const GROUP_BANDS = /^(SOURCE WATER|LOAD WATER|CONDENSER WATER|HYDRONIC WATER|CHILLED WATER|HEATING|COOLING|ELECTRICAL)$/i;
+
+export function extractFactsFromItems(items = [], sheet = '') {
+  const out = [];
+  for (const spec of COLUMN_SPECS) {
+    for (const header of findHeaders(items, spec.header)) {
+      // Only the loop the SHEET puts this column under, never the row's.
+      const band = groupOver(items, header, GROUP_BANDS);
+      const system = band ? systemOf(band) : '';
+      for (const row of tableRows(rowsFrom(items), header)) {
+        const mark = markOf(row);
+        const hit = valueUnder(row, header);
+        if (!hit || !Number.isFinite(hit.value)) continue;
+        if (spec.accept && !spec.accept(hit.value)) continue;
+        const f = newFact(spec.kind, mark, hit.value, {
+          sheet, system,
+          raw: `${mark} · ${String(header.s).trim()} = ${hit.text} (read by column)`,
+        });
+        if (f) out.push(f);
+      }
     }
   }
   return out;

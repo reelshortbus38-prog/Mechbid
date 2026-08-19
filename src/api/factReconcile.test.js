@@ -32,15 +32,66 @@ describe('conflict — the same quantity stated two ways', () => {
     const c = conflicts(l);
     expect(c.length).toBe(1);
     expect(c[0].severity).toBe('blocker');
-    expect(c[0].detail).toMatch(/M8.01: 25/);
-    expect(c[0].detail).toMatch(/M8.02: 20/);
+    expect(c[0].detail).toMatch(/25 %/);
+    expect(c[0].detail).toMatch(/20 %/);
+    expect(c[0].detail).toMatch(/M8.01/);
+    expect(c[0].detail).toMatch(/M8.02/);
     expect(c[0].sheets.sort()).toEqual(['M8.01', 'M8.02']);
   });
 
-  it('does NOT flag two rows of one schedule — that is a schedule, not a conflict', () => {
+  it('catches the live case, where BOTH statements are on ONE sheet', () => {
+    // The heat pump schedule is selected on 25% glycol and the make-up unit
+    // that fills the same loop is specified 20% PG — printed side by side on
+    // one drawing. An earlier rule required two sheets and suppressed exactly
+    // this, which is the finding the cross-sheet work exists for.
+    const l = [
+      f('fluidPct', 'WWHP-01', 25, 'M8.01', ''),          // standalone GLYCOL % column
+      f('fluidPct', 'CONDENSER WATER', 20, 'M8.01', 'condenser'),
+    ];
+    const c = conflicts(l);
+    expect(c.length).toBe(1);
+    expect(c[0].label).toMatch(/stated two ways on this job/);
+    expect(c[0].sheets).toEqual(['M8.01']);
+  });
+
+  it('does not name one piece of equipment for a job-wide disagreement', () => {
+    const l = [
+      f('fluidPct', 'WWHP-01', 25, 'M8.01', ''),
+      f('fluidPct', 'CONDENSER WATER', 20, 'M8.01', 'condenser'),
+    ];
+    // Labelling it "— CONDENSER WATER" would read as though the make-up unit
+    // were at fault, when the two documents simply disagree.
+    expect(conflicts(l)[0].label).not.toMatch(/— CONDENSER WATER/);
+  });
+
+  it('six heat pumps all reading 25% are one fact, not six conflicts', () => {
+    const l = ['WWHP-01', 'WWHP-02', 'WWHP-03', 'WWHP-04', 'WWHP-05', 'WWHP-06']
+      .map(m => f('fluidPct', m, 25, 'M8.01', ''));
+    expect(conflicts(l)).toEqual([]);
+  });
+
+  it('leaves two loops alone when BOTH name their own', () => {
+    const l = [
+      f('fluidPct', 'GROUND LOOP', 30, 'M8.01', 'condenser'),
+      f('fluidPct', 'HEATING LOOP', 0.5, 'M8.01', 'hydronic'),
+    ];
+    expect(conflicts(l)).toEqual([]);
+  });
+
+  it('flags one mark carrying two different heads, even on one sheet', () => {
+    // A revision that left the old row behind looks exactly like this, and it
+    // is a real document problem rather than noise to be tolerated.
     const l = [
       f('pumpHead', 'HWP-01', 83, 'M8.01', 'hydronic'),
-      f('pumpHead', 'HWP-01', 80, 'M8.01', 'hydronic'),
+      f('pumpHead', 'HWP-01', 70, 'M8.01', 'hydronic'),
+    ];
+    expect(conflicts(l).length).toBe(1);
+  });
+
+  it('does NOT flag two DIFFERENT pumps with different heads — that is a schedule', () => {
+    const l = [
+      f('pumpHead', 'HWP-01', 83, 'M8.01', 'hydronic'),
+      f('pumpHead', 'CWP-01', 125, 'M8.01', 'condenser'),
     ];
     expect(conflicts(l)).toEqual([]);
   });

@@ -1,7 +1,7 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 import { crossCheckDiff } from './crossCheck.js';
-import { extractFacts } from './factExtract.js';
+import { extractFacts, extractFactsFromItems } from './factExtract.js';
 import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
@@ -272,6 +272,8 @@ export async function analyzeRedlinePdf(file, fileName) {
     documentType: 'redline_callout',
     storeName: '', storeNumber: '', address: '', drawingNumber: '',
     fieldTasks: [], flags: [], pageSummaries: [],
+    // Cross-sheet facts for the job ledger — see api/jobFacts.js.
+    facts: [],
   };
   const seenTask = new Set();
   const summarizedPages = new Set();
@@ -310,6 +312,19 @@ export async function analyzeRedlinePdf(file, fileName) {
   } catch (e) {
     // If text extraction throws, fall through to vision for every page.
     merged.flags.push({ type: 'info', text: `Text layer unavailable (${e.message}) — read as scanned image`, source: fileName });
+  }
+
+  // Ledger facts are read on the refrigeration side too. Nothing in the ledger
+  // is HVAC-specific — a schedule is a schedule, and a rack sheet disagreeing
+  // with a case sheet is the same shape of error as a pump schedule
+  // disagreeing with a control sequence. What IS currently hydronic is the set
+  // of EXTRACTORS; a refrigeration sheet contributes only what they happen to
+  // match until rack and case extractors are written against a real one.
+  for (const tp of textPages) {
+    try {
+      merged.facts.push(...extractFacts(tp.text, fileName || ''));
+      if (tp.items) merged.facts.push(...extractFactsFromItems(tp.items, fileName || ''));
+    } catch { /* a page that will not parse is not a failure */ }
   }
 
   const visionPageNums = [];
@@ -1050,7 +1065,12 @@ export async function analyzeHvacPlanPdf(file, fileName) {
       // routed below. A schedule sheet and a control-sequence sheet both carry
       // them, and neither the vision pass nor the schedule extractor is looking
       // for the kind of cross-sheet number the reconciler needs.
-      try { merged.facts.push(...extractFacts(p.text, fileName || '')); } catch { /* a page that will not parse is not a failure */ }
+      try {
+        merged.facts.push(...extractFacts(p.text, fileName || ''));
+        // Column-read facts need the glyph positions the flat text discards —
+        // a GLYCOL % value is a bare number that only its header identifies.
+        if (p.items) merged.facts.push(...extractFactsFromItems(p.items, fileName || ''));
+      } catch { /* a page that will not parse is not a failure */ }
       const hasScale = !!scaleByPage[p.pageNum];
       // A page with a real drawing scale is a plan sheet → vision, even if it
       // lists a few tags — UNLESS it's a dense schedule table (a corner detail's

@@ -37,9 +37,11 @@ export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
     const tc = await page.getTextContent();
     // Reconstruct reading order from glyph positions: top-to-bottom by Y
     // (PDF Y grows upward), left-to-right by X within a line.
+    // Width comes along because a schedule column is identified by where its
+    // header SPANS, not only where it starts — see api/sheetColumns.js.
     const items = tc.items
       .filter(i => i.str && i.str.trim())
-      .map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5] }))
+      .map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0 }))
       .sort((a, b) => Math.abs(a.y - b.y) > 3 ? b.y - a.y : a.x - b.x);
 
     let raw = '', lastY = null;
@@ -63,7 +65,9 @@ export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
         return true;
       });
 
-    pages.push({ pageNum, text: lines.join('\n'), lineCount: lines.length });
+    // `items` keeps the positions the flat text throws away, so a schedule
+    // column can be read by geometry rather than by guessing at token order.
+    pages.push({ pageNum, text: lines.join('\n'), lineCount: lines.length, items });
   }
 
   return { pages, totalPages: pdf.numPages };
