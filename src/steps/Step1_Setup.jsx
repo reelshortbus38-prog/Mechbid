@@ -25,6 +25,7 @@ import { rememberFile } from '../api/fileCache.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
 import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pipePricing.js';
+import { mergeFacts } from '../api/jobFacts.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -107,6 +108,11 @@ export default function Step1_Setup({ onNext }) {
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
     const hvacEquipCollected = []; // raw HVAC units {e, fileName, drawing}, mapped after all files (see mapCollectedEquipment)
+    // Ledger facts read off the text layer of every analysed sheet. These are
+    // EVIDENCE, not proposed line items, so they merge on analysis rather than
+    // waiting in review — nothing here changes a price, and the reconciler
+    // cannot compare two sheets until both have been read.
+    const factsByFile = new Map();
     let keyDates = null;         // pre-con / completion / job length from an ERF
     let rcNightStart = '';       // night-work start date from a schedule
     let preconFromDoc = '';      // pre-con date scanned from a schedule doc
@@ -188,6 +194,7 @@ export default function Step1_Setup({ onNext }) {
       // from; the post-pass suppresses plan-read duplicates once it knows the
       // whole batch.
       (hv.equipment || []).forEach(e => hvacEquipCollected.push({ e, fileName: fileMeta.name, drawing }));
+      if ((hv.facts || []).length) factsByFile.set(fileMeta.name, hv.facts);
 
       // Air devices and duct/pipe runs are MATERIALS, not notes — they stage
       // as reviewable HVAC material lines that land in the Equipment step's
@@ -955,8 +962,15 @@ export default function Step1_Setup({ onNext }) {
 
     // Flags are low-risk (informational) — merge immediately.
     // Everything else waits in pendingReview until the user confirms it.
+    // Facts replace their own sheet's previous set and leave every other
+    // sheet's alone — the same rule the takeoff lines use via `src`, so
+    // re-analysing one drawing cannot double what the ledger holds.
+    let nextFacts = state.jobFacts || [];
+    for (const [fileName, facts] of factsByFile) nextFacts = mergeFacts(nextFacts, fileName, facts);
+
     dispatch({ type: 'MERGE', payload: {
       extractionResults: [...state.extractionResults, ...newResults],
+      ...(factsByFile.size ? { jobFacts: nextFacts } : {}),
       // Resolve "these tags are only in the narrative, not a schedule row"
       // page-notes against what the batch actually extracted BEFORE collapsing
       // repeats — a tag the schedule sheet carried needs no warning, and one

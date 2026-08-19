@@ -208,6 +208,11 @@ export const initialState = {
   // data: it costs real time to look up and nobody should re-key it because a
   // tab was closed. Shape is newComponent() in components/equipmentHead.js.
   glycolComponents: [],
+  // Cross-sheet facts read off analysed drawings — pump design points, control
+  // setpoints, fluid concentrations — each tagged with the sheet that said so.
+  // Kept because the errors worth catching are only visible when two sheets are
+  // compared, and no per-sheet check can see them. See api/jobFacts.js.
+  jobFacts: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
   supplyItems: [],

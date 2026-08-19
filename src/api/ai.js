@@ -1,6 +1,7 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
 // All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
 import { crossCheckDiff } from './crossCheck.js';
+import { extractFacts } from './factExtract.js';
 import { digestSummaries } from '../components/summaryDigest.js';
 import { selectVisionPages } from './pageSkip.js';
 import { mapWithConcurrency } from './concurrency.js';
@@ -688,6 +689,8 @@ function newHvacMerged() {
   return {
     documentType: '', drawingNumber: '', drawingTitle: '', projectName: '', date: '',
     equipment: [], airDevices: [], ductRuns: [], pipeRuns: [], hydronicZones: [], flags: [], summaries: [],
+    // Cross-sheet facts for the job ledger — see api/jobFacts.js.
+    facts: [],
   };
 }
 // origin: { pageNum, drawing } for the sheet this result came from. Duct and
@@ -1043,6 +1046,11 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   if (pages.length) {
     for (const p of pages) {
       textByPage[p.pageNum] = p.text;
+      // Ledger facts come off the TEXT LAYER, independently of how the page is
+      // routed below. A schedule sheet and a control-sequence sheet both carry
+      // them, and neither the vision pass nor the schedule extractor is looking
+      // for the kind of cross-sheet number the reconciler needs.
+      try { merged.facts.push(...extractFacts(p.text, fileName || '')); } catch { /* a page that will not parse is not a failure */ }
       const hasScale = !!scaleByPage[p.pageNum];
       // A page with a real drawing scale is a plan sheet → vision, even if it
       // lists a few tags — UNLESS it's a dense schedule table (a corner detail's

@@ -5,6 +5,7 @@ import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, cal
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
+import CrossSheetCard from '../components/CrossSheetCard.jsx';
 import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
@@ -1184,6 +1185,8 @@ export default function Step4_Materials({ onNext, onBack }) {
       {activeTab==='bid' ? <BidMaterials onGenerate={generateMaterials} /> : <SupplyHouseList />}
 
       {activeTab==='bid' && <GlycolCalc />}
+
+      {activeTab==='bid' && <CrossSheetCard />}
 
 
       <Row style={{ justifyContent:'space-between', marginTop:10 }}>
