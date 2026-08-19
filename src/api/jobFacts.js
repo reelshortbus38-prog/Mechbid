@@ -41,7 +41,12 @@ export const FACT_KINDS = {
   pumpRpm:     { unit: 'rpm', label: 'Pump speed', tol: 0.01 },
   pumpMotorHp: { unit: 'hp',  label: 'Pump motor', tol: 0 },
   dpSetpoint:  { unit: 'psi', label: 'Differential pressure setpoint', tol: 0.01 },
-  fluidPct:    { unit: '%',   label: 'Glycol concentration', tol: 0 },
+  // jobScoped: there is one glycol charge in a building. A concentration is a
+  // property of the FLUID, not of whichever schedule happened to mention it, so
+  // two statements are comparable even when they sit on different equipment and
+  // name different subjects. Where a job genuinely runs two mixes, both
+  // statements will name their loops, and the reconciler leaves those alone.
+  fluidPct:    { unit: '%',   label: 'Glycol concentration', tol: 0, jobScoped: true },
   equipCount:  { unit: 'ea',  label: 'Equipment count', tol: 0 },
   equipHead:   { unit: 'ft',  label: 'Equipment pressure drop', tol: 0.05 },
 };
