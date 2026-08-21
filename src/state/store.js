@@ -291,6 +291,12 @@ export const initialState = {
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
   materialsTaxPct: 0,
+  // Material price movement between bidding and buying. Applies to MATERIAL
+  // only and defaults to 0 so it is opt-in and never silently changes a bid.
+  escalationPct: 0,
+  // Small tools, gases, rod, abrasives and tape — a percentage of LABOR, since
+  // they burn with man-hours rather than with material dollars.
+  consumablesPct: 0,
   bondPct: 0,        // payment & performance bond, % of bid
   permitFee: 0,      // flat permit/fees
   bidValidDays: 30,  // proposal validity period (days)

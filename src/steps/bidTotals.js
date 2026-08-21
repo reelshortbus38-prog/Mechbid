@@ -32,6 +32,37 @@ export function computeBidTotals(state, markupPct) {
     ? Math.max(0, laborTotal - ootAmt) + calcRackLaborTotal(state.rackTasks, crew) + fieldTasksTotal
     : 0;
   const laborMarkupAmt = laborMarkupOn * (markupPct / 100);
+
+  // ── ESCALATION AND CONSUMABLES ─────────────────────────────────────────────
+  // Two costs a mechanical bid carries that no takeoff produces a line for.
+  //
+  // ESCALATION is material price movement between bidding and buying. On a
+  // 27-week job the copper is quoted in month one and bought through month six,
+  // and the copper table in this app moved by a factor of three the last time it
+  // was refreshed. It applies to MATERIAL only — labor is contracted at a rate
+  // and does not escalate — and it is a real cost increase, so it goes into the
+  // markup base rather than on top of the sell price. Marking up escalated cost
+  // is the point: if copper costs 8% more, the shop's money is 8% more exposed.
+  //
+  // CONSUMABLES are nitrogen, oxygen and acetylene, brazing rod, emery cloth,
+  // tape, adhesive, blades, tips. They scale with MAN-HOURS, not with material
+  // dollars — a job that is all brazing burns them whatever the pipe cost — so
+  // the base is labor, not material. Out-of-town is excluded: per diem is not
+  // man-hours.
+  //
+  // The labor base is labor COST where that is known. On a billing rate with a
+  // cost ratio set, 3% of the billed figure would silently be 5% of the real
+  // cost, because the billed figure has profit inside it.
+  const escalationPct = parseFloat(state.escalationPct) || 0;
+  const consumablesPct = parseFloat(state.consumablesPct) || 0;
+  const laborForConsumables = (() => {
+    const billed = Math.max(0, laborTotal - ootAmt)
+      + calcRackLaborTotal(state.rackTasks, crew) + fieldTasksTotal;
+    if ((state.laborRateBasis || 'billing') === 'cost') return billed;
+    const ratio = parseFloat(state.laborCostRatio);
+    return (Number.isFinite(ratio) && ratio > 0 && ratio <= 1) ? billed * ratio : billed;
+  })();
+  const consumablesAmt = laborForConsumables * (consumablesPct / 100);
   const finish = (subtotal, rest) => {
     const bondAmt = subtotal * (bondPct / 100);
     return { ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee, total: subtotal + bondAmt + permitFee };
@@ -43,21 +74,25 @@ export function computeBidTotals(state, markupPct) {
     // Shared helper: roll copper auto-prices from rates × length; pre-insulated
     // is the manual quote total. Must match what the Materials step shows.
     const linesetTotal = calcResLinesetTotal(state);
-    const markupBase = equipTotal + partsTotal + linesetTotal;
-    const markupAmt = equipTotal * (equipMarkupPct / 100) + (partsTotal + linesetTotal) * (markupPct / 100);
+    const escalationAmt = (partsTotal + linesetTotal) * (escalationPct / 100);
+    const markupBase = equipTotal + partsTotal + linesetTotal + escalationAmt + consumablesAmt;
+    const markupAmt = equipTotal * (equipMarkupPct / 100)
+      + (partsTotal + linesetTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
     const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + laborMarkupAmt;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal });
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
   if (mode === 'Commercial HVAC') {
     const equipTotal = (state.hvacEquipment || []).reduce((s, e) => s + (e.cost || 0), 0);
     const partsTotal = (state.hvacParts || []).reduce((s, p) => s + (p.total || 0), 0);
-    const markupBase = equipTotal + partsTotal;
-    const markupAmt = equipTotal * (equipMarkupPct / 100) + partsTotal * (markupPct / 100);
+    const escalationAmt = partsTotal * (escalationPct / 100);
+    const markupBase = equipTotal + partsTotal + escalationAmt + consumablesAmt;
+    const markupAmt = equipTotal * (equipMarkupPct / 100)
+      + (partsTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
     const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal + laborMarkupAmt;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal, equipTotal, partsTotal });
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal, equipTotal, partsTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
   // Commercial Refrigeration (no separate equipment line — all material markup)
@@ -66,11 +101,12 @@ export function computeBidTotals(state, markupPct) {
   const matsTotal = (state.lineItems || []).reduce((s, i) => s + (i.total || 0), 0);
   const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
   const rackLaborTotal = calcRackLaborTotal(state.rackTasks, crew);
-  const markupBase = matsTotal + rackPartsContractor;
+  const escalationAmt = (matsTotal + rackPartsContractor) * (escalationPct / 100);
+  const markupBase = matsTotal + rackPartsContractor + escalationAmt + consumablesAmt;
   const markupAmt = markupBase * (markupPct / 100);
   const taxAmt = taxOf(markupBase + markupAmt);
   const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
-  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, laborMarkupAmt, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor });
+  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, laborMarkupAmt, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
 }
 
 // ── BID-LETTER CATEGORY BREAKDOWN ────────────────────────────────────────────
@@ -193,4 +229,54 @@ export function markupForTargetMargin(state, totals, targetMarginPct) {
   const needed = (f * a.cost) / (a.matCost * (1 - f));
   const pct = Math.round(needed * 1000) / 10;
   return pct > MAX_SENSIBLE_MARKUP_PCT ? { pct, reachable: false } : { pct, reachable: true };
+}
+
+
+// ── HOW MUCH MATERIAL IS EXPOSED, AND FOR HOW LONG ───────────────────────────
+// Escalation is a judgement about a commodity market, and no app should invent
+// the percentage. What it CAN do is show the exposure, so the judgement is made
+// against a number instead of a blank field: this much material, bought this
+// far out, moves this much per point.
+//
+// The duration comes from the labor schedule, which is the only place the app
+// knows how long the job runs.
+export const LONG_JOB_WEEKS = 12;
+
+export function escalationExposure(state, totals) {
+  const t = totals || {};
+  // Material at risk is the takeoff before escalation is added back on.
+  const pct = parseFloat(t.escalationPct) || 0;
+  const base = Math.max(0, (t.markupBase || 0) - (t.escalationAmt || 0) - (t.consumablesAmt || 0));
+  if (!(base > 0)) return null;
+
+  let weeks = 0;
+  if (state?.laborMode === 'flat') {
+    weeks = parseFloat(state?.flatJob?.weeks) || 0;
+  } else {
+    const days = (state?.laborPeriods || []).reduce((s, p) => s + (parseFloat(p.days) || 0), 0);
+    const dpw = (state?.laborPeriods || []).reduce((mx, p) => Math.max(mx, parseFloat(p.daysPerWeek) || 0), 0) || 5;
+    weeks = days / dpw;
+  }
+  weeks = Math.round(weeks * 10) / 10;
+
+  return {
+    materialAtRisk: Math.round(base),
+    weeks,
+    long: weeks >= LONG_JOB_WEEKS,
+    pct,
+    amount: Math.round(t.escalationAmt || 0),
+    // What one point of movement is worth, so the sensitivity is visible.
+    perPoint: Math.round(base / 100),
+    unprotected: weeks >= LONG_JOB_WEEKS && pct <= 0,
+  };
+}
+
+// The qualification that belongs on the proposal when escalation is carried, so
+// the allowance and the contract language cannot drift apart.
+export function escalationClause(pct, validDays) {
+  const p = parseFloat(pct) || 0;
+  if (!(p > 0)) return '';
+  return `Pricing includes a ${p}% material escalation allowance and is firm for ${parseFloat(validDays) || 30} days `
+    + 'from the date of this proposal. Material price increases beyond that allowance, and beyond the validity '
+    + 'period, will be submitted for review with supporting supplier documentation.';
 }
