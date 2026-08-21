@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useStore, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON } from '../state/store.js';
+import { useStore, uid, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON, loadCompanyProfile } from '../state/store.js';
+import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import AuthButton from './AuthModal.jsx';
@@ -166,6 +167,16 @@ export default function Wizard() {
     // New jobs start from the current global default supplier, not whatever
     // the previous job happened to be using.
     dispatch({ type: 'SET', key: 'preferredSupplier', value: loadDefaultSupplier() });
+    // …and from the SHOP's own rates, markup, tax and bond rather than the
+    // app's generic defaults. Seeding happens on a NEW job only: loading a
+    // saved bid must never reprice it, because what was quoted was quoted.
+    const profile = loadCompanyProfile();
+    const patch = companyDefaultPatch(profile);
+    if (Object.keys(patch).length) dispatch({ type: 'MERGE', payload: patch });
+    const crew = companyCrew(profile, uid);
+    if (crew.length) {
+      dispatch({ type: 'SET', key: 'flatJob', value: { crew, weeks: 0, daysPerWeek: 5, ootPerDay: 0 } });
+    }
     setShowJobs(false);
     setStepIndex(0);
   }
