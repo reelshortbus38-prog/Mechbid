@@ -369,7 +369,7 @@ const useBidTotals = (state, markupPct) => computeBidTotals(state, markupPct);
 
 // ── PROPOSAL VIEW (printable preview) ─────────────────────────────────────────
 function ProposalView({ company = {} }) {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const mode = state.mode;
   const scenario = state.scenarios[state.scenarios.active];
   const totals = useBidTotals(state, scenario.markupPct);
@@ -633,17 +633,60 @@ function ProposalView({ company = {} }) {
             </span>
           </div>
           <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, marginTop: 5 }}>
-            On {fmt(marginInfo.cost)} of cost. The {marginInfo.statedMarkupPct}% markup lands on materials only,
-            and {marginInfo.unmarkedSharePct}% of this job is labor and subs, which carry none.
-            {targetMarkup && targetMarkup.reachable && (
-              <> A {targetMarkup.pct}% material markup would earn a true 15%.</>
+            {marginInfo.laborKnown ? (
+              <>On {fmt(marginInfo.cost)} of cost.{' '}
+                {marginInfo.laborBasis === 'cost'
+                  ? <>Crew rates are burdened cost, so the markup carries labor as well as material.</>
+                  : <>Crew rates are billing rates; labor cost is taken at {Math.round((parseFloat(state.laborCostRatio) || 0) * 100)}% of what is billed.</>}
+              </>
+            ) : (
+              <>
+                <strong style={{ color: colors.yellow }}>This is a floor, not the answer.</strong> Your crew rates
+                are billing rates, so they already have profit inside them — but how much is not recorded, so
+                only the material markup can be counted. Set “labor cost as a share of billed” below and the real
+                margin appears. On a typical 60% cost ratio a job like this lands nearer 25% than{' '}
+                {marginInfo.effectiveMarginPct}%.
+              </>
             )}
-            {targetMarkup && !targetMarkup.reachable && (
-              <> No material markup reaches 15% on a job this labor-heavy — the labor rate has to carry it.</>
+            {marginInfo.laborKnown && marginInfo.unmarkedSharePct >= 40 && (
+              <>
+                {' '}The {marginInfo.statedMarkupPct}% markup lands on materials only, and{' '}
+                {marginInfo.unmarkedSharePct}% of this job is labor and subs.
+                {targetMarkup && targetMarkup.reachable && <> A {targetMarkup.pct}% material markup would earn a true 15%.</>}
+                {targetMarkup && !targetMarkup.reachable && <> No material markup reaches 15% on a job this labor-heavy — the labor rate has to carry it.</>}
+              </>
             )}
-            <br />
-            <strong>Right if your crew rates already include overhead and profit.</strong> If they are burdened
-            cost, this bid is thin by the difference.
+          </div>
+
+          {/* What a crew rate means — the setting that makes the number above real. */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${colors.border}` }}>
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Your crew rates are…</div>
+            <Row style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {[
+                { k: 'billing', label: 'Billing rates', desc: 'overhead + profit already inside' },
+                { k: 'cost', label: 'Burdened cost', desc: 'wage + taxes + comp, no profit' },
+              ].map(o => (
+                <button key={o.k} onClick={() => dispatch({ type: 'SET', key: 'laborRateBasis', value: o.k })}
+                  style={{ flex: '1 1 150px', padding: '8px 10px', borderRadius: 7, textAlign: 'left', cursor: 'pointer',
+                    border: `2px solid ${(state.laborRateBasis || 'billing') === o.k ? colors.green : colors.border}`,
+                    background: (state.laborRateBasis || 'billing') === o.k ? colors.greenFaint : colors.card2 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: (state.laborRateBasis || 'billing') === o.k ? colors.green : colors.text }}>{o.label}</div>
+                  <div style={{ fontSize: 10, color: colors.textDim }}>{o.desc}</div>
+                </button>
+              ))}
+              {(state.laborRateBasis || 'billing') === 'billing' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: colors.textDim }}>Labor cost is</span>
+                  <Input type="number" value={state.laborCostRatio === '' ? '' : Math.round((parseFloat(state.laborCostRatio) || 0) * 100)}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      dispatch({ type: 'SET', key: 'laborCostRatio', value: Number.isFinite(v) && v > 0 ? v / 100 : '' });
+                    }}
+                    placeholder="60" style={{ width: 58, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                  <span style={{ fontSize: 11, color: colors.textDim }}>% of what you bill</span>
+                </div>
+              )}
+            </Row>
           </div>
         </div>
       )}

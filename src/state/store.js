@@ -261,6 +261,23 @@ export const initialState = {
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
+  // ── WHAT A CREW RATE MEANS ─────────────────────────────────────────────────
+  // The rate field said only "Rate/hr", and the two things it can be price very
+  // differently. On a $200k-material, $378k-labor job at 20% markup:
+  //
+  //   billing rate (wage + burden + overhead + PROFIT inside it)  24-34% margin
+  //   burdened cost (wage + taxes + comp + insurance, no profit)   6.5% margin
+  //
+  // 'billing' means the rate is already a sell price, so markup must NOT be
+  // applied again — that is the behaviour this app has always had, and it stays
+  // the default so nothing reprices. 'cost' means the rate is what the job costs
+  // the shop, and the markup has to carry labor the way it carries copper.
+  laborRateBasis: 'billing',   // 'billing' | 'cost'
+  // Optional, and only meaningful on a billing rate: roughly what share of the
+  // billed rate is actual burdened cost. Without it the profit sitting inside
+  // the labor rate is invisible, so the bid's true margin cannot be worked out
+  // and the app says so rather than printing a number that ignores it.
+  laborCostRatio: '',
   markupPct: 20,
   // Equipment markup is tracked separately from material markup because a big
   // packaged unit shouldn't carry the same margin as copper and consumables.
