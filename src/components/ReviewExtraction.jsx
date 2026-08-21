@@ -249,14 +249,14 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
 
   function saveReport() {
     const report = {
-      app: 'mechbid', type: 'extraction-report', version: 1,
+      app: 'coldgauge', type: 'extraction-report', version: 1,
       date: new Date().toISOString(),
       note: reportText.trim(),
       files: [...new Set(items.map(i => i.fileName).filter(Boolean))],
       items: items.map(({ kind, sourceType, fileName, status, data }) => ({ kind, sourceType, fileName, status, data })),
     };
     try {
-      const key = 'mechbid_extraction_reports_v1';
+      const key = 'coldgauge_extraction_reports_v1';
       const all = JSON.parse(localStorage.getItem(key) || '[]');
       all.push(report);
       localStorage.setItem(key, JSON.stringify(all));
@@ -264,7 +264,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `mechbid-extraction-report-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `coldgauge-extraction-report-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setReportSaved(true);
   }
@@ -364,7 +364,7 @@ export default function ReviewExtraction({ pendingItems, onResolve, onCancel }) 
           <div>
             <div style={{ fontSize: 13, fontWeight: 700 }}>⚠️ Did the extraction get something wrong?</div>
             <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>
-              Report it — the report file plus your original documents are exactly what's needed to tune MechBid for a new format (Kroger, Walmart, Harris Teeter…).
+              Report it — the report file plus your original documents are exactly what's needed to tune Coldgauge for a new format (Kroger, Walmart, Harris Teeter…).
             </div>
           </div>
           <span style={{ color: colors.textDim, fontSize: 12 }}>{reportOpen ? '▾' : '▸'}</span>

@@ -26,7 +26,7 @@ export default function CrossSheetCard() {
     <Card style={{ background: colors.surface }}>
       <SLabel>🔗 Cross-Sheet Check</SLabel>
       <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
-        Every other check in MechBid reads one sheet. This one reads what the sheets say about{' '}
+        Every other check in Coldgauge reads one sheet. This one reads what the sheets say about{' '}
         <strong>each other</strong> — a pump schedule against a control sequence, a fluid stated in
         two places, the drawing's own answer against the app's.
         <br />

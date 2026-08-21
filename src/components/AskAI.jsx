@@ -35,12 +35,12 @@ function jobContext(state) {
   return lines.join('\n');
 }
 
-const SYSTEM = `You are the MechBid Assistant — an expert commercial refrigeration and HVAC estimator helping a contractor build an accurate bid inside the MechBid app.
+const SYSTEM = `You are the Coldgauge Assistant — an expert commercial refrigeration and HVAC estimator helping a contractor build an accurate bid inside the Coldgauge app.
 
 You know refrigeration deeply (racks, circuits, suction/liquid sizing, CO2 transcritical, case moves, RCC) and HVAC (RTUs, AHUs, VAVs, ductwork, hydronic/radiant, CFM). Help with:
 - Estimating questions (pipe sizing, labor, what a scope item means, what's typically excluded)
 - Questions about the current bid (use the JOB CONTEXT provided)
-- How to use MechBid (uploading prints/schedules, the wizard steps, key dates, calibration)
+- How to use Coldgauge (uploading prints/schedules, the wizard steps, key dates, calibration)
 
 Be concise and practical — a working estimator's answer, not an essay. Use the job context when the question is about their bid. If you don't know something specific to their job, say so rather than inventing numbers. Never fabricate prices, part numbers, or code citations; if a real lookup is needed, say what to verify.`;
 
@@ -50,7 +50,7 @@ export default function AskAI() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [msgs, setMsgs] = useState([
-    { role: 'assistant', content: "Hey — I'm your MechBid estimating assistant. Ask me about refrigeration or HVAC, this bid, or how to use the app." },
+    { role: 'assistant', content: "Hey — I'm your Coldgauge estimating assistant. Ask me about refrigeration or HVAC, this bid, or how to use the app." },
   ]);
   const scrollRef = useRef(null);
 
@@ -92,7 +92,7 @@ export default function AskAI() {
     return (
       <button
         onClick={() => setOpen(true)}
-        title="Ask the MechBid assistant"
+        title="Ask the Coldgauge assistant"
         style={{
           position: 'fixed', bottom: 22, right: 22, zIndex: 1000,
           width: 56, height: 56, borderRadius: '50%', cursor: 'pointer',
@@ -118,7 +118,7 @@ export default function AskAI() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 18 }}>💬</span>
-          <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: colors.text }}>MechBid Assistant</span>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: colors.text }}>Coldgauge Assistant</span>
         </div>
         <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: colors.textDim, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
       </div>

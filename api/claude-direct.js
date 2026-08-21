@@ -34,7 +34,7 @@ function toOpenAiMessages(messages) {
 // in more informative ways. It is never authoritative — its finds become
 // "verify this" flags, and its read is only used at all when the primary
 // failed outright, and then only with a fallbackModel marker attached.
-const SECOND_MODEL = process.env.MECHBID_SECOND_MODEL || 'openai/gpt-4o';
+const SECOND_MODEL = process.env.COLDGAUGE_SECOND_MODEL || 'openai/gpt-4o';
 
 async function secondOpinion(messages, system, max_tokens) {
   if (!process.env.OPENROUTER_API_KEY) return null;
@@ -46,8 +46,8 @@ async function secondOpinion(messages, system, max_tokens) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-        'HTTP-Referer': 'https://mechbid.vercel.app',
-        'X-Title': 'MechBid',
+        'HTTP-Referer': 'https://coldgauge.vercel.app',
+        'X-Title': 'Coldgauge',
       },
       body: JSON.stringify({ model: SECOND_MODEL, max_tokens: max_tokens || 4000, temperature: 0, messages: orMessages }),
     });
@@ -62,10 +62,10 @@ async function secondOpinion(messages, system, max_tokens) {
 // Vision model. Sonnet 5 is the default because it has the SAME high-
 // resolution vision as Opus 5 (2576px long edge) at 60% of the input cost and
 // meaningfully lower latency, which matters against a hard 60s function
-// budget. MECHBID_VISION_MODEL lets the drawing-vision path be moved to
+// budget. COLDGAUGE_VISION_MODEL lets the drawing-vision path be moved to
 // claude-opus-5 from Vercel env vars without a deploy, to A/B stronger
 // reasoning on ambiguous plan geometry against the latency risk.
-const VISION_MODEL = process.env.MECHBID_VISION_MODEL || 'claude-sonnet-5';
+const VISION_MODEL = process.env.COLDGAUGE_VISION_MODEL || 'claude-sonnet-5';
 
 // Thinking is DISABLED on Sonnet 5 (it runs adaptive thinking by default when
 // the field is omitted): thinking tokens eat the max_tokens budget and the

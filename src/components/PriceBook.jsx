@@ -4,7 +4,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
-const SUPPLIER_DEFAULT_KEY = 'mechbid_default_supplier_v1';
+const SUPPLIER_DEFAULT_KEY = 'coldgauge_default_supplier_v1';
 export const SUPPLIERS = [
   'RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco',
   'Southern Refrigeration', 'Baker Distributing', 'Gustave A. Larson', 'Carrier Enterprise',
@@ -31,7 +31,7 @@ export function saveDefaultSupplier(supplier) {
 // ── STORAGE ────────────────────────────────────────────────────────────────────
 // Separate localStorage key from jobs — this is shared across ALL jobs and must
 // survive "New Job" / job switching untouched.
-const PRICEBOOK_KEY = 'mechbid_pricebook_v1';
+const PRICEBOOK_KEY = 'coldgauge_pricebook_v1';
 
 export function loadPriceBook() {
   try {
@@ -206,7 +206,7 @@ export default function PriceBookModal({ onClose }) {
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'mechbid_pricebook.csv';
+    a.download = 'coldgauge_pricebook.csv';
     a.click();
   }
 

@@ -185,7 +185,7 @@ export default function Wizard() {
     const blob = new Blob([exportAllJobsJSON()], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `mechbid-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `coldgauge-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   }
 

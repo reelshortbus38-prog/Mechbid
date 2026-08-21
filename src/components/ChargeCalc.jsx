@@ -78,7 +78,7 @@ export default function ChargeAdderCalc({ defaultLiqSize = '3/8', defaultLengthF
         {est.extraFt > 0 && onAdd && (
           <Row style={{ gap: 10, alignItems: 'center' }}>
             <Btn variant="green" size="sm" onClick={addLine}>↓ Add to Parts</Btn>
-            {added && <span style={{ fontSize: 11, color: colors.green }}>✓ Added — edit the $/lb once and MechBid remembers it</span>}
+            {added && <span style={{ fontSize: 11, color: colors.green }}>✓ Added — edit the $/lb once and Coldgauge remembers it</span>}
           </Row>
         )}
       </Row>

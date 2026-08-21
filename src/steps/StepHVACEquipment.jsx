@@ -748,7 +748,7 @@ function DuctCalculator() {
           </div>
           <Row style={{ gap: 10, alignItems: 'center' }}>
             <Btn variant="green" size="sm" onClick={addPurchaseLines}>↓ Add purchase lines to Parts</Btn>
-            {added && <span style={{ fontSize: 11, color: colors.green }}>✓ Added — prices came from your price book where known, industry ballpark otherwise. Edit any $ and MechBid remembers it.</span>}
+            {added && <span style={{ fontSize: 11, color: colors.green }}>✓ Added — prices came from your price book where known, industry ballpark otherwise. Edit any $ and Coldgauge remembers it.</span>}
           </Row>
         </>
       )}

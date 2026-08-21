@@ -71,12 +71,12 @@ export function termsSections(profile = {}) {
   const EM = fill(profile, 'contact');
   return [
     ['Agreement to these Terms',
-      `These Terms of Service govern your use of MechBid (the "Service"), operated by ${CO} ("we", "us"). By `
+      `These Terms of Service govern your use of Coldgauge (the "Service"), operated by ${CO} ("we", "us"). By `
       + 'creating an account or using the Service you agree to them. If you are agreeing on behalf of a company, '
       + 'you represent that you have authority to bind that company. If you do not agree, do not use the Service.'],
 
     ['What the Service is — and what it is not',
-      'MechBid is an estimating aid for mechanical contractors. It assists with takeoff, pricing and proposal '
+      'Coldgauge is an estimating aid for mechanical contractors. It assists with takeoff, pricing and proposal '
       + 'preparation, and it produces ESTIMATES — including quantities, sizes, scope and pricing derived in part '
       + 'from automated extraction of documents you upload, and in part from default values built into the '
       + 'Service. It is a tool for a qualified estimator, not a replacement for one, and it does not provide '
@@ -179,7 +179,7 @@ export function privacySections(profile = {}) {
   const AD = fill(profile, 'address');
   return [
     ['Who we are',
-      `MechBid is operated by ${CO}, ${AD}. This policy explains what we collect, why, and what you can do about `
+      `Coldgauge is operated by ${CO}, ${AD}. This policy explains what we collect, why, and what you can do about `
       + `it. Questions or requests: ${EM}.`],
 
     ['What we collect',

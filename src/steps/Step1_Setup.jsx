@@ -565,7 +565,7 @@ export default function Step1_Setup({ onNext }) {
             const dropped = foundCount - usable.length;
             newResults.push(`📊 ${fileMeta.name}: ${usable.length} circuit(s) found [${res.format || 'excel'}]`);
             if (dropped > 0) {
-              flags.push({ type: 'warn', text: `${fileMeta.name}: ${dropped} row${dropped !== 1 ? 's' : ''} looked like a circuit but had no readable circuit ID, so ${dropped !== 1 ? 'they were' : 'it was'} skipped. The legend's circuit-ID column may be in a layout MechBid doesn't recognize yet — send the file so it can be added.`, source: fileMeta.name });
+              flags.push({ type: 'warn', text: `${fileMeta.name}: ${dropped} row${dropped !== 1 ? 's' : ''} looked like a circuit but had no readable circuit ID, so ${dropped !== 1 ? 'they were' : 'it was'} skipped. The legend's circuit-ID column may be in a layout Coldgauge doesn't recognize yet — send the file so it can be added.`, source: fileMeta.name });
             }
             if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
             if (res.summary) newResults.push(`   → ${res.summary}`);
@@ -602,7 +602,7 @@ export default function Step1_Setup({ onNext }) {
           // and that's the readable version.
           flags.push({
             type: 'warn',
-            text: `${fileMeta.name} is a CAD/viewer format MechBid can't read directly. Get the PDF export of the same sheet (plan rooms and GCs always have one — or open it in a free viewer like Autodesk Design Review and print to PDF), then upload that.`,
+            text: `${fileMeta.name} is a CAD/viewer format Coldgauge can't read directly. Get the PDF export of the same sheet (plan rooms and GCs always have one — or open it in a free viewer like Autodesk Design Review and print to PDF), then upload that.`,
             source: fileMeta.name,
           });
           newResults.push(`📐 ${fileMeta.name}: CAD format — upload the PDF export of this sheet instead`);
@@ -1193,7 +1193,7 @@ export default function Step1_Setup({ onNext }) {
   const hasFiles = modeFiles.length > 0 || emailText.trim().length > 0;
 
   // Fresh session (nothing named, saved, or uploaded) → lead with the pitch.
-  // The claim that separates MechBid from the HVAC-only takeoff tools is the
+  // The claim that separates Coldgauge from the HVAC-only takeoff tools is the
   // TWO-TRADE coverage, so that's the headline — not generic AI promises.
   const showHero = !state.projName && !state.jobId && state.uploadedFiles.length === 0;
 
@@ -1206,7 +1206,7 @@ export default function Step1_Setup({ onNext }) {
             One estimator. <span style={{ color: colors.green }}>Both trades.</span>
           </div>
           <div style={{ fontSize: 13, color: colors.textDim, marginTop: 8, lineHeight: 1.55, maxWidth: 640 }}>
-            MechBid is built for mechanical contractors who do <b style={{ color: colors.text }}>commercial refrigeration and HVAC</b> —
+            Coldgauge is built for mechanical contractors who do <b style={{ color: colors.text }}>commercial refrigeration and HVAC</b> —
             not one or the other. Upload the plans, schedules, and scope docs; the AI reads them and builds the
             takeoff, then cross-checks its own numbers and shows you the flags.
           </div>

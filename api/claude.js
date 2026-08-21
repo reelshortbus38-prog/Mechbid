@@ -6,7 +6,7 @@
 // If the Anthropic call fails for ANY reason (bad param, model change, outage),
 // the request automatically retries through OpenRouter/gpt-4o rather than
 // surfacing an error to the estimator mid-upload.
-const CLAUDE_MODEL = process.env.MECHBID_TEXT_MODEL || 'claude-sonnet-5';
+const CLAUDE_MODEL = process.env.COLDGAUGE_TEXT_MODEL || 'claude-sonnet-5';
 
 // Older, weaker reader kept only as a degrade-don't-die path. Every response
 // that came from it is marked so the caller can warn instead of quietly
@@ -57,8 +57,8 @@ async function callOpenRouter({ messages, system, max_tokens, temperature }) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-      'HTTP-Referer': 'https://mechbid.vercel.app',
-      'X-Title': 'MechBid'
+      'HTTP-Referer': 'https://coldgauge.vercel.app',
+      'X-Title': 'Coldgauge'
     },
     body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages })
   });
