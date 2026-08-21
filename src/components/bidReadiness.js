@@ -1,4 +1,5 @@
 import { marginAnalysis } from '../steps/bidTotals.js';
+import { basisComplete } from './proposalTerms.js';
 // ── BID READINESS (PRE-FLIGHT) ───────────────────────────────────────────────
 // The takeoff can be perfect and the bid still catastrophically wrong, because
 // nothing stopped the estimator from printing before the numbers were filled
@@ -151,6 +152,19 @@ export function checkBidReadiness(state = {}, totals = {}) {
       detail: `Markup lands on materials only, and ${margin.unmarkedSharePct}% of this job's cost is labor and `
         + `subs, which carry none. Gross profit is ${Math.round(margin.grossProfit).toLocaleString()} on a `
         + `${Math.round(margin.cost).toLocaleString()} job.`,
+      count: 0,
+    });
+  }
+
+  // 5c. A bid that does not name the documents it was priced from cannot defend
+  // itself when a revision turns up mid-job.
+  if (!basisComplete(state.bidBasis || {})) {
+    issues.push({
+      key: 'noBidBasis', severity: 'warn',
+      title: 'The proposal does not say what it was priced from',
+      detail: 'No drawings are named in the basis of bid. When a revision lands mid-job, the drawing numbers '
+        + 'and dates on the proposal are what separates included work from a change order. Set them on the '
+        + 'Proposal step.',
       count: 0,
     });
   }

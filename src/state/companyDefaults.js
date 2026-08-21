@@ -31,8 +31,8 @@ export const COMPANY_DEFAULT_KEYS = [
   'ootBasis', 'outOfTown',
   // The shop's own labor productivity, once it has been tuned against a job.
   'laborUnits',
-  // Standing scope fence.
-  'exclusions',
+  // Standing scope fence and conditions of bid.
+  'exclusions', 'proposalTerms', 'bidValidDays',
   'preferredSupplier',
 ];
 
