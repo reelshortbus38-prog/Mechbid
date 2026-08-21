@@ -1,6 +1,6 @@
 # Vector CAD Takeoff — findings & roadmap
 
-How the funded HVAC takeoff tools (iBeam, BuildVision) read plans, what MechBid
+How the funded HVAC takeoff tools (iBeam, BuildVision) read plans, what Coldgauge
 does today, and the path to matching them on clean vector drawings.
 
 ## How they work
@@ -19,7 +19,7 @@ not pixels. Their pipeline:
 5. **Scale calibration** — from the title block or a user two-point click.
 6. **Human-in-the-loop QA** — AI does ~90%, estimators catch the rest.
 
-## What MechBid does
+## What Coldgauge does
 
 - **Refrigeration:** Excel BPRs (exact, direct read), Word RC schedules (text),
   redline **photos** (raster → vision). No vector geometry to mine — vision is

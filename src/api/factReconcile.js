@@ -128,8 +128,8 @@ export function pumpCrosschecks(ledger = []) {
       kind: 'pumpMotorHp',
       subject: r.subject,
       label: agree
-        ? `${r.subject} — MechBid selects the scheduled ${scheduled} HP`
-        : `${r.subject} — MechBid selects ${hp.motorHp} HP, the schedule says ${scheduled} HP`,
+        ? `${r.subject} — Coldgauge selects the scheduled ${scheduled} HP`
+        : `${r.subject} — Coldgauge selects ${hp.motorHp} HP, the schedule says ${scheduled} HP`,
       detail: agree
         ? `${gpm} GPM at ${ft} ft, ${eff}% efficient${pct ? `, ${pct}% glycol` : ''} → ${hp.bhp} bhp. Agreement here means the inputs were read `
           + 'right and the selection method matches the engineer\'s.'

@@ -274,8 +274,8 @@ async function callOpenRouter(messages, system) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-      'HTTP-Referer': 'https://mechbid.vercel.app',
-      'X-Title': 'MechBid'
+      'HTTP-Referer': 'https://coldgauge.vercel.app',
+      'X-Title': 'Coldgauge'
     },
     body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens: 4000, messages: fullMessages })
   });

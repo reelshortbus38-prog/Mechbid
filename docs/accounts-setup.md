@@ -1,6 +1,6 @@
 # Accounts + cloud sync — setup
 
-MechBid works fully **local-only** with no setup: jobs live in the browser.
+Coldgauge works fully **local-only** with no setup: jobs live in the browser.
 Turning on accounts adds email logins and syncs each user's jobs to the cloud so
 they're on every device and safe from a cleared browser. It's **opt-in by
 configuration** — until the two env vars below are set, the app behaves exactly

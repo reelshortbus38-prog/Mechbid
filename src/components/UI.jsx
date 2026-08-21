@@ -173,9 +173,9 @@ export function Spinner() {
 }
 
 // Inject keyframes once
-if (typeof document !== 'undefined' && !document.getElementById('mechbid-spin')) {
+if (typeof document !== 'undefined' && !document.getElementById('coldgauge-spin')) {
   const style = document.createElement('style');
-  style.id = 'mechbid-spin';
+  style.id = 'coldgauge-spin';
   style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
   document.head.appendChild(style);
 }

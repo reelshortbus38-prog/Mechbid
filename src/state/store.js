@@ -498,7 +498,7 @@ export function fmtDec(n) {
 }
 
 // ── LOCAL STORAGE ──────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'mechbid_jobs_v2';
+const STORAGE_KEY = 'coldgauge_jobs_v2';
 
 // Why the last saveJob failed, for the UI to show. A silent save failure is
 // the worst bug an estimating tool can have — the estimator keeps working on a
@@ -576,13 +576,13 @@ export function loadJob(id) {
 // between devices. Export wraps all jobs in a versioned envelope; import merges
 // them in (incoming jobs win on id collision), tolerating a raw jobs object too.
 export function exportAllJobsJSON() {
-  return JSON.stringify({ app: 'mechbid', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
+  return JSON.stringify({ app: 'coldgauge', version: 2, exportedAt: new Date().toISOString(), jobs: loadAllJobs() }, null, 2);
 }
 
 // ── COMPANY PROFILE ──────────────────────────────────────────────────────────
 // The contractor's own company details — global (same across every job) and
-// printed on the proposal so a bid goes out on YOUR letterhead, not "MechBid".
-const COMPANY_KEY = 'mechbid_company_v1';
+// printed on the proposal so a bid goes out on YOUR letterhead, not "Coldgauge".
+const COMPANY_KEY = 'coldgauge_company_v1';
 
 export function loadCompanyProfile() {
   try { return JSON.parse(localStorage.getItem(COMPANY_KEY) || '{}') || {}; }
@@ -597,7 +597,7 @@ export function saveCompanyProfile(profile) {
 export function importJobsJSON(text) {
   const data = JSON.parse(text);
   const incoming = data && data.jobs ? data.jobs : data; // accept enveloped or raw
-  if (!incoming || typeof incoming !== 'object') throw new Error('Not a MechBid backup file');
+  if (!incoming || typeof incoming !== 'object') throw new Error('Not a Coldgauge backup file');
   const jobs = loadAllJobs();
   let count = 0;
   for (const [id, job] of Object.entries(incoming)) {

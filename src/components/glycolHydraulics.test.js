@@ -145,7 +145,7 @@ describe('glycolHydraulics — the whole call', () => {
 // ── VALIDATED AGAINST A REAL ENGINEERED SCHEDULE ─────────────────────────────
 // Edmonds SD College Place, HYDRONIC PUMP SCHEDULE. Two selections made by the
 // engineer of record, with the flow, head and pump efficiency they were made
-// from. If MechBid cannot reproduce these, it is not ready to price a pump.
+// from. If Coldgauge cannot reproduce these, it is not ready to price a pump.
 describe('against the Edmonds SD College Place pump schedule', () => {
   const SCHEDULE = [
     { mark: 'HWP-01', gpm: 276, ft: 83, eff: 0.78, pct: 0, hp: 10 },
