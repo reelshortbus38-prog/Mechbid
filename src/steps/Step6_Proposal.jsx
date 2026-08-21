@@ -9,6 +9,7 @@ import { groupHvacParts } from '../components/partGroups.js';
 import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
 import { ESTIMATOR_WARNING, DEFAULT_PROPOSAL_TERMS, basisOfBid, basisComplete } from '../components/proposalTerms.js';
 import { checkBidReadiness } from '../components/bidReadiness.js';
+import { BRAND_HEAD, BRAND_TAIL } from '../components/brand.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
 // produces an ESTIMATE — the contractor is responsible for verifying takeoff,
@@ -653,7 +654,7 @@ function ProposalView({ company = {} }) {
         ${company.name
           ? `<div class="logo" style="color:#111">${company.name}</div>
              <div style="font-size:10px;color:#6b7280">${[company.license, company.phone, company.email, company.address, company.website].filter(Boolean).join(' · ')}</div>`
-          : `<div class="logo">MECH<span>BID</span></div>`}
+          : `<div class="logo">${BRAND_HEAD}<span>${BRAND_TAIL}</span></div>`}
         <div style="font-size:10px;color:#6b7280">${mode}</div>
       </div>
       <div style="text-align:right">
@@ -722,7 +723,7 @@ function ProposalView({ company = {} }) {
             </>
           ) : (
             <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em' }}>
-              MECH<span style={{ color: colors.green }}>BID</span>
+              {BRAND_HEAD}<span style={{ color: colors.green }}>{BRAND_TAIL}</span>
             </div>
           )}
           <div style={{ fontSize: 10, color: colors.textDim }}>{mode}</div>

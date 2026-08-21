@@ -6,6 +6,7 @@ import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import AuthButton from './AuthModal.jsx';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
+import { BRAND_HEAD, BRAND_TAIL, BRAND_TAGLINE } from './brand.js';
 import Step1_Setup from '../steps/Step1_Setup.jsx';
 import Step2_Circuits from '../steps/Step2_Circuits.jsx';
 import Step3_Rack from '../steps/Step3_Rack.jsx';
@@ -226,9 +227,9 @@ export default function Wizard() {
             <div style={{ width: 32, height: 32, background: colors.green, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>⚙️</div>
             <div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1 }}>
-                MECH<span style={{ color: colors.green }}>BID</span>
+                {BRAND_HEAD}<span style={{ color: colors.green }}>{BRAND_TAIL}</span>
               </div>
-              <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.05em' }}>REFRIGERATION + HVAC · ONE ESTIMATOR</div>
+              <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.05em' }}>{BRAND_TAGLINE}</div>
             </div>
           </div>
 
