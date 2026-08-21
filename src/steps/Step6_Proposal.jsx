@@ -7,6 +7,7 @@ import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { groupHvacParts } from '../components/partGroups.js';
 import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
+import { ESTIMATOR_WARNING, DEFAULT_PROPOSAL_TERMS, basisOfBid, basisComplete } from '../components/proposalTerms.js';
 import { checkBidReadiness } from '../components/bidReadiness.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
@@ -14,7 +15,11 @@ import { checkBidReadiness } from '../components/bidReadiness.js';
 // quantities, and scope against the final construction documents and field
 // conditions before relying on this bid. This limits liability for a bid that
 // comes in wrong because of incomplete/revised drawings or AI-extracted data.
-export const ESTIMATE_DISCLAIMER = 'This proposal is an estimate prepared from the documents and information provided at bid time. Quantities, pipe/duct sizes, equipment, and scope are based on the drawings and schedules available and may have been generated with the assistance of automated extraction. The contractor/recipient is responsible for verifying all takeoff, quantities, and scope against the final construction documents and actual field conditions before relying on this bid. No warranty is made as to the accuracy or completeness of any extracted data, and the preparer is not liable for errors arising from incomplete, superseded, or revised drawings or schedules.';
+// The old single disclaimer lived here and PRINTED on the proposal. It has been
+// split in two — see components/proposalTerms.js — because it was the tool
+// disclaiming to the estimator, stapled to the estimator's bid to a general
+// contractor. ESTIMATOR_WARNING is now screen-only; the proposal prints the
+// contractor's own conditions of bid instead.
 
 // ── YOUR NUMBERS, NOT THE APP'S ──────────────────────────────────────────────
 // Different companies charge different rates, and the app was asking every shop
@@ -346,6 +351,12 @@ function TaxAndExclusions() {
     dispatch({ type: 'SET', key: 'exclusions', value: next });
   };
   const addExclusion = () => dispatch({ type: 'SET', key: 'exclusions', value: [...exclusions, ''] });
+  // Conditions of bid — seeded from the standard set until the shop edits them.
+  const terms = state.proposalTerms || DEFAULT_PROPOSAL_TERMS;
+  const setTerms = v => dispatch({ type: 'SET', key: 'proposalTerms', value: v });
+  const setTerm = (i, val) => { const next = terms.slice(); next[i] = val; setTerms(next); };
+  const addTerm = () => setTerms([...terms, '']);
+  const removeTerm = i => setTerms(terms.filter((_, idx) => idx !== i));
   const removeExclusion = i => dispatch({ type: 'SET', key: 'exclusions', value: exclusions.filter((_, idx) => idx !== i) });
 
   return (
@@ -400,6 +411,38 @@ function TaxAndExclusions() {
           </span>
         </div>
       )}
+      {/* ── Basis of bid: what the price stands on ── */}
+      <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+        background: basisComplete(state.bidBasis || {}) ? 'rgba(148,163,184,0.06)' : 'rgba(234,179,8,0.07)',
+        border: `1px solid ${basisComplete(state.bidBasis || {}) ? colors.border : colors.yellow + '55'}` }}>
+        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+          <strong style={{ color: basisComplete(state.bidBasis || {}) ? colors.text : colors.yellow }}>
+            {basisComplete(state.bidBasis || {}) ? 'Basis of bid' : '⚠ Basis of bid — no documents named'}
+          </strong>
+          {' '}— printed on the proposal. A bid that does not say what it was priced from cannot defend itself
+          when a revision turns up.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+          {[
+            { k: 'drawings', label: 'Drawings (comma separated)', ph: 'M4.12b, M10.06', list: true },
+            { k: 'addenda', label: 'Addenda acknowledged', ph: '1, 2', list: true },
+            { k: 'specSection', label: 'Specification section', ph: '23 00 00' },
+            { k: 'dated', label: 'Documents dated', ph: '2026-06-26' },
+          ].map(f => (
+            <div key={f.k}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{f.label}</div>
+              <Input
+                value={f.list ? ((state.bidBasis || {})[f.k] || []).join(', ') : ((state.bidBasis || {})[f.k] || '')}
+                placeholder={f.ph}
+                onChange={e => dispatch({
+                  type: 'SET', key: 'bidBasis',
+                  value: { ...(state.bidBasis || {}), [f.k]: f.list ? e.target.value.split(',').map(x => x.trim()) : e.target.value },
+                })} />
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Bond %</div>
@@ -427,6 +470,34 @@ function TaxAndExclusions() {
         ))}
       </div>
       <Btn variant="ghost" size="sm" onClick={addExclusion} style={{ marginTop: 10 }}>+ Add Exclusion</Btn>
+
+      {/* ── Conditions of bid: the contractor's own terms, printed ── */}
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
+        <SLabel style={{ margin: 0 }}>Conditions of Bid (printed on the proposal)</SLabel>
+        <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, margin: '6px 0 10px' }}>
+          Your terms, not the app's — access, changes, payment, acceptance. Save them with your company
+          defaults and every new bid carries them.
+          <br />
+          <strong style={{ color: colors.yellow }}>These are ordinary trade conditions, not legal advice.</strong>
+          {' '}Payment terms, retainage and change-order language are commercial positions — have your own
+          counsel read them before they go out.
+        </div>
+        {terms.map((t, i) => (
+          <Row key={i} style={{ gap: 6, marginBottom: 6, alignItems: 'flex-start' }}>
+            <textarea value={t} onChange={e => setTerm(i, e.target.value)} rows={2}
+              style={{ flex: 1, background: colors.card2, border: `1px solid ${colors.border}`, borderRadius: 7,
+                color: colors.text, fontSize: 12, padding: '8px 10px', fontFamily: "'DM Sans', sans-serif",
+                lineHeight: 1.5, resize: 'vertical' }} />
+            <button onClick={() => removeTerm(i)} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 24, height: 24, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>×</button>
+          </Row>
+        ))}
+        <Row style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <Btn variant="ghost" size="sm" onClick={addTerm}>+ Add Condition</Btn>
+          <Btn variant="ghost" size="sm" onClick={() => dispatch({ type: 'SET', key: 'proposalTerms', value: [...DEFAULT_PROPOSAL_TERMS] })}>
+            Reset to standard
+          </Btn>
+        </Row>
+      </div>
     </Card>
   );
 }
@@ -558,6 +629,11 @@ function ProposalView({ company = {} }) {
     // The clause is generated from the allowance actually carried, so the
     // contract language and the number in the bid cannot drift apart.
     const escClause = escalationClause(escalationPct, state.bidValidDays);
+    // What PRINTS is the contractor's own conditions of bid. The tool's warning
+    // about automated extraction is screen-only — see components/proposalTerms.js
+    // for why putting that on a customer-facing document is the wrong document.
+    const terms = (state.proposalTerms || DEFAULT_PROPOSAL_TERMS).filter(t => t && t.trim());
+    const basisLines = basisOfBid(state.bidBasis || {});
     const validDays = state.bidValidDays ?? 30;
     const markupLabel = equipMarkupPct !== scenario.markupPct
       ? `marked up: materials ${scenario.markupPct}% · equipment ${equipMarkupPct}%`
@@ -604,7 +680,15 @@ function ProposalView({ company = {} }) {
     ${validDays > 0 ? `<div style="margin-top:8px;font-size:11px;color:#6b7280">This proposal is valid for ${validDays} days from ${date}. Pricing subject to material market changes.</div>` : ''}
     ${escClause ? `<h2>Material Escalation</h2><p style="margin:0 0 16px;color:#374151;font-size:11px;line-height:1.7">${escClause}</p>` : ''}
     ${exclusions.length ? `<h2>Exclusions & Qualifications</h2><ul style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${exclusions.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
-    <div style="margin-top:20px;font-size:9px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:10px;line-height:1.6">${ESTIMATE_DISCLAIMER}</div>
+    ${basisLines.length ? `<h2>Basis of Bid</h2><ul style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${basisLines.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+    ${terms.length ? `<h2>Conditions of Bid</h2><ol style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${terms.map(x => `<li style="margin-bottom:4px">${x}</li>`).join('')}</ol>` : ''}
+    <div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:14px">
+      <div style="font-size:11px;color:#374151;margin-bottom:14px">Accepted this ______ day of ____________, 20____</div>
+      <div style="display:flex;gap:40px">
+        <div style="flex:1"><div style="border-bottom:1px solid #9ca3af;height:26px"></div><div style="font-size:10px;color:#6b7280;margin-top:4px">Accepted by (print &amp; sign)</div></div>
+        <div style="flex:1"><div style="border-bottom:1px solid #9ca3af;height:26px"></div><div style="font-size:10px;color:#6b7280;margin-top:4px">Title</div></div>
+      </div>
+    </div>
     <div style="margin-top:10px;font-size:10px;color:#9ca3af;padding-top:6px">Generated by MechBid · ${date} · Prices subject to change</div>
     </body></html>`;
 
@@ -827,7 +911,7 @@ function ProposalView({ company = {} }) {
 
       {/* Estimate disclaimer — also printed on the proposal */}
       <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${colors.border}`, fontSize: 10, color: colors.textMuted, lineHeight: 1.6 }}>
-        {ESTIMATE_DISCLAIMER}
+        {ESTIMATOR_WARNING}
       </div>
 
       {/* Export */}

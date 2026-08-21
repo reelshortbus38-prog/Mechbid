@@ -300,6 +300,14 @@ export const initialState = {
   bondPct: 0,        // payment & performance bond, % of bid
   permitFee: 0,      // flat permit/fees
   bidValidDays: 30,  // proposal validity period (days)
+  // The contractor's own conditions of bid, printed on the proposal. Editable
+  // and shop-level, because payment terms and change-order language are
+  // commercial positions that belong to the company. Seeded from
+  // DEFAULT_PROPOSAL_TERMS in components/proposalTerms.js.
+  proposalTerms: undefined,
+  // What the price stands on. A proposal that does not say what it was priced
+  // from cannot defend itself when a revision turns up.
+  bidBasis: { drawings: [], specSection: '', addenda: [], dated: '' },
   // Standard bid exclusions/qualifications — the contractual scope fence shown
   // on the proposal. Seeded with common mechanical exclusions; fully editable.
   exclusions: [

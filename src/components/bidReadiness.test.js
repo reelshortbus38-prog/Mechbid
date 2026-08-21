@@ -64,7 +64,17 @@ describe('checkBidReadiness — warnings vs blockers', () => {
     mode: 'Commercial HVAC', projName: 'Job',
     hvacEquipment: [{ tag: 'RTU-1', cost: 9000 }],
     hvacParts: [{ desc: 'Curb adapter', qty: 1, unitCost: 450, total: 450 }],
+    // A bid is not finished until it names what it was priced from.
+    bidBasis: { drawings: ['M2.01'], dated: '2026-06-26' },
   };
+
+  it('a bid naming no drawings is warned about before it goes out', () => {
+    const { bidBasis, ...noBasis } = priced;
+    const r = checkBidReadiness(noBasis, okTotals);
+    expect(r.warnings.map(w => w.key)).toContain('noBidBasis');
+    // A warning, not a blocker — a negotiated job may genuinely have no set.
+    expect(r.ready).toBe(true);
+  });
 
   it('zero markup warns but does not block — cost-plus jobs are real', () => {
     const r = checkBidReadiness(priced, { laborTotal: 5000, markupBase: 9450, markupAmt: 0 });
