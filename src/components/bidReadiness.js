@@ -131,15 +131,26 @@ export function checkBidReadiness(state = {}, totals = {}) {
   // depends on whether their crew rates already carry overhead and profit —
   // which the app cannot know — so this states the gap and does not judge it.
   const margin = marginAnalysis(state, totals);
-  if (margin && margin.statedMarkupPct > 0 && margin.unmarkedSharePct >= 40
-      && margin.effectiveMarginPct < margin.statedAsMarginPct - 3) {
+  if (margin && margin.statedMarkupPct > 0 && !margin.laborKnown && margin.unmarkedSharePct >= 40) {
+    // The rate is a billing rate with profit inside it and nobody has said how
+    // much, so the margin cannot be worked out at all. Asking for the one
+    // missing number beats printing a figure that ignores it.
+    issues.push({
+      key: 'laborCostUnknown', severity: 'warn',
+      title: 'What this bid earns cannot be worked out',
+      detail: 'Crew rates are set as billing rates, so profit is already inside them — but how much is not '
+        + `recorded. Only the material markup can be counted, which shows ${margin.effectiveMarginPct}% and is a `
+        + 'FLOOR, not the answer. Set "labor cost as a share of billed" on the Proposal step.',
+      count: 0,
+    });
+  } else if (margin && margin.statedMarkupPct > 0 && margin.laborKnown
+      && margin.effectiveMarginPct < margin.statedAsMarginPct - 3 && margin.unmarkedSharePct >= 40) {
     issues.push({
       key: 'effectiveMargin', severity: 'warn',
       title: `Bid earns ${margin.effectiveMarginPct}% — the markup is set to ${margin.statedMarkupPct}%`,
       detail: `Markup lands on materials only, and ${margin.unmarkedSharePct}% of this job's cost is labor and `
         + `subs, which carry none. Gross profit is ${Math.round(margin.grossProfit).toLocaleString()} on a `
-        + `${Math.round(margin.cost).toLocaleString()} job. That is correct IF your crew rates already include `
-        + 'overhead and profit — if they are burdened cost, this bid is thin.',
+        + `${Math.round(margin.cost).toLocaleString()} job.`,
       count: 0,
     });
   }

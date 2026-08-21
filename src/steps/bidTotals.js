@@ -21,6 +21,17 @@ export function computeBidTotals(state, markupPct) {
   const subsTotal = subsBase * (1 + subMarkupPct / 100);
   const bondPct = parseFloat(state.bondPct) || 0;
   const permitFee = parseFloat(state.permitFee) || 0;
+  // When crew rates are burdened COST rather than a billing rate, labor has to
+  // carry markup the same way copper does. Out-of-town is deliberately left out
+  // of that base: it is a reimbursable expense with its own bid category, not
+  // labor. Default is 'billing', which marks up nothing and is what the app has
+  // always done.
+  const laborIsCost = (state.laborRateBasis || 'billing') === 'cost';
+  const ootAmt = jobOOTTotal(state);
+  const laborMarkupOn = laborIsCost
+    ? Math.max(0, laborTotal - ootAmt) + calcRackLaborTotal(state.rackTasks, crew) + fieldTasksTotal
+    : 0;
+  const laborMarkupAmt = laborMarkupOn * (markupPct / 100);
   const finish = (subtotal, rest) => {
     const bondAmt = subtotal * (bondPct / 100);
     return { ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee, total: subtotal + bondAmt + permitFee };
@@ -35,8 +46,8 @@ export function computeBidTotals(state, markupPct) {
     const markupBase = equipTotal + partsTotal + linesetTotal;
     const markupAmt = equipTotal * (equipMarkupPct / 100) + (partsTotal + linesetTotal) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal });
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + laborMarkupAmt;
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal });
   }
 
   if (mode === 'Commercial HVAC') {
@@ -45,8 +56,8 @@ export function computeBidTotals(state, markupPct) {
     const markupBase = equipTotal + partsTotal;
     const markupAmt = equipTotal * (equipMarkupPct / 100) + partsTotal * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal;
-    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, fieldTasksTotal, equipTotal, partsTotal });
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal + laborMarkupAmt;
+    return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal, equipTotal, partsTotal });
   }
 
   // Commercial Refrigeration (no separate equipment line — all material markup)
@@ -58,8 +69,8 @@ export function computeBidTotals(state, markupPct) {
   const markupBase = matsTotal + rackPartsContractor;
   const markupAmt = markupBase * (markupPct / 100);
   const taxAmt = taxOf(markupBase + markupAmt);
-  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal;
-  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor });
+  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
+  return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, laborMarkupAmt, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor });
 }
 
 // ── BID-LETTER CATEGORY BREAKDOWN ────────────────────────────────────────────
@@ -118,26 +129,48 @@ export function bidLetterBreakdown(state, totals) {
 // estimator see whether that is the number they meant.
 export function marginAnalysis(state, totals) {
   const t = totals || {};
-  const laborCost = (t.laborTotal || 0) + (t.rackLaborTotal || 0) + (t.fieldTasksTotal || 0);
+  const laborBilled = (t.laborTotal || 0) + (t.rackLaborTotal || 0) + (t.fieldTasksTotal || 0);
   const matCost = t.markupBase || 0;
   const passThrough = (t.taxAmt || 0) + (t.bondAmt || 0) + (t.permitFee || 0);
-  const cost = matCost + laborCost + (t.subsBase || 0) + passThrough;
   const sell = t.total || 0;
   if (!(sell > 0)) return null;
 
+  const basis = state?.laborRateBasis || 'billing';
+  const ratio = parseFloat(state?.laborCostRatio);
+  const hasRatio = Number.isFinite(ratio) && ratio > 0 && ratio <= 1;
+  const oot = jobOOTTotal(state);
+
+  // A BILLING rate is already a sell price with profit inside it, so treating it
+  // as cost understates the margin badly — on a real job the difference is 6.5%
+  // against 24-34%. Without a cost ratio the profit inside the rate cannot be
+  // seen, so the margin is reported as unknown rather than wrong.
+  let laborCost, laborKnown;
+  if (basis === 'cost') {
+    laborCost = laborBilled; laborKnown = true;
+  } else if (hasRatio) {
+    // Out-of-town is a reimbursed expense carried at cost; only the labor part
+    // of the billed figure has profit inside it.
+    laborCost = (laborBilled - oot) * ratio + oot; laborKnown = true;
+  } else {
+    laborCost = laborBilled; laborKnown = false;
+  }
+
+  const cost = matCost + laborCost + (t.subsBase || 0) + passThrough;
   const grossProfit = sell - cost;
-  // The share of cost the markup never touches.
-  const unmarked = laborCost + (t.subsBase || 0);
+  // The share of cost the material markup never touches.
+  const unmarked = (t.laborMarkupAmt > 0 ? 0 : laborCost) + (t.subsBase || 0);
+  const m = parseFloat(state?.markupPct) || 0;
   return {
     cost, sell, grossProfit,
     effectiveMarginPct: Math.round((grossProfit / sell) * 1000) / 10,
-    statedMarkupPct: parseFloat(state?.markupPct) || 0,
-    // The same stated figure expressed as a margin, so the two are comparable.
-    statedAsMarginPct: (() => {
-      const m = parseFloat(state?.markupPct) || 0;
-      return Math.round((m / (100 + m)) * 1000) / 10;
-    })(),
-    laborCost, matCost,
+    statedMarkupPct: m,
+    statedAsMarginPct: Math.round((m / (100 + m)) * 1000) / 10,
+    laborBasis: basis,
+    // false when the rate is a billing rate and no cost ratio was given: the
+    // margin below is a FLOOR, not the answer.
+    laborKnown,
+    laborCost, laborBilled, matCost,
+    laborMarkupAmt: t.laborMarkupAmt || 0,
     unmarkedCost: unmarked,
     unmarkedSharePct: cost > 0 ? Math.round((unmarked / cost) * 1000) / 10 : 0,
   };

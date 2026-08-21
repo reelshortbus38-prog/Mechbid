@@ -279,3 +279,90 @@ describe('markup needed for a target margin', () => {
     expect(markupForTargetMargin(bare, computeBidTotals(bare, 20), 15)).toBeNull();
   });
 });
+
+// ── WHAT A CREW RATE MEANS ───────────────────────────────────────────────────
+describe('labor rate basis', () => {
+  const crew = [{ rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }];
+  const job = (over = {}) => ({
+    mode: 'Commercial Refrigeration', laborMode: 'flat',
+    flatJob: { crew, weeks: 27, daysPerWeek: 5, ootPerDay: 150 },
+    ootBasis: 'person', outOfTown: true,
+    lineItems: [{ total: 200000 }],
+    rackParts: [], rackTasks: [], fieldTasks: [], subcontractors: [],
+    markupPct: 20, materialsTaxPct: 0, bondPct: 0, permitFee: 0,
+    ...over,
+  });
+
+  it('defaults to a billing rate, which marks up nothing — the behaviour that shipped', () => {
+    const state = job();
+    const t = computeBidTotals(state, 20);
+    expect(t.laborMarkupAmt).toBe(0);
+    expect(t.total).toBe(618000);
+  });
+
+  it('a burdened COST rate makes the markup carry labor too', () => {
+    const state = job({ laborRateBasis: 'cost' });
+    const t = computeBidTotals(state, 20);
+    expect(t.laborMarkupAmt).toBeGreaterThan(0);
+    expect(t.total).toBeGreaterThan(618000);
+  });
+
+  it('does NOT mark up out-of-town — it is a reimbursed expense, not labor', () => {
+    const state = job({ laborRateBasis: 'cost' });
+    const t = computeBidTotals(state, 20);
+    // labor total includes OOT; only the labor part carries markup.
+    const oot = 81000;
+    expect(t.laborMarkupAmt).toBeCloseTo((t.laborTotal - oot) * 0.2, 6);
+  });
+
+  it('reports the margin as a FLOOR when the rate is billing and no cost ratio is given', () => {
+    const state = job();
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    expect(a.laborKnown).toBe(false);
+    expect(a.effectiveMarginPct).toBe(6.5);
+  });
+
+  it('with a cost ratio the real margin appears, and it is nothing like the floor', () => {
+    const state = job({ laborCostRatio: 0.62 });
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    expect(a.laborKnown).toBe(true);
+    expect(a.effectiveMarginPct).toBeCloseTo(24.7, 1);
+  });
+
+  it('carries out-of-town at cost inside the ratio — per diem has no profit in it', () => {
+    const state = job({ laborCostRatio: 0.5 });
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    // 81k of the 378k billed is OOT and passes through untouched.
+    expect(a.laborCost).toBeCloseTo((378000 - 81000) * 0.5 + 81000, 6);
+  });
+
+  it('a cost-basis job needs no ratio — the rate already is the cost', () => {
+    const state = job({ laborRateBasis: 'cost' });
+    const a = marginAnalysis(state, computeBidTotals(state, 20));
+    expect(a.laborKnown).toBe(true);
+    expect(a.laborCost).toBe(a.laborBilled);
+  });
+
+  it('stops calling labor unmarked once the markup actually reaches it', () => {
+    const billing = marginAnalysis(job(), computeBidTotals(job(), 20));
+    const s2 = job({ laborRateBasis: 'cost' });
+    const cost = marginAnalysis(s2, computeBidTotals(s2, 20));
+    expect(billing.unmarkedSharePct).toBeGreaterThan(60);
+    expect(cost.unmarkedSharePct).toBe(0);
+  });
+
+  it('ignores a nonsense ratio rather than producing a nonsense margin', () => {
+    for (const bad of [0, -1, 2, 'abc', '']) {
+      expect(marginAnalysis(job({ laborCostRatio: bad }), computeBidTotals(job(), 20)).laborKnown).toBe(false);
+    }
+  });
+
+  it('cost plus profit still reconciles to the total on every basis', () => {
+    for (const over of [{}, { laborCostRatio: 0.62 }, { laborRateBasis: 'cost' }]) {
+      const state = job({ ...over, materialsTaxPct: 7, bondPct: 1.5, permitFee: 2500 });
+      const t = computeBidTotals(state, 20);
+      const a = marginAnalysis(state, t);
+      expect(a.cost + a.grossProfit).toBeCloseTo(t.total, 6);
+    }
+  });
+});
