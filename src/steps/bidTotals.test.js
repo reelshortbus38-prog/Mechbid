@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin, escalationExposure, escalationClause } from './bidTotals.js';
 
 // The proposal shows these component lines and a grand total. If `total` ever
 // drifts from the sum of the lines, a customer's bid silently adds up wrong —
@@ -364,5 +364,139 @@ describe('labor rate basis', () => {
       const a = marginAnalysis(state, t);
       expect(a.cost + a.grossProfit).toBeCloseTo(t.total, 6);
     }
+  });
+});
+
+// ── ESCALATION AND CONSUMABLES ───────────────────────────────────────────────
+describe('escalation and consumables', () => {
+  const crew = [{ rate: 100, hrsPerDay: 8 }, { rate: 75, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }, { rate: 50, hrsPerDay: 8 }];
+  const job = (over = {}) => ({
+    mode: 'Commercial Refrigeration', laborMode: 'flat',
+    flatJob: { crew, weeks: 27, daysPerWeek: 5, ootPerDay: 150 },
+    ootBasis: 'person', outOfTown: true, laborCostRatio: 0.6,
+    lineItems: [{ total: 200000 }],
+    rackParts: [], rackTasks: [], fieldTasks: [], subcontractors: [],
+    markupPct: 20, materialsTaxPct: 0, bondPct: 0, permitFee: 0,
+    ...over,
+  });
+
+  it('both default to zero, so no existing bid moves', () => {
+    const t = computeBidTotals(job(), 20);
+    expect(t.escalationAmt).toBe(0);
+    expect(t.consumablesAmt).toBe(0);
+    expect(t.total).toBe(618000);
+  });
+
+  it('escalation applies to material only, never to labor', () => {
+    const t = computeBidTotals(job({ escalationPct: 8 }), 20);
+    expect(t.escalationAmt).toBe(16000);
+    // The bid rises by the escalation AND the markup on it: 16,000 × 1.2.
+    expect(t.total).toBe(618000 + 19200);
+  });
+
+  it('consumables run on labor COST, not on the billed figure', () => {
+    // 378,000 billed − 81,000 out-of-town = 297,000, at a 0.6 cost ratio.
+    const t = computeBidTotals(job({ consumablesPct: 3 }), 20);
+    expect(t.consumablesAmt).toBeCloseTo(297000 * 0.6 * 0.03, 6);
+  });
+
+  it('uses the billed figure directly when rates ARE the cost', () => {
+    const t = computeBidTotals(job({ consumablesPct: 3, laborRateBasis: 'cost' }), 20);
+    expect(t.consumablesAmt).toBeCloseTo(297000 * 0.03, 6);
+  });
+
+  it('excludes out-of-town from consumables — per diem is not man-hours', () => {
+    const withOot = computeBidTotals(job({ consumablesPct: 3 }), 20);
+    const without = computeBidTotals(job({ consumablesPct: 3, flatJob: { crew, weeks: 27, daysPerWeek: 5, ootPerDay: 0 } }), 20);
+    expect(withOot.consumablesAmt).toBeCloseTo(without.consumablesAmt, 6);
+  });
+
+  it('both carry markup, because both are real cost the shop fronts', () => {
+    const t = computeBidTotals(job({ escalationPct: 8, consumablesPct: 3 }), 20);
+    expect(t.markupBase).toBeCloseTo(200000 + t.escalationAmt + t.consumablesAmt, 6);
+  });
+
+  it('both are taxed as material where tax applies', () => {
+    const t = computeBidTotals(job({ escalationPct: 8, materialsTaxPct: 7 }), 20);
+    expect(t.taxAmt).toBeCloseTo((t.markupBase + t.markupAmt) * 0.07, 6);
+  });
+
+  it('cost plus profit still reconciles to the total with both in play', () => {
+    const state = job({ escalationPct: 8, consumablesPct: 3, materialsTaxPct: 7, bondPct: 1.5, permitFee: 2500 });
+    const t = computeBidTotals(state, 20);
+    const a = marginAnalysis(state, t);
+    expect(a.cost + a.grossProfit).toBeCloseTo(t.total, 6);
+  });
+
+  it('works the same in the HVAC modes', () => {
+    for (const mode of ['Commercial HVAC', 'Residential HVAC']) {
+      const state = { ...job(), mode, hvacParts: [{ total: 100000 }], resParts: [{ total: 100000 }], hvacEquipment: [], resEquipment: [] };
+      const t = computeBidTotals({ ...state, escalationPct: 10 }, 20);
+      expect(t.escalationAmt).toBeCloseTo(10000, 6);
+    }
+  });
+});
+
+describe('escalation exposure', () => {
+  const crew = [{ rate: 100, hrsPerDay: 8 }];
+  const job = (over = {}) => ({
+    mode: 'Commercial Refrigeration', laborMode: 'flat',
+    flatJob: { crew, weeks: 27, daysPerWeek: 5 },
+    lineItems: [{ total: 200000 }],
+    rackParts: [], rackTasks: [], fieldTasks: [], subcontractors: [],
+    markupPct: 20, materialsTaxPct: 0, bondPct: 0, permitFee: 0,
+    ...over,
+  });
+
+  it('reports the material at risk and what a single point is worth', () => {
+    const e = escalationExposure(job(), computeBidTotals(job(), 20));
+    expect(e.materialAtRisk).toBe(200000);
+    expect(e.perPoint).toBe(2000);
+    expect(e.weeks).toBe(27);
+  });
+
+  it('flags a long job carrying no escalation at all', () => {
+    expect(escalationExposure(job(), computeBidTotals(job(), 20)).unprotected).toBe(true);
+  });
+
+  it('goes quiet once an allowance is set', () => {
+    const state = job({ escalationPct: 5 });
+    expect(escalationExposure(state, computeBidTotals(state, 20)).unprotected).toBe(false);
+  });
+
+  it('does not call a short job unprotected', () => {
+    const state = job({ flatJob: { crew, weeks: 3, daysPerWeek: 5 } });
+    const e = escalationExposure(state, computeBidTotals(state, 20));
+    expect(e.long).toBe(false);
+    expect(e.unprotected).toBe(false);
+  });
+
+  it('reads duration off phased periods too', () => {
+    const state = job({ laborMode: 'periods', laborPeriods: [{ crew, days: 60, daysPerWeek: 5 }], flatJob: undefined });
+    expect(escalationExposure(state, computeBidTotals(state, 20)).weeks).toBe(12);
+  });
+
+  it('the material at risk excludes what escalation itself added', () => {
+    const state = job({ escalationPct: 8, consumablesPct: 3 });
+    expect(escalationExposure(state, computeBidTotals(state, 20)).materialAtRisk).toBe(200000);
+  });
+
+  it('says nothing about a bid with no material', () => {
+    const bare = job({ lineItems: [] });
+    expect(escalationExposure(bare, computeBidTotals(bare, 20))).toBeNull();
+  });
+});
+
+describe('escalation clause', () => {
+  it('states the allowance and the validity period together', () => {
+    const c = escalationClause(8, 30);
+    expect(c).toMatch(/8% material escalation allowance/);
+    expect(c).toMatch(/firm for 30 days/);
+    expect(c).toMatch(/supporting supplier documentation/);
+  });
+
+  it('is empty when no allowance is carried — no clause to make', () => {
+    expect(escalationClause(0, 30)).toBe('');
+    expect(escalationClause('', 30)).toBe('');
   });
 });

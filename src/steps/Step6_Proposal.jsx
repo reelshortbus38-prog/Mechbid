@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal, jobCrew } from '../state/store.js';
 import { captureCompanyDefaults, describeCompanyDefaults, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
-import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin } from './bidTotals.js';
+import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin, escalationExposure, escalationClause } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
@@ -335,6 +335,10 @@ function MarkupAndSubs() {
 function TaxAndExclusions() {
   const { state, dispatch } = useStore();
   const exclusions = state.exclusions || [];
+  // Material at risk and job duration, so the escalation call is made against a
+  // number rather than a blank field.
+  const scenario = state.scenarios[state.scenarios.active];
+  const exposure = escalationExposure(state, computeBidTotals(state, scenario.markupPct));
 
   const setExclusion = (i, val) => {
     const next = exclusions.slice();
@@ -359,6 +363,43 @@ function TaxAndExclusions() {
           <span style={{ fontSize: 11, color: colors.textDim }}>%</span>
         </div>
       </Row>
+      {/* Escalation and consumables — two costs no takeoff produces a line for. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Material Escalation %</div>
+          <Input type="number" value={state.escalationPct ?? 0} onChange={e => dispatch({ type: 'SET', key: 'escalationPct', value: parseFloat(e.target.value) || 0 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Consumables % of labor</div>
+          <Input type="number" value={state.consumablesPct ?? 0} onChange={e => dispatch({ type: 'SET', key: 'consumablesPct', value: parseFloat(e.target.value) || 0 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+        </div>
+      </div>
+      {exposure && (
+        <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, marginBottom: 12, padding: '8px 12px',
+          borderRadius: 8,
+          background: exposure.unprotected ? 'rgba(234,179,8,0.07)' : 'rgba(148,163,184,0.06)',
+          border: `1px solid ${(exposure.unprotected ? colors.yellow : colors.border)}` }}>
+          {exposure.unprotected ? (
+            <>
+              <strong style={{ color: colors.yellow }}>⚠ {fmt(exposure.materialAtRisk)} of material bought over
+              {' '}{exposure.weeks} weeks, with no escalation allowance.</strong> Every point of movement is{' '}
+              {fmt(exposure.perPoint)}. What to carry is a judgement about the copper market — the app will not
+              invent it — but a job this long buying at today's quote is exposed.
+            </>
+          ) : (
+            <>
+              {fmt(exposure.materialAtRisk)} of material over {exposure.weeks} weeks · each point of escalation
+              is {fmt(exposure.perPoint)}
+              {exposure.pct > 0 && <> · carrying {exposure.pct}% = <strong style={{ color: colors.text }}>{fmt(exposure.amount)}</strong></>}
+            </>
+          )}
+          <br />
+          <span style={{ fontSize: 10 }}>
+            Consumables — nitrogen, oxygen, acetylene, rod, emery, tape — run on man-hours, so the base is labor
+            {(state.laborRateBasis || 'billing') === 'billing' && state.laborCostRatio ? ' cost' : ''}, not material.
+          </span>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Bond %</div>
@@ -512,8 +553,11 @@ function ProposalView({ company = {} }) {
       }
     }
 
-    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
     const exclusions = (state.exclusions || []).filter(x => x && x.trim());
+    // The clause is generated from the allowance actually carried, so the
+    // contract language and the number in the bid cannot drift apart.
+    const escClause = escalationClause(escalationPct, state.bidValidDays);
     const validDays = state.bidValidDays ?? 30;
     const markupLabel = equipMarkupPct !== scenario.markupPct
       ? `marked up: materials ${scenario.markupPct}% · equipment ${equipMarkupPct}%`
@@ -558,6 +602,7 @@ function ProposalView({ company = {} }) {
       <div style="display:flex;justify-content:space-between;padding:6px 0"><span>Less est. utility/mfr rebate</span><span>-${fmt(parseFloat(state.resRebate) || 0)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700"><span>Estimated net cost to you</span><span>${fmt(total - (parseFloat(state.resRebate) || 0))}</span></div>` : ''}
     ${validDays > 0 ? `<div style="margin-top:8px;font-size:11px;color:#6b7280">This proposal is valid for ${validDays} days from ${date}. Pricing subject to material market changes.</div>` : ''}
+    ${escClause ? `<h2>Material Escalation</h2><p style="margin:0 0 16px;color:#374151;font-size:11px;line-height:1.7">${escClause}</p>` : ''}
     ${exclusions.length ? `<h2>Exclusions & Qualifications</h2><ul style="margin:0 0 16px;padding-left:18px;color:#374151;font-size:11px;line-height:1.7">${exclusions.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
     <div style="margin-top:20px;font-size:9px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:10px;line-height:1.6">${ESTIMATE_DISCLAIMER}</div>
     <div style="margin-top:10px;font-size:10px;color:#9ca3af;padding-top:6px">Generated by MechBid · ${date} · Prices subject to change</div>
@@ -567,7 +612,7 @@ function ProposalView({ company = {} }) {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
-  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total } = totals;
+  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
   // What the bid actually earns, against what the estimator set. See
   // marginAnalysis in bidTotals.js for why this reports rather than corrects.
   const marginInfo = marginAnalysis(state, totals);
@@ -658,7 +703,9 @@ function ProposalView({ company = {} }) {
       {/* Summary lines */}
       <div style={{ marginBottom: 20 }}>
         {[
-          { label: 'Materials & Equipment', value: fmt(markupBase), dim: true },
+          { label: 'Materials & Equipment', value: fmt(markupBase - (escalationAmt || 0) - (consumablesAmt || 0)), dim: true },
+          escalationAmt > 0 && { label: `Material Escalation (${escalationPct}%)`, value: fmt(escalationAmt), color: colors.text },
+          consumablesAmt > 0 && { label: `Consumables (${consumablesPct}% of labor)`, value: fmt(consumablesAmt), color: colors.text },
           { label: markupLabel, value: fmt(markupAmt), color: colors.green },
           { label: 'Materials Total (marked up)', value: fmt(markedUpMats), bold: true },
           taxAmt > 0 && { label: `Sales Tax (${taxPct}%)`, value: fmt(taxAmt), color: colors.text },
