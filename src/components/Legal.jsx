@@ -1,34 +1,18 @@
 import { useState } from 'react';
 import { colors } from '../styles/theme.js';
+import { loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
+import {
+  termsSections, privacySections, LEGAL_FIELDS, legalGaps, legalReady, LAST_UPDATED,
+} from './legalText.js';
 
-// Privacy Policy + Terms of Service shell. The STRUCTURE and section headings
-// are here; the wording is placeholder and MUST be reviewed/replaced with real
-// legal text (an attorney or a generator like Termly/iubenda) before selling.
-// Kept in-app so there's a real link to point Stripe and customers at.
-const COMPANY = '[Your Company / DBA]';
-const CONTACT = '[your contact email]';
-
-const PRIVACY = [
-  ['Who we are', `MechBid ("the Service") is operated by ${COMPANY}. Questions: ${CONTACT}.`],
-  ['What we collect', 'Account details you provide (name, email, company); the bid documents and data you upload (schedules, blueprints, equipment lists, pricing); and basic usage data needed to run the Service.'],
-  ['How uploaded documents are processed', 'To extract takeoff data, the contents of documents you upload are sent to third-party AI providers — OpenAI (via OpenRouter) and Anthropic — for processing. These providers process the data to return extraction results. Do not upload documents you are not authorized to share.'],
-  ['Third parties we use', 'AI processing: OpenAI / OpenRouter, Anthropic. Hosting: Vercel. Database/auth: Supabase. Payments: Stripe (we do not store full card numbers — Stripe handles payment data). Each processes data only to provide their part of the Service.'],
-  ['How we use your data', 'To provide and improve the Service, generate estimates, maintain your saved jobs, process subscriptions, and provide support. We do not sell your personal information.'],
-  ['Data retention & deletion', 'We keep your data while your account is active. You can request export or deletion of your account data by contacting us.'],
-  ['Your choices', 'You can edit or delete jobs in the app, and request account deletion. Depending on where you live, you may have additional rights over your data.'],
-  ['Changes', 'We will post any changes to this policy here and update the date below.'],
-];
-
-const TERMS = [
-  ['Acceptance', `By using MechBid you agree to these Terms. If you do not agree, do not use the Service.`],
-  ['The Service is an estimating aid', 'MechBid produces ESTIMATES generated, in part, by automated extraction from the documents you provide. It is a tool to assist a qualified estimator — not a substitute for one.'],
-  ['Your responsibility to verify', 'You are solely responsible for reviewing and verifying all extracted data, quantities, pipe/duct sizes, equipment, scope, and pricing against the final construction documents and actual field conditions before submitting or relying on any bid.'],
-  ['No warranty', 'The Service is provided "as is" without warranties of any kind. We do not warrant that extracted data or estimates are accurate, complete, or fit for a particular purpose.'],
-  ['Limitation of liability', `To the maximum extent permitted by law, ${COMPANY} is not liable for any lost profits, bid losses, or other damages arising from use of the Service or from errors in extracted or estimated data.`],
-  ['Subscriptions & billing', 'Paid plans are billed through Stripe on a recurring basis until cancelled. [Add your billing cycle, refund, and cancellation terms here.]'],
-  ['Acceptable use', 'Do not upload content you lack the right to share, attempt to break or misuse the Service, or use it unlawfully.'],
-  ['Contact', `Questions about these Terms: ${CONTACT}.`],
-];
+// ── TERMS + PRIVACY ──────────────────────────────────────────────────────────
+// The text lives in legalText.js and is real, not a shell. What is here is the
+// modal, and the four fields that turn a template into a document: entity name,
+// governing state, contact email, mailing address.
+//
+// Until those are filled the policy renders "[Legal entity name]" on the page,
+// which is worse than saying nothing — it announces that nobody finished it. So
+// the gap is reported at the top with the fields right there to fix it.
 
 function Section({ title, items }) {
   return (
@@ -44,29 +28,92 @@ function Section({ title, items }) {
   );
 }
 
+function FillIn({ profile, onChange }) {
+  const gaps = legalGaps(profile);
+  const [open, setOpen] = useState(gaps.length > 0);
+  const set = (k, v) => {
+    const next = { ...profile, [`legal_${k}`]: v };
+    onChange(next);
+    saveCompanyProfile(next);
+  };
+
+  return (
+    <div style={{
+      border: `1px solid ${gaps.length ? colors.yellow + '55' : colors.border}`,
+      background: gaps.length ? 'rgba(234,179,8,0.07)' : 'rgba(34,197,94,0.05)',
+      borderRadius: 8, padding: '10px 12px', marginBottom: 18,
+    }}>
+      <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer', fontSize: 11, lineHeight: 1.6, color: colors.textDim }}>
+        <strong style={{ color: gaps.length ? colors.yellow : colors.green }}>
+          {gaps.length
+            ? `⚠ ${gaps.length} detail${gaps.length === 1 ? '' : 's'} still to fill in`
+            : '✓ These policies are filled in and ready to publish'}
+        </strong>
+        <span style={{ float: 'right', color: colors.textDim }}>{open ? '▲' : '▼'}</span>
+        <br />
+        {gaps.length
+          ? 'The wording below is complete. These four facts are the only things it cannot know, and until they are set the page shows them in brackets.'
+          : 'Everything below carries your details. Review the wording, then link this page from your signup and checkout.'}
+      </div>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 10 }}>
+          {LEGAL_FIELDS.map(f => (
+            <div key={f.k}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 3 }}>{f.label}</div>
+              <input
+                value={profile[`legal_${f.k}`] || ''}
+                onChange={e => set(f.k, e.target.value)}
+                placeholder={f.ph}
+                style={{
+                  width: '100%', background: colors.card2, border: `1px solid ${colors.border}`,
+                  borderRadius: 6, color: colors.text, fontSize: 12, padding: '7px 9px',
+                  fontFamily: "'DM Sans', sans-serif", outline: 'none', boxSizing: 'border-box',
+                }} />
+              <div style={{ fontSize: 9, color: colors.textMuted, marginTop: 2 }}>{f.why}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Legal() {
   const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState(() => loadCompanyProfile());
+  const ready = legalReady(profile);
+
   return (
     <>
       <div style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 900 }}>
-        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', color: colors.textMuted, fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}>
-          Terms · Privacy
+        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', color: ready ? colors.textMuted : colors.yellow, fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}>
+          Terms · Privacy{ready ? '' : ' ⚠'}
         </button>
       </div>
       {open && (
         <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: colors.card, border: `1px solid ${colors.border2}`, borderRadius: 14, maxWidth: 640, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 22 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: colors.card, border: `1px solid ${colors.border2}`, borderRadius: 14, maxWidth: 680, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 17, fontWeight: 900 }}>Legal</div>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: colors.textDim, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
-            <div style={{ fontSize: 10, color: colors.yellow, background: 'rgba(234,179,8,0.08)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 18, lineHeight: 1.5 }}>
-              ⚠️ Template text — review and replace with attorney-approved language before charging customers.
+
+            <FillIn profile={profile} onChange={setProfile} />
+
+            {/* Two situations the generic wording does not reach, both about who
+                signs up rather than about how the app is written. */}
+            <div style={{ fontSize: 10, color: colors.textDim, background: 'rgba(148,163,184,0.06)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 18, lineHeight: 1.6 }}>
+              <strong style={{ color: colors.text }}>Two cases these do not fully cover.</strong> If you take
+              users in the <strong>EU or UK</strong>, GDPR adds required disclosures — a legal basis stated per
+              purpose, an in-region representative, and a 72-hour breach clock. If you cross the revenue or data
+              thresholds for <strong>California’s CCPA/CPRA</strong>, its notice requirements attach as well.
+              Both are about who signs up, not about how the app works, and neither is attempted below.
             </div>
-            <Section title="Privacy Policy" items={PRIVACY} />
+
+            <Section title="Privacy Policy" items={privacySections(profile)} />
             <div style={{ height: 1, background: colors.border, margin: '6px 0 18px' }} />
-            <Section title="Terms of Service" items={TERMS} />
-            <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8 }}>Last updated: [date]</div>
+            <Section title="Terms of Service" items={termsSections(profile)} />
+            <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8 }}>Last updated: {LAST_UPDATED}</div>
           </div>
         </div>
       )}
