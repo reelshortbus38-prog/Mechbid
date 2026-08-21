@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal } from '../state/store.js';
+import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal, jobCrew } from '../state/store.js';
+import { captureCompanyDefaults, describeCompanyDefaults, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
 import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
@@ -14,6 +15,67 @@ import { checkBidReadiness } from '../components/bidReadiness.js';
 // conditions before relying on this bid. This limits liability for a bid that
 // comes in wrong because of incomplete/revised drawings or AI-extracted data.
 export const ESTIMATE_DISCLAIMER = 'This proposal is an estimate prepared from the documents and information provided at bid time. Quantities, pipe/duct sizes, equipment, and scope are based on the drawings and schedules available and may have been generated with the assistance of automated extraction. The contractor/recipient is responsible for verifying all takeoff, quantities, and scope against the final construction documents and actual field conditions before relying on this bid. No warranty is made as to the accuracy or completeness of any extracted data, and the preparer is not liable for errors arising from incomplete, superseded, or revised drawings or schedules.';
+
+// ── YOUR NUMBERS, NOT THE APP'S ──────────────────────────────────────────────
+// Different companies charge different rates, and the app was asking every shop
+// to re-type theirs — plus their markup, their tax rate, their bond and their
+// whole crew make-up — on every bid, starting each time from numbers that came
+// from nobody in particular. Get one job right and keep it.
+function CompanyRatesCard({ company, onChange }) {
+  const { state } = useStore();
+  const [saved, setSaved] = useState(false);
+  const stored = describeCompanyDefaults(company);
+  const crew = jobCrew(state);
+
+  function saveDefaults() {
+    const next = { ...company, ...captureCompanyDefaults(state, crew) };
+    onChange(next);
+    saveCompanyProfile(next);
+    setSaved(true);
+  }
+
+  function clearDefaults() {
+    const next = { ...company };
+    for (const k of COMPANY_DEFAULT_KEYS) delete next[k];
+    delete next[CREW_KEY];
+    onChange(next);
+    saveCompanyProfile(next);
+    setSaved(false);
+  }
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
+      <SLabel style={{ margin: 0 }}>💵 Your Standard Rates &amp; Markup</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
+        {stored.length ? (
+          <>
+            New jobs start from these:
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {stored.map((line, i) => <li key={i} style={{ marginBottom: 2 }}>{line}</li>)}
+            </ul>
+            <div style={{ marginTop: 6, fontSize: 11 }}>
+              A saved bid is never re-priced by this — what was quoted stays quoted.
+            </div>
+          </>
+        ) : (
+          <>
+            Nothing saved, so every new job starts from the app's generic numbers and you re-enter yours.
+            Set this job up the way your shop bids — crew, rates, markup, tax, bond, per diem — then save it
+            here and every new job starts there.
+          </>
+        )}
+      </div>
+      <Row style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <Btn variant={saved ? 'ghost' : 'green'} size="sm" onClick={saveDefaults}>
+          {saved ? '✓ Saved — click again to update' : 'Save this job\'s rates as my defaults'}
+        </Btn>
+        {stored.length > 0 && (
+          <Btn variant="ghost" size="sm" onClick={clearDefaults}>Clear</Btn>
+        )}
+      </Row>
+    </div>
+  );
+}
 
 // ── COMPANY PROFILE (your letterhead) ────────────────────────────────────────
 function CompanyProfileCard({ company, onChange }) {
@@ -46,6 +108,7 @@ function CompanyProfileCard({ company, onChange }) {
           ))}
         </div>
       )}
+      {open && <CompanyRatesCard company={company} onChange={onChange} />}
     </Card>
   );
 }
