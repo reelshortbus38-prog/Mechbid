@@ -57,7 +57,7 @@ async function callOpenRouter({ messages, system, max_tokens, temperature }) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-      'HTTP-Referer': 'https://coldgauge.vercel.app',
+      'HTTP-Referer': 'https://coldgauge.com',
       'X-Title': 'Coldgauge'
     },
     body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages })
