@@ -46,7 +46,7 @@ async function secondOpinion(messages, system, max_tokens) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-        'HTTP-Referer': 'https://coldgauge.vercel.app',
+        'HTTP-Referer': 'https://coldgauge.com',
         'X-Title': 'Coldgauge',
       },
       body: JSON.stringify({ model: SECOND_MODEL, max_tokens: max_tokens || 4000, temperature: 0, messages: orMessages }),
