@@ -26,6 +26,7 @@ import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
 import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pipePricing.js';
 import { mergeFacts } from '../api/jobFacts.js';
+import { forMode, stampMode, resultText } from '../state/tradeScope.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -972,7 +973,7 @@ export default function Step1_Setup({ onNext }) {
     for (const [fileName, facts] of factsByFile) nextFacts = mergeFacts(nextFacts, fileName, facts);
 
     dispatch({ type: 'MERGE', payload: {
-      extractionResults: [...state.extractionResults, ...newResults],
+      extractionResults: [...state.extractionResults, ...stampMode(newResults, state.mode)],
       ...(factsByFile.size ? { jobFacts: nextFacts } : {}),
       // Resolve "these tags are only in the narrative, not a schedule row"
       // page-notes against what the batch actually extracted BEFORE collapsing
@@ -981,7 +982,7 @@ export default function Step1_Setup({ onNext }) {
       // every sheet of a set (a 40-page set emits the same general note a
       // dozen times) — signal, and smaller saved jobs.
       flags: dedupeFlags(resolveCoverageFlags(
-        [...state.flags, ...flags],
+        [...state.flags, ...stampMode(flags, state.mode)],
         [...hvacEquipCollected.map(x => x.e), ...(state.hvacEquipment || [])],
       )),
       // Key dates — pre-con from the ERF or the schedule's pre-con line, job
@@ -1160,12 +1161,12 @@ export default function Step1_Setup({ onNext }) {
     dispatch({ type: 'MERGE', payload: {
       circuits: [...state.circuits, ...newCircuits],
       rackTasks: [...state.rackTasks, ...newRackTasks],
-      fieldTasks: [...(state.fieldTasks || []), ...newFieldTasks],
+      fieldTasks: [...(state.fieldTasks || []), ...stampMode(newFieldTasks, state.mode)],
       rackParts: [...state.rackParts, ...newRackParts],
       hvacParts: [...keptHvacParts, ...newHvacParts],
       ...(newHvacEquipment.length ? { hvacEquipment: [...(state.hvacEquipment || []), ...newHvacEquipment] } : {}),
       rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
-      flags: dedupeFlags([...(state.flags || []), ...newNotes]),
+      flags: dedupeFlags([...(state.flags || []), ...stampMode(newNotes, state.mode)]),
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),
       ...(storeNumber && !state.storeNumber ? { storeNumber } : {}),
@@ -1190,6 +1191,11 @@ export default function Step1_Setup({ onNext }) {
   }
 
   const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode);
+  // The extraction log and the flags are shared buckets: both trades write into
+  // them from the same Setup step. Show only this trade's — a refrigeration
+  // redline's findings on an HVAC job read as findings about the HVAC job.
+  const modeResults = forMode(state.extractionResults, state.mode);
+  const modeFlags = forMode(state.flags, state.mode);
   const hasFiles = modeFiles.length > 0 || emailText.trim().length > 0;
 
   // Fresh session (nothing named, saved, or uploaded) → lead with the pitch.
@@ -1424,20 +1430,23 @@ export default function Step1_Setup({ onNext }) {
       </Btn>
 
       {/* Results */}
-      {state.extractionResults.length > 0 && (
+      {modeResults.length > 0 && (
         <Card>
           <SLabel>AI Extraction Results</SLabel>
-          {state.extractionResults.map((r, i) => (
-            <div key={i} style={{ fontSize: 12, color: r.startsWith('❌') ? colors.red : colors.text, padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>{r}</div>
-          ))}
+          {modeResults.map((r, i) => {
+            const text = resultText(r);
+            return (
+              <div key={i} style={{ fontSize: 12, color: text.startsWith('❌') ? colors.red : colors.text, padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>{text}</div>
+            );
+          })}
         </Card>
       )}
 
       {/* Flags — findings first. The analyzer's own commentary ("this sheet
           had no schedule table") is true but not a finding, so it collapses
           behind a toggle instead of making a correct run look like a mess. */}
-      {state.flags.length > 0 && (() => {
-        const { actionable, scope, diagnostics } = triageFlags(state.flags);
+      {modeFlags.length > 0 && (() => {
+        const { actionable, scope, diagnostics } = triageFlags(modeFlags);
         return (
           <div>
             <SLabel>Scope Findings & Requirements</SLabel>

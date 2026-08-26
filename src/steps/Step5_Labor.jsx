@@ -4,6 +4,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
+import { forMode } from '../state/tradeScope.js';
 
 // Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
 // both Commercial Refrigeration and Commercial HVAC, and a rooftop-unit swap
@@ -200,18 +201,23 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
 // ── FIELD TASKS TABLE ─────────────────────────────────────────────────────────
 function FieldTasksSection() {
   const { state, dispatch } = useStore();
-  const fieldTasks = state.fieldTasks || [];
+  // allTasks is what gets WRITTEN back — a job can hold tasks from a mode it is
+  // no longer in, and saving the filtered list would silently delete them.
+  // fieldTasks is what gets SHOWN and COSTED: this trade's only, matching what
+  // computeBidTotals bills.
+  const allTasks = state.fieldTasks || [];
+  const fieldTasks = forMode(allTasks, state.mode);
 
   function addTask() {
-    dispatch({ type: 'SET', key: 'fieldTasks', value: [...fieldTasks, { id: uid(), desc: '', men: 1, hrs: 0, notes: '' }] });
+    dispatch({ type: 'SET', key: 'fieldTasks', value: [...allTasks, { id: uid(), desc: '', men: 1, hrs: 0, notes: '', mode: state.mode }] });
   }
 
   function updateTask(id, field, value) {
-    dispatch({ type: 'SET', key: 'fieldTasks', value: fieldTasks.map(t => t.id === id ? { ...t, [field]: field === 'men' || field === 'hrs' ? parseFloat(value) || 0 : value } : t) });
+    dispatch({ type: 'SET', key: 'fieldTasks', value: allTasks.map(t => t.id === id ? { ...t, [field]: field === 'men' || field === 'hrs' ? parseFloat(value) || 0 : value } : t) });
   }
 
   function removeTask(id) {
-    dispatch({ type: 'SET', key: 'fieldTasks', value: fieldTasks.filter(t => t.id !== id) });
+    dispatch({ type: 'SET', key: 'fieldTasks', value: allTasks.filter(t => t.id !== id) });
   }
 
   // Cost field tasks from the bid crew's average man-hour rate (flat crew or
@@ -301,13 +307,16 @@ function CircuitLaborEstimator() {
   function generateFieldTasks() {
     const idOf = desc => (String(desc).match(/^Run & connect (\S+)/) || [])[1];
     const existing = state.fieldTasks || [];
-    const have = new Set(existing.map(t => idOf(t.desc)).filter(Boolean));
+    // Dedupe against THIS trade's tasks only, so an HVAC job does not consider
+    // a refrigeration circuit already covered.
+    const have = new Set(forMode(existing, state.mode).map(t => idOf(t.desc)).filter(Boolean));
     const fresh = est.perCircuit
       .filter(pc => !have.has(pc.circuitId))
       .map(pc => ({
         id: uid(),
         desc: `Run & connect ${pc.circuitId}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft}ft)`,
         men: 1, hrs: pc.hours, notes: 'Auto-estimated from circuit labor units', crewAssignment: {},
+        mode: state.mode,
       }));
     if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
   }

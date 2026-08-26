@@ -1,4 +1,5 @@
 import { jobLaborTotal, jobCrew, jobOOTTotal, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal } from '../state/store.js';
+import { forMode, REFRIGERATION, RESIDENTIAL_HVAC } from '../state/tradeScope.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -11,7 +12,18 @@ export function computeBidTotals(state, markupPct) {
   // Mode-aware: phased periods OR one whole-job crew ("4 guys × 27 weeks").
   const laborTotal = jobLaborTotal(state);
   const crew = jobCrew(state);
-  const fieldTasksTotal = calcFieldTasksTotal(state.fieldTasks, crew);
+  // ── TRADE SCOPING ──────────────────────────────────────────────────────────
+  // fieldTasks and rackTasks are reachable from steps SHARED by both trades, so
+  // both used to reach every mode's arithmetic. A refrigeration case-move task
+  // was billed into an HVAC bid, and rack labor — which exists on no HVAC job —
+  // inflated HVAC markup and consumables. Scope them here, once, so every
+  // consumer below reads a figure that belongs to the job's own trade.
+  // Residential has no labor step at all, so it carries no field tasks.
+  const fieldTasksTotal = calcFieldTasksTotal(
+    mode === RESIDENTIAL_HVAC ? [] : forMode(state.fieldTasks, mode), crew,
+  );
+  // There is no rack on an HVAC job.
+  const rackLaborTotal = mode === REFRIGERATION ? calcRackLaborTotal(state.rackTasks, crew) : 0;
   const taxPct = parseFloat(state.materialsTaxPct) || 0;
   const taxOf = sell => sell * (taxPct / 100);
   const equipMarkupPct = (state.equipMarkupPct === '' || state.equipMarkupPct == null)
@@ -29,7 +41,7 @@ export function computeBidTotals(state, markupPct) {
   const laborIsCost = (state.laborRateBasis || 'billing') === 'cost';
   const ootAmt = jobOOTTotal(state);
   const laborMarkupOn = laborIsCost
-    ? Math.max(0, laborTotal - ootAmt) + calcRackLaborTotal(state.rackTasks, crew) + fieldTasksTotal
+    ? Math.max(0, laborTotal - ootAmt) + rackLaborTotal + fieldTasksTotal
     : 0;
   const laborMarkupAmt = laborMarkupOn * (markupPct / 100);
 
@@ -56,8 +68,7 @@ export function computeBidTotals(state, markupPct) {
   const escalationPct = parseFloat(state.escalationPct) || 0;
   const consumablesPct = parseFloat(state.consumablesPct) || 0;
   const laborForConsumables = (() => {
-    const billed = Math.max(0, laborTotal - ootAmt)
-      + calcRackLaborTotal(state.rackTasks, crew) + fieldTasksTotal;
+    const billed = Math.max(0, laborTotal - ootAmt) + rackLaborTotal + fieldTasksTotal;
     if ((state.laborRateBasis || 'billing') === 'cost') return billed;
     const ratio = parseFloat(state.laborCostRatio);
     return (Number.isFinite(ratio) && ratio > 0 && ratio <= 1) ? billed * ratio : billed;
@@ -100,7 +111,6 @@ export function computeBidTotals(state, markupPct) {
   // Lion bid letters require: Materials / Refrigerant / Labor / Out of Town.)
   const matsTotal = (state.lineItems || []).reduce((s, i) => s + (i.total || 0), 0);
   const rackPartsContractor = (state.rackParts || []).filter(p => !p.storeSupplied).reduce((s, p) => s + (p.total || 0), 0);
-  const rackLaborTotal = calcRackLaborTotal(state.rackTasks, crew);
   const escalationAmt = (matsTotal + rackPartsContractor) * (escalationPct / 100);
   const markupBase = matsTotal + rackPartsContractor + escalationAmt + consumablesAmt;
   const markupAmt = markupBase * (markupPct / 100);

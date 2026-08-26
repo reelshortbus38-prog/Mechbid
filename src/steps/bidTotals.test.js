@@ -500,3 +500,87 @@ describe('escalation clause', () => {
     expect(escalationClause('', 30)).toBe('');
   });
 });
+
+// ── TRADE SCOPING ────────────────────────────────────────────────────────────
+// A job carries one trade, but fieldTasks and rackTasks are reachable from
+// steps SHARED by both. Before scoping, uploading refrigeration redlines and
+// then switching the job to Commercial HVAC billed the refrigeration case-move
+// tasks into the HVAC bid, and rack labor — which exists on no HVAC job — fed
+// HVAC markup and consumables. These pin that shut.
+describe('one trade does not pay for the other trade', () => {
+  // 1 man × 10 hrs. Costed off the bid crew's average rate ($80) = $800.
+  const refrigTask = { id: 'ft1', desc: 'Set 4 cases', men: 1, hrs: 10, mode: 'Commercial Refrigeration' };
+  const hvacTask = { id: 'ft2', desc: 'VAV startup', men: 1, hrs: 10, mode: 'Commercial HVAC' };
+
+  const hvacState = extra => ({
+    mode: 'Commercial HVAC',
+    hvacEquipment: [{ cost: 5000 }],
+    hvacParts: [{ total: 1000 }],
+    rackParts: [], rackTasks: [], lineItems: [],
+    laborPeriods,
+    markupPct: 20,
+    ...extra,
+  });
+
+  it('an HVAC bid does not bill a refrigeration field task', () => {
+    const clean = computeBidTotals(hvacState({ fieldTasks: [] }), 20);
+    const leaky = computeBidTotals(hvacState({ fieldTasks: [refrigTask] }), 20);
+    expect(leaky.fieldTasksTotal).toBe(0);
+    expect(round(leaky.total)).toBe(round(clean.total));
+  });
+
+  it('but it DOES bill its own field task', () => {
+    const t = computeBidTotals(hvacState({ fieldTasks: [hvacTask] }), 20);
+    expect(t.fieldTasksTotal).toBeGreaterThan(0);
+  });
+
+  it('an unstamped task is still billed — a missing line is worse than a stray one', () => {
+    // Everything saved before trade scoping has no mode. Dropping it would
+    // quietly shrink an existing bid, which is the failure that costs money.
+    const legacy = { id: 'ft3', desc: 'Hand-entered', men: 1, hrs: 10 };
+    const t = computeBidTotals(hvacState({ fieldTasks: [legacy] }), 20);
+    expect(t.fieldTasksTotal).toBeGreaterThan(0);
+  });
+
+  it('rack labor never reaches an HVAC bid — there is no rack on an HVAC job', () => {
+    // On a BILLING basis rack labor touches nothing in HVAC mode, so this has
+    // to run on a COST basis to exercise the path it actually leaked through:
+    // laborMarkupOn, where rack hours were marked up on an HVAC bid.
+    const rackTasks = [{ id: 'rt1', desc: 'Add compressor', men: 2, hrs: 8 }];
+    const opts = { fieldTasks: [], laborRateBasis: 'cost' };
+    const clean = computeBidTotals(hvacState({ ...opts, rackTasks: [] }), 20);
+    const leaky = computeBidTotals(hvacState({ ...opts, rackTasks }), 20);
+    expect(clean.laborMarkupAmt).toBeGreaterThan(0);   // the path is live
+    expect(round(leaky.laborMarkupAmt)).toBe(round(clean.laborMarkupAmt));
+    expect(round(leaky.total)).toBe(round(clean.total));
+  });
+
+  it('rack labor and consumables still work on the refrigeration job that owns them', () => {
+    const base = {
+      mode: 'Commercial Refrigeration',
+      lineItems: [{ total: 1000 }], rackParts: [], laborPeriods,
+      fieldTasks: [refrigTask], markupPct: 20, consumablesPct: 3,
+    };
+    const t = computeBidTotals({ ...base, rackTasks: [{ id: 'rt1', men: 2, hrs: 8 }] }, 20);
+    expect(t.rackLaborTotal).toBeGreaterThan(0);
+    expect(t.fieldTasksTotal).toBeGreaterThan(0);
+    expect(t.consumablesAmt).toBeGreaterThan(0);
+  });
+
+  it('consumables on an HVAC job scale on HVAC labor only', () => {
+    const withRefrig = computeBidTotals(hvacState({
+      fieldTasks: [refrigTask], rackTasks: [{ id: 'rt1', men: 2, hrs: 8 }], consumablesPct: 3,
+    }), 20);
+    const withoutRefrig = computeBidTotals(hvacState({
+      fieldTasks: [], rackTasks: [], consumablesPct: 3,
+    }), 20);
+    expect(round(withRefrig.consumablesAmt)).toBe(round(withoutRefrig.consumablesAmt));
+  });
+
+  it('the reconciliation invariant still holds in HVAC mode with a mixed task list', () => {
+    const t = computeBidTotals(hvacState({ fieldTasks: [refrigTask, hvacTask] }), 20);
+    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal
+      + t.laborTotal + t.fieldTasksTotal + t.laborMarkupAmt + t.bondAmt + t.permitFee;
+    expect(round(sum)).toBe(round(t.total));
+  });
+});
