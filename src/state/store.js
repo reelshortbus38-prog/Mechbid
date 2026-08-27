@@ -551,10 +551,23 @@ export function loadAllJobs() {
   }
 }
 
+// Guarded like saveJob and saveAllJobs. This one matters more than it looks:
+// the quota message above tells the user to "delete old jobs" to recover from
+// full storage, so an unguarded throw here breaks the documented way out of the
+// error. A browser with storage disabled throws on write even when the write
+// would SHRINK the data.
 export function deleteJob(id) {
-  const jobs = loadAllJobs();
-  delete jobs[id];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  try {
+    const jobs = loadAllJobs();
+    delete jobs[id];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+    lastSaveError = '';
+    return true;
+  } catch (e) {
+    lastSaveError = `Delete failed: ${e?.message || 'browser storage is unavailable'}`;
+    console.warn('Delete failed:', e);
+    return false;
+  }
 }
 
 // Write the whole jobs map at once — used by the cloud-sync layer to land the
@@ -603,7 +616,16 @@ export function importJobsJSON(text) {
   for (const [id, job] of Object.entries(incoming)) {
     if (job && job.data) { jobs[id] = job; count++; }
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  } catch (e) {
+    // Say which failure this is. "QuotaExceededError" on a restore reads as a
+    // corrupt backup file; it is the opposite — the file was fine and there is
+    // no room for it.
+    throw new Error(isQuotaError(e)
+      ? 'Browser storage is full — delete old jobs under 💾 Jobs, then import again.'
+      : `Import failed: ${e?.message || 'unknown error'}`);
+  }
   return count;
 }
 

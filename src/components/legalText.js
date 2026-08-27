@@ -34,6 +34,23 @@
 //
 // Pure — no React.
 
+// The operator of THIS service. Unlike the price book or the crew, these are
+// not per-user settings: every contractor using Coldgauge is a customer of
+// Coldgauge LLC, so the entity and its governing law are the same on every
+// install and belong in code.
+//
+// Contact email and mailing address are deliberately left empty rather than
+// defaulted. The email does not exist yet, and the address is a decision with a
+// privacy consequence — whatever goes here is published on a public web page,
+// which is a different exposure from a state filing. A profile value always
+// overrides, so a self-hosted or white-labelled install can still set its own.
+export const LEGAL_DEFAULTS = {
+  company: 'Coldgauge LLC',
+  state: 'Virginia',
+  contact: '',
+  address: '',
+};
+
 export const LEGAL_PLACEHOLDERS = {
   company: '[Legal entity name, e.g. Acme Refrigeration LLC]',
   state: '[State]',
@@ -50,13 +67,15 @@ export const LEGAL_FIELDS = [
 
 const fill = (profile, k) => {
   const v = String(profile?.[`legal_${k}`] || '').trim();
-  return v || LEGAL_PLACEHOLDERS[k];
+  return v || LEGAL_DEFAULTS[k] || LEGAL_PLACEHOLDERS[k];
 };
 
 // Which of the four are still unfilled. A policy reading "[Legal entity name]"
 // is worse than no policy: it says nobody read it.
 export function legalGaps(profile = {}) {
-  return LEGAL_FIELDS.filter(f => !String(profile?.[`legal_${f.k}`] || '').trim()).map(f => f.k);
+  return LEGAL_FIELDS
+    .filter(f => !String(profile?.[`legal_${f.k}`] || '').trim() && !LEGAL_DEFAULTS[f.k])
+    .map(f => f.k);
 }
 
 export function legalReady(profile = {}) {

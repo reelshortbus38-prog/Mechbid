@@ -14,7 +14,9 @@ const text = sections => sections.map(([, body]) => body).join(' ');
 
 describe('the four facts only the operator knows', () => {
   it('reports every one that is still blank', () => {
-    expect(legalGaps({}).sort()).toEqual(['address', 'company', 'contact', 'state']);
+    // Entity and governing law now ship as code defaults (see LEGAL_DEFAULTS),
+    // so only the two that genuinely have no value are gaps.
+    expect(legalGaps({}).sort()).toEqual(['address', 'contact']);
     expect(legalReady({})).toBe(false);
   });
 
@@ -23,8 +25,8 @@ describe('the four facts only the operator knows', () => {
     expect(legalReady(FILLED)).toBe(true);
   });
 
-  it('treats whitespace as blank — a space is not an entity name', () => {
-    expect(legalGaps({ ...FILLED, legal_company: '   ' })).toEqual(['company']);
+  it('treats whitespace as blank — a space is not a contact address', () => {
+    expect(legalGaps({ ...FILLED, legal_contact: '   ' })).toEqual(['contact']);
   });
 
   it('every field has a label and a reason it is needed', () => {
@@ -44,8 +46,8 @@ describe('the four facts only the operator knows', () => {
   });
 
   it('shows the placeholder when unfilled, rather than an empty gap', () => {
-    // "[Legal entity name]" tells the operator to finish it; a blank hides it.
-    expect(text(termsSections({}))).toContain(LEGAL_PLACEHOLDERS.company);
+    // "[contact email]" tells the operator to finish it; a blank hides it.
+    expect(text(termsSections({}))).toContain(LEGAL_PLACEHOLDERS.contact);
   });
 });
 
@@ -148,5 +150,52 @@ describe('housekeeping', () => {
         expect(body.length).toBeGreaterThan(40);
       }
     }
+  });
+});
+
+// ── OPERATOR DETAILS ─────────────────────────────────────────────────────────
+// The entity operating this service is the same for every user, so it lives in
+// code rather than in a per-user profile field nobody would fill in.
+describe('the operator is baked in', () => {
+  it('the documents name the real entity with no profile set', () => {
+    const terms = termsSections({}).map(([, body]) => body).join(' ');
+    expect(terms).toContain('Coldgauge LLC');
+    expect(terms).not.toContain('[Legal entity name');
+  });
+
+  it('governing law is Virginia with no profile set', () => {
+    const terms = termsSections({}).map(([h, body]) => h + ' ' + body).join(' ');
+    expect(terms).toContain('Virginia');
+    expect(terms).not.toContain('[State]');
+  });
+
+  it('the privacy policy names the entity too', () => {
+    const priv = privacySections({}).map(([, body]) => body).join(' ');
+    expect(priv).toContain('Coldgauge LLC');
+  });
+
+  it('a profile value still overrides, for a self-hosted install', () => {
+    const terms = termsSections({ legal_company: 'Acme Refrigeration LLC' })
+      .map(([, body]) => body).join(' ');
+    expect(terms).toContain('Acme Refrigeration LLC');
+    expect(terms).not.toContain('Coldgauge LLC');
+  });
+
+  it('entity and state no longer count as gaps', () => {
+    expect(legalGaps({})).not.toContain('company');
+    expect(legalGaps({})).not.toContain('state');
+  });
+
+  it('but contact and address DO — they are still genuinely unset', () => {
+    // These must keep warning. A published policy with a bracketed contact
+    // address is worse than one that admits it is not ready.
+    expect(legalGaps({})).toEqual(['contact', 'address']);
+    expect(legalReady({})).toBe(false);
+  });
+
+  it('is ready once those two are filled', () => {
+    const p = { legal_contact: 'support@coldgauge.com', legal_address: '1 Main St, Lexington, VA 24450' };
+    expect(legalGaps(p)).toEqual([]);
+    expect(legalReady(p)).toBe(true);
   });
 });

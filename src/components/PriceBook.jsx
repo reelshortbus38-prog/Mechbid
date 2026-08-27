@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { uid, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
+import {
+  BUILTIN_SUPPLIERS, loadCustomSuppliers, displaySuppliers,
+  addCustomSupplier, removeCustomSupplier,
+} from './suppliers.js';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
 const SUPPLIER_DEFAULT_KEY = 'coldgauge_default_supplier_v1';
-export const SUPPLIERS = [
-  'RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco',
-  'Southern Refrigeration', 'Baker Distributing', 'Gustave A. Larson', 'Carrier Enterprise',
-];
+// Kept as a named export: other modules import SUPPLIERS. The list a shop can
+// actually pick from is BUILTIN + whatever they added — see suppliers.js.
+export const SUPPLIERS = BUILTIN_SUPPLIERS;
 
 export function loadDefaultSupplier() {
   try {
@@ -88,31 +91,80 @@ export function findPriceMatch(entries, { desc = '', partId = '' }) {
 // Drop this wherever the job's supplier matters. Shows the current per-job supplier
 // (state.preferredSupplier, falling back to the global default), lets the user pick
 // any supplier for THIS job, and optionally save that choice as the new global default.
+const ADD_SENTINEL = '__add_supplier__';
+
 export function SupplierSwitcher({ value, onChange, compact = false }) {
   const globalDefault = loadDefaultSupplier();
   const current = value || globalDefault;
   const isGlobalDefault = current === globalDefault;
+  const [custom, setCustom] = useState(() => loadCustomSuppliers(localStorage));
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [err, setErr] = useState('');
+
+  // Built-ins + added + (if the job is priced against a name no longer on the
+  // list) that name, so the picker can never render blank on a saved job.
+  const options = displaySuppliers(custom, current);
 
   function handleSelect(supplier) {
+    if (supplier === ADD_SENTINEL) { setAdding(true); setErr(''); return; }
     onChange(supplier);
   }
 
-  function makeDefault() {
-    saveDefaultSupplier(current);
+  function commitAdd() {
+    const r = addCustomSupplier(localStorage, draft, { custom });
+    if (!r.ok) { setErr(r.error); return; }
+    setCustom(r.list);
+    onChange(r.list[r.list.length - 1]);   // select what you just added
+    setDraft(''); setErr(''); setAdding(false);
   }
+
+  function handleRemove(name) {
+    const r = removeCustomSupplier(localStorage, name, { custom });
+    if (!r.ok) return;
+    setCustom(r.list);
+    // Don't leave the job pointing at a supplier that is gone from the list.
+    if (current === name) onChange(globalDefault);
+  }
+
+  const addRow = (
+    <div style={{ marginTop: 10 }}>
+      <Row style={{ gap: 6 }}>
+        <input
+          value={draft}
+          onChange={e => { setDraft(e.target.value); setErr(''); }}
+          onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') { setAdding(false); setErr(''); } }}
+          placeholder="Supplier name (e.g. Coastal Refrigeration)"
+          autoFocus
+          style={{
+            flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text,
+            borderRadius: 6, padding: '8px 10px', fontSize: 12, outline: 'none',
+            fontFamily: "'DM Sans', sans-serif", boxSizing: 'border-box',
+          }}
+        />
+        <Btn size="sm" onClick={commitAdd}>Add</Btn>
+        <Btn size="sm" variant="surface" onClick={() => { setAdding(false); setErr(''); setDraft(''); }}>Cancel</Btn>
+      </Row>
+      {err && <div style={{ fontSize: 11, color: colors.yellow, marginTop: 6 }}>{err}</div>}
+    </div>
+  );
 
   if (compact) {
     return (
-      <select
-        value={current}
-        onChange={e => handleSelect(e.target.value)}
-        style={{
-          background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text,
-          borderRadius: 6, padding: '5px 8px', fontSize: 11, cursor: 'pointer', outline: 'none',
-        }}
-      >
-        {SUPPLIERS.map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
+      <div>
+        <select
+          value={current}
+          onChange={e => handleSelect(e.target.value)}
+          style={{
+            background: colors.surface, border: `1px solid ${colors.border}`, color: colors.text,
+            borderRadius: 6, padding: '5px 8px', fontSize: 11, cursor: 'pointer', outline: 'none',
+          }}
+        >
+          {options.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value={ADD_SENTINEL}>＋ Add supplier…</option>
+        </select>
+        {adding && addRow}
+      </div>
     );
   }
 
@@ -121,29 +173,53 @@ export function SupplierSwitcher({ value, onChange, compact = false }) {
       <Row style={{ justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <SLabel>Preferred Supplier</SLabel>
         {!isGlobalDefault && (
-          <button onClick={makeDefault} style={{ background: 'transparent', border: `1px solid ${colors.green}`, color: colors.green, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={() => saveDefaultSupplier(current)} style={{ background: 'transparent', border: `1px solid ${colors.green}`, color: colors.green, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
             ⭐ Set as Default for All Jobs
           </button>
         )}
       </Row>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-        {SUPPLIERS.map(s => (
-          <button
-            key={s}
-            onClick={() => handleSelect(s)}
-            style={{
-              padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
-              border: `2px solid ${current === s ? colors.green : colors.border}`,
-              background: current === s ? colors.greenFaint : colors.card2,
-              color: current === s ? colors.green : colors.textDim,
-            }}
-          >
-            {s}{s === globalDefault ? ' ⭐' : ''}
-          </button>
-        ))}
+        {options.map(s => {
+          const isCustom = custom.some(c => c === s);
+          return (
+            <div key={s} style={{ position: 'relative' }}>
+              <button
+                onClick={() => handleSelect(s)}
+                style={{
+                  width: '100%', padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  border: `2px solid ${current === s ? colors.green : colors.border}`,
+                  background: current === s ? colors.greenFaint : colors.card2,
+                  color: current === s ? colors.green : colors.textDim,
+                }}
+              >
+                {s}{s === globalDefault ? ' ⭐' : ''}
+              </button>
+              {isCustom && (
+                <button
+                  onClick={() => handleRemove(s)}
+                  title={`Remove ${s}`}
+                  style={{
+                    position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%',
+                    border: `1px solid ${colors.border2}`, background: colors.card, color: colors.textDim,
+                    fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0,
+                  }}
+                >×</button>
+              )}
+            </div>
+          );
+        })}
+        <button
+          onClick={() => { setAdding(true); setErr(''); }}
+          style={{
+            padding: '10px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            border: `2px dashed ${colors.border2}`, background: 'transparent', color: colors.textDim,
+          }}
+        >＋ Add</button>
       </div>
+      {adding && addRow}
       <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10 }}>
         ⭐ marks your global default. Picking a different supplier here only changes it for this job.
+        Suppliers you add are saved for every job on this device.
       </div>
     </Card>
   );
