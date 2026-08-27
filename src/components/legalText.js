@@ -39,15 +39,15 @@
 // Coldgauge LLC, so the entity and its governing law are the same on every
 // install and belong in code.
 //
-// Contact email and mailing address are deliberately left empty rather than
-// defaulted. The email does not exist yet, and the address is a decision with a
-// privacy consequence — whatever goes here is published on a public web page,
-// which is a different exposure from a state filing. A profile value always
-// overrides, so a self-hosted or white-labelled install can still set its own.
+// The mailing address is deliberately still empty. Whatever goes there is
+// published on a public web page, which is a different exposure from a state
+// filing, and it is the operator's decision rather than a default. A profile
+// value always overrides any of these, so a self-hosted or white-labelled
+// install can still set its own.
 export const LEGAL_DEFAULTS = {
   company: 'Coldgauge LLC',
   state: 'Virginia',
-  contact: '',
+  contact: 'support@coldgauge.com',
   address: '',
 };
 
