@@ -41,10 +41,18 @@ export function SLabel({ children, style }) {
   return <div style={{ ...slabel, ...style }}>{children}</div>;
 }
 
+// This app is used on an iPad, and an estimate is mostly numbers. A bare
+// type="number" opens the full QWERTY keyboard with a number row; inputMode
+// "decimal" opens the large numeric keypad, which is what you want when you are
+// entering three hundred lengths and prices with your thumbs on a job site.
+// Callers can still override by passing inputMode explicitly.
+const numericProps = type => (type === 'number' ? { inputMode: 'decimal' } : null);
+
 export function Input({ value, onChange, placeholder, type = 'text', style, ...props }) {
   return (
     <input
       type={type}
+      {...numericProps(type)}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
@@ -184,6 +192,7 @@ export function TblInput({ value, onChange, type = 'text', style, ...props }) {
   return (
     <input
       type={type}
+      {...numericProps(type)}
       value={value ?? ''}
       onChange={onChange}
       style={{

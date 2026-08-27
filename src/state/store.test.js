@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  saveJob, getLastSaveError,
+  saveJob, getLastSaveError, deleteJob,
   normalizePipeSize, pipeSizeBucket,
   calcLaborPeriodCost, calcRackTaskCost, calcRackLaborTotal,
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
@@ -589,5 +589,53 @@ describe('warning when the two rules disagree', () => {
     expect(otRuleConflict(crew(10), { daysPerWeek: 4 })).toBeNull();
     expect(otRuleConflict(crew(10), { otAfterHours: 8 })).toBeNull();
     expect(otRuleConflict([], { daysPerWeek: 4, otAfterHours: 8 })).toBeNull();
+  });
+});
+
+// ── DELETING A JOB WHEN STORAGE IS UNAVAILABLE ───────────────────────────────
+// The quota error tells the user to delete old jobs to recover. If delete
+// itself throws, the documented way out of a full-storage error is broken.
+describe('deleteJob survives a browser that cannot write', () => {
+  const realLocalStorage = globalThis.localStorage;
+
+  function withStorage(impl, fn) {
+    Object.defineProperty(globalThis, 'localStorage', { value: impl, configurable: true });
+    try { return fn(); }
+    finally { Object.defineProperty(globalThis, 'localStorage', { value: realLocalStorage, configurable: true }); }
+  }
+
+  it('returns false instead of throwing when the write fails', () => {
+    const blocked = {
+      getItem: () => '{"j1":{"id":"j1"}}',
+      setItem: () => { throw new Error('storage disabled'); },
+    };
+    withStorage(blocked, () => {
+      expect(() => deleteJob('j1')).not.toThrow();
+      expect(deleteJob('j1')).toBe(false);
+    });
+  });
+
+  it('reports the failure so the UI can say something true', () => {
+    const blocked = {
+      getItem: () => '{}',
+      setItem: () => { throw new Error('storage disabled'); },
+    };
+    withStorage(blocked, () => {
+      deleteJob('j1');
+      expect(getLastSaveError()).toMatch(/Delete failed/);
+    });
+  });
+
+  it('deletes and reports success on a working browser', () => {
+    const data = { jobs: '{"j1":{"id":"j1"},"j2":{"id":"j2"}}' };
+    const ok = {
+      getItem: () => data.jobs,
+      setItem: (_k, v) => { data.jobs = v; },
+    };
+    withStorage(ok, () => {
+      expect(deleteJob('j1')).toBe(true);
+      expect(JSON.parse(data.jobs)).toEqual({ j2: { id: 'j2' } });
+      expect(getLastSaveError()).toBe('');
+    });
   });
 });
