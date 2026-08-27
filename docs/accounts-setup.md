@@ -15,6 +15,13 @@ Payments are a separate, later phase — this is accounts + sync only.
    (The anon key is safe to ship to the browser — row-level security below is
    what isolates each user's data.)
 
+**Security settings at project creation.** Keep **Enable Data API** on —
+`supabase-js` needs it. Turn **Automatically expose new tables** OFF, so no
+table is reachable through the API until it is granted explicitly (the SQL
+below does that for `jobs`). Turn **Enable automatic RLS** ON: without RLS the
+anon key can read every row of a table, and this forces it onto anything added
+later when nobody is thinking about it.
+
 ## 2. Create the jobs table + row-level security
 
 Supabase → **SQL Editor** → run this:
@@ -42,7 +49,18 @@ create policy "own jobs — update" on public.jobs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own jobs — delete" on public.jobs
   for delete using (auth.uid() = user_id);
+
+-- Reachability. With "Automatically expose new tables" turned OFF at project
+-- creation (recommended), a new table is NOT reachable through the Data API
+-- until it is granted. Only `authenticated` is granted: every cloud call the
+-- app makes carries a user, so `anon` needs nothing and is deliberately left
+-- with no access at all.
+grant select, insert, update, delete on public.jobs to authenticated;
 ```
+
+> If you left "Automatically expose new tables" ON, the grant above is a no-op
+> and costs nothing. If you turned it OFF, skipping it produces a permission
+> error from the app that reads like a broken login rather than a missing grant.
 
 > The client upserts on `id`; the table's primary key is `(user_id, id)` so two
 > different users can't collide and RLS still scopes every row to its owner.
