@@ -202,7 +202,7 @@ export function scanRcFirstCaseNight(text) {
 // This replaces the AI's per-task schedule read, which drops items in the middle
 // of a long schedule and leaves gaps. Store/GC/EC lines are excluded; the store's
 // "remove product and wash cases" prep is not RC work.
-const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*(?:and|&)\s*install\s*:|^\s*-?\s*deliver\s*\/\s*install\s*:|^\s*-?\s*deliver[^.\n]{0,60}\brc\b|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
+const RC_SECTION_RE = /^\s*-?\s*(?:remove|relocate)\s*(?:\s+and\s+(?:install|set|reinstall))?\s*:|^\s*-?\s*relocate\s*:\s*\(?\s*temp|disconnect[^.\n]{0,20}relocat|^\s*-?\s*deliver\s*(?:and|&)\s*install\s*:|^\s*-?\s*deliver\s*\/\s*install\s*:|^\s*-?\s*deliver[^.\n]{0,60}\brc\b|refrigeration contractor[^.\n]{0,30}\b(?:remove|relocat|temp|install)|temp\s*set/i;
 const NON_RC_SECTION_RE = /^\s*-?\s*(?:general contractor|electrical contractor|plumbing contractor|hard tile|soft tile|store associates|market specialist|produce specialist|sas |these items|new note|note\s*:|deli\s*\/\s*bakery|reminder|vendor|energy)/i;
 // Equipment-count lines ("(1) Deli cooler evap") count as section content too —
 // store 701's "Deliver and Hold for RC to schedule install: (RC to move to
@@ -237,6 +237,33 @@ const HEADER_START_RE = /^\s*-?\s*(?:sun|mon|tues|wednes|thurs|fri|satur)day\b/i
 // spelled-out form are both used across real schedules.
 const RC_INLINE_RE = /^\s*-?\s*(?:rc|refrigeration contractor)\b[^.\n]{0,8}\b(?:to|is\s+to|will|shall)\b/i;
 
+// ── THE SHIFT PREFIX ─────────────────────────────────────────────────────────
+// Grocery reset schedules mark the shift on the TASK, not on the date header:
+//
+//     Monday 6/17
+//       RC to set Case 10 in backroom          ← captured
+//     Tuesday 6/18
+//       Day- Specialist to be onsite to reset available cases
+//       Night- RC to complete install          ← MISSED
+//
+// Every pattern above anchors at start of line, so an unstripped "Night- " made
+// the RC task invisible and the whole date vanished from the schedule. On store
+// 1086 that dropped four of nine RC days — and the dropped ones were the NIGHT
+// days, which are the premium-rate half of a grocery remodel. The schedule read
+// low in the one direction that costs money.
+//
+// So the shift is stripped before matching and kept as data: a date is a night
+// date if its header says so OR any RC task on it is marked night.
+const SHIFT_PREFIX_RE = /^\s*-?\s*(?:day|night|1st\s*shift|2nd\s*shift|3rd\s*shift)\s*[-–—:]\s*/i;
+
+export const stripShift = line => String(line || '').replace(SHIFT_PREFIX_RE, '');
+
+export function shiftOf(line) {
+  const m = SHIFT_PREFIX_RE.exec(String(line || ''));
+  if (!m) return '';
+  return /night|2nd|3rd/i.test(m[0]) ? 'night' : 'day';
+}
+
 export function extractRcSchedule(text) {
   const lines = String(text || '').split(/\r?\n/);
   const nights = [];
@@ -254,23 +281,27 @@ export function extractRcSchedule(text) {
       if (date) { cur = { date, header: line.replace(/\s+/g, ' '), week: extractWeekNum(line) || curWeek, isNight: /\(night\)/i.test(line), groups: [] }; action = null; nights.push(cur); continue; }
     }
     if (!cur) continue;
-    if (NON_RC_SECTION_RE.test(line)) { action = null; continue; }
+    // Match on the body with any "Day- "/"Night- " marker removed; the label
+    // keeps the original line, because "Night-" is worth seeing on the task.
+    const body = stripShift(line);
+    const shift = shiftOf(line);
+    if (NON_RC_SECTION_RE.test(body)) { action = null; continue; }
     // RC action SECTION header — cases are listed on the FOLLOWING lines. Covers
     // "Refrigeration Contractor to remove:" and 1086's "RC to accept and install:"
     // (any RC line ending in a colon introduces a case list). Checked before the
     // inline case so a section header isn't swallowed as one task.
-    if (RC_SECTION_RE.test(line) || (RC_INLINE_RE.test(line) && /:\s*(?:\([^)]*\))?\s*$/.test(line))) {
-      action = { label: line.replace(/\s*:\s*$/, '').replace(/^-\s*/, '').trim(), cases: [] };
+    if (RC_SECTION_RE.test(body) || (RC_INLINE_RE.test(body) && /:\s*(?:\([^)]*\))?\s*$/.test(body))) {
+      action = { label: line.replace(/\s*:\s*$/, '').replace(/^-\s*/, '').trim(), cases: [], shift };
       cur.groups.push(action);
-      if (/temp cases? out/i.test(line) && CASE_CONTENT_RE.test(line)) action.cases.push(line);
+      if (/temp cases? out/i.test(body) && CASE_CONTENT_RE.test(body)) action.cases.push(line);
       continue;
     }
     // Inline RC task, cases named on the same line ("RC to accept and install
     // N74/75- 24' DX6LN", "RC to remove 1,2,3 and 8") — one complete task.
-    if (RC_INLINE_RE.test(line)) {
-      cur.groups.push({ label: line.replace(/^-\s*/, '').trim(), cases: [], inline: true }); action = null; continue;
+    if (RC_INLINE_RE.test(body)) {
+      cur.groups.push({ label: line.replace(/^-\s*/, '').trim(), cases: [], inline: true, shift }); action = null; continue;
     }
-    if (action && CASE_CONTENT_RE.test(line)) action.cases.push(line);
+    if (action && CASE_CONTENT_RE.test(body)) action.cases.push(line);
   }
   const groupText = g => `${g.label} ${g.cases.join(' ')}`;
   // Explicit "RC to…" inline lines are RC by definition; section groups that
@@ -284,7 +315,10 @@ export function extractRcSchedule(text) {
     .map(n => {
       const tasks = n.groups.filter(usable).map(g => (g.inline || !g.cases.length) ? g.label : `${g.label}: ${g.cases.join('; ')}`);
       const blob = (n.header + ' ' + tasks.join(' ')).toLowerCase();
-      return { date: n.date, header: n.header, week: n.week, isNight: n.isNight, frozen: /\bfrozen\b|ice\s*cream/.test(blob), tasks };
+      // Night work is priced differently, so a night task on a day-headed date
+      // still makes the date a night date.
+      const anyNight = n.groups.filter(usable).some(g => g.shift === 'night');
+      return { date: n.date, header: n.header, week: n.week, isNight: n.isNight || anyNight, frozen: /\bfrozen\b|ice\s*cream/.test(blob), tasks };
     });
 }
 
