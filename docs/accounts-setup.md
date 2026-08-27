@@ -54,7 +54,24 @@ production (users get a confirm link before they can sign in), or turn it off fo
 faster pilot testing. The app handles both: if confirmation is required, sign-up
 shows "check your email," otherwise it signs the user straight in.
 
-## 4. Set the env vars
+## 4. Point auth at the right domain
+
+Supabase → **Authentication → URL Configuration**:
+
+| Field | Value |
+|---|---|
+| **Site URL** | `https://coldgauge.com` |
+| **Redirect URLs** | `https://coldgauge.com/**`, plus `http://localhost:5173/**` for dev |
+
+This is easy to skip and annoying to debug. The Site URL is what Supabase builds
+confirmation and password-reset links from. Leave it on the default and a new
+user gets a confirmation email pointing at a URL that isn't your site — the link
+appears broken, and it looks like the signup failed rather than like a setting
+being wrong.
+
+Add the `www` form too if you keep `www.coldgauge.com` as the primary.
+
+## 5. Set the env vars
 
 **Vercel** → Project → Settings → Environment Variables (Production + Preview):
 
@@ -91,3 +108,8 @@ mirrors it to the cloud.
   sync. Easy to add to the same table pattern later.
 - **Password reset UI** — Supabase sends reset emails; a reset screen is a small
   follow-up.
+- **Terms acceptance is per-browser** — `TermsGate` records the accepted version
+  in localStorage. Once accounts exist, acceptance should ALSO be written
+  server-side against the user at signup: local storage is the right mechanism
+  for a local-only app, but a record the user can clear is not durable evidence
+  of agreement, which is the whole reason the gate exists.
