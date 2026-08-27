@@ -39,16 +39,20 @@
 // Coldgauge LLC, so the entity and its governing law are the same on every
 // install and belong in code.
 //
-// The mailing address is deliberately still empty. Whatever goes there is
-// published on a public web page, which is a different exposure from a state
-// filing, and it is the operator's decision rather than a default. A profile
-// value always overrides any of these, so a self-hosted or white-labelled
+// All four are now set, so the documents publish clean and legalReady() is
+// true. The mailing address was a deliberate decision rather than a default:
+// it is published on a public web page, which is a wider exposure than the
+// state filing it also appears in. LEGAL_PLACEHOLDERS stays as the fallback —
+// if any default is ever emptied, the reader shows a bracketed prompt rather
+// than a blank, because a policy with a hole in it should look like one.
+//
+// A profile value overrides any of these, so a self-hosted or white-labelled
 // install can still set its own.
 export const LEGAL_DEFAULTS = {
   company: 'Coldgauge LLC',
   state: 'Virginia',
   contact: 'support@coldgauge.com',
-  address: '',
+  address: '132 Scotland Dr, Lexington, VA 24450',
 };
 
 export const LEGAL_PLACEHOLDERS = {
