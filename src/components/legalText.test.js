@@ -16,8 +16,10 @@ describe('the four facts only the operator knows', () => {
   it('reports every one that is still blank', () => {
     // Entity and governing law now ship as code defaults (see LEGAL_DEFAULTS),
     // so only the two that genuinely have no value are gaps.
-    expect(legalGaps({}).sort()).toEqual(['address']);
-    expect(legalReady({})).toBe(false);
+    // All four operator details now ship as code defaults, so nothing is
+    // outstanding and the ⚠ on the Terms · Privacy link clears.
+    expect(legalGaps({})).toEqual([]);
+    expect(legalReady({})).toBe(true);
   });
 
   it('is ready once all four are filled', () => {
@@ -25,8 +27,11 @@ describe('the four facts only the operator knows', () => {
     expect(legalReady(FILLED)).toBe(true);
   });
 
-  it('treats whitespace as blank — a space is not a mailing address', () => {
-    expect(legalGaps({ ...FILLED, legal_address: '   ' })).toEqual(['address']);
+  it('a whitespace-only profile value falls back to the default, not a blank', () => {
+    // A space is not an address. With a default behind it, the document still
+    // reads correctly rather than printing nothing.
+    expect(legalGaps({ ...FILLED, legal_address: '   ' })).toEqual([]);
+    expect(text(privacySections({ legal_address: '   ' }))).toContain('Lexington');
   });
 
   it('every field has a label and a reason it is needed', () => {
@@ -45,9 +50,14 @@ describe('the four facts only the operator knows', () => {
     for (const p of Object.values(LEGAL_PLACEHOLDERS)) expect(all).not.toContain(p);
   });
 
-  it('shows the placeholder when unfilled, rather than an empty gap', () => {
-    // "[mailing address]" tells the operator to finish it; a blank hides it.
-    expect(text(privacySections({}))).toContain(LEGAL_PLACEHOLDERS.address);
+  it('the SHIPPED documents contain no bracketed placeholder anywhere', () => {
+    // The invariant that actually matters now. A published policy reading
+    // "[mailing address]" says nobody read it before putting it live.
+    const all = text(termsSections({})) + ' ' + text(privacySections({}));
+    for (const ph of Object.values(LEGAL_PLACEHOLDERS)) {
+      expect(all).not.toContain(ph);
+    }
+    expect(all).not.toMatch(/\[[^\]]{3,40}\]/);
   });
 });
 
@@ -191,16 +201,26 @@ describe('the operator is baked in', () => {
     expect(terms).toContain('support@coldgauge.com');
   });
 
-  it('but the mailing address DOES still count as a gap', () => {
-    // It must keep warning. A published policy with a bracketed address is
-    // worse than one that admits it is not ready.
-    expect(legalGaps({})).toEqual(['address']);
-    expect(legalReady({})).toBe(false);
+  it('the mailing address is published in both documents', () => {
+    const all = termsSections({}).map(([, b]) => b).join(' ')
+      + ' ' + privacySections({}).map(([, b]) => b).join(' ');
+    expect(all).toContain('Lexington, VA 24450');
   });
 
-  it('is ready once the address is filled', () => {
-    const p = { legal_address: '1 Main St, Lexington, VA 24450' };
-    expect(legalGaps(p)).toEqual([]);
-    expect(legalReady(p)).toBe(true);
+  it('the gap warning is gone — nothing is outstanding', () => {
+    expect(legalGaps({})).toEqual([]);
+    expect(legalReady({})).toBe(true);
+  });
+
+  it('an operator can still override every one of them', () => {
+    const p = {
+      legal_company: 'Acme LLC', legal_state: 'Texas',
+      legal_contact: 'a@b.com', legal_address: '9 Elm St, Austin, TX 78701',
+    };
+    const all = text(termsSections(p)) + ' ' + text(privacySections(p));
+    expect(all).toContain('Acme LLC');
+    expect(all).toContain('Texas');
+    expect(all).not.toContain('Coldgauge LLC');
+    expect(all).not.toContain('Lexington');
   });
 });
