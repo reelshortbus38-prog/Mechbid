@@ -16,7 +16,7 @@ describe('the four facts only the operator knows', () => {
   it('reports every one that is still blank', () => {
     // Entity and governing law now ship as code defaults (see LEGAL_DEFAULTS),
     // so only the two that genuinely have no value are gaps.
-    expect(legalGaps({}).sort()).toEqual(['address', 'contact']);
+    expect(legalGaps({}).sort()).toEqual(['address']);
     expect(legalReady({})).toBe(false);
   });
 
@@ -25,8 +25,8 @@ describe('the four facts only the operator knows', () => {
     expect(legalReady(FILLED)).toBe(true);
   });
 
-  it('treats whitespace as blank — a space is not a contact address', () => {
-    expect(legalGaps({ ...FILLED, legal_contact: '   ' })).toEqual(['contact']);
+  it('treats whitespace as blank — a space is not a mailing address', () => {
+    expect(legalGaps({ ...FILLED, legal_address: '   ' })).toEqual(['address']);
   });
 
   it('every field has a label and a reason it is needed', () => {
@@ -46,8 +46,8 @@ describe('the four facts only the operator knows', () => {
   });
 
   it('shows the placeholder when unfilled, rather than an empty gap', () => {
-    // "[contact email]" tells the operator to finish it; a blank hides it.
-    expect(text(termsSections({}))).toContain(LEGAL_PLACEHOLDERS.contact);
+    // "[mailing address]" tells the operator to finish it; a blank hides it.
+    expect(text(privacySections({}))).toContain(LEGAL_PLACEHOLDERS.address);
   });
 });
 
@@ -186,15 +186,20 @@ describe('the operator is baked in', () => {
     expect(legalGaps({})).not.toContain('state');
   });
 
-  it('but contact and address DO — they are still genuinely unset', () => {
-    // These must keep warning. A published policy with a bracketed contact
-    // address is worse than one that admits it is not ready.
-    expect(legalGaps({})).toEqual(['contact', 'address']);
+  it('the contact address is the live forwarding address', () => {
+    const terms = termsSections({}).map(([, b]) => b).join(' ');
+    expect(terms).toContain('support@coldgauge.com');
+  });
+
+  it('but the mailing address DOES still count as a gap', () => {
+    // It must keep warning. A published policy with a bracketed address is
+    // worse than one that admits it is not ready.
+    expect(legalGaps({})).toEqual(['address']);
     expect(legalReady({})).toBe(false);
   });
 
-  it('is ready once those two are filled', () => {
-    const p = { legal_contact: 'support@coldgauge.com', legal_address: '1 Main St, Lexington, VA 24450' };
+  it('is ready once the address is filled', () => {
+    const p = { legal_address: '1 Main St, Lexington, VA 24450' };
     expect(legalGaps(p)).toEqual([]);
     expect(legalReady(p)).toBe(true);
   });
