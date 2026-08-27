@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { anchorMonth, buildDateParser, formatSpan, extractWeekNum, extractMonthDay, maxWeekNumber,
-  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
+  scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, shiftOf, stripShift, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from './scheduleDates.js';
 
 // Guards the project-span calculation. A real store-812 schedule (Sep 16 →
 // Mar 22, crossing into Jan/Feb/Mar) showed "Jan – Nov" because the old code
@@ -262,5 +262,109 @@ describe('schedule date span (year-wrap)', () => {
   it('empty/undated schedule does not throw', () => {
     expect(anchorMonth([])).toBe(0);
     expect(buildDateParser([])({ })).toBe(null);
+  });
+});
+
+// ── THE SHIFT PREFIX ─────────────────────────────────────────────────────────
+// Store 1086's schedule marks the shift on the TASK, not the date header:
+//
+//     Tuesday 6/18
+//       Day- Specialist to be onsite to reset available cases
+//       Night- RC to complete install
+//
+// Every RC pattern anchors at start of line, so "Night- " made the RC task
+// invisible and the whole date vanished. On this job that dropped 3 of 8 RC
+// days — and every dropped one was a NIGHT day, the premium-rate half of a
+// grocery remodel. The schedule read low in the direction that costs money.
+describe('a shift marker does not hide the task behind it', () => {
+  const doc = [
+    'Week 8 Deli Cases',
+    'Monday 6/17',
+    'RC to set Case 10 in backroom',
+    'RC to remove Case 7 and GC to salvage',
+    'Tuesday 6/18',
+    'Day- Specialist to be onsite to reset available cases',
+    'Night- RC to complete install',
+    'Wednesday 6/19',
+    'Day- Specialist to be onsite to reset remaining cases',
+    "Night- RC to accept and install N71/N79- 21' HMS Island",
+    'Week 9 Produce Cases',
+    'Monday 6/24',
+    'RC to remove 13 and 14.  GC to salvage',
+    'Tuesday 6/25',
+    'Day- Specialist to reset Cases 10, 11, 12 and N82',
+    'Night- Relocate and install:',
+    "Cases 15 and 16- 16' DX6LN",
+    'N83',
+  ].join('\n');
+
+  const s = extractRcSchedule(doc);
+  const dates = s.map(n => n.date);
+
+  it('captures the night RC work that used to disappear', () => {
+    expect(dates).toContain('Jun 18');
+    expect(dates).toContain('Jun 19');
+  });
+
+  it('still captures the day work it always did', () => {
+    expect(dates).toContain('Jun 17');
+    expect(dates).toContain('Jun 24');
+  });
+
+  it('reads a "Relocate and install:" section under a Night marker', () => {
+    const n = s.find(x => x.date === 'Jun 25');
+    expect(n).toBeTruthy();
+    expect(n.tasks.join(' ')).toContain('Cases 15 and 16');
+    expect(n.tasks.join(' ')).toContain('N83');
+  });
+
+  it('marks those dates as NIGHT even though the header does not say so', () => {
+    // Night work prices differently. A night task on a day-headed date still
+    // makes the date a night date.
+    for (const d of ['Jun 18', 'Jun 19', 'Jun 25']) {
+      expect(s.find(x => x.date === d).isNight).toBe(true);
+    }
+  });
+
+  it('does not mark the pure day dates as night', () => {
+    expect(s.find(x => x.date === 'Jun 17').isNight).toBe(false);
+    expect(s.find(x => x.date === 'Jun 24').isNight).toBe(false);
+  });
+
+  it('keeps "Night-" visible on the task, so the estimator can see it', () => {
+    expect(s.find(x => x.date === 'Jun 18').tasks[0]).toMatch(/^Night-/);
+  });
+
+  it('does NOT treat the Specialist as the refrigeration contractor', () => {
+    // 6/18 names both on the same day — "Day- Specialist to be onsite" and
+    // "Night- RC to complete install". They are different parties, and pulling
+    // Specialist resets into the RC schedule would overstate RC days.
+    const n = s.find(x => x.date === 'Jun 18');
+    expect(n.tasks.join(' ')).not.toMatch(/Specialist/i);
+  });
+});
+
+describe('shiftOf / stripShift', () => {
+  it('reads the shift off a task line', () => {
+    expect(shiftOf('Night- RC to complete install')).toBe('night');
+    expect(shiftOf('Day- Specialist to reset')).toBe('day');
+    expect(shiftOf('RC to remove 13 and 14')).toBe('');
+  });
+
+  it('handles the punctuation variants schedules actually use', () => {
+    expect(shiftOf('Night: RC to install')).toBe('night');
+    expect(shiftOf('Night — RC to install')).toBe('night');
+    expect(shiftOf('2nd Shift- RC to install')).toBe('night');
+  });
+
+  it('strips the marker without eating the task', () => {
+    expect(stripShift('Night- RC to complete install')).toBe('RC to complete install');
+    expect(stripShift('RC to remove 13 and 14')).toBe('RC to remove 13 and 14');
+  });
+
+  it('does not mistake a word merely starting with "day" for a shift marker', () => {
+    // "Daytona", "Dayton Rack" — the marker needs its trailing separator.
+    expect(shiftOf('Dayton Rack to be replaced')).toBe('');
+    expect(stripShift('Dayton Rack to be replaced')).toBe('Dayton Rack to be replaced');
   });
 });
