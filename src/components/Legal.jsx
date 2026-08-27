@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { colors } from '../styles/theme.js';
 import { loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
+import { loadAcceptance, acceptedOn } from './termsAcceptance.js';
 import {
   termsSections, privacySections, LEGAL_FIELDS, legalGaps, legalReady, LAST_UPDATED,
 } from './legalText.js';
@@ -82,6 +83,10 @@ export default function Legal() {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(() => loadCompanyProfile());
   const ready = legalReady(profile);
+  // What this browser agreed to, and when. Shown so the record is inspectable
+  // rather than only existing in storage.
+  const acceptance = (() => { try { return loadAcceptance(localStorage); } catch { return null; } })();
+  const acceptedDate = acceptedOn(acceptance);
 
   return (
     <>
@@ -113,7 +118,10 @@ export default function Legal() {
             <Section title="Privacy Policy" items={privacySections(profile)} />
             <div style={{ height: 1, background: colors.border, margin: '6px 0 18px' }} />
             <Section title="Terms of Service" items={termsSections(profile)} />
-            <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8 }}>Last updated: {LAST_UPDATED}</div>
+            <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8 }}>
+              Last updated: {LAST_UPDATED}
+              {acceptedDate && <> · You accepted version {acceptance.version} on {acceptedDate}</>}
+            </div>
           </div>
         </div>
       )}
