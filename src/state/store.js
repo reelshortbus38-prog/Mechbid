@@ -1,4 +1,5 @@
 import { pipeDefaultPrice } from '../components/pipePricing.js';
+import { touchShopKey } from '../lib/shopSync.js';
 import { createContext, useContext, useReducer } from 'react';
 
 // ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
@@ -603,7 +604,7 @@ export function loadCompanyProfile() {
 }
 
 export function saveCompanyProfile(profile) {
-  try { localStorage.setItem(COMPANY_KEY, JSON.stringify(profile || {})); }
+  try { localStorage.setItem(COMPANY_KEY, JSON.stringify(profile || {})); touchShopKey(localStorage, COMPANY_KEY); }
   catch (e) { console.warn('Company profile save failed:', e); }
 }
 

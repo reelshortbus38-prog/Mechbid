@@ -16,6 +16,7 @@
 // was priced against. displaySuppliers() exists for exactly that.
 //
 // Pure — no React, store injected so it is testable without a browser.
+import { touchShopKey } from '../lib/shopSync.js';
 
 export const BUILTIN_SUPPLIERS = [
   'RE Michel', 'URI', 'Johnstone', 'Ferguson', 'Wesco',
@@ -50,6 +51,7 @@ export function loadCustomSuppliers(store) {
 export function saveCustomSuppliers(store, list) {
   try {
     store.setItem(CUSTOM_SUPPLIER_KEY, JSON.stringify(list));
+    touchShopKey(store, CUSTOM_SUPPLIER_KEY);
     return true;
   } catch {
     return false;
