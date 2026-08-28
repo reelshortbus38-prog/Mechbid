@@ -6,6 +6,7 @@ import {
   BUILTIN_SUPPLIERS, loadCustomSuppliers, displaySuppliers,
   addCustomSupplier, removeCustomSupplier,
 } from './suppliers.js';
+import { touchShopKey } from '../lib/shopSync.js';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
 const SUPPLIER_DEFAULT_KEY = 'coldgauge_default_supplier_v1';
@@ -24,6 +25,7 @@ export function loadDefaultSupplier() {
 export function saveDefaultSupplier(supplier) {
   try {
     localStorage.setItem(SUPPLIER_DEFAULT_KEY, supplier);
+    touchShopKey(localStorage, SUPPLIER_DEFAULT_KEY);
     return true;
   } catch (e) {
     console.warn('Default supplier save failed:', e);
@@ -47,6 +49,7 @@ export function loadPriceBook() {
 export function savePriceBook(entries) {
   try {
     localStorage.setItem(PRICEBOOK_KEY, JSON.stringify(entries));
+    touchShopKey(localStorage, PRICEBOOK_KEY);
     return true;
   } catch (e) {
     console.warn('Price book save failed:', e);

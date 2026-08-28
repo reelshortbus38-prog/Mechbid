@@ -56,6 +56,32 @@ create policy "own jobs — delete" on public.jobs
 -- app makes carries a user, so `anon` needs nothing and is deliberately left
 -- with no access at all.
 grant select, insert, update, delete on public.jobs to authenticated;
+
+-- Shop settings: the price book, company profile, default supplier and custom
+-- supplier list. ONE row per user holding a per-key { value, at } map, so two
+-- devices editing DIFFERENT settings both keep their work.
+--
+-- This matters more than the jobs table. A job can be re-entered from the
+-- drawings in an afternoon; a tuned price book is months of small corrections
+-- that exist nowhere else.
+create table if not exists public.shop_settings (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  data        jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.shop_settings enable row level security;
+
+create policy "own shop settings — select" on public.shop_settings
+  for select using (auth.uid() = user_id);
+create policy "own shop settings — insert" on public.shop_settings
+  for insert with check (auth.uid() = user_id);
+create policy "own shop settings — update" on public.shop_settings
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own shop settings — delete" on public.shop_settings
+  for delete using (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.shop_settings to authenticated;
 ```
 
 > If you left "Automatically expose new tables" ON, the grant above is a no-op
@@ -108,6 +134,12 @@ mirrors it to the cloud.
 
 ## How the sync behaves
 
+- **Two things sync, independently.** Jobs (the `jobs` table, one row each) and
+  shop settings (the `shop_settings` table, one row per user). They are pulled
+  separately on login so a failure in one cannot stop the other landing.
+- **Shop settings merge PER KEY, not as one blob.** Edit the price book on the
+  iPad and add a supplier on a laptop, and both survive. A whole-blob
+  newest-wins would silently drop one.
 - **localStorage stays the source of truth the UI reads** — the app never blocks
   on the network, and works offline. The cloud is a background mirror + backup.
 - **On sign-in** (or opening the app on a new device with a session): pull the
@@ -122,8 +154,6 @@ mirrors it to the cloud.
 ## What's NOT here yet
 
 - **Payments / subscriptions** — the next phase (Stripe), gated on this landing.
-- **Price-book / company-profile sync** — still per-browser for now; only jobs
-  sync. Easy to add to the same table pattern later.
 - **Password reset UI** — Supabase sends reset emails; a reset screen is a small
   follow-up.
 - **Terms acceptance is per-browser** — `TermsGate` records the accepted version
