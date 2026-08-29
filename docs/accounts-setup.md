@@ -132,6 +132,27 @@ browser.)
 Redeploy. The Sign-In button appears, sign-up/login works, and saving a job
 mirrors it to the cloud.
 
+## Closing the app while it is in testing
+
+Two things together make it invitation-only. Either alone is not enough.
+
+**1. Turn off public sign-ups.** Supabase → Authentication → Providers → Email →
+turn **Enable sign ups** OFF. Create each invited account by hand under
+Authentication → **Users → Add user**, and send them the email and password you
+set. Without this, anyone can create their own account.
+
+**2. Set the flag in Vercel.** Add `VITE_INVITE_ONLY=true` (Production and
+Preview), then redeploy. Without this the app still runs local-only for a
+signed-out visitor, so disabling sign-ups blocks nothing.
+
+To open the app up again: delete the env var, redeploy, and re-enable sign-ups.
+No code change.
+
+The gate is deliberately defensive — it will NOT show if the flag is missing or
+misspelt, if Supabase is unconfigured, or while a session is still being
+restored. All three exist so a bad env var cannot lock the owner out of an app
+whose only door is a sign-in form.
+
 ## How the sync behaves
 
 - **Two things sync, independently.** Jobs (the `jobs` table, one row each) and
