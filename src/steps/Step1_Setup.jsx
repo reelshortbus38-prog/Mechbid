@@ -589,6 +589,21 @@ export default function Step1_Setup({ onNext }) {
                 source: fileMeta.name,
               });
             }
+            // Rows the tech marked as changed with the LINE SIZES left clean:
+            // a case going onto pipe that already exists. Not a line run, so
+            // not a circuit — but on 701 three of the five carry N-tags, which
+            // are new cases. Set, connect, evacuate, charge. Real work that
+            // would otherwise leave the takeoff without a word.
+            if ((res.markedNoCopper || []).length) {
+              flags.push({
+                type: 'warn',
+                text: `${res.markedNoCopper.length} circuit(s) are marked as changed but have NO new line sizes — `
+                  + 'work on existing pipe, so no new copper is counted for them: '
+                  + res.markedNoCopper.map(c => c.application || c.circuitId).join('; ')
+                  + '. Check whether these carry new cases to set and connect.',
+                source: fileMeta.name,
+              });
+            }
             if ((res.coilOnly || []).length) {
               flags.push({
                 type: 'info',

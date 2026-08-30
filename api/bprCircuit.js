@@ -28,6 +28,18 @@
 // new. On 701 that is Deli/Bakery 10-12 — suction riser marked, suction and
 // liquid horizontals clear — and it is the one riser-only circuit on the job.
 //
+// ERROR THREE — A MARKED ROW WITH NO NEW COPPER WAS DROPPED IN SILENCE.
+// On 701 five circuits have the case columns highlighted and the line-size
+// cells deliberately left clean: Beer Doors 40-43 N87, Produce Doors N70/N71,
+// Frozen Food 50/51, Frozen Food 66/67, Frozen Bakery 14. Three carry N-tags,
+// which are NEW CASES. The tech was being precise — a new case going onto pipe
+// that already exists is not a new line run — but it is still a case to set,
+// connect, evacuate and charge.
+//
+// Excluding them from the circuit count is right. Excluding them without a word
+// is not: five circuits of case work would leave the takeoff with nothing on
+// screen to say so.
+//
 // CommonJS, matching the Vercel function that uses it.
 
 // New copper, stated as text.
@@ -37,26 +49,44 @@ const NEW_COIL_TEXT = /^NEW$|^New\s+Coil\b/i;
 
 // horizMarked  — suction-horizontal OR liquid-horizontal is highlighted/shaded
 // riserMarked  — the suction-riser cell is highlighted/shaded
-function classifyBprRow({ horizMarked = false, riserMarked = false, heatExchanger = '', allNew = false } = {}) {
-  if (allNew) return { include: true, riserOnly: false, reason: 'new store' };
+// appMarked — the Application cell is highlighted, i.e. the tech marked this
+//              row as changed in some way. Asked separately from the line
+//              sizes, because "this circuit changed" and "this circuit needs
+//              new pipe" are different claims and the sheet distinguishes them.
+function classifyBprRow({
+  horizMarked = false, riserMarked = false, appMarked = false,
+  heatExchanger = '', allNew = false,
+} = {}) {
+  if (allNew) return { include: true, riserOnly: false, category: 'new', reason: 'new store' };
 
   if (horizMarked || riserMarked) {
+    const riserOnly = riserMarked && !horizMarked;
     return {
       include: true,
       // Only the drop is new copper; the horizontal run is already there.
-      riserOnly: riserMarked && !horizMarked,
+      riserOnly,
+      category: riserOnly ? 'riserOnly' : 'new',
       reason: 'highlighted',
     };
   }
 
   const he = String(heatExchanger || '').trim();
   if (NEW_COPPER_TEXT.test(he)) {
-    return { include: true, riserOnly: false, reason: `text: ${he}` };
+    return { include: true, riserOnly: false, category: 'new', reason: `text: ${he}` };
   }
   if (NEW_COIL_TEXT.test(he)) {
-    return { include: false, riserOnly: false, coilOnly: true, reason: 'new heat exchanger only — coil, not copper' };
+    return {
+      include: false, riserOnly: false, category: 'coilOnly', coilOnly: true,
+      reason: 'new heat exchanger only — coil, not copper',
+    };
   }
-  return { include: false, riserOnly: false, reason: '' };
+  if (appMarked) {
+    return {
+      include: false, riserOnly: false, category: 'markedNoCopper', markedNoCopper: true,
+      reason: 'marked as changed, but no line size is marked — work on existing pipe',
+    };
+  }
+  return { include: false, riserOnly: false, category: 'none', reason: '' };
 }
 
 module.exports = { classifyBprRow, NEW_COPPER_TEXT, NEW_COIL_TEXT };
