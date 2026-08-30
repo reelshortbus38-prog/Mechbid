@@ -1,4 +1,5 @@
 const ExcelJS = require('exceljs');
+const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
 const XLSX    = require('xlsx');
 const fetch   = globalThis.fetch || require('node-fetch');
 
@@ -883,6 +884,32 @@ module.exports = async function handler(req, res) {
         }
 
         if(isPartsOrderXls) {
+          // Read it DIRECTLY first. The form's shape does not vary — a header
+          // row, items carrying a quantity, then a legend block of reason codes
+          // and technician names that is not parts. A deterministic read of
+          // that costs nothing, needs no key, cannot be down, and cannot invent
+          // a part that is not on the order. The AI stays as the fallback for a
+          // layout this does not recognise.
+          const directRows = XLSX.utils.sheet_to_json(
+            xlsWbCheck.Sheets[xlsWbCheck.SheetNames[0]], {header:1, defval:''},
+          );
+          const direct = parsePartsOrderForm(directRows);
+          if(direct.ok && direct.items.length) {
+            return res.status(200).json({
+              circuits: [],
+              partsOrderForm: {
+                formType: formTypeOf(directRows, fileName),
+                storeNumber: storeNumberOf(directRows),
+                items: direct.items,
+                summary: `${direct.items.length} line(s), read directly from the form`,
+              },
+              format: 'parts-order-form',
+              storeNumber: storeNumberOf(directRows),
+              aiUsed: false,
+              summary: `${direct.items.length} part(s) found [parts order form] — ${fileName}`
+            });
+          }
+
           const allText = sheetsToTextGeneric(xlsWbCheck, false);
           let partsResult = null;
           let extractError = null;
