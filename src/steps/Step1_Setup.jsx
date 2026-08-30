@@ -565,7 +565,16 @@ export default function Step1_Setup({ onNext }) {
             if (res.storeName && !projName) projName = res.storeName;
             const foundCount = res.circuits?.length || 0;
             const dropped = foundCount - usable.length;
-            newResults.push(`📊 ${fileMeta.name}: ${usable.length} circuit(s) found [${res.format || 'excel'}]`);
+            // Say WHICH engine answered. A number read straight off the sheet
+            // and a number a model inferred deserve different amounts of trust,
+            // and until now they looked identical on screen.
+            const engine = res.aiUsed ? 'AI-extracted — verify' : 'read from the sheet';
+            newResults.push(`📊 ${fileMeta.name}: ${usable.length} circuit(s) found [${res.format || 'excel'} · ${engine}]`);
+            // A sheet plainly full of circuits that produced none. Format-blind:
+            // it does not need to know this layout to know something is wrong.
+            if (res.sanity) {
+              flags.push({ type: 'warn', text: res.sanity.message, source: fileMeta.name });
+            }
             if (dropped > 0) {
               flags.push({ type: 'warn', text: `${fileMeta.name}: ${dropped} row${dropped !== 1 ? 's' : ''} looked like a circuit but had no readable circuit ID, so ${dropped !== 1 ? 'they were' : 'it was'} skipped. The legend's circuit-ID column may be in a layout Coldgauge doesn't recognize yet — send the file so it can be added.`, source: fileMeta.name });
             }
