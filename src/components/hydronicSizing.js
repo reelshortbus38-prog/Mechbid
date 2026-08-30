@@ -52,8 +52,30 @@ export const DEFAULT_FRICTION_TARGET = 2.4;
 // Type L copper inside diameters, the same geometry the volume table uses.
 export const TYPE_L_ID = {
   0.5: 0.545, 0.75: 0.785, 1: 1.025, 1.25: 1.265, 1.5: 1.505,
-  2: 1.985, 2.5: 2.465, 3: 2.945, 4: 3.857,
+  2: 1.985, 2.5: 2.465, 3: 2.945, 4: 3.857, 5: 4.805, 6: 5.741, 8: 7.583,
 };
+
+// ── ABOVE 4 INCHES THE PIPE IS USUALLY STEEL ─────────────────────────────────
+// The table stopped at 4", which carries about 195 GPM. Edmonds College Place
+// runs HWP-01 at 276 GPM and CWP-01 at 455 GPM — ordinary plant flows for a
+// school — so every main on that job was past the end of the table and got no
+// size at all.
+//
+// Returning null there was the honest thing to do and it is still what happens
+// beyond this table. But a hydronic sizing tool that cannot size a 455 GPM main
+// is not finished, so the sizes real plants use are here now.
+//
+// Steel is its own table rather than borrowing copper's. Schedule 40 is
+// meaningfully larger in the bore at these sizes — 6" steel is 6.065" against
+// copper's 5.741" — and using the copper ID for a steel main would undersize
+// the capacity by about 25% at 6", which shows up as a pipe size too big.
+export const SCHEDULE_40_ID = {
+  0.5: 0.622, 0.75: 0.824, 1: 1.049, 1.25: 1.380, 1.5: 1.610,
+  2: 2.067, 2.5: 2.469, 3: 3.068, 4: 4.026, 5: 5.047, 6: 6.065, 8: 7.981,
+};
+
+// Copper is drawn to Type L; steel and PVC to schedule 40 bores.
+export const idTableFor = material => (material === 'steel' || material === 'pvc' ? SCHEDULE_40_ID : TYPE_L_ID);
 
 export const NOMINAL_SIZES = Object.keys(TYPE_L_ID).map(Number).sort((a, b) => a - b);
 
@@ -127,7 +149,7 @@ export function sizeCapacity(dia, {
   target = DEFAULT_FRICTION_TARGET, material = 'copper', convention = true,
 } = {}) {
   if (convention && CONVENTION_MAX_GPM[dia] !== undefined) return CONVENTION_MAX_GPM[dia];
-  return flowAtFriction(target, TYPE_L_ID[dia], material);
+  return flowAtFriction(target, idTableFor(material)[dia], material);
 }
 
 // The smallest nominal size that carries this flow — never below the device's

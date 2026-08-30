@@ -4,7 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import bprCircuit from '../../api/bprCircuit.js';
 import bprFormat from '../../api/bprFormat.js';
 import partsOrderForm from '../../api/partsOrderForm.js';
-import { pumpHorsepower } from '../../src/components/glycolHydraulics.js';
+import { pumpHorsepower, psiToFt, checkDpAgainstBranch } from '../../src/components/glycolHydraulics.js';
+import { sizeForFlow } from '../../src/components/hydronicSizing.js';
 import { extractRcSchedule } from '../../src/components/scheduleDates.js';
 import { dedupeSchedule, distinctDays, distinctNights } from '../../src/components/scheduleDedupe.js';
 
@@ -96,6 +97,46 @@ describe('Edmonds SD — pump motor selection', () => {
       expect(r.motorHp).toBeGreaterThan(r.bhp);
     });
   }
+});
+
+describe('Edmonds SD — hydronic plant, the HVAC side', () => {
+  const fx = load('edmonds-hydronic.json');
+
+  describe('the differential pressure set point', () => {
+    const dp = fx.differentialPressure;
+
+    it('converts the drawing\'s 3 PSI to feet of head', () => {
+      expect(psiToFt(dp.setPointPsi)).toBe(dp.expectedFeet);
+    });
+
+    it('treats the set point as the branch head, not an addition to it', () => {
+      // Adding both double-counts the same head. On a pump curve that is the
+      // difference between the right impeller and the next one up.
+      const branchFt = 8.0;
+      const chk = checkDpAgainstBranch(psiToFt(dp.setPointPsi), branchFt);
+      expect(chk.doubleCountFt).toBeGreaterThan(0);
+      expect(chk.doubleCountFt).toBeLessThanOrEqual(Math.min(psiToFt(dp.setPointPsi), branchFt));
+    });
+  });
+
+  describe('runouts follow the device, not the friction chart', () => {
+    for (const c of fx.runouts.cases) {
+      it(`${c.mark}: friction says ${c.frictionWouldSay}" but the ${c.connectionIn}" connection governs`, () => {
+        expect(sizeForFlow(c.gpm, { material: 'steel' })).toBe(c.frictionWouldSay);
+        expect(sizeForFlow(c.gpm, { material: 'steel', minSize: c.connectionIn }))
+          .toBe(c.scheduledRunoutIn);
+      });
+    }
+  });
+
+  describe('the plant mains this job actually runs', () => {
+    for (const m of fx.mains.cases) {
+      it(`${m.mark} at ${m.gpm} GPM sizes to ${m.expectedIn}"`, () => {
+        // Both were past the end of the old table and returned nothing at all.
+        expect(sizeForFlow(m.gpm, { material: m.material })).toBe(m.expectedIn);
+      });
+    }
+  });
 });
 
 describe('Food Lion 701 — parts order forms', () => {
