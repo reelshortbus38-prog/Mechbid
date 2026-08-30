@@ -1,0 +1,31 @@
+{
+  "source": "1086 Rough Draft.docx",
+  "job": "Food Lion 1086 — Roanoke Rapids — RC reset schedule",
+  "provenance": "Uploaded 2026-08-30. Day count derived by reading the schedule by hand and confirmed against the document: eight RC days, three of them nights.",
+  "why": "This schedule marks the shift on the TASK, not the date header — 'Night- RC to complete install'. Every RC pattern anchors at start of line, so the marker hid the task behind it and the whole date vanished. All three dropped days were NIGHT days: the premium-rate half of a grocery remodel, so the schedule read low in the one direction that costs money.",
+  "scheduleLines": [
+    "Week 8 Deli Cases",
+    "Monday 6/17",
+    "RC to set Case 10 in backroom",
+    "RC to remove Case 7 and GC to salvage",
+    "Tuesday 6/18",
+    "Day- Specialist to be onsite to reset available cases",
+    "Night- RC to complete install",
+    "Wednesday 6/19",
+    "Day- Specialist to be onsite to reset remaining cases",
+    "Night- RC to accept and install N71/N79- 21' HMS Island",
+    "Week 9 Produce Cases",
+    "Monday 6/24",
+    "RC to remove 13 and 14.  GC to salvage",
+    "Tuesday 6/25",
+    "Day- Specialist to reset Cases 10, 11, 12 and N82",
+    "Night- Relocate and install:",
+    "Cases 15 and 16- 16' DX6LN",
+    "N83"
+  ],
+  "expected": {
+    "dates": ["Jun 17", "Jun 18", "Jun 19", "Jun 24", "Jun 25"],
+    "nightDates": ["Jun 18", "Jun 19", "Jun 25"],
+    "specialistIsNotTheRc": "Jun 18 names both parties on the same day — Specialist by day, RC by night — so a Specialist reset must never be counted as RC work."
+  }
+}

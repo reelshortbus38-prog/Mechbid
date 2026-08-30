@@ -1,0 +1,19 @@
+{
+  "source": "fl_701_070824_OCR3_Rack_Parts.xls and FL_701_071124_OCR3_Case_Ends.xls",
+  "job": "Food Lion 701 — parts order forms (store-supplied)",
+  "provenance": "Uploaded 2026-08-30. Line counts and quantities read directly off the forms. Column indices are the real ones: 0 part number, 1 qty, 4 and 7 description, 11 colour, 13 where-used, 14+ the legend block.",
+  "why": "These were read by sending the sheet text to an AI. On a form this regular that is the wrong tool — it costs money, needs a key, can be down, and can invent a part. The legend block of reason codes and technician names is exactly what a text-level read pulls in as parts.",
+  "rackParts": {
+    "expectedLineCount": 10,
+    "expectedFirst": { "qty": 8, "partNumber": "08A12068", "description": "CPC Temp Sensor" },
+    "quantityWithNoPartNumber": { "qty": 3, "description": "3 5/8 ball valve" },
+    "mustNeverContain": ["Engineering", "KwikWorks", "Ray Bishop", "Best Way", "Nobody", "Defective Vendor"]
+  },
+  "caseEnds": {
+    "expectedLineCount": 6,
+    "departments": ["Produce", "Meat", "Meat", "Meat", "FF & IC", "FF & IC"],
+    "whereUsed": ["7", "23", "19", "33/22", "68", ""],
+    "splitDescription": "DX6LN 1305000630 · RH boxed end 3000 IS BRT, OS & yoder SB",
+    "consumable": { "qty": 18, "description": "Silicone" }
+  }
+}

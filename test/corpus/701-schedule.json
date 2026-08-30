@@ -1,0 +1,16 @@
+{
+  "source": "store 701 schedule draft 6.23.24.docx",
+  "job": "Food Lion 701 — RC schedule",
+  "provenance": "Uploaded 2026-08-30. The Rack A header delivery appears ONCE in the source document; the app listed it twice and counted 16 on-site days and 15 nights.",
+  "why": "Two readers found the same task and labelled its date differently — the deterministic reader normalised to 'Sep 23', the AI kept 'Monday, September 23rd (Night)'. Day and night counts were built from a Set of the date STRINGS, so one night counted as two. A night is a mobilisation: an extra crew, an extra per diem, an extra premium shift.",
+  "duplicatePair": [
+    { "date": "Monday, September 23rd (Night)", "task": "Deliver and install 2 - Rack A headers from Julian Rd." },
+    { "date": "Sep 23", "isNight": true, "task": "Deliver and install: 2 - Rack A headers from Julian Rd.   Tag#40128 and #40643 · Deliver and Hold for RC to schedule install" }
+  ],
+  "expected": {
+    "afterDedupe": 1,
+    "keptDate": "Sep 23",
+    "keptTaskContains": "Tag#40128",
+    "isNight": true
+  }
+}
