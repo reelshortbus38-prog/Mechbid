@@ -554,7 +554,16 @@ function parseBPR(wb, circuits, meta, allNew) {
       const horizMarked = marked(22) || marked(24);
       const riserMarked = marked(23);
       const heatExchangerText = String(row.getCell(4).value||'');
-      const verdict = classifyBprRow({ horizMarked, riserMarked, heatExchanger: heatExchangerText, allNew });
+      const verdict = classifyBprRow({
+        horizMarked, riserMarked, appMarked: marked(7),
+        heatExchanger: heatExchangerText, allNew,
+      });
+      if(verdict.markedNoCopper) {
+        // Marked as changed with the line sizes left clean — a case going onto
+        // existing pipe. Not a line run, but a case to set and connect.
+        meta.markedNoCopper = meta.markedNoCopper || [];
+        meta.markedNoCopper.push({ circuitId: `${rack}-${circIdRaw}`, application: app });
+      }
       if(verdict.coilOnly) {
         // A new evaporator coil on existing pipe. Real work, but not a line
         // run — reported so it cannot vanish without a word.
@@ -1110,6 +1119,7 @@ module.exports = async function handler(req, res) {
       // sees it rather than it vanishing between the two categories.
       coilOnly: meta.coilOnly || [],
       markColors: meta.markColors || {},
+      markedNoCopper: meta.markedNoCopper || [],
       aiUsed,
       warning,
       summary: `${circuits.length} circuit(s) found [${aiUsed?'AI+':''}${format}] across: ${racks.join(', ') || 'no racks detected'}`
