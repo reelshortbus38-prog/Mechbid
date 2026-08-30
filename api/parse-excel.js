@@ -1,5 +1,6 @@
 const ExcelJS = require('exceljs');
 const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
+const { formatFromSignals } = require('./bprFormat.js');
 const XLSX    = require('xlsx');
 const fetch   = globalThis.fetch || require('node-fetch');
 
@@ -162,10 +163,11 @@ function detectPartsOrderForm(wb) {
 
 function detectFormat(wb) {
   let isBPR = false, isKysor = false, isHVAC = false, isGeneric = false;
+  let remoteHdrSheet = false;
 
   wb.eachSheet(ws => {
     const name = ws.name.toLowerCase();
-    if(ws.name.match(/Remote\s*Hdr/i)) isBPR = true;
+    if(ws.name.match(/Remote\s*Hdr/i)) { isBPR = true; remoteHdrSheet = true; }
     if(ws.name.match(/^Rack\s+[A-Za-z]/i)) isKysor = true;
     if(name.includes('rtu') || name.includes('ahu') || name.includes('equipment') ||
        name.includes('hvac') || name.includes('schedule')) isHVAC = true;
@@ -188,10 +190,7 @@ function detectFormat(wb) {
     }
   });
 
-  if(isBPR && !isKysor) return 'bpr';
-  if(isKysor) return 'kysor';
-  if(isHVAC) return 'hvac';
-  return 'unknown';
+  return formatFromSignals({ remoteHdrSheet, bprText: isBPR, kysorText: isKysor, hvacText: isHVAC });
 }
 
 // ── SHEET TO TEXT (for AI) ───────────────────────────────────────────────────
