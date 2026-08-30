@@ -122,17 +122,34 @@ describe('sizeForFlow', () => {
     expect(sizeForFlow(25, { target: 1.0 })).toBeGreaterThan(sizeForFlow(25, { target: 4.0 }));
   });
 
-  it('sizes steel larger than copper for the same flow, somewhere in the range', () => {
-    const bumped = [5, 10, 20, 40, 70]
-      .filter(q => sizeForFlow(q, { material: 'steel' }) > sizeForFlow(q, { material: 'copper' }));
-    expect(bumped.length).toBeGreaterThan(0);
+  it('sizes steel larger than copper where the roughness crosses a size boundary', () => {
+    // Steel is rougher (C 120 against copper's 150) so it carries less at the
+    // same bore and often needs the next size up. It does NOT always, and the
+    // reason is worth knowing: schedule 40 has a bigger bore than Type L at the
+    // same nominal size — 1/2" is 0.622" against 0.545" — so at the small end
+    // the extra bore outweighs the roughness and steel carries MORE. These
+    // three flows sit in the band where roughness wins.
+    for (const q of [32, 90, 180]) {
+      expect(sizeForFlow(q, { material: 'steel' }))
+        .toBeGreaterThan(sizeForFlow(q, { material: 'copper' }));
+    }
+  });
+
+  it('sizes the plant mains a real job actually runs', () => {
+    // Edmonds College Place: HWP-01 at 276 GPM, CWP-01 at 455 GPM. The table
+    // used to stop at 4" — about 195 GPM — so every main on that job got no
+    // size at all.
+    expect(sizeForFlow(276, { material: 'steel' })).toBe(5);
+    expect(sizeForFlow(455, { material: 'steel' })).toBe(6);
   });
 
   it('never goes below the minimum practical connection', () => {
     expect(sizeForFlow(0.01)).toBe(MIN_SIZE);
   });
 
-  it('returns null past the table rather than pretending 4" is enough', () => {
+  it('returns null past the table rather than pretending the largest is enough', () => {
+    // Extending the table to 8" did not change this: silence beyond the end is
+    // the honest answer, and returning the biggest size would be a lie.
     expect(sizeForFlow(100000)).toBeNull();
   });
 

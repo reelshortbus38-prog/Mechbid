@@ -1,0 +1,26 @@
+{
+  "source": "Hydronic.pdf and Pumps.pdf — Edmonds School District, College Place",
+  "job": "Edmonds SD College Place — hydronic plant, HVAC side",
+  "provenance": "Uploaded 2026-08-19. The DP set point is quoted verbatim from the hydronic control sequence on the riser diagram. The runout sizes and pump flows are read off the WATER TO WATER HEAT PUMP and HYDRONIC PUMP schedules.",
+  "why": "Three separate findings on the HVAC side, none of which the refrigeration fixtures touch: an entire missing head term, a runout governed by the device rather than by friction, and a sizing table that stopped below the flows this job actually runs.",
+  "differentialPressure": {
+    "quotedFromDrawing": "The minimum differential pressure set point for the hydronic plant shall initially be set as 3 PSI (based on the basis-of-design WWHP) and confirmed during TAB",
+    "setPointPsi": 3,
+    "expectedFeet": 6.9,
+    "rule": "The DP set point IS the branch head at the worst-case terminal — it is not an addition to it. Adding both double-counts, and checkDpAgainstBranch exists to say so."
+  },
+  "runouts": {
+    "note": "A runout is never smaller than the equipment's own connection, whatever friction says.",
+    "cases": [
+      { "mark": "WWHP-01 source", "gpm": 150.8, "connectionIn": 6, "frictionWouldSay": 4, "scheduledRunoutIn": 6 },
+      { "mark": "WWHP-01 load",   "gpm": 110.3, "connectionIn": 6, "frictionWouldSay": 4, "scheduledRunoutIn": 6 }
+    ]
+  },
+  "mains": {
+    "note": "The sizing table used to stop at 4 inches, about 195 GPM, so every main on this job returned no size at all.",
+    "cases": [
+      { "mark": "HWP-01", "gpm": 276, "material": "steel", "expectedIn": 5 },
+      { "mark": "CWP-01", "gpm": 455, "material": "steel", "expectedIn": 6 }
+    ]
+  }
+}
