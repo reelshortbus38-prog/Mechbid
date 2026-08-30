@@ -1,0 +1,35 @@
+{
+  "source": "FL_0701_WR_BPR1.xlsx",
+  "job": "Food Lion 701 — Troutman NC — remodel BPR (Williams & Rowe)",
+  "provenance": "Uploaded 2026-08-30. Counts confirmed by the estimator: ten new circuits and one riser-only. The four coil rows are independently corroborated by the scope of work, which names the same four coolers as new evaporator coils.",
+  "why": "This workbook has both 'Remote Hdr' and 'Rack A' sheets. That combination misrouted it to the Kysor parser and produced ZERO circuits, which on screen was indistinguishable from a job with no new work.",
+  "rows": [
+    { "id": "Hdr1-1",  "application": "Deli Cooler",                "horizMarked": false, "riserMarked": false, "appMarked": false, "heatExchanger": "NEW" },
+    { "id": "Hdr1-2",  "application": "MD Fresh Meat 18,19,22",     "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr1-3",  "application": "MD Fresh Meat 23-25",        "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr1-5",  "application": "Meat Cooler",                "horizMarked": false, "riserMarked": false, "appMarked": false, "heatExchanger": "NEW" },
+    { "id": "Hdr1-6",  "application": "Tray Cooler",                "horizMarked": false, "riserMarked": false, "appMarked": false, "heatExchanger": "NEW" },
+    { "id": "Hdr1-9",  "application": "Lunch Meat N83-N85",         "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr1-11", "application": "Dairy Cooler",               "horizMarked": false, "riserMarked": false, "appMarked": false, "heatExchanger": "NEW" },
+    { "id": "Hdr1-12", "application": "Dairy Promo N86",           "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr1-15", "application": "Beer Doors 40-43, N87",      "horizMarked": false, "riserMarked": false, "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-19", "application": "Deli/Bakery 10-12, N72,N73", "horizMarked": false, "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-20", "application": "Deli/Cheese N74-N77",        "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-21", "application": "HMS Islands N78,N79",        "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-22", "application": "Produce/Floral 1,2,N69",     "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-24", "application": "MD Produce 5-7",             "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "Hdr2-26", "application": "Produce Doors N70,N71",      "horizMarked": false, "riserMarked": false, "appMarked": true,  "heatExchanger": "" },
+    { "id": "D-5",     "application": "Frozen Food 50,51",          "horizMarked": false, "riserMarked": false, "appMarked": true,  "heatExchanger": "" },
+    { "id": "D-12",    "application": "Frozen Food 66,67",          "horizMarked": false, "riserMarked": false, "appMarked": true,  "heatExchanger": "" },
+    { "id": "D-14",    "application": "Meat Promo N80-N82",         "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "D-15",    "application": "Frozen Ends 52,68",          "horizMarked": true,  "riserMarked": true,  "appMarked": true,  "heatExchanger": "" },
+    { "id": "D-17",    "application": "Frozen Bakery 14",           "horizMarked": false, "riserMarked": false, "appMarked": true,  "heatExchanger": "" }
+  ],
+  "expected": {
+    "categories": { "new": 10, "riserOnly": 1, "coilOnly": 4, "markedNoCopper": 5 },
+    "riserOnlyIs": "Deli/Bakery 10-12, N72,N73",
+    "coilOnlyAre": ["Deli Cooler", "Meat Cooler", "Tray Cooler", "Dairy Cooler"],
+    "format": "bpr",
+    "sheetNames": ["Remote Hdr 1 (1173)", "Remote Hdr 2 (1155)", "Rack A ", "RACK D"]
+  }
+}

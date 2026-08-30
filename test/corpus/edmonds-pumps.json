@@ -1,0 +1,25 @@
+{
+  "source": "Pumps.pdf — Edmonds School District, College Place",
+  "job": "Edmonds SD College Place — hydronic and condenser water pumps",
+  "provenance": "Uploaded 2026-08-19. Values read off the HYDRONIC PUMP SCHEDULE text layer. The expected motor sizes are the ENGINEER'S OWN selections from the same schedule — this fixture checks the app against a professional's answer, not against itself.",
+  "why": "The app selected one NEMA frame light on both pumps, because it sized the motor to brake horsepower with no non-overloading margin. A motor sized exactly to BHP overloads the moment the pump runs out on its curve.",
+  "pumps": [
+    {
+      "mark": "HWP-01", "service": "Hydronic water — load side",
+      "model": "B&G E-1510 2.5AC", "gpm": 276, "headFt": 83, "efficiencyPct": 78, "rpm": 1800,
+      "glycolPct": 0,
+      "scheduledHp": 10.0
+    },
+    {
+      "mark": "CWP-01", "service": "Condenser water — source side",
+      "model": "B&G E-1510 3GB", "gpm": 455, "headFt": 125, "efficiencyPct": 75, "rpm": 1800,
+      "glycolPct": 25,
+      "scheduledHp": 25.0
+    }
+  ],
+  "expected": {
+    "note": "motorHp must equal the engineer's scheduled HP for every pump",
+    "hwp01MotorHp": 10,
+    "cwp01MotorHp": 25
+  }
+}
