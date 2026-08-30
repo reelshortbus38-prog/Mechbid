@@ -1,6 +1,7 @@
 const ExcelJS = require('exceljs');
 const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
 const { formatFromSignals } = require('./bprFormat.js');
+const { classifyBprRow } = require('./bprCircuit.js');
 const XLSX    = require('xlsx');
 const fetch   = globalThis.fetch || require('node-fetch');
 
@@ -533,32 +534,38 @@ function parseBPR(wb, circuits, meta, allNew) {
       // files — sometimes highlighted, sometimes a plain-text "NEW"/"New
       // Coil", sometimes a generic gray shade — and requiring just one
       // specific convention silently dropped circuits marked the other ways.
-      const lineSizeHighlighted = [22,23,24].some(c => isHighlighted(getCellColor(row.getCell(c))));
-      const lineSizeShaded = [22,23,24].some(c => isShaded(getCellColor(row.getCell(c))));
+      // Horizontal and riser are asked SEPARATELY: a row with only the riser
+      // marked is a drop off pipe that already exists, not a full new run.
+      // Columns are 22 suction-horiz, 23 suction-riser, 24 liquid-horiz.
+      const marked = c => isHighlighted(getCellColor(row.getCell(c))) || isShaded(getCellColor(row.getCell(c)));
+      const horizMarked = marked(22) || marked(24);
+      const riserMarked = marked(23);
       const heatExchangerText = String(row.getCell(4).value||'');
-      const newWorkText = looksLikeNewWorkText(heatExchangerText);
-      const isNewCircuit = lineSizeHighlighted || lineSizeShaded || newWorkText;
-      // New store: every circuit is new work — take them all (the run/size data
-      // guard below still rejects blank rows). Remodel: only the marked ones.
-      if(!allNew && !isNewCircuit) continue;
-
-      const newWorkSignal = allNew ? 'new store' : lineSizeHighlighted ? 'highlighted' : lineSizeShaded ? 'shaded' : 'text: ' + heatExchangerText.trim();
+      const verdict = classifyBprRow({ horizMarked, riserMarked, heatExchanger: heatExchangerText, allNew });
+      if(verdict.coilOnly) {
+        // A new evaporator coil on existing pipe. Real work, but not a line
+        // run — reported so it cannot vanish without a word.
+        meta.coilOnly = meta.coilOnly || [];
+        meta.coilOnly.push({ circuitId: `${rack}-${circIdRaw}`, application: app });
+      }
+      if(!verdict.include) continue;
 
       const run = parseFloat(row.getCell(21).value)||0;
       const sh  = sizeToFraction(row.getCell(22).value);
       const sr  = sizeToFraction(row.getCell(23).value);
       const lh  = sizeToFraction(row.getCell(24).value);
       const evap = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
-      const isRiserOnly = !run && !!sr;
+      const isRiserOnly = verdict.riserOnly;
       if(!run && !sr) continue;
 
       circuits.push({
         circuitId: `${rack}-${circIdRaw}`, rack,
-        runLength: run, riserLength: 20,
+        runLength: isRiserOnly ? 0 : run, riserLength: 20,
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly,
-        colorType: 'new', notes: `NEW — ${newWorkSignal}`
+        colorType: 'new',
+        notes: isRiserOnly ? `RISER ONLY — ${verdict.reason}` : `NEW — ${verdict.reason}`
       });
     }
   });
@@ -1085,9 +1092,14 @@ module.exports = async function handler(req, res) {
       storeName: meta.storeName,
       storeNumber: meta.storeNo,
       refrigerant: meta.refrigerant,
+      // Rows whose heat exchanger is new but whose pipe is not: a coil swap on
+      // existing copper. Real work, not a line run — returned so the estimator
+      // sees it rather than it vanishing between the two categories.
+      coilOnly: meta.coilOnly || [],
       aiUsed,
       warning,
       summary: `${circuits.length} circuit(s) found [${aiUsed?'AI+':''}${format}] across: ${racks.join(', ') || 'no racks detected'}`
+        + ((meta.coilOnly||[]).length ? ` · ${meta.coilOnly.length} new evaporator coil(s) on existing pipe (not counted as circuits)` : '')
     });
 
   } catch(err) {
