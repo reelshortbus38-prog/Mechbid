@@ -538,6 +538,19 @@ function parseBPR(wb, circuits, meta, allNew) {
       // marked is a drop off pipe that already exists, not a full new run.
       // Columns are 22 suction-horiz, 23 suction-riser, 24 liquid-horiz.
       const marked = c => isHighlighted(getCellColor(row.getCell(c))) || isShaded(getCellColor(row.getCell(c)));
+      // Record WHICH fill marked the row. Two colours on one BPR usually mean
+      // two different things — new versus relocated, or two revisions — and
+      // this parser deliberately treats every highlight the same. That is right
+      // when a tech simply changed highlighters, and wrong when the colours
+      // carry meaning, so the estimator is told rather than left to find out
+      // from the total.
+      for(const c of [22,23,24]) {
+        const fill = getCellColor(row.getCell(c));
+        if(fill && (isHighlighted(fill) || isShaded(fill))) {
+          meta.markColors = meta.markColors || {};
+          meta.markColors[String(fill)] = (meta.markColors[String(fill)] || 0) + 1;
+        }
+      }
       const horizMarked = marked(22) || marked(24);
       const riserMarked = marked(23);
       const heatExchangerText = String(row.getCell(4).value||'');
@@ -1096,6 +1109,7 @@ module.exports = async function handler(req, res) {
       // existing copper. Real work, not a line run — returned so the estimator
       // sees it rather than it vanishing between the two categories.
       coilOnly: meta.coilOnly || [],
+      markColors: meta.markColors || {},
       aiUsed,
       warning,
       summary: `${circuits.length} circuit(s) found [${aiUsed?'AI+':''}${format}] across: ${racks.join(', ') || 'no racks detected'}`
