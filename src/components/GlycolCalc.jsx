@@ -8,6 +8,7 @@ import {
 } from './glycolSystem.js';
 import { glycolHydraulics, glycolGpm, psiToFt, checkDpAgainstBranch } from './glycolHydraulics.js';
 import { reviewGlycolInputs, reviewSummary } from './glycolAssumptions.js';
+import { loopHeadline } from './secondaryLoop.js';
 import {
   COMPONENT_TYPES, SERIES, BRANCH, componentType, newComponent, seedComponents,
   equipmentHead, naiveTotalFt, equipmentHeadSanity,
@@ -27,6 +28,33 @@ import {
 const SIZES = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4];
 const label = d => (d === 0.5 ? '1/2"' : d === 0.75 ? '3/4"' : d === 1.25 ? '1-1/4"' : d === 1.5 ? '1-1/2"' : d === 2.5 ? '2-1/2"' : `${d}"`);
 
+// A job WITH a loop gets the card open — then it is the work, and hiding it
+// behind a tap is friction on the main path. A job without one gets a single
+// collapsed line, because a screen full of empty pipe rows and a pump-sizing
+// block reads as a form that still needs filling in. The calculator is one tap
+// away either way; what changes is whether the app implies you owe it numbers.
+function LoopShell({ head, children }) {
+  if (head.active) {
+    return (
+      <Card style={{ background: colors.surface }}>
+        <SLabel>🧊 {head.title}</SLabel>
+        {children}
+      </Card>
+    );
+  }
+  return (
+    <Card style={{ background: colors.surface }}>
+      <details>
+        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700, color: colors.textDim,
+          fontFamily: "'Syne', sans-serif", letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          🧊 {head.title}
+        </summary>
+        <div style={{ marginTop: 14 }}>{children}</div>
+      </details>
+    </Card>
+  );
+}
+
 export default function GlycolCalc() {
   const { state, dispatch } = useStore();
   const items = state.lineItems || [];
@@ -37,7 +65,8 @@ export default function GlycolCalc() {
   const [material, setMaterial] = useState('copper');
   // Driven by the Setup page's Secondary Loop choice rather than duplicated
   // here — two places to set the same thing is two places to set it wrong.
-  const loopType = (state.secondaryLoop || 'none') === 'water' ? 'water' : 'chilled';
+  const head = loopHeadline(state.secondaryLoop);
+  const loopType = head.loopType;
   const [freezeExposedFt, setFreezeExposedFt] = useState(0);
   const [pct, setPct] = useState(32);
   const [protectTo, setProtectTo] = useState(15);
@@ -150,10 +179,12 @@ export default function GlycolCalc() {
   );
 
   return (
-    <Card style={{ background: colors.surface }}>
-      <SLabel>🧊 Secondary Loop — Glycol or Water</SLabel>
+    <LoopShell head={head}>
       <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
-        Set to <strong>{loopType === 'water' ? 'ambient water loop' : 'chilled glycol'}</strong> on the Setup step.
+        {head.active
+          ? <>Set to <strong>{loopType === 'water' ? 'ambient water loop' : 'chilled glycol'}</strong> on the Setup step.</>
+          : <strong style={{ color: colors.yellow }}>{head.lead}</strong>}
+        {' '}
         A secondary loop has no suction or liquid line per case, so none of it comes out of the circuit table.
         What it does have: header out and back, <strong>insulation on every foot</strong>, a valve set at each case,
         and <strong>several hundred gallons of fluid</strong> that a copper takeoff has nowhere to put.
@@ -534,6 +565,6 @@ export default function GlycolCalc() {
       <Btn variant={added ? 'ghost' : 'green'} size="sm" onClick={addLines} disabled={!lines.length}>
         {added ? '✓ Added — click again to update' : `Add ${lines.length} glycol line(s) — ${fmt(total)}`}
       </Btn>
-    </Card>
+    </LoopShell>
   );
 }
