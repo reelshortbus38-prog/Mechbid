@@ -28,6 +28,11 @@ import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pi
 import { mergeFacts } from '../api/jobFacts.js';
 import { forMode, stampMode, resultText } from '../state/tradeScope.js';
 import { dedupeSchedule } from '../components/scheduleDedupe.js';
+import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } from './docRoute.js';
+
+// The pasted-email box analyzes as a synthetic file so it shares the upload
+// path's routing, review screen and "already done" tracking.
+const PASTED_ID = '__pasted__';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -102,7 +107,7 @@ export default function Step1_Setup({ onNext }) {
   // NOTHING here touches circuits/rackTasks/fieldTasks/rackParts/projName directly anymore.
   async function analyzeAll() {
     const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode && fileStatuses[f.id] !== 'done');
-    if (modeFiles.length === 0 && !emailText.trim()) return;
+    if (modeFiles.length === 0 && (!emailText.trim() || fileStatuses[PASTED_ID] === 'done')) return;
 
     setAnalyzing(true);
     const newResults = [];
@@ -382,6 +387,9 @@ export default function Step1_Setup({ onNext }) {
         const model = [e.model, e.size].filter(Boolean).join(' ');
         equipmentImports.push({
           id: uid(), tag: e.tag || '', type: mapHvacType(e.type || e.tag),
+          // The type as the DRAWING wrote it, kept so a residential job can map
+          // it onto its own (much shorter) dropdown without mapping twice.
+          rawType: e.type || e.tag || '',
           tons: '', brand: '', model, refrigerant: 'R-410A', mca: '', mop: '',
           voltage: e.electrical || '', location: '', cost: 0, task: 'New Installation',
           notes: [e.type, e.cfm && `${e.cfm} CFM`, e.notes].filter(Boolean).join(' · '),
@@ -399,6 +407,44 @@ export default function Step1_Setup({ onNext }) {
       }
     }
 
+    // ── ONE ROUTER FOR EVERY TEXT DOCUMENT ────────────────────────────────
+    // .doc/.docx, .eml, and the pasted-email box all arrive as plain text and
+    // all face the same two questions: which KIND of document is this, and
+    // which TRADE is reading it. Both answers live in steps/docRoute.js.
+    //
+    // The .doc path had this right; the .eml path had no trade check at all,
+    // and the paste box was never analyzed by anything. Sharing one router is
+    // what stops a third path from drifting off on its own.
+    async function analyzeTextDoc(text, name, mode, icon) {
+      const route = routeTextDoc({
+        mode,
+        isBidLetter: looksLikeBidLetter(text),
+        isFlatScope: looksLikeFlatScopeDoc(text),
+      });
+      if (route === 'bidLetter') {
+        const p = await analyzeBidLetter(text, name);
+        newResults.push(`📋 ${name}: Bid invitation letter analyzed — ${p?.contacts?.length || 0} contact(s), ${p?.flags?.length || 0} flag(s) found`);
+        return p;
+      }
+      if (route === 'hvacSpec') {
+        // HVAC scope/spec text (Walmart CapX scopes, CSI Division 23 sections
+        // saved as .doc) — the refrigeration scope readers would hunt for RC
+        // work that isn't there. Folded through the same channel as plan reads.
+        const hv = await analyzeHvacSpecText(text, name);
+        handleHvacResult(hv, { name });
+        newResults.push(`📗 ${name}: HVAC scope/spec analyzed — ${(hv?.equipment || []).length} equipment type(s), ${(hv?.flags || []).length} flag(s)`);
+        return null;
+      }
+      if (route === 'flatScope') {
+        const p = await analyzeFlatScopeDoc(text, name);
+        newResults.push(`${icon} ${name}: Flat scope of work analyzed — ${p?.fieldTasks?.length || 0} field task(s), ${p?.rackTasks?.length || 0} rack task(s), ${p?.parts?.length || 0} part(s) found`);
+        return p;
+      }
+      const p = await analyzeScopeDoc(text, name);
+      newResults.push(`${icon} ${name}: Scope/schedule analyzed — ${p?.fieldTasks?.length || 0} field task(s), ${p?.rackTasks?.length || 0} rack task(s) found`);
+      return p;
+    }
+
     // Multiple screenshots in an HVAC batch are almost always SECTIONS of one
     // plan sheet, possibly overlapping. Analyzed one at a time, the model
     // can't know an area appears in two shots — so they go to the model
@@ -406,7 +452,7 @@ export default function Step1_Setup({ onNext }) {
     // and count each device once. If the combined read fails, fall back to
     // per-file passes (client sums counts and keeps the per-screenshot tally).
     const hvacGroupIds = new Set();
-    if (/hvac/i.test(state.mode || '')) {
+    if (isHvacTrade(state.mode)) {
       const groupEntries = modeFiles
         .filter(f => f.type === 'image')
         .map(f => ({ meta: f, file: fileObjects.current[f.id] }))
@@ -436,13 +482,26 @@ export default function Step1_Setup({ onNext }) {
       }
     }
 
-    for (const fileMeta of modeFiles) {
+    // The "Or Paste Bid Email Text" box rides through the SAME loop as an
+    // uploaded file. It used to enable the Analyze button and then be read by
+    // nothing at all — you pasted a bid email, hit Analyze, and the app
+    // reported nothing because the loop had no files to iterate. Making it a
+    // synthetic file means it gets the trade routing, the review screen and
+    // the extraction log for free, instead of a second code path to keep
+    // in sync.
+    const pastedText = emailText.trim();
+    const queue = pastedText && fileStatuses[PASTED_ID] !== 'done'
+      ? [...modeFiles, { id: PASTED_ID, name: 'Pasted text', type: 'pastedText', mode: state.mode }]
+      : modeFiles;
+
+    for (const fileMeta of queue) {
       if (hvacGroupIds.has(fileMeta.id)) continue;
       setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'analyzing' }));
 
-      // Get actual File object from ref
-      const file = fileObjects.current[fileMeta.id];
-      if (!file) {
+      // Get actual File object from ref. The pasted-text entry has no File —
+      // its content is already in hand.
+      const file = fileMeta.type === 'pastedText' ? null : fileObjects.current[fileMeta.id];
+      if (!file && fileMeta.type !== 'pastedText') {
         newResults.push(`❌ ${fileMeta.name}: File not found — please re-upload`);
         setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'error' }));
         continue;
@@ -464,7 +523,7 @@ export default function Step1_Setup({ onNext }) {
         // equipment schedules), not refrigeration redlines/BPRs — route those to
         // the HVAC vision extractor, which reads equipment tags, air devices
         // (CFM), and duct/pipe sizes instead of circuits.
-        const isHvacMode = /hvac/i.test(fileMeta.mode || state.mode || '');
+        const isHvacMode = isHvacTrade(fileMeta.mode || state.mode);
 
         if (isHvacMode && (fileMeta.type === 'image' || fileMeta.type === 'pdf')) {
           sourceType = 'vision';
@@ -545,7 +604,7 @@ export default function Step1_Setup({ onNext }) {
           } else if (res.equipment?.length) {
             // HVAC equipment schedule — map units onto the Equipment step.
             res.equipment.forEach(e => equipmentImports.push({
-              id: uid(), tag: e.tag || '', type: mapHvacType(e.type),
+              id: uid(), tag: e.tag || '', type: mapHvacType(e.type), rawType: e.type || e.tag || '',
               tons: e.tons || e.cfm || '', brand: e.brand || '', model: e.model || '',
               refrigerant: 'R-410A', mca: '', mop: '', voltage: '', location: '',
               cost: 0, task: e.isNew === false ? 'Replacement' : 'New Installation',
@@ -625,6 +684,19 @@ export default function Step1_Setup({ onNext }) {
             if (res.summary) newResults.push(`   → ${res.summary}`);
           }
 
+        } else if (fileMeta.type === 'pastedText') {
+          sourceType = 'doctext';
+          // The deterministic date/schedule scans a .eml gets — a pasted
+          // schedule carries the same lines a saved one does.
+          { const p = scanScheduleDate(pastedText, PRECON_RE) || scanScheduleDate(pastedText, PRECON_FALLBACK_RE); if (p && !preconFromDoc) { preconFromDoc = p; preconDet = true; }
+            const pt = scanScheduleTime(pastedText, PRECON_RE) || scanScheduleTime(pastedText, PRECON_FALLBACK_RE); if (pt && !preconTimeFromDoc) preconTimeFromDoc = pt;
+            if (!isHvacMode) {
+              const n = scanRcFirstCaseNight(pastedText); if (n) { rcNightStart = n; rcStartDet = true; }
+              const rcc = scanScheduleDate(pastedText, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
+              const nights = extractRcSchedule(pastedText); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights;
+            } }
+          parsed = await analyzeTextDoc(pastedText, fileMeta.name, fileMeta.mode || state.mode, '📋');
+
         } else if (fileMeta.type === 'email') {
           // Saved bid emails (.eml). Parse the body client-side, then route
           // through the same content detection as scope docs — a bid email is
@@ -638,16 +710,11 @@ export default function Step1_Setup({ onNext }) {
             const rcc = scanScheduleDate(text, RCC_RE); if (rcc && !rccFromDoc) { rccFromDoc = rcc; rccDet = true; }
             const wk = maxWeekNumber(text); if (wk && !jobLengthFromDoc) { jobLengthFromDoc = `${wk} weeks`; jobLenDet = true; }
             const nights = extractRcSchedule(text); if (nights.length && !rcNightSchedule.length) rcNightSchedule = nights; }
-          if (looksLikeBidLetter(text)) {
-            parsed = await analyzeBidLetter(text, fileMeta.name);
-            newResults.push(`✉️ ${fileMeta.name}: Bid email analyzed — ${parsed?.contacts?.length || 0} contact(s), ${parsed?.flags?.length || 0} flag(s)`);
-          } else if (looksLikeFlatScopeDoc(text)) {
-            parsed = await analyzeFlatScopeDoc(text, fileMeta.name);
-            newResults.push(`✉️ ${fileMeta.name}: Email scope analyzed — ${parsed?.fieldTasks?.length || 0} field task(s)`);
-          } else {
-            parsed = await analyzeScopeDoc(text, fileMeta.name);
-            newResults.push(`✉️ ${fileMeta.name}: Email analyzed — ${parsed?.fieldTasks?.length || 0} field task(s)`);
-          }
+          // Same router the .doc/.docx path uses. This branch had NO trade
+          // check at all: an HVAC job's emailed scope went to the refrigeration
+          // readers, which hunt for circuits and RC nights that aren't in it
+          // and come back empty — indistinguishable on screen from "no scope".
+          parsed = await analyzeTextDoc(text, fileMeta.name, fileMeta.mode || state.mode, '✉️');
 
         } else if (fileMeta.type === 'cad') {
           // Native CAD/viewer formats (.dwf/.dwg/.rvt) wrap the drawing in
@@ -730,32 +797,7 @@ export default function Step1_Setup({ onNext }) {
           // a bid letter through the schedule prompt mostly returns empty
           // arrays (no dates to find), which looks like a failed extraction
           // rather than "right tool, wrong document."
-          if (looksLikeBidLetter(docRes.text)) {
-            parsed = await analyzeBidLetter(docRes.text, fileMeta.name);
-            const contactCount = parsed?.contacts?.length || 0;
-            const flagCount = parsed?.flags?.length || 0;
-            newResults.push(`📋 ${fileMeta.name}: Bid invitation letter analyzed — ${contactCount} contact(s), ${flagCount} flag(s) found`);
-          } else if (isHvacMode) {
-            // HVAC scope/spec text (Walmart CapX scopes, CSI spec sections
-            // saved as .doc) — the refrigeration scope analyzers would hunt
-            // for RC work that isn't there. Route to the HVAC spec analyzer
-            // and fold results through the same channel as plan extractions.
-            const hv = await analyzeHvacSpecText(docRes.text, fileMeta.name);
-            handleHvacResult(hv, fileMeta);
-            newResults.push(`📗 ${fileMeta.name}: HVAC scope/spec analyzed — ${(hv?.equipment || []).length} equipment type(s), ${(hv?.flags || []).length} flag(s)`);
-            parsed = null;
-          } else if (looksLikeFlatScopeDoc(docRes.text)) {
-            parsed = await analyzeFlatScopeDoc(docRes.text, fileMeta.name);
-            const fieldCount = parsed?.fieldTasks?.length || 0;
-            const rackCount = parsed?.rackTasks?.length || 0;
-            const partCount = parsed?.parts?.length || 0;
-            newResults.push(`📄 ${fileMeta.name}: Flat scope of work analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s), ${partCount} part(s) found`);
-          } else {
-            parsed = await analyzeScopeDoc(docRes.text, fileMeta.name);
-            const fieldCount = parsed?.fieldTasks?.length || 0;
-            const rackCount = parsed?.rackTasks?.length || 0;
-            newResults.push(`📝 ${fileMeta.name}: Scope/schedule analyzed — ${fieldCount} field task(s), ${rackCount} rack task(s) found`);
-          }
+          parsed = await analyzeTextDoc(docRes.text, fileMeta.name, fileMeta.mode || state.mode, '📄');
         }
 
         if (parsed) {
@@ -1050,12 +1092,18 @@ export default function Step1_Setup({ onNext }) {
       ...(rccFromDoc && (rccDet || !state.rccDate) ? { rccDate: rccFromDoc } : {}),
       // HVAC equipment goes straight to the Equipment step (which is itself an
       // editable review list), deduped by tag against what's already there.
-      ...(equipmentImports.length ? {
-        hvacEquipment: [
-          ...(state.hvacEquipment || []),
-          ...equipmentImports.filter(e => !e.tag || !(state.hvacEquipment || []).some(x => x.tag && x.tag === e.tag)),
-        ],
-      } : {}),
+      // A RESIDENTIAL job's units go to resEquipment, which is the list the
+      // residential Equipment page actually reads. They used to land in
+      // hvacEquipment — counted in the extraction log above, then invisible on
+      // every screen after it.
+      ...(equipmentImports.length ? (() => {
+        const key = equipmentKey(state.mode);
+        const existing = state[key] || [];
+        if (key === 'resEquipment') {
+          return { resEquipment: [...existing, ...equipmentImports.map(e => ({ id: uid(), ...toResEquipment(e) }))] };
+        }
+        return { hvacEquipment: [...existing, ...equipmentImports.filter(e => !e.tag || !existing.some(x => x.tag && x.tag === e.tag))] };
+      })() : {}),
     }});
 
     setResults(newResults);
@@ -1098,7 +1146,11 @@ export default function Step1_Setup({ onNext }) {
     // Prices the estimator typed are theirs, not the analyzer's — carry them
     // across the replacement rather than resetting the job to $0.
     const supersededPrice = new Map();
-    const keptHvacParts = (state.hvacParts || []).filter(p => {
+    // Residential keeps its takeoff lines and units in its own two stores —
+    // the residential Equipment page reads nothing else.
+    const partsStore = partsKey(state.mode);
+    const equipStore = equipmentKey(state.mode);
+    const keptHvacParts = (state[partsStore] || []).filter(p => {
       if (!p.src || !reanalyzed.has(p.src)) return true;
       if (Number(p.unitCost) > 0) supersededPrice.set(normalizeDesc(p.desc), Number(p.unitCost));
       return false;
@@ -1195,15 +1247,17 @@ export default function Step1_Setup({ onNext }) {
         // Confirmed family-closure unit → the Equipment step, mapped the same
         // way schedule imports are. Dedupe by tag against everything present.
         const tag = (item.data.tag || '').trim().toUpperCase();
-        if (tag && ((state.hvacEquipment || []).some(x => (x.tag || '').trim().toUpperCase() === tag)
+        if (tag && ((state[equipStore] || []).some(x => (x.tag || '').trim().toUpperCase() === tag)
           || newHvacEquipment.some(x => (x.tag || '').trim().toUpperCase() === tag))) return;
-        newHvacEquipment.push({
-          id: uid(), tag: item.data.tag || '', type: mapHvacType(item.data.type || item.data.tag),
-          tons: '', brand: '', model: [item.data.model, item.data.size].filter(Boolean).join(' '),
-          refrigerant: 'R-410A', mca: '', mop: '', voltage: item.data.electrical || '', location: '',
-          cost: 0, task: 'New Installation',
-          notes: [item.data.type, item.data.cfm && `${item.data.cfm} CFM`, item.data.notes].filter(Boolean).join(' · '),
-        });
+        newHvacEquipment.push(equipStore === 'resEquipment'
+          ? { id: uid(), tag: item.data.tag || '', ...toResEquipment({ ...item.data, rawType: item.data.type || item.data.tag }) }
+          : {
+            id: uid(), tag: item.data.tag || '', type: mapHvacType(item.data.type || item.data.tag),
+            tons: '', brand: '', model: [item.data.model, item.data.size].filter(Boolean).join(' '),
+            refrigerant: 'R-410A', mca: '', mop: '', voltage: item.data.electrical || '', location: '',
+            cost: 0, task: 'New Installation',
+            notes: [item.data.type, item.data.cfm && `${item.data.cfm} CFM`, item.data.notes].filter(Boolean).join(' · '),
+          });
       } else if (item.kind === 'projectInfo') {
         if (item.data.projName && !projName) projName = item.data.projName;
         if (item.data.projAddr && !projAddr) projAddr = item.data.projAddr;
@@ -1216,8 +1270,8 @@ export default function Step1_Setup({ onNext }) {
       rackTasks: [...state.rackTasks, ...newRackTasks],
       fieldTasks: [...(state.fieldTasks || []), ...stampMode(newFieldTasks, state.mode)],
       rackParts: [...state.rackParts, ...newRackParts],
-      hvacParts: [...keptHvacParts, ...newHvacParts],
-      ...(newHvacEquipment.length ? { hvacEquipment: [...(state.hvacEquipment || []), ...newHvacEquipment] } : {}),
+      [partsStore]: [...keptHvacParts, ...newHvacParts],
+      ...(newHvacEquipment.length ? { [equipStore]: [...(state[equipStore] || []), ...newHvacEquipment] } : {}),
       // Deduped on the way in: the deterministic reader and the AI pass both
       // find the same night, and they label the date differently, so nothing
       // else recognises them as one task.
@@ -1252,7 +1306,8 @@ export default function Step1_Setup({ onNext }) {
   // redline's findings on an HVAC job read as findings about the HVAC job.
   const modeResults = forMode(state.extractionResults, state.mode);
   const modeFlags = forMode(state.flags, state.mode);
-  const hasFiles = modeFiles.length > 0 || emailText.trim().length > 0;
+  const hasFiles = modeFiles.length > 0
+    || (emailText.trim().length > 0 && fileStatuses[PASTED_ID] !== 'done');
 
   // Fresh session (nothing named, saved, or uploaded) → lead with the pitch.
   // The claim that separates Coldgauge from the HVAC-only takeoff tools is the
@@ -1448,7 +1503,11 @@ export default function Step1_Setup({ onNext }) {
         <SLabel>Or Paste Bid Email Text</SLabel>
         <textarea
           value={emailText}
-          onChange={e => setEmailText(e.target.value)}
+          onChange={e => {
+            setEmailText(e.target.value);
+            // Edited text is new text — let Analyze read it again.
+            setFileStatuses(prev => (prev[PASTED_ID] ? { ...prev, [PASTED_ID]: 'ready' } : prev));
+          }}
           placeholder="Paste bid email or scope text here..."
           style={{ width: '100%', minHeight: 100, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 12, color: colors.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
         />
