@@ -2,6 +2,7 @@ const ExcelJS = require('exceljs');
 const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
 const { formatFromSignals } = require('./bprFormat.js');
 const { classifyBprRow } = require('./bprCircuit.js');
+const { countCircuitShapedRows, extractionSanity } = require('./sheetSanity.js');
 const XLSX    = require('xlsx');
 const fetch   = globalThis.fetch || require('node-fetch');
 
@@ -889,6 +890,18 @@ module.exports = async function handler(req, res) {
 
     const name   = (fileName||'').toLowerCase();
     const buffer = Buffer.from(fileData, 'base64');
+    // Counted from the RAW sheet before any parser runs, so it is independent
+    // of whether the format was recognised. This is what tells the difference
+    // between "no new work on this job" and "this parser did not read it".
+    let shapedRows = 0;
+    try {
+      const rawWb = XLSX.read(buffer, {type:'buffer'});
+      for(const sn of rawWb.SheetNames) {
+        shapedRows += countCircuitShapedRows(
+          XLSX.utils.sheet_to_json(rawWb.Sheets[sn], {header:1, defval:''}),
+        );
+      }
+    } catch(e) { /* unreadable as a sheet — the parsers below will report it */ }
     const circuits = [];
     const meta   = {storeName:'', storeNo:'', refrigerant:''};
     let format   = 'unknown';
@@ -1120,6 +1133,9 @@ module.exports = async function handler(req, res) {
       coilOnly: meta.coilOnly || [],
       markColors: meta.markColors || {},
       markedNoCopper: meta.markedNoCopper || [],
+      shapedRows,
+      // Non-null only when a sheet plainly holds circuits and none came back.
+      sanity: extractionSanity({ shaped: shapedRows, extracted: circuits.length, fileName }),
       aiUsed,
       warning,
       summary: `${circuits.length} circuit(s) found [${aiUsed?'AI+':''}${format}] across: ${racks.join(', ') || 'no racks detected'}`
