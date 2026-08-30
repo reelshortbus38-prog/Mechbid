@@ -570,6 +570,19 @@ export default function Step1_Setup({ onNext }) {
               flags.push({ type: 'warn', text: `${fileMeta.name}: ${dropped} row${dropped !== 1 ? 's' : ''} looked like a circuit but had no readable circuit ID, so ${dropped !== 1 ? 'they were' : 'it was'} skipped. The legend's circuit-ID column may be in a layout Coldgauge doesn't recognize yet — send the file so it can be added.`, source: fileMeta.name });
             }
             if (res.warning) flags.push({ type: 'warn', text: res.warning, source: fileMeta.name });
+            // Rows whose heat exchanger is marked NEW but whose line-size cells
+            // are not highlighted: a new evaporator coil on existing pipe. Not
+            // a line run, so not a circuit — but it is a coil and the labor to
+            // set it, and it must not disappear between the two categories.
+            if ((res.coilOnly || []).length) {
+              flags.push({
+                type: 'info',
+                text: `${res.coilOnly.length} new evaporator coil(s) on EXISTING pipe — not counted as circuits (no new copper): `
+                  + res.coilOnly.map(c => c.application || c.circuitId).join(', ')
+                  + '. The coil and the labor to set it are still scope.',
+                source: fileMeta.name,
+              });
+            }
             if (res.summary) newResults.push(`   → ${res.summary}`);
           }
 
