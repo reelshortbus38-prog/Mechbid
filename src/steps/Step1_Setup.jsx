@@ -27,6 +27,7 @@ import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
 import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pipePricing.js';
 import { mergeFacts } from '../api/jobFacts.js';
 import { forMode, stampMode, resultText } from '../state/tradeScope.js';
+import { dedupeSchedule } from '../components/scheduleDedupe.js';
 
 const MODES = ['Commercial Refrigeration', 'Commercial HVAC', 'Residential HVAC'];
 const MODE_ICONS = { 'Commercial Refrigeration': '❄️', 'Commercial HVAC': '🌀', 'Residential HVAC': '🏠' };
@@ -1165,7 +1166,10 @@ export default function Step1_Setup({ onNext }) {
       rackParts: [...state.rackParts, ...newRackParts],
       hvacParts: [...keptHvacParts, ...newHvacParts],
       ...(newHvacEquipment.length ? { hvacEquipment: [...(state.hvacEquipment || []), ...newHvacEquipment] } : {}),
-      rcSchedule: [...(state.rcSchedule || []), ...newScheduleItems],
+      // Deduped on the way in: the deterministic reader and the AI pass both
+      // find the same night, and they label the date differently, so nothing
+      // else recognises them as one task.
+      rcSchedule: dedupeSchedule([...(state.rcSchedule || []), ...newScheduleItems]),
       flags: dedupeFlags([...(state.flags || []), ...stampMode(newNotes, state.mode)]),
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),

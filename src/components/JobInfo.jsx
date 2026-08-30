@@ -2,6 +2,7 @@ import { useStore, fmt } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Input, Row, EmptyState } from './UI.jsx';
 import { buildDateParser, isNightDate, extractWeekNum, formatSpan } from './scheduleDates.js';
+import { dedupeSchedule, distinctDays, distinctNights } from './scheduleDedupe.js';
 
 // ── JOB INFO ─────────────────────────────────────────────────────────────────
 // A dedicated, easy-to-find home for store info and the dated RC schedule —
@@ -19,7 +20,10 @@ import { buildDateParser, isNightDate, extractWeekNum, formatSpan } from './sche
 
 export default function JobInfo({ compact = false, showStoreFields = true }) {
   const { state, dispatch } = useStore();
-  const schedule = state.rcSchedule || [];
+  // Deduped at READ time as well as at merge time, so a job saved before this
+  // existed — with the same night listed twice under two different labels —
+  // displays and counts correctly without needing its stored data rewritten.
+  const schedule = dedupeSchedule(state.rcSchedule || []);
 
   // Build a date parser that's aware of this specific schedule's date range,
   // so jobs crossing a calendar year boundary (e.g. Sep → Jan) sort correctly
@@ -34,7 +38,10 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
     return ta - tb;
   });
 
-  const uniqueDates = new Set(schedule.map(s => s.date).filter(Boolean)).size;
+  // By CALENDAR DAY, not by label text. "Monday, September 23rd (Night)" and
+  // "Sep 23" are one night; counting the strings made it two, and a night is a
+  // mobilisation.
+  const uniqueDates = distinctDays(schedule);
 
   // Derived span/week/night-work numbers — all computed directly from the
   // dates already attached to accepted schedule items, nothing fabricated.
@@ -52,7 +59,7 @@ export default function JobInfo({ compact = false, showStoreFields = true }) {
   // "(Night)" text in the label for older items. Label-only detection missed
   // every deterministic item (their short labels don't include "(Night)").
   const itemIsNight = s => (s.isNight != null ? s.isNight : isNightDate(s.date));
-  const nightDates = new Set(schedule.filter(itemIsNight).map(s => s.date)).size;
+  const nightDates = distinctNights(schedule, itemIsNight);
 
   function removeItem(id) {
     dispatch({ type: 'REMOVE_RC_SCHEDULE_ITEM', id });
