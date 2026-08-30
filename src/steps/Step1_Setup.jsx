@@ -574,6 +574,21 @@ export default function Step1_Setup({ onNext }) {
             // are not highlighted: a new evaporator coil on existing pipe. Not
             // a line run, so not a circuit — but it is a coil and the labor to
             // set it, and it must not disappear between the two categories.
+            // More than one highlight colour on one BPR. Every colour is
+            // counted as new work here, which is right when a tech changed
+            // highlighters and wrong when the colours mean different things.
+            // The estimator knows which; the parser cannot.
+            const colors = Object.entries(res.markColors || {});
+            if (colors.length > 1) {
+              flags.push({
+                type: 'warn',
+                text: `This BPR uses ${colors.length} different highlight colours on the line-size cells `
+                  + `(${colors.map(([c, n]) => `${c} on ${n} cell${n === 1 ? '' : 's'}`).join(', ')}). `
+                  + 'All of them were counted as new work. If a colour means something else on this job '
+                  + '— relocated, a later phase, another revision — the circuit count is too high.',
+                source: fileMeta.name,
+              });
+            }
             if ((res.coilOnly || []).length) {
               flags.push({
                 type: 'info',
