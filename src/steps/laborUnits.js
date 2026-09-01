@@ -47,9 +47,13 @@ export const UNIT_PROVENANCE = {
     note: 'A working estimator would not put one number on this: "it\'s always different, too many variables." '
       + 'Treated as a placeholder allowance, not an estimate — check it against the cases this job actually has.',
   },
-  perFtSmall:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
-  perFtMed:    { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
-  perFtLarge:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
+  // Halved on an estimator's read of the totals, not on a measurement. That is
+  // better than the ballpark it replaced and still short of a checked number,
+  // so it stays marked unconfirmed — a cut in the right direction is not the
+  // same as knowing the figure.
+  perFtSmall:  { state: 'unconfirmed', note: 'Halved from 0.06 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
+  perFtMed:    { state: 'unconfirmed', note: 'Halved from 0.09 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
+  perFtLarge:  { state: 'unconfirmed', note: 'Halved from 0.13 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: { state: 'unconfirmed', note: 'Assumes 20 ft hard stick at every size. Soft coil on the small sizes would mean far fewer joints than this produces.' },
   jointsPerCircuit: {
