@@ -88,13 +88,25 @@ describe('rack + field task costing', () => {
 
 describe('estimateCircuitLabor', () => {
   it('derives hours from footage, joints, case and rack allowances', () => {
-    // 100ft, 7/8" suction (small bucket): run 100*0.06=6 ; joints ceil(100/20)+2=7 *0.4=2.8 ; +1.5 case +2 tie
+    // 100ft, 7/8" suction (small bucket): run 100*0.03=3 ; joints ceil(100/20)+2=7 *0.4=2.8 ; +1.5 case +2 tie
     const { totalHours, perCircuit } = estimateCircuitLabor(
       [{ circuitId: 'A1', runLength: 100, riserLength: 0, sucHoriz: '7/8' }],
       DEFAULT_LABOR_UNITS,
     );
     expect(perCircuit[0].bucket).toBe('small');
-    expect(totalHours).toBeCloseTo(12.3, 1);
+    expect(totalHours).toBeCloseTo(9.3, 1);
+  });
+
+  it('carries the cut on the running rates, not on the brazing', () => {
+    // The brazing times were looked at by a working estimator and left alone;
+    // the running rates were halved in the same pass. A later edit that
+    // "tidies" these back into one round set would quietly undo his read.
+    expect(DEFAULT_LABOR_UNITS.perFtSmall).toBe(0.03);
+    expect(DEFAULT_LABOR_UNITS.perFtMed).toBe(0.045);
+    expect(DEFAULT_LABOR_UNITS.perFtLarge).toBe(0.065);
+    expect(DEFAULT_LABOR_UNITS.perJointSmall).toBe(0.4);
+    expect(DEFAULT_LABOR_UNITS.perJointMed).toBe(0.7);
+    expect(DEFAULT_LABOR_UNITS.perJointLarge).toBe(1.1);
   });
 
   it('returns zero for no circuits', () => {

@@ -1037,7 +1037,12 @@ export function calcFieldTasksTotal(fieldTasks, crew) {
 // dominate, so they're tracked separately from footage. Sizes are bucketed
 // small (≤7/8") / med (1-1/8"–1-3/8") / large (≥1-5/8").
 export const DEFAULT_LABOR_UNITS = {
-  perFtSmall: 0.06, perFtMed: 0.09, perFtLarge: 0.13,   // hrs per ft of run
+  // Running rates, halved from 0.06/0.09/0.13 after a working estimator read
+  // the circuit totals as running about double. The brazing times below were
+  // looked at in the same pass and left alone — he said those were about right,
+  // so the whole cut lands here rather than being spread over a number somebody
+  // had already checked. Still nobody's measurement: see UNIT_PROVENANCE.
+  perFtSmall: 0.03, perFtMed: 0.045, perFtLarge: 0.065,  // hrs per ft of run
   perJointSmall: 0.4, perJointMed: 0.7, perJointLarge: 1.1, // hrs per braze joint
   perCase: 1.5,      // hrs to hook up a refrigerated case
   perRackTie: 2.0,   // hrs to tie a circuit into the rack
