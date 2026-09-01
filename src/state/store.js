@@ -1047,14 +1047,41 @@ export const DEFAULT_LABOR_UNITS = {
   perCase: 1.5,      // hrs to hook up a refrigerated case
   perRackTie: 2.0,   // hrs to tie a circuit into the rack
   stickLength: 20,   // ft of hard copper per stick → number of joints
-  // Joints a circuit has BEYOND one per stick. Was hardcoded as +2 (the rack
-  // tie and the case), which quietly meant a circuit had no ells, no tees, no
-  // reducers, no P-trap and no valves — a straight pipe from the rack to the
-  // case. Every corner a real run turns is a joint that was never priced, so
-  // this is the number to raise when a job's circuits are anything but
-  // straight. Editable for the same reason the rest of them are.
+  // ── FITTINGS: THE NUMBER YOU CANNOT GET FROM A DESK ───────────────────────
+  // Joints a circuit has BEYOND one per stick. This started as a hardcoded +2
+  // — the rack tie and the case — which described a straight pipe from the
+  // motor room to the case. No such circuit exists. In a working estimator's
+  // words, a run leaves the motor room and ells one way or the other, goes
+  // down the back hall, takes another set of ells to turn onto the sales
+  // floor, sometimes ells up and over, another set toward the case, then a set
+  // down to it. Every one of those is joints nobody priced.
+  //
+  // And it is not derivable from footage: "you don't know where you'll have to
+  // turn or ell up until you get there and look at it." Two circuits of the
+  // same length through different parts of a store are different jobs. So this
+  // is an ALLOWANCE that stands in until somebody walks the route — the app
+  // says so rather than presenting it as a takeoff, and a circuit that HAS
+  // been walked carries its own counted number instead (see circuitJoints).
   jointsPerCircuit: 2,
+  // A drop long enough to need a riser brings its own ells up and over and a
+  // P-trap at the bottom. That much the app can tell from the circuit itself,
+  // because the riser length is on the sheet — so it is added rather than
+  // guessed at.
+  jointsPerRiser: 4,
 };
+
+// How many fittings-joints a circuit carries, and whether anybody actually
+// knows. A counted number beats an allowance and must never be overridden by
+// one; that is the whole reason the two are distinguishable here.
+export function circuitJoints(circuit, units) {
+  const u = { ...DEFAULT_LABOR_UNITS, ...(units || {}) };
+  const counted = parseFloat(circuit?.fittingJoints);
+  if (Number.isFinite(counted) && counted >= 0) return { joints: counted, source: 'counted' };
+  const base = Number.isFinite(parseFloat(u.jointsPerCircuit)) ? parseFloat(u.jointsPerCircuit) : 2;
+  const hasRiser = (parseFloat(circuit?.riserLength) || 0) > 0 || !!circuit?.isRiserOnly;
+  const riser = hasRiser && Number.isFinite(parseFloat(u.jointsPerRiser)) ? parseFloat(u.jointsPerRiser) : 0;
+  return { joints: base + riser, source: 'assumed' };
+}
 
 export function pipeSizeBucket(size) {
   const order = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
@@ -1078,13 +1105,20 @@ export function estimateCircuitLabor(circuits, units) {
     const bucket = pipeSizeBucket(c.sucHoriz || c.sucRiser || '');
     const perFt = bucket === 'small' ? u.perFtSmall : bucket === 'large' ? u.perFtLarge : u.perFtMed;
     const perJoint = bucket === 'small' ? u.perJointSmall : bucket === 'large' ? u.perJointLarge : u.perJointMed;
-    // One joint per stick, plus the circuit's fixed joints (rack tie, case, and
-    // whatever fittings the estimator knows this job's runs actually carry).
-    const extra = Number.isFinite(parseFloat(u.jointsPerCircuit)) ? parseFloat(u.jointsPerCircuit) : 2;
-    const joints = Math.ceil(ft / (u.stickLength || 20)) + extra;
+    // One joint per stick, plus this circuit's fittings — counted if somebody
+    // walked the route, allowed for if nobody has yet.
+    const fit = circuitJoints(c, u);
+    const joints = Math.ceil(ft / (u.stickLength || 20)) + fit.joints;
     const hrs = ft * perFt + joints * perJoint + u.perCase + u.perRackTie;
     totalHours += hrs;
-    perCircuit.push({ circuitId: c.circuitId || '?', application: c.application || '', ft, bucket, hours: Math.round(hrs * 10) / 10 });
+    perCircuit.push({
+      circuitId: c.circuitId || '?', application: c.application || '', ft, bucket,
+      hours: Math.round(hrs * 10) / 10,
+      // Carried so the estimator can see WHICH circuits are standing on a
+      // fittings allowance and which were walked and counted.
+      joints, fittings: fit.joints, fittingsSource: fit.source,
+    });
   });
-  return { totalHours: Math.round(totalHours * 10) / 10, perCircuit };
+  const assumed = perCircuit.filter(p => p.fittingsSource === 'assumed').length;
+  return { totalHours: Math.round(totalHours * 10) / 10, perCircuit, assumedFittings: assumed };
 }

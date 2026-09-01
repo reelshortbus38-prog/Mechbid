@@ -57,9 +57,16 @@ export const UNIT_PROVENANCE = {
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: { state: 'unconfirmed', note: 'Assumes 20 ft hard stick at every size. Soft coil on the small sizes would mean far fewer joints than this produces.' },
   jointsPerCircuit: {
+    state: 'varies',
+    note: 'Cannot be worked out from a drawing. A run ells out of the motor room, down the back hall, '
+      + 'again onto the sales floor, sometimes up and over, then down to the case — and which of those a '
+      + 'given circuit does is something you find out by walking it. This is an allowance until somebody has; '
+      + 'a circuit with its own counted fittings uses that number instead.',
+  },
+  jointsPerRiser: {
     state: 'unconfirmed',
-    note: 'Joints beyond one per stick. Two covers the rack tie and the case — and nothing else, '
-      + 'which means a circuit with no ells, tees, reducers or valves. Raise it to whatever this job\'s runs actually carry.',
+    note: 'Added on top for a circuit with a riser — the ells up and over, and the P-trap at the bottom. '
+      + 'The app can tell which circuits have one, because the riser length is on the sheet.',
   },
 };
 
