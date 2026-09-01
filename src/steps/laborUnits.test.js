@@ -3,7 +3,7 @@ import {
   splitAcrossCrew, manHoursOf, provenanceOf, unitsConfidence,
   UNIT_PROVENANCE, PROVENANCE_MARK,
 } from './laborUnits.js';
-import { DEFAULT_LABOR_UNITS, estimateCircuitLabor, calcFieldTaskCost } from '../state/store.js';
+import { DEFAULT_LABOR_UNITS, estimateCircuitLabor, calcFieldTaskCost, circuitJoints } from '../state/store.js';
 
 describe('man-hours split across a real crew', () => {
   it('keeps men x hrs equal to the man-hours it started with', () => {
@@ -87,11 +87,12 @@ describe('every assumption is a number somebody can change', () => {
   // requirement, so it gets a test rather than a promise. A hardcoded constant
   // in this path is one nobody can correct on the job in front of them.
   const circuits = [{ circuitId: '1', runLength: 150, riserLength: 0, sucHoriz: '1-3/8' }];
-  // One circuit per size bucket, so a rate that only applies to small pipe has
-  // something small to apply to.
+  // One circuit per size bucket so a rate that only applies to small pipe has
+  // something small to apply to, and one with a riser so the riser fittings
+  // have somewhere to land.
   const allBuckets = [
     { circuitId: 'S', runLength: 60, riserLength: 0, sucHoriz: '7/8' },
-    { circuitId: 'M', runLength: 150, riserLength: 0, sucHoriz: '1-3/8' },
+    { circuitId: 'M', runLength: 150, riserLength: 18, sucHoriz: '1-3/8' },
     { circuitId: 'L', runLength: 250, riserLength: 0, sucHoriz: '2-1/8' },
   ];
 
@@ -122,6 +123,70 @@ describe('every assumption is a number somebody can change', () => {
   });
 });
 
+describe('fittings — the number you cannot get from a drawing', () => {
+  // "You don't know where you'll have to turn or ell up until you get there and
+  // look at it." Two circuits of the same length through different parts of a
+  // store are different jobs, so footage cannot produce this number. What the
+  // app can do is be honest about which circuits are standing on an allowance.
+
+  it('uses a counted number when somebody walked the route', () => {
+    const c = { circuitId: 'A', runLength: 150, fittingJoints: 14 };
+    expect(circuitJoints(c, DEFAULT_LABOR_UNITS)).toEqual({ joints: 14, source: 'counted' });
+  });
+
+  it('lets a walked circuit count ZERO fittings', () => {
+    // A straight shot down one aisle is rare but real, and a falsy-zero bug
+    // would silently put the allowance back on it.
+    expect(circuitJoints({ fittingJoints: 0 }, DEFAULT_LABOR_UNITS))
+      .toEqual({ joints: 0, source: 'counted' });
+  });
+
+  it('never lets an allowance override a counted number', () => {
+    const c = { fittingJoints: 6, riserLength: 30 };
+    const big = { ...DEFAULT_LABOR_UNITS, jointsPerCircuit: 40, jointsPerRiser: 40 };
+    expect(circuitJoints(c, big).joints).toBe(6);
+  });
+
+  it('adds the riser fittings only to circuits that have a riser', () => {
+    // The ells up and over and the P-trap at the bottom. This part IS knowable
+    // — the riser length is on the sheet.
+    const flat = circuitJoints({ runLength: 150, riserLength: 0 }, DEFAULT_LABOR_UNITS);
+    const dropped = circuitJoints({ runLength: 150, riserLength: 22 }, DEFAULT_LABOR_UNITS);
+    expect(dropped.joints - flat.joints).toBe(DEFAULT_LABOR_UNITS.jointsPerRiser);
+    expect(flat.source).toBe('assumed');
+  });
+
+  it('treats a riser-only circuit as having a riser', () => {
+    const r = circuitJoints({ isRiserOnly: true, riserLength: 0 }, DEFAULT_LABOR_UNITS);
+    expect(r.joints).toBe(DEFAULT_LABOR_UNITS.jointsPerCircuit + DEFAULT_LABOR_UNITS.jointsPerRiser);
+  });
+
+  it('reports how many circuits are running on an allowance', () => {
+    const est = estimateCircuitLabor([
+      { circuitId: '1', runLength: 150, sucHoriz: '1-3/8' },
+      { circuitId: '2', runLength: 90, sucHoriz: '7/8', fittingJoints: 12 },
+      { circuitId: '3', runLength: 60, sucHoriz: '7/8' },
+    ], DEFAULT_LABOR_UNITS);
+    // Two guessed, one walked. An estimator who cannot see which is which
+    // cannot tell a takeoff from a placeholder.
+    expect(est.assumedFittings).toBe(2);
+    expect(est.perCircuit.map(p => p.fittingsSource)).toEqual(['assumed', 'counted', 'assumed']);
+  });
+
+  it('makes a walked circuit cost more when it turns more corners', () => {
+    const base = { circuitId: 'X', runLength: 150, sucHoriz: '1-3/8' };
+    const straight = estimateCircuitLabor([{ ...base, fittingJoints: 2 }], DEFAULT_LABOR_UNITS).totalHours;
+    const winding = estimateCircuitLabor([{ ...base, fittingJoints: 14 }], DEFAULT_LABOR_UNITS).totalHours;
+    expect(winding - straight).toBeCloseTo(12 * DEFAULT_LABOR_UNITS.perJointMed, 5);
+  });
+
+  it('ignores a fittings value that is not a number', () => {
+    for (const bad of ['', null, undefined, 'lots', -4]) {
+      expect(circuitJoints({ fittingJoints: bad }, DEFAULT_LABOR_UNITS).source, String(bad)).toBe('assumed');
+    }
+  });
+});
+
 describe('saying which units anybody has actually checked', () => {
   it('covers every unit the library ships', () => {
     // A unit with no provenance entry would render as unmarked, which reads as
@@ -135,6 +200,13 @@ describe('saying which units anybody has actually checked', () => {
     for (const k of ['perJointSmall', 'perJointMed', 'perJointLarge']) {
       expect(provenanceOf(k).state, k).toBe('confirmed');
     }
+  });
+
+  it('does not claim the fittings count is an estimate either', () => {
+    // It cannot be worked out from a drawing at all — which corners a run
+    // turns is something you learn by walking it.
+    expect(provenanceOf('jointsPerCircuit').state).toBe('varies');
+    expect(provenanceOf('jointsPerCircuit').note).toMatch(/walking it/i);
   });
 
   it('does not claim the case hookup is an estimate', () => {
@@ -164,8 +236,11 @@ describe('saying which units anybody has actually checked', () => {
 
   it('counts what the estimator is standing on', () => {
     const t = unitsConfidence();
+    // Three brazing times confirmed; the case hookup and the fittings count
+    // both marked as varying, because a working estimator refused to put one
+    // number on either.
     expect(t.confirmed).toBe(3);
-    expect(t.varies).toBe(1);
+    expect(t.varies).toBe(2);
     expect(t.confirmed + t.varies + t.unconfirmed).toBe(Object.keys(UNIT_PROVENANCE).length);
   });
 });

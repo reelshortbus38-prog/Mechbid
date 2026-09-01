@@ -346,7 +346,7 @@ function CircuitLaborEstimator() {
     { key: 'perFtSmall', label: 'Run/ft ≤7/8"' }, { key: 'perFtMed', label: 'Run/ft 1⅛–1⅜"' }, { key: 'perFtLarge', label: 'Run/ft ≥1⅝"' },
     { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
     { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
-    { key: 'jointsPerCircuit', label: 'Extra joints/circ' },
+    { key: 'jointsPerCircuit', label: 'Fittings/circuit' }, { key: 'jointsPerRiser', label: 'Fittings/riser' },
   ];
   const confidence = unitsConfidence(UNIT_FIELDS.map(f => f.key));
 
@@ -375,6 +375,22 @@ function CircuitLaborEstimator() {
             — generated tasks split the man-hours across them. Same cost, real crew.
         </span>
       </Row>
+
+      {/* The fittings count is the one number in here that cannot be worked out
+          from a drawing. A run leaves the motor room, ells down the back hall,
+          ells again onto the sales floor, maybe up and over, then down to the
+          case — and which of those a given circuit does is something you find
+          out by walking it. Saying so is more use than a confident number. */}
+      {est.assumedFittings > 0 && (
+        <div style={{ marginTop: 10, fontSize: 11, color: colors.textDim, lineHeight: 1.6,
+          padding: '8px 10px', borderRadius: 6, border: `1px solid ${colors.yellow}40`, background: `${colors.yellow}0D` }}>
+          <strong style={{ color: colors.yellow }}>{est.assumedFittings} of {est.perCircuit.length} circuit{est.perCircuit.length !== 1 ? 's' : ''}</strong>{' '}
+          {est.assumedFittings === 1 ? 'is' : 'are'} using the fittings allowance below, not a counted one.
+          Two runs of the same length are different jobs depending on where they turn, and you don't
+          know where a circuit ells up until you walk it. Put the real count on a circuit once you have it
+          and this estimate uses that instead.
+        </div>
+      )}
 
       <div onClick={() => setOpen(o => !o)} style={{ marginTop: 10, fontSize: 11, color: colors.textDim, cursor: 'pointer', userSelect: 'none' }}>
         {open ? '▲ Hide assumptions' : `▼ Adjust labor-unit assumptions (man-hours) — ${confidence.confirmed} confirmed, ${confidence.unconfirmed + confidence.varies} not`}
