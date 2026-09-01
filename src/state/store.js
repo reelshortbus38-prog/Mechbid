@@ -262,6 +262,13 @@ export const initialState = {
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
+  // How many men go on one circuit. NOT part of the cost arithmetic — the units
+  // are man-hours and stay man-hours. This only decides whether a generated
+  // task is written down as one man for 24 hours or three men for 8, which is
+  // the difference between a row an estimator can read and one he has to
+  // translate. Two by default; a working estimator's first question about the
+  // old output was "who runs 150 feet of copper on their own?"
+  circuitCrewSize: 2,
   // ── WHAT A CREW RATE MEANS ─────────────────────────────────────────────────
   // The rate field said only "Rate/hr", and the two things it can be price very
   // differently. On a $200k-material, $378k-labor job at 20% markup:
