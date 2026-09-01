@@ -5,6 +5,7 @@ import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptySt
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
+import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 
 // Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
 // both Commercial Refrigeration and Commercial HVAC, and a rooftop-unit swap
@@ -230,7 +231,13 @@ function FieldTasksSection() {
       <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <SLabel>Field Work Tasks</SLabel>
-          <div style={{ fontSize: 12, color: colors.textDim }}>Auto-populated from documents — enter hours per task</div>
+          {/* "Hrs" alone read as the duration of the task, so a four-man job
+              looked like one man for three days — and putting 4 in the Men box
+              to fix it QUADRUPLED the cost instead of splitting it. Saying
+              what the column is, and how the cost is worked out, is the fix. */}
+          <div style={{ fontSize: 12, color: colors.textDim }}>
+            Auto-populated from documents. Hours are <strong>per man</strong> — cost is men × hours each × crew rate.
+          </div>
         </div>
         <Btn variant="ghost" size="sm" onClick={addTask}>+ Add Task</Btn>
       </Row>
@@ -242,7 +249,7 @@ function FieldTasksSection() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: colors.surface }}>
-                  {['Task', 'Men', 'Hrs', 'Cost', 'Notes', ''].map(h => (
+                  {['Task', 'Men', 'Hrs ea', 'Cost', 'Notes', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
                   ))}
                 </tr>
@@ -301,6 +308,10 @@ function CircuitLaborEstimator() {
   const rate = avgCrewRate(crew) || 100;
   const est = estimateCircuitLabor(circuits, units);
   const cost = est.totalHours * rate;
+  // How many men go on a circuit. Not an hour rate — it never enters the
+  // arithmetic, only how the man-hours are written down. Stored per job so it
+  // rides the save and the sync like every other assumption.
+  const crewSize = Math.max(1, Math.round(parseFloat(state.circuitCrewSize) || 2));
 
   const setUnit = (key, val) => dispatch({ type: 'SET', key: 'laborUnits', value: { ...units, [key]: parseFloat(val) || 0 } });
 
@@ -312,12 +323,22 @@ function CircuitLaborEstimator() {
     const have = new Set(forMode(existing, state.mode).map(t => idOf(t.desc)).filter(Boolean));
     const fresh = est.perCircuit
       .filter(pc => !have.has(pc.circuitId))
-      .map(pc => ({
-        id: uid(),
-        desc: `Run & connect ${pc.circuitId}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft}ft)`,
-        men: 1, hrs: pc.hours, notes: 'Auto-estimated from circuit labor units', crewAssignment: {},
-        mode: state.mode,
-      }));
+      .map(pc => {
+        // The units produce MAN-hours. Emitting them as `men: 1` said one
+        // person runs 150 ft of copper over three days, which nobody does —
+        // and the natural correction (typing 4 into Men) billed four times the
+        // labor instead of splitting it. Split it here so the row is true and
+        // the total is untouched.
+        const { men, hrs } = splitAcrossCrew(pc.hours, crewSize);
+        return {
+          id: uid(),
+          desc: `Run & connect ${pc.circuitId}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft}ft)`,
+          men, hrs,
+          notes: `Auto-estimated — ${pc.hours} man-hours over ${men} ${men === 1 ? 'man' : 'men'}`,
+          crewAssignment: {},
+          mode: state.mode,
+        };
+      });
     if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
   }
 
@@ -326,6 +347,7 @@ function CircuitLaborEstimator() {
     { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
     { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
   ];
+  const confidence = unitsConfidence(UNIT_FIELDS.map(f => f.key));
 
   return (
     <Card style={{ background: colors.greenFaint, border: `1px solid ${colors.green}40` }}>
@@ -333,23 +355,57 @@ function CircuitLaborEstimator() {
         <div>
           <SLabel style={{ margin: 0 }}>⚙️ Labor Estimator (from circuits)</SLabel>
           <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
-            {circuits.length} circuit{circuits.length !== 1 ? 's' : ''} → <strong style={{ color: colors.green }}>{est.totalHours} hrs</strong> · ~{fmt(cost)} at {fmt(rate)}/hr blended
+            {circuits.length} circuit{circuits.length !== 1 ? 's' : ''} → <strong style={{ color: colors.green }}>{est.totalHours} man-hours</strong> · ~{fmt(cost)} at {fmt(rate)}/hr per man
           </div>
         </div>
         <Btn variant="green" size="sm" onClick={generateFieldTasks}>+ Generate Field Tasks</Btn>
       </Row>
+
+      {/* Crew size is presentation, not arithmetic: it decides whether a
+          circuit is written down as one man for 24 hours or three men for 8.
+          The cost is the same either way — the point is that the row says
+          something true about how the work gets done. */}
+      <Row style={{ marginTop: 10, alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: colors.textDim }}>Men on a circuit</span>
+        <Input type="number" min="1" step="1" value={crewSize}
+          onChange={e => dispatch({ type: 'SET', key: 'circuitCrewSize', value: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
+          style={{ width: 56, textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+        <span style={{ fontSize: 11, color: colors.textDim }}>
+            — generated tasks split the man-hours across them. Same cost, real crew.
+        </span>
+      </Row>
+
       <div onClick={() => setOpen(o => !o)} style={{ marginTop: 10, fontSize: 11, color: colors.textDim, cursor: 'pointer', userSelect: 'none' }}>
-        {open ? '▲ Hide assumptions' : '▼ Adjust labor-unit assumptions (hrs)'}
+        {open ? '▲ Hide assumptions' : `▼ Adjust labor-unit assumptions (man-hours) — ${confidence.confirmed} confirmed, ${confidence.unconfirmed + confidence.varies} not`}
       </div>
       {open && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
-          {UNIT_FIELDS.map(f => (
-            <div key={f.key}>
-              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{f.label}</div>
-              <Input type="number" value={units[f.key]} step="0.05" onChange={e => setUnit(f.key, e.target.value)} style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
-            </div>
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
+            {UNIT_FIELDS.map(f => {
+              const p = provenanceOf(f.key);
+              const tone = p.state === 'confirmed' ? colors.green : p.state === 'varies' ? colors.yellow : colors.textDim;
+              return (
+                <div key={f.key}>
+                  <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }} title={p.note}>
+                    <span style={{ color: tone, fontWeight: 700 }}>{PROVENANCE_MARK[p.state]}</span> {f.label}
+                  </div>
+                  <Input type="number" value={units[f.key]} step="0.05" onChange={e => setUnit(f.key, e.target.value)}
+                    style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+                </div>
+              );
+            })}
+          </div>
+          {/* Which numbers this estimate is standing on. A guess and a checked
+              number look identical in a box, and the estimator is the one who
+              has to defend the total. */}
+          <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
+            <span style={{ color: colors.green, fontWeight: 700 }}>✓</span> confirmed by a working estimator ·{' '}
+            <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> varies too much for one number ·{' '}
+            <span style={{ fontWeight: 700 }}>?</span> not yet checked against a finished job.
+            <br />
+            {provenanceOf('perCase').note}
+          </div>
+        </>
       )}
     </Card>
   );
