@@ -185,7 +185,12 @@ export default function Step3_Rack({ onNext, onBack }) {
         <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
             <SLabel>Rack Work Tasks</SLabel>
-            <div style={{ fontSize: 12, color: colors.textDim }}>Contractor fills in men and hours — rates from Labor step</div>
+            {/* Same convention as the Field Work table: hours are per man, and
+                the cost is the product. Saying it once in each table is what
+                keeps someone from "fixing" a crew size and doubling the cost. */}
+            <div style={{ fontSize: 12, color: colors.textDim }}>
+              Contractor fills in men and hours — hours are <strong>per man</strong>, rates from the Labor step
+            </div>
           </div>
           <Btn variant="green" size="sm" onClick={addRackTask}>+ Add Task</Btn>
         </Row>
@@ -235,7 +240,7 @@ export default function Step3_Rack({ onNext, onBack }) {
                         </colgroup>
                         <thead>
                           <tr>
-                            {['Task', 'Men', 'Hrs', 'Cost', 'Notes', ''].map(h => (
+                            {['Task', 'Men', 'Hrs ea', 'Cost', 'Notes', ''].map(h => (
                               <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
                             ))}
                           </tr>

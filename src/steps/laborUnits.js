@@ -52,6 +52,11 @@ export const UNIT_PROVENANCE = {
   perFtLarge:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: { state: 'unconfirmed', note: 'Assumes 20 ft hard stick at every size. Soft coil on the small sizes would mean far fewer joints than this produces.' },
+  jointsPerCircuit: {
+    state: 'unconfirmed',
+    note: 'Joints beyond one per stick. Two covers the rack tie and the case — and nothing else, '
+      + 'which means a circuit with no ells, tees, reducers or valves. Raise it to whatever this job\'s runs actually carry.',
+  },
 };
 
 export const PROVENANCE_MARK = { confirmed: '✓', varies: '~', unconfirmed: '?' };

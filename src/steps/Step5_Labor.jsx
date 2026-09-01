@@ -346,6 +346,7 @@ function CircuitLaborEstimator() {
     { key: 'perFtSmall', label: 'Run/ft ≤7/8"' }, { key: 'perFtMed', label: 'Run/ft 1⅛–1⅜"' }, { key: 'perFtLarge', label: 'Run/ft ≥1⅝"' },
     { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
     { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
+    { key: 'jointsPerCircuit', label: 'Extra joints/circ' },
   ];
   const confidence = unitsConfidence(UNIT_FIELDS.map(f => f.key));
 
