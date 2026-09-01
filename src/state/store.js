@@ -1042,6 +1042,13 @@ export const DEFAULT_LABOR_UNITS = {
   perCase: 1.5,      // hrs to hook up a refrigerated case
   perRackTie: 2.0,   // hrs to tie a circuit into the rack
   stickLength: 20,   // ft of hard copper per stick → number of joints
+  // Joints a circuit has BEYOND one per stick. Was hardcoded as +2 (the rack
+  // tie and the case), which quietly meant a circuit had no ells, no tees, no
+  // reducers, no P-trap and no valves — a straight pipe from the rack to the
+  // case. Every corner a real run turns is a joint that was never priced, so
+  // this is the number to raise when a job's circuits are anything but
+  // straight. Editable for the same reason the rest of them are.
+  jointsPerCircuit: 2,
 };
 
 export function pipeSizeBucket(size) {
@@ -1066,7 +1073,10 @@ export function estimateCircuitLabor(circuits, units) {
     const bucket = pipeSizeBucket(c.sucHoriz || c.sucRiser || '');
     const perFt = bucket === 'small' ? u.perFtSmall : bucket === 'large' ? u.perFtLarge : u.perFtMed;
     const perJoint = bucket === 'small' ? u.perJointSmall : bucket === 'large' ? u.perJointLarge : u.perJointMed;
-    const joints = Math.ceil(ft / (u.stickLength || 20)) + 2; // sticks + rack tie + case
+    // One joint per stick, plus the circuit's fixed joints (rack tie, case, and
+    // whatever fittings the estimator knows this job's runs actually carry).
+    const extra = Number.isFinite(parseFloat(u.jointsPerCircuit)) ? parseFloat(u.jointsPerCircuit) : 2;
+    const joints = Math.ceil(ft / (u.stickLength || 20)) + extra;
     const hrs = ft * perFt + joints * perJoint + u.perCase + u.perRackTie;
     totalHours += hrs;
     perCircuit.push({ circuitId: c.circuitId || '?', application: c.application || '', ft, bucket, hours: Math.round(hrs * 10) / 10 });

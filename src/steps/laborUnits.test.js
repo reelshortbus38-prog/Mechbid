@@ -82,6 +82,46 @@ describe('a generated circuit still costs what the units said', () => {
   });
 });
 
+describe('every assumption is a number somebody can change', () => {
+  // "As long as everything is editable it will be fine." That is the whole
+  // requirement, so it gets a test rather than a promise. A hardcoded constant
+  // in this path is one nobody can correct on the job in front of them.
+  const circuits = [{ circuitId: '1', runLength: 150, riserLength: 0, sucHoriz: '1-3/8' }];
+  // One circuit per size bucket, so a rate that only applies to small pipe has
+  // something small to apply to.
+  const allBuckets = [
+    { circuitId: 'S', runLength: 60, riserLength: 0, sucHoriz: '7/8' },
+    { circuitId: 'M', runLength: 150, riserLength: 0, sucHoriz: '1-3/8' },
+    { circuitId: 'L', runLength: 250, riserLength: 0, sucHoriz: '2-1/8' },
+  ];
+
+  it('moves the answer when ANY unit is changed', () => {
+    const base = estimateCircuitLabor(allBuckets, DEFAULT_LABOR_UNITS).totalHours;
+    for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
+      const bumped = { ...DEFAULT_LABOR_UNITS, [key]: DEFAULT_LABOR_UNITS[key] * 2 };
+      expect(estimateCircuitLabor(allBuckets, bumped).totalHours, `${key} does nothing`).not.toBe(base);
+    }
+  });
+
+  it('lets the joint count be raised off the two it assumes', () => {
+    // Two joints covers the rack tie and the case and nothing else — a circuit
+    // with no ells, tees, reducers or valves. It used to be hardcoded, so a
+    // run that turned six corners had six joints nobody priced.
+    const two = estimateCircuitLabor(circuits, DEFAULT_LABOR_UNITS).totalHours;
+    const eight = estimateCircuitLabor(circuits, { ...DEFAULT_LABOR_UNITS, jointsPerCircuit: 8 }).totalHours;
+    expect(eight - two).toBeCloseTo(6 * DEFAULT_LABOR_UNITS.perJointMed, 5);
+  });
+
+  it('still answers when a saved job predates a unit being added', () => {
+    // Old jobs carry whatever laborUnits existed when they were saved. A
+    // missing key must fall back, not produce NaN hours in a bid.
+    const legacy = { perFtSmall: 0.06, perFtMed: 0.09, perFtLarge: 0.13, stickLength: 20 };
+    const r = estimateCircuitLabor(circuits, legacy);
+    expect(Number.isFinite(r.totalHours)).toBe(true);
+    expect(r.totalHours).toBeGreaterThan(0);
+  });
+});
+
 describe('saying which units anybody has actually checked', () => {
   it('covers every unit the library ships', () => {
     // A unit with no provenance entry would render as unmarked, which reads as
