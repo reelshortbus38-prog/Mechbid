@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveBidMethod, billedLabor, crewCoverage,
-  LUMP_SUM, TIME_AND_MATERIALS, UNSET, METHOD_BLURB,
+  resolveBidMethod, billedLabor, crewCoverage, escalationFit,
+  LUMP_SUM, TIME_AND_MATERIALS, UNSET, METHOD_BLURB, MATERIALS_NOTE,
 } from './bidMethod.js';
 import { computeBidTotals } from './bidTotals.js';
 import { initialState } from '../state/store.js';
@@ -141,5 +141,60 @@ describe('what each method tells the estimator', () => {
   it('says the other side stays visible rather than deleted', () => {
     expect(METHOD_BLURB[LUMP_SUM]).toMatch(/cross-check|scope/i);
     expect(METHOD_BLURB[TIME_AND_MATERIALS]).toMatch(/schedule/i);
+  });
+
+  it('never lets a blurb imply the crew price is the whole bid', () => {
+    // "On crew jobs they still have to calculate the materials." A blurb that
+    // says the crew "carries the price" reads as the whole number, and it is
+    // the labor half of it.
+    for (const m of [LUMP_SUM, TIME_AND_MATERIALS, UNSET]) {
+      expect(METHOD_BLURB[m], m).toMatch(/LABOR/);
+      expect(METHOD_BLURB[m], m).toMatch(/material/i);
+    }
+    expect(MATERIALS_NOTE).toMatch(/takeoff, markup, tax and escalation/i);
+  });
+});
+
+describe('materials are untouched by the labor method', () => {
+  it('prices the same materials whichever way the labor is bid', () => {
+    // The switch governs one half of the bid. A crew job still has its copper,
+    // fittings, insulation and parts taken off and marked up identically.
+    const withMats = m => computeBidTotals(job({
+      bidMethod: m,
+      lineItems: [{ id: 'm1', desc: 'ACR Copper 1-3/8"', qty: 400, unitCost: 9.5, total: 3800 }],
+    }), 20);
+    const lump = withMats(LUMP_SUM);
+    const tm = withMats(TIME_AND_MATERIALS);
+    expect(lump.markupBase).toBe(tm.markupBase);
+    expect(lump.markupAmt).toBe(tm.markupAmt);
+    expect(lump.taxAmt).toBe(tm.taxAmt);
+    expect(lump.matsTotal).toEqual(tm.matsTotal);
+  });
+});
+
+describe('escalation is a fixed-price risk', () => {
+  it('questions escalation carried on a time-and-materials bid', () => {
+    // Escalation covers copper moving between quoting and buying, which the
+    // shop absorbs on a fixed price. Billed at cost as it is used, that
+    // movement passes through to the customer instead.
+    const f = escalationFit(TIME_AND_MATERIALS, 8);
+    expect(f).toBeTruthy();
+    expect(f.pct).toBe(8);
+    expect(f.note).toMatch(/passes through/i);
+  });
+
+  it('leaves it alone on a lump-sum job, where it belongs', () => {
+    expect(escalationFit(LUMP_SUM, 8)).toBe(null);
+  });
+
+  it('says nothing when no escalation is carried', () => {
+    expect(escalationFit(TIME_AND_MATERIALS, 0)).toBe(null);
+    expect(escalationFit(TIME_AND_MATERIALS, undefined)).toBe(null);
+  });
+
+  it('does not decide for the estimator', () => {
+    // A not-to-exceed or a fixed material component is a real thing. This
+    // raises the question; it never zeroes a live number.
+    expect(escalationFit(TIME_AND_MATERIALS, 8).note).toMatch(/leave it if/i);
   });
 });
