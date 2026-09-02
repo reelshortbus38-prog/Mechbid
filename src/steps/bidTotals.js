@@ -1,5 +1,6 @@
 import { jobLaborTotal, jobCrew, jobOOTTotal, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal } from '../state/store.js';
 import { forMode, REFRIGERATION, RESIDENTIAL_HVAC } from '../state/tradeScope.js';
+import { billedLabor } from './bidMethod.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -9,8 +10,14 @@ import { forMode, REFRIGERATION, RESIDENTIAL_HVAC } from '../state/tradeScope.js
 // is a % of the running subtotal and the permit is a flat fee, both added last.
 export function computeBidTotals(state, markupPct) {
   const mode = state.mode;
+  // ── WHICH LABOR METHOD IS DRIVING THIS BID ─────────────────────────────────
+  // Crew periods and task hours are two prices for the same work. Summing them
+  // billed the running labor twice. The job's chosen method decides which one
+  // reaches the total; the other stays on screen, editable, as reference.
+  // A job saved before the setting existed carries both, exactly as before.
+  const billed = billedLabor(state.bidMethod);
   // Mode-aware: phased periods OR one whole-job crew ("4 guys × 27 weeks").
-  const laborTotal = jobLaborTotal(state);
+  const rawLaborTotal = jobLaborTotal(state);
   const crew = jobCrew(state);
   // ── TRADE SCOPING ──────────────────────────────────────────────────────────
   // fieldTasks and rackTasks are reachable from steps SHARED by both trades, so
@@ -19,11 +26,13 @@ export function computeBidTotals(state, markupPct) {
   // inflated HVAC markup and consumables. Scope them here, once, so every
   // consumer below reads a figure that belongs to the job's own trade.
   // Residential has no labor step at all, so it carries no field tasks.
-  const fieldTasksTotal = calcFieldTasksTotal(
+  const rawFieldTasksTotal = calcFieldTasksTotal(
     mode === RESIDENTIAL_HVAC ? [] : forMode(state.fieldTasks, mode), crew,
   );
   // There is no rack on an HVAC job.
-  const rackLaborTotal = mode === REFRIGERATION ? calcRackLaborTotal(state.rackTasks, crew) : 0;
+  const rawRackLaborTotal = mode === REFRIGERATION ? calcRackLaborTotal(state.rackTasks, crew) : 0;
+  const fieldTasksTotal = billed.tasks ? rawFieldTasksTotal : 0;
+  const rackLaborTotal = billed.tasks ? rawRackLaborTotal : 0;
   const taxPct = parseFloat(state.materialsTaxPct) || 0;
   const taxOf = sell => sell * (taxPct / 100);
   const equipMarkupPct = (state.equipMarkupPct === '' || state.equipMarkupPct == null)
@@ -40,6 +49,10 @@ export function computeBidTotals(state, markupPct) {
   // always done.
   const laborIsCost = (state.laborRateBasis || 'billing') === 'cost';
   const ootAmt = jobOOTTotal(state);
+  // Out-of-town is a reimbursable with its own bid category, not labor — the
+  // crew sleeps away from home whichever way the work is priced. So on a T&M
+  // job the periods still carry their per diem; only their LABOR drops out.
+  const laborTotal = billed.periods ? rawLaborTotal : ootAmt;
   const laborMarkupOn = laborIsCost
     ? Math.max(0, laborTotal - ootAmt) + rackLaborTotal + fieldTasksTotal
     : 0;
@@ -76,7 +89,16 @@ export function computeBidTotals(state, markupPct) {
   const consumablesAmt = laborForConsumables * (consumablesPct / 100);
   const finish = (subtotal, rest) => {
     const bondAmt = subtotal * (bondPct / 100);
-    return { ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee, total: subtotal + bondAmt + permitFee };
+    return {
+      ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee,
+      // What the OTHER method would have come to. Not in the total — carried so
+      // the Labor step can show what is sitting out of the bid rather than
+      // leaving an estimator to wonder where their task hours went.
+      bidMethod: state.bidMethod, billedLabor: billed,
+      unbilledPeriodLabor: billed.periods ? 0 : Math.max(0, rawLaborTotal - ootAmt),
+      unbilledTaskLabor: billed.tasks ? 0 : rawFieldTasksTotal + rawRackLaborTotal,
+      total: subtotal + bondAmt + permitFee,
+    };
   };
 
   if (mode === 'Residential HVAC') {

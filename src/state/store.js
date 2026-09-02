@@ -201,6 +201,16 @@ export const initialState = {
   // shops that bid task-by-task. Dated schedule items and redline callouts are
   // always notes regardless.
   taskBidMode: 'notes',
+  // ── LUMP SUM OR TIME AND MATERIALS ─────────────────────────────────────────
+  // Crew-and-calendar and per-circuit hours are two prices for the SAME work,
+  // and bidTotals used to add both. Whichever method a job is bid on owns its
+  // labor total; the other stays visible and editable as reference.
+  //
+  // Deliberately EMPTY rather than defaulting to one. LOAD_JOB spreads over
+  // initialState, so a default here would reach into every job saved before
+  // this existed and change what it totals. Empty means "bill both", which is
+  // exactly what those jobs already do, and the Labor step asks for a choice.
+  bidMethod: '',
   circuits: [],
   // Shared suction headers on a LOOP system — one pipe every circuit taps.
   // Kept separate from circuits so it is bought ONCE: rolled into a circuit's
