@@ -7,7 +7,7 @@ import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
-import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
+import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
 // Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
 // both Commercial Refrigeration and Commercial HVAC, and a rooftop-unit swap
@@ -482,6 +482,7 @@ export default function Step5_Labor({ onNext, onBack }) {
   // ── WHICH METHOD IS PRICING THIS JOB ───────────────────────────────────────
   const bidMethod = resolveBidMethod(state.bidMethod);
   const billed = billedLabor(state.bidMethod);
+  const escFit = escalationFit(state.bidMethod, state.escalationPct);
   const modeFieldTasks = forMode(state.fieldTasks, state.mode);
   const taskLabor = calcFieldTasksTotal(modeFieldTasks, jobCrew(state))
     + (state.mode === 'Commercial Refrigeration' ? calcRackLaborTotal(state.rackTasks, jobCrew(state)) : 0);
@@ -548,7 +549,8 @@ export default function Step5_Labor({ onNext, onBack }) {
           work, and the app used to add them. Choosing here decides which one
           reaches the total; the other stays on screen and editable. */}
       <Card style={bidMethod === UNSET ? { borderColor: `${colors.yellow}55` } : undefined}>
-        <SLabel style={{ margin: 0 }}>How this job is bid</SLabel>
+        <SLabel style={{ margin: 0 }}>How this job's LABOR is bid</SLabel>
+        <div style={{ fontSize: 11, color: colors.textDim, marginTop: 4, lineHeight: 1.6 }}>{MATERIALS_NOTE}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 10 }}>
           {[LUMP_SUM, TIME_AND_MATERIALS].map(m => (
             <div key={m} onClick={() => dispatch({ type: 'SET', key: 'bidMethod', value: m })}
@@ -574,6 +576,12 @@ export default function Step5_Labor({ onNext, onBack }) {
             {billed.periods
               ? `Task hours below are scope and cross-check only${taskLabor > 0 ? ` — ${fmt(taskLabor)} of them is NOT in this bid` : ''}.`
               : `Crew periods below are the schedule and per diem only${totalLabor > 0 ? ' — their labor is NOT in this bid' : ''}.`}
+          </div>
+        )}
+        {escFit && (
+          <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8, lineHeight: 1.6,
+            padding: '8px 10px', borderRadius: 6, border: `1px solid ${colors.yellow}40`, background: `${colors.yellow}0D` }}>
+            <strong style={{ color: colors.yellow }}>⚠ Material escalation on a T&amp;M bid.</strong> {escFit.note}
           </div>
         )}
       </Card>

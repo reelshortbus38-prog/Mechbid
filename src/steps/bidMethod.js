@@ -48,11 +48,46 @@ export const METHOD_LABEL = {
 };
 
 // What each method means on screen, in the terms an estimator would use.
+//
+// These say LABOR every time, on purpose. This setting decides which side of
+// the labor reaches the total and touches nothing else — the takeoff, the
+// markup, the tax and the escalation all work the same either way. A crew job
+// still has its materials calculated; the crew price is the labor half of the
+// number, not the whole of it.
 export const METHOD_BLURB = {
-  [LUMP_SUM]: 'Crew and calendar carry the price. Task hours stay as scope and cross-check — they are not added to the bid.',
-  [TIME_AND_MATERIALS]: 'The task list carries the price. Crew periods stay as the schedule — nights on site and per diem — but their labor is not added to the bid.',
-  [UNSET]: 'Not chosen yet, so this job bills BOTH the crew periods and the task hours. If they cover the same work, the labor is in twice.',
+  [LUMP_SUM]: 'Crew and calendar carry the LABOR. Task hours stay as scope and cross-check — they are not added to the bid. Materials are taken off and priced exactly the same as on any other job.',
+  [TIME_AND_MATERIALS]: 'The task list carries the LABOR. Crew periods stay as the schedule — nights on site and per diem — but their labor is not added. Materials are taken off and priced the same either way.',
+  [UNSET]: 'Not chosen yet, so this job bills BOTH the crew periods and the task hours. If they cover the same work, the LABOR is in twice. Materials are unaffected.',
 };
+
+// Said plainly next to the switch, because "the crew price" sounds like the
+// whole bid and it is half of it.
+export const MATERIALS_NOTE =
+  'Either way, materials are their own half of the bid — the takeoff, markup, tax and escalation '
+  + 'are untouched by this setting. A crew job still has its copper, fittings, insulation and parts '
+  + 'calculated the same as any other.';
+
+// ── ESCALATION IS A FIXED-PRICE RISK ─────────────────────────────────────────
+// Material escalation exists because a lump-sum number is quoted in month one
+// and the copper is bought through month six, and the shop absorbs whatever
+// moved in between. On a job billed at cost as it is used, that movement is
+// passed through rather than absorbed — so carrying an escalation percentage
+// on a T&M bid is charging for a risk somebody else is already holding.
+//
+// Informational, never automatic: plenty of "T&M" jobs have a not-to-exceed or
+// a fixed material component, and zeroing a live number on a guess about which
+// is not this app's call.
+export function escalationFit(method, escalationPct) {
+  const pct = Number(escalationPct) || 0;
+  if (pct <= 0 || resolveBidMethod(method) !== TIME_AND_MATERIALS) return null;
+  return {
+    pct,
+    note: `This bid carries ${pct}% material escalation, which covers copper moving between quoting and `
+      + 'buying — a risk the shop absorbs on a fixed price. Billed at cost as it is used, that movement '
+      + 'passes through to the customer instead. Worth a look before it goes out; leave it if the material '
+      + 'side of this job is actually fixed.',
+  };
+}
 
 // A lump-sum job still gets something real out of the unit build-up: whether
 // the crews it has bought cover the hours the takeoff implies. That comparison
