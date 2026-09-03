@@ -12,6 +12,7 @@ import { pipeCoverageGap, canonicalPipeService, canonicalPipeSize, expandService
 import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
+import { countScopeShapedLines, countScheduleShapedLines, textExtractionSanity } from './textSanity.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -365,6 +366,18 @@ export async function analyzeRedlinePdf(file, fileName) {
     if (truncated) {
       merged.flags.push({ type: 'warn', text: `Document has more pages than were analyzed (limit reached) — some sheets may be missing from this extraction`, source: fileName });
     }
+  }
+
+  // ── A SET FULL OF SCOPE THAT PRODUCED NONE ──────────────────────────────
+  // Format-blind, and the same rule the spreadsheet path uses: it does not
+  // need to know how these callouts are written to know that a plan set
+  // carrying twenty-odd of them and yielding zero field tasks is worth a
+  // second look. "No tasks" and "this set is all existing work" read
+  // identically, and one of them is most of a bid.
+  {
+    const shaped = textPages.reduce((n, tp) => n + countScopeShapedLines(tp.text), 0);
+    const s = textExtractionSanity({ shaped, extracted: merged.fieldTasks.length, kind: 'scope', fileName });
+    if (s) merged.flags.push({ type: 'warn', text: s.message, source: fileName });
   }
 
   merged.summary = digestSummaries(merged.pageSummaries).text;
@@ -1732,6 +1745,21 @@ If this chunk contains no RC-relevant content at all, return the same JSON shape
     (parsed.parts || []).forEach(p => merged.parts.push(p));
     (parsed.flags || []).forEach(f => merged.flags.push(f));
     if (parsed.summary) merged.chunkSummaries.push(parsed.summary);
+  }
+
+  // ── A SCHEDULE FULL OF DATES THAT PRODUCED NONE ─────────────────────────
+  // A construction schedule this reader cannot parse returns empty arrays,
+  // which on screen is indistinguishable from a schedule with no RC work on
+  // it. Store 1086 already showed how quietly this fails: three of eight RC
+  // days sat behind "Night-" markers and were simply absent, and every one of
+  // them was a night — a missed mobilisation each. Counted format-blind, and
+  // fired only when the document is plainly a dated schedule and NOTHING came
+  // back.
+  {
+    const shaped = countScheduleShapedLines(text);
+    const got = merged.fieldTasks.filter(t => t && t.date).length + merged.rackTasks.length;
+    const s = textExtractionSanity({ shaped, extracted: got, kind: 'schedule', fileName });
+    if (s) merged.flags.push({ type: 'warn', text: s.message, source: fileName });
   }
 
   merged.summary = merged.chunkSummaries.join(' ');
