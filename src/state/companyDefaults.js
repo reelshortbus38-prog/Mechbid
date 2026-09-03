@@ -25,6 +25,22 @@ export const COMPANY_DEFAULT_KEYS = [
   'laborRateBasis', 'laborCostRatio',
   // What the shop sells at.
   'markupPct', 'equipMarkupPct', 'subMarkupPct',
+  // What the shop burns per labor dollar — nitrogen, rod, tips, abrasives.
+  // A shop fact, not a job one, and previously retyped or left at the app's
+  // number on every bid.
+  'consumablesPct',
+  // What the shop pays for night work. This lived only on individual labor
+  // PERIODS, hardcoded at 1.5× the moment one was created, so a shop whose
+  // night premium is 1.15 (or 1.0, or 2.0) re-typed it on every night period
+  // of every job forever and could never store the right answer. On a grocery
+  // remodel that is most of the hours on the job.
+  'nightPremium',
+  // Whether this shop bids lump sum or time and materials. Most bid the same
+  // way every time; the ones that do should not choose on every job.
+  'bidMethod',
+  // How many go on a circuit — presentation for the generated tasks, and still
+  // a fact about how this shop crews the work.
+  'circuitCrewSize',
   // Where the shop works.
   'materialsTaxPct', 'bondPct',
   // How the shop treats travel.

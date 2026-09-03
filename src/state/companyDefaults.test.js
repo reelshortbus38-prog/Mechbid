@@ -125,3 +125,71 @@ describe('showing the shop what it has stored', () => {
     expect(describeCompanyDefaults({})).toEqual([]);
   });
 });
+
+// ── THE APP IS A PRODUCT, NOT ONE ESTIMATOR'S TOOL ───────────────────────────
+// "I want it ready for other people to send bids out. Me changing it for
+// myself isn't gonna help people in the future."
+//
+// Which makes the DEFAULTS the product surface. Every number a shop cannot
+// store is one they retype on every bid, or — worse — one they never notice
+// came from nobody and send out as their own.
+
+describe('numbers a shop must be able to store once', () => {
+  it('lets a shop keep its own night premium', () => {
+    // This lived only on individual labor PERIODS, hardcoded at 1.5x the
+    // moment one was created. A shop whose premium is 1.15 could not store it,
+    // and on a grocery remodel nights are most of the hours on the job.
+    expect(COMPANY_DEFAULT_KEYS).toContain('nightPremium');
+    const d = captureCompanyDefaults({ ...SHOP, nightPremium: 1.15 }, CREW);
+    expect(d.nightPremium).toBe(1.15);
+    expect(companyDefaultPatch(d).nightPremium).toBe(1.15);
+  });
+
+  it('lets a shop keep its consumables burn rate', () => {
+    // Nitrogen, rod, tips, abrasives. A fact about how a shop works, not
+    // about the job in front of it.
+    expect(COMPANY_DEFAULT_KEYS).toContain('consumablesPct');
+    expect(captureCompanyDefaults({ consumablesPct: 3.5 }, []).consumablesPct).toBe(3.5);
+  });
+
+  it('lets a shop keep how it bids', () => {
+    // Most bid the same way every time. The ones that do should not choose on
+    // every job, and a shop that always bids lump sum should never meet the
+    // double-count at all.
+    expect(COMPANY_DEFAULT_KEYS).toContain('bidMethod');
+    expect(captureCompanyDefaults({ bidMethod: 'lumpSum' }, []).bidMethod).toBe('lumpSum');
+  });
+
+  it('lets a shop keep how many go on a circuit', () => {
+    expect(COMPANY_DEFAULT_KEYS).toContain('circuitCrewSize');
+    expect(captureCompanyDefaults({ circuitCrewSize: 3 }, []).circuitCrewSize).toBe(3);
+  });
+
+  it('covers every labor number that reaches a bid', () => {
+    // The check that stops the next one being forgotten: if a labor setting is
+    // in the job state and NOT here, every shop retypes it forever.
+    for (const k of ['laborUnits', 'nightPremium', 'circuitCrewSize', 'bidMethod', 'consumablesPct', 'laborRateBasis', 'laborCostRatio']) {
+      expect(COMPANY_DEFAULT_KEYS, k).toContain(k);
+    }
+  });
+
+  it('ships a night premium in the job state for periods to seed from', () => {
+    expect(initialState.nightPremium).toBe(1.5);
+  });
+});
+
+describe('a shop that has never saved its numbers', () => {
+  it('is recognisable, so the app can say the rates are not theirs', () => {
+    // Until this is true, the crew rates, night premium and labor units on
+    // screen came from the app. Fine to build a bid against, wrong to send a
+    // bid out on, and only the estimator can tell the difference.
+    expect(hasCompanyDefaults({})).toBe(false);
+    expect(hasCompanyDefaults({ name: 'Acme Refrigeration', phone: '555-0100' })).toBe(false);
+  });
+
+  it('stops saying so the moment a shop saves anything of its own', () => {
+    expect(hasCompanyDefaults({ markupPct: 28 })).toBe(true);
+    expect(hasCompanyDefaults({ [CREW_KEY]: CREW })).toBe(true);
+    expect(hasCompanyDefaults({ nightPremium: 1.15 })).toBe(true);
+  });
+});

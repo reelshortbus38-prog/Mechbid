@@ -211,6 +211,11 @@ export const initialState = {
   // this existed and change what it totals. Empty means "bill both", which is
   // exactly what those jobs already do, and the Labor step asks for a choice.
   bidMethod: '',
+  // What this shop pays for night work, seeding every night period on the job.
+  // Was hardcoded at 1.5 inside the period constructor, which meant a shop
+  // could not store its own — and on a grocery remodel nights are most of the
+  // hours. A period can still be overridden individually.
+  nightPremium: 1.5,
   circuits: [],
   // Shared suction headers on a LOOP system — one pipe every circuit taps.
   // Kept separate from circuits so it is bought ONCE: rolled into a circuit's
