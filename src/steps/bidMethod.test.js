@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveBidMethod, billedLabor, crewCoverage, escalationFit,
+  resolveBidMethod, billedLabor, crewCoverage, escalationFit, scopeTasksBecomeLineItems,
   LUMP_SUM, TIME_AND_MATERIALS, UNSET, METHOD_BLURB, MATERIALS_NOTE,
 } from './bidMethod.js';
 import { computeBidTotals } from './bidTotals.js';
@@ -196,5 +196,45 @@ describe('escalation is a fixed-price risk', () => {
     // A not-to-exceed or a fixed material component is a real thing. This
     // raises the question; it never zeroes a live number.
     expect(escalationFit(TIME_AND_MATERIALS, 8).note).toMatch(/leave it if/i);
+  });
+});
+
+describe('one decision, not two', () => {
+  // The Setup step had its own switch — "Tasks are notes" vs "Bid each task" —
+  // deciding whether an extracted scope task arrives billable or as a note.
+  // Same question, asked earlier in different words. Two controls for one idea
+  // is how the double-count got in.
+
+  it('a lump-sum job takes scope tasks as notes', () => {
+    // Labor is bought in bulk, so a task with hours on it would be the same
+    // work priced a second time.
+    expect(scopeTasksBecomeLineItems({ bidMethod: LUMP_SUM })).toBe(false);
+  });
+
+  it('a time-and-materials job takes them as billable lines', () => {
+    expect(scopeTasksBecomeLineItems({ bidMethod: TIME_AND_MATERIALS })).toBe(true);
+  });
+
+  it('the method overrides a stale taskBidMode rather than fighting it', () => {
+    // A job carrying both must not depend on which one the code happens to
+    // read first.
+    expect(scopeTasksBecomeLineItems({ bidMethod: LUMP_SUM, taskBidMode: 'lineItems' })).toBe(false);
+    expect(scopeTasksBecomeLineItems({ bidMethod: TIME_AND_MATERIALS, taskBidMode: 'notes' })).toBe(true);
+  });
+
+  it('still honours taskBidMode while no method is chosen', () => {
+    // Jobs and shop profiles already have this set. It must not flip under
+    // anyone the day the new setting ships.
+    expect(scopeTasksBecomeLineItems({ taskBidMode: 'lineItems' })).toBe(true);
+    expect(scopeTasksBecomeLineItems({ taskBidMode: 'notes' })).toBe(false);
+    expect(scopeTasksBecomeLineItems({})).toBe(false);
+    expect(scopeTasksBecomeLineItems()).toBe(false);
+  });
+
+  it('defaults an unset job to notes, which is the safe direction', () => {
+    // A note that should have been billable is visible on screen and costs
+    // nothing. A billable line that should have been a note is money in a bid
+    // nobody meant to put there.
+    expect(scopeTasksBecomeLineItems({ bidMethod: '', taskBidMode: undefined })).toBe(false);
   });
 });
