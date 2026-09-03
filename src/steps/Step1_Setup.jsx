@@ -29,6 +29,7 @@ import { mergeFacts } from '../api/jobFacts.js';
 import { forMode, stampMode, resultText } from '../state/tradeScope.js';
 import { dedupeSchedule } from '../components/scheduleDedupe.js';
 import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } from './docRoute.js';
+import { scopeTasksBecomeLineItems, resolveBidMethod, METHOD_LABEL, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
 // The pasted-email box analyzes as a synthetic file so it shares the upload
 // path's routing, review screen and "already done" tracking.
@@ -844,7 +845,11 @@ export default function Step1_Setup({ onNext }) {
           //    labor line items. These feed the RC Schedule view, not Field Work.
           //  - Undated scope-of-work tasks → real Field Work labor.
           const isRedline = parsed.documentType === 'redline_callout';
-          const bidAsLineItems = state.taskBidMode === 'lineItems';
+          // Derived from how the job is BID. A lump-sum job buys its labor in
+          // bulk, so a scope task is a note; a T&M job bills task by task, so
+          // it is a line item. This used to be its own separate switch, which
+          // meant one decision had two controls that could disagree.
+          const bidAsLineItems = scopeTasksBecomeLineItems(state);
           // Key dates — "not every schedule is the same," so the AI reads them
           // from MEANING (pre-con meeting day; the RC's own first case-move
           // night, which is distinct from the GC's general night-work start).
@@ -1304,6 +1309,7 @@ export default function Step1_Setup({ onNext }) {
   // The extraction log and the flags are shared buckets: both trades write into
   // them from the same Setup step. Show only this trade's — a refrigeration
   // redline's findings on an HVAC job read as findings about the HVAC job.
+  const setupBidMethod = resolveBidMethod(state.bidMethod);
   const modeResults = forMode(state.extractionResults, state.mode);
   const modeFlags = forMode(state.flags, state.mode);
   const hasFiles = modeFiles.length > 0
@@ -1513,29 +1519,42 @@ export default function Step1_Setup({ onNext }) {
         />
       </div>
 
-      {/* Task handling option */}
-      <Card style={{ padding: '12px 16px' }}>
+      {/* ── HOW THIS JOB IS BID ──
+          This replaced a separate "Scope tasks: Notes / Bid each task" switch,
+          which was this same decision asked earlier in different words. It
+          belongs HERE, before Analyze, because it decides how an extracted
+          scope task lands — and it is the same setting the Labor step shows,
+          where it decides which side carries the labor total. */}
+      <Card style={{ padding: '12px 16px', ...(setupBidMethod === UNSET ? { borderColor: `${colors.yellow}55` } : {}) }}>
         <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>Scope tasks</div>
-            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>
-              {state.taskBidMode === 'lineItems'
-                ? 'Each task becomes a billable labor line (task-by-task bidding)'
-                : 'Tasks are notes; you bid labor in bulk (crew/periods/labor units)'}
+          <div style={{ minWidth: 200, flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>How this job is bid</div>
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2, lineHeight: 1.5 }}>
+              {setupBidMethod === LUMP_SUM
+                ? 'Crew and calendar carry the labor. Scope tasks come in as notes.'
+                : setupBidMethod === TIME_AND_MATERIALS
+                  ? 'Billed task by task. Scope tasks come in as billable labor lines.'
+                  : 'Not set — scope tasks come in as notes, and the bid will carry BOTH crew periods and task hours until you choose.'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            {[{ k: 'notes', label: 'Notes' }, { k: 'lineItems', label: 'Bid each task' }].map(o => (
-              <button key={o.k} onClick={() => dispatch({ type: 'SET', key: 'taskBidMode', value: o.k })}
+            {[LUMP_SUM, TIME_AND_MATERIALS].map(m => (
+              <button key={m} onClick={() => setField('bidMethod', m)}
                 style={{ padding: '6px 11px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                  border: `1px solid ${(state.taskBidMode || 'notes') === o.k ? colors.green : colors.border}`,
-                  background: (state.taskBidMode || 'notes') === o.k ? colors.green : colors.surface,
-                  color: (state.taskBidMode || 'notes') === o.k ? '#000' : colors.textDim }}>
-                {o.label}
+                  border: `1px solid ${setupBidMethod === m ? colors.green : colors.border}`,
+                  background: setupBidMethod === m ? colors.green : colors.surface,
+                  color: setupBidMethod === m ? '#000' : colors.textDim }}>
+                {METHOD_LABEL[m]}
               </button>
             ))}
           </div>
         </Row>
+        {modeFiles.some(f => fileStatuses[f.id] === 'done') && (
+          <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8, lineHeight: 1.5 }}>
+            Files have already been analyzed. Changing this now only affects the next analysis — anything
+            already read stays where it landed, and you can move it by hand or re-analyze.
+          </div>
+        )}
       </Card>
 
       {/* Analyze button */}

@@ -89,6 +89,26 @@ export function escalationFit(method, escalationPct) {
   };
 }
 
+// ── THE SAME DECISION, ASKED TWICE ───────────────────────────────────────────
+// The Setup step had its own switch — "Tasks are notes" vs "Bid each task" —
+// deciding whether an extracted scope task arrives as a billable field task
+// with hours or as a scope note. That is not a second question. It is this one,
+// asked earlier and worded differently:
+//
+//   lump sum       → labor is bought in bulk, so a scope task is a NOTE
+//   time & materials → labor is billed task by task, so it is a LINE ITEM
+//
+// Two controls for one idea is how the double-count got in, so the method now
+// answers both. taskBidMode is still honoured when no method has been chosen,
+// because jobs and shops already have it set and it must not flip under them.
+export function scopeTasksBecomeLineItems({ bidMethod, taskBidMode } = {}) {
+  switch (resolveBidMethod(bidMethod)) {
+    case TIME_AND_MATERIALS: return true;
+    case LUMP_SUM:           return false;
+    default:                 return taskBidMode === 'lineItems';
+  }
+}
+
 // A lump-sum job still gets something real out of the unit build-up: whether
 // the crews it has bought cover the hours the takeoff implies. That comparison
 // was unavailable while the two were being summed instead of compared.
