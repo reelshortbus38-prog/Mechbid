@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, loadCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
+import { hasCompanyDefaults } from '../state/companyDefaults.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
@@ -457,7 +458,9 @@ export default function Step5_Labor({ onNext, onBack }) {
         days: 0,
         isNight: preset ? preset.isNight : false,
         otMult: 1,
-        nightMult: 1.5,
+        // The SHOP's night premium, not the app's. Still editable per period —
+        // a Sunday changeover is not a Tuesday night.
+        nightMult: parseFloat(state.nightPremium) || 1.5,
         ootPerDay: 0,
         notes: '',
       }
@@ -483,6 +486,9 @@ export default function Step5_Labor({ onNext, onBack }) {
   const bidMethod = resolveBidMethod(state.bidMethod);
   const billed = billedLabor(state.bidMethod);
   const escFit = escalationFit(state.bidMethod, state.escalationPct);
+  // Read once per render — cheap, and it must reflect a profile saved on the
+  // Proposal step without a reload.
+  const shopHasOwnNumbers = hasCompanyDefaults(loadCompanyProfile());
   const modeFieldTasks = forMode(state.fieldTasks, state.mode);
   const taskLabor = calcFieldTasksTotal(modeFieldTasks, jobCrew(state))
     + (state.mode === 'Commercial Refrigeration' ? calcRackLaborTotal(state.rackTasks, jobCrew(state)) : 0);
@@ -543,6 +549,27 @@ export default function Step5_Labor({ onNext, onBack }) {
           actual nights (frozen-food vs other) without leaving the Labor step.
           Refrigeration-only — the RC/case-move schedule doesn't apply to HVAC. */}
       {state.mode === 'Commercial Refrigeration' && <ScheduleRackReference />}
+
+      {/* ── A SHOP THAT HAS NEVER SAVED ITS OWN NUMBERS ──
+          Rates, night premium and labor units all seed from the company
+          profile, and until a shop saves one they come from nobody — the
+          app's placeholders. Those are fine to build a bid WITH and wrong to
+          send a bid OUT on, and the only place that said so was a card on the
+          last step, reached after the bid was already priced. */}
+      {!shopHasOwnNumbers && (
+        <Card style={{ borderColor: `${colors.yellow}55` }}>
+          <SLabel style={{ margin: 0, color: colors.yellow }}>⚠ These are placeholder rates, not yours</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.65, marginTop: 6 }}>
+            Nobody has saved this shop's numbers yet, so the crew rates, night premium and labor units
+            below came from the app rather than from your company. They are reasonable for building a bid
+            against — they are not what you charge.
+            <br /><br />
+            Set the crew and rates on this step the way your shop actually bills, then open the
+            <strong> Proposal</strong> step and hit <strong>Save as my standard rates</strong>. Every new
+            job starts from them after that, and this notice goes away.
+          </div>
+        </Card>
+      )}
 
       {/* ── HOW IS THIS JOB BEING BID? ──
           Crew-and-calendar and per-circuit hours are two prices for the same
