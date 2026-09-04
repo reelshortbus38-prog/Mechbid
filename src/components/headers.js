@@ -72,12 +72,35 @@ export function mergeBySize(base = {}, add = {}) {
   return out;
 }
 
-// A loop system whose circuits average a long run AND has no header entered is
-// very likely carrying the header inside every circuit — thirty copies of it.
-// Worth saying out loud rather than silently pricing.
+// ── SHARED SUCTION HEADER, OR HOME RUN ───────────────────────────────────────
+// A store whose suction header circles the sales floor buys that header ONCE
+// and every lineup taps it. If those circuits are entered at their full length
+// back to the rack instead, the header is priced once per circuit — on thirty
+// circuits, thirty copies of the same pipe. That is worth saying out loud.
+//
+// But it fired on jobs where "no header" is the correct answer, and it had no
+// way not to: it was handed circuits and headers and nothing else. The card
+// around it literally read "No shared header — correct for a home-run layout"
+// directly beneath a warning that the header might be missing. An estimator on
+// a home-run job was told off for being right.
+//
+// It also called this a "loop layout", which collides with the Setup step's
+// SECONDARY LOOP setting — a different thing entirely (glycol or water pumped
+// to case coils). Somebody who had already set that reasonably read this as
+// the app ignoring them. The wording is now shared-header vs home-run, which is
+// what it actually means.
 export const LONG_RUN_FT = 120;
+export const HOME_RUN = 'homeRun';
+export const SHARED_HEADER = 'sharedHeader';
 
-export function headerSanityNote(circuits = [], headers = []) {
+export function headerSanityNote(circuits = [], headers = [], opts = {}) {
+  const { secondaryLoop = 'none', pipingLayout = '' } = opts;
+  // A secondary system has no suction or liquid line per case at all, so there
+  // is no suction header to share or to double-count. That piping is the
+  // glycol card's business, not this one's.
+  if (secondaryLoop === 'glycol' || secondaryLoop === 'water') return '';
+  // The estimator said home run. That is an answer, not an omission.
+  if (pipingLayout === HOME_RUN) return '';
   const entered = headers.some(h => (Number(h?.lengthFt) || 0) > 0 && h?.size);
   if (entered) return '';
   const runs = circuits.map(c => Number(c?.runLength) || 0).filter(n => n > 0);
@@ -85,7 +108,7 @@ export function headerSanityNote(circuits = [], headers = []) {
   const avg = runs.reduce((a, b) => a + b, 0) / runs.length;
   if (avg < LONG_RUN_FT) return '';
   return `${runs.length} circuits average ${Math.round(avg)} ft of run and no shared header is entered. `
-    + 'On a loop system the header is one pipe every circuit taps — if those run lengths reach all the way '
-    + 'back to the rack, the header is being bought once per circuit. Enter it once here and shorten the '
-    + 'circuits to the branch from the tap.';
+    + 'If this store runs a shared suction header, it is one pipe every lineup taps — and run lengths that '
+    + 'reach all the way back to the rack buy it once per circuit. Enter the header once here and shorten '
+    + 'the circuits to the branch from the tap. If it is home run, say so above and this will stop asking.';
 }

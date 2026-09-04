@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore, uid, normalizePipeSize } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, EmptyState } from '../components/UI.jsx';
-import { newHeader, headerSanityNote } from '../components/headers.js';
+import { newHeader, headerSanityNote, HOME_RUN, SHARED_HEADER } from '../components/headers.js';
 
 // Stops at 3-1/8 no longer: a loop system's shared suction header runs 3-5/8,
 // 4-1/8 and larger, and a size the dropdown does not offer is a size the
@@ -146,23 +146,51 @@ export default function Step2_Circuits({ onNext, onBack }) {
   const updHeader = (id, k, v) => setHeaders(headers.map(h => h.id === id ? { ...h, [k]: v } : h));
   const delHeader = id => setHeaders(headers.filter(h => h.id !== id));
   const headerFt = headers.reduce((a, h) => a + (Number(h.lengthFt) || 0), 0);
-  const sanity = headerSanityNote(state.circuits, headers);
+  // The note has to know what the JOB says. Handed only circuits and headers it
+  // could not tell "no header because home run" from "no header yet", and told
+  // an estimator on a correct home-run job that he was missing pipe.
+  const layout = state.pipingLayout || '';
+  const sanity = headerSanityNote(state.circuits, headers, {
+    secondaryLoop: state.secondaryLoop, pipingLayout: layout,
+  });
+  const setLayout = v => dispatch({ type: 'SET', key: 'pipingLayout', value: layout === v ? '' : v });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* ── Shared suction header (loop systems) ───────────────────────────── */}
+      {/* ── Shared suction header, or home run ──────────────────────────────
+          Deliberately NOT called a "loop" any more. Setup already has a
+          SECONDARY LOOP setting — glycol or water pumped to case coils — and
+          two different things both called a loop in one app is how a correct
+          warning came to read as the app ignoring a setting somebody had
+          already given it. */}
       <Card>
         <Row style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-          <SLabel>🔁 Shared Header / Main — loop systems</SLabel>
+          <SLabel>🔁 Suction Header / Main</SLabel>
           <Btn variant="ghost" size="sm" onClick={addHeader}>+ Add header</Btn>
         </Row>
         <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
-          On a loop layout the suction <strong>header</strong> leaves the rack, circles the sales floor, and every
-          lineup taps into it. It is <strong>one pipe</strong> — enter it here once, and let each circuit below carry
-          only the <strong>branch from its tap to the case</strong>. Rolled into the circuits instead, a thirty-circuit
-          job buys thirty headers.
+          Where a store runs a <strong>shared suction header</strong>, it leaves the rack, circles the sales floor,
+          and every lineup taps into it. It is <strong>one pipe</strong> — enter it here once, and let each circuit
+          below carry only the <strong>branch from its tap to the case</strong>. Rolled into the circuits instead, a
+          thirty-circuit job buys thirty headers. On a <strong>home run</strong> store there is no header and every
+          circuit pipes back to the rack on its own.
         </div>
+
+        {/* Answer it once. Nothing is assumed from silence: leave it unset and
+            the check below still speaks up on a job that looks like it is
+            double-counting a header. */}
+        <Row style={{ gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: colors.textDim }}>This store is</span>
+          {[[SHARED_HEADER, 'Shared header'], [HOME_RUN, 'Home run']].map(([k, label]) => (
+            <button key={k} onClick={() => setLayout(k)}
+              style={{ padding: '5px 11px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                border: `1px solid ${layout === k ? colors.green : colors.border}`,
+                background: layout === k ? colors.green : colors.surface,
+                color: layout === k ? '#000' : colors.textDim }}>{label}</button>
+          ))}
+          {!layout && <span style={{ fontSize: 11, color: colors.textDim }}>— not set</span>}
+        </Row>
 
         {sanity && (
           <div style={{ fontSize: 12, marginBottom: 10, padding: '8px 12px', borderRadius: 8,

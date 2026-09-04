@@ -31,6 +31,7 @@ import { dedupeSchedule } from '../components/scheduleDedupe.js';
 import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } from './docRoute.js';
 import { scopeTasksBecomeLineItems, resolveBidMethod, METHOD_LABEL, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 import { partitionBySize, uploadGuidance } from './uploadLimits.js';
+import { HOME_RUN, SHARED_HEADER } from '../components/headers.js';
 import { REFRIG_MAX_PAGES, HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from '../api/pdfRender.js';
 
 // The pasted-email box analyzes as a synthetic file so it shares the upload
@@ -1328,6 +1329,7 @@ export default function Step1_Setup({ onNext }) {
   // them from the same Setup step. Show only this trade's — a refrigeration
   // redline's findings on an HVAC job read as findings about the HVAC job.
   const setupBidMethod = resolveBidMethod(state.bidMethod);
+  const pipingLayout = state.pipingLayout || '';
   // Page counts read from the modules that enforce them, not retyped here.
   const guidance = uploadGuidance(state.mode, {
     refrigPages: REFRIG_MAX_PAGES,
@@ -1443,6 +1445,41 @@ export default function Step1_Setup({ onNext }) {
               feeding a glycol medium-temp loop is one job, not two.
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── SUCTION PIPING LAYOUT ──
+          Lives HERE, with the other job-shape questions, because that is where
+          an estimator goes looking for it. It was on the Circuits card next to
+          the warning it silences, and a working estimator went to Setup twice
+          expecting it — job type, system type, secondary loop and project type
+          are all on this step, and this is the same kind of question.
+
+          It is NOT the Secondary Loop setting above. That one is the working
+          fluid; this is how the suction piping runs, and a DX store can be
+          either. Both were called "loop" until now, which is exactly how a
+          correct warning came to read as the app ignoring an answer. */}
+      {state.mode === 'Commercial Refrigeration' && (state.secondaryLoop || 'none') === 'none' && (
+        <div>
+          <SLabel>Suction Piping</SLabel>
+          <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 8 }}>
+            {pipingLayout === SHARED_HEADER
+              ? 'A shared suction header leaves the rack and every lineup taps it. Enter that header ONCE on the Circuits step and give each circuit only its branch from the tap — otherwise the header is bought once per circuit.'
+              : pipingLayout === HOME_RUN
+                ? 'Every circuit pipes back to the rack on its own. No shared header, and the Circuits step will stop asking for one.'
+                : 'Not set. Say which and the Circuits step stops asking whether a header is missing.'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[{ k: SHARED_HEADER, label: '🔁 Shared header' }, { k: HOME_RUN, label: '↩️ Home run' }].map(o => (
+              <div key={o.k} onClick={() => setField('pipingLayout', pipingLayout === o.k ? '' : o.k)} style={{
+                border: `2px solid ${pipingLayout === o.k ? colors.green : colors.border}`,
+                background: pipingLayout === o.k ? colors.greenFaint : colors.card2,
+                borderRadius: 10, padding: '12px', cursor: 'pointer', textAlign: 'center',
+                fontFamily: "'Syne', sans-serif", fontSize: 12, fontWeight: 700,
+                color: pipingLayout === o.k ? colors.green : colors.text,
+              }}>{o.label}</div>
+            ))}
+          </div>
         </div>
       )}
 
