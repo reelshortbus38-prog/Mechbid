@@ -30,7 +30,8 @@ import { forMode, stampMode, resultText } from '../state/tradeScope.js';
 import { dedupeSchedule } from '../components/scheduleDedupe.js';
 import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } from './docRoute.js';
 import { scopeTasksBecomeLineItems, resolveBidMethod, METHOD_LABEL, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
-import { partitionBySize } from './uploadLimits.js';
+import { partitionBySize, uploadGuidance } from './uploadLimits.js';
+import { REFRIG_MAX_PAGES, HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from '../api/pdfRender.js';
 
 // The pasted-email box analyzes as a synthetic file so it shares the upload
 // path's routing, review screen and "already done" tracking.
@@ -1327,6 +1328,12 @@ export default function Step1_Setup({ onNext }) {
   // them from the same Setup step. Show only this trade's — a refrigeration
   // redline's findings on an HVAC job read as findings about the HVAC job.
   const setupBidMethod = resolveBidMethod(state.bidMethod);
+  // Page counts read from the modules that enforce them, not retyped here.
+  const guidance = uploadGuidance(state.mode, {
+    refrigPages: REFRIG_MAX_PAGES,
+    hvacTextPages: HVAC_TEXT_MAX_PAGES,
+    hvacVisionSheets: HVAC_VISION_MAX_SHEETS,
+  });
   const modeResults = forMode(state.extractionResults, state.mode);
   const modeFlags = forMode(state.flags, state.mode);
   const hasFiles = modeFiles.length > 0
@@ -1486,6 +1493,21 @@ export default function Step1_Setup({ onNext }) {
       {/* Upload zone */}
       <div>
         <SLabel>Upload Documents</SLabel>
+        {/* ── SAY THE LIMIT BEFORE THE FILE PICKER OPENS ──
+            The instinct is to drag the whole issued set in and let the app
+            find the refrigeration. It reads a bounded number of sheets, and
+            anything past the limit is simply absent from the takeoff. The app
+            already flags what it skipped — but afterwards is too late to be
+            useful, because the upload has burned minutes and the number on
+            screen is already short. The page counts come from pdfRender.js, so
+            this cannot drift from what the readers actually do. */}
+        <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.65, marginBottom: 10,
+          padding: '10px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.card2 }}>
+          <div style={{ fontWeight: 700, color: colors.text, marginBottom: 3 }}>📄 {guidance.headline}</div>
+          {guidance.detail}
+          <div style={{ marginTop: 6 }}>{guidance.sizes}</div>
+          <div style={{ marginTop: 6, color: colors.green }}>{guidance.split}</div>
+        </div>
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}

@@ -32,7 +32,12 @@ export function limitFor(type) {
 
 export function fmtSize(bytes) {
   const n = Number(bytes) || 0;
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024 * 1024) {
+    const mb = n / (1024 * 1024);
+    // "120 MB", not "120.0 MB" — a trailing zero on a round number reads as a
+    // measurement rather than a limit.
+    return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
+  }
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
@@ -54,6 +59,42 @@ export function checkUploadSize({ name = 'This file', size = 0, type = 'other' }
           + 'the sheets that are not part of this job and upload it again.'
         : 'Plans this large are usually a whole issued set. Export just the refrigeration or mechanical '
           + 'sheets and upload those — it will read faster and cost less as well.'),
+  };
+}
+
+// ── WHAT TO TELL SOMEBODY BEFORE THEY UPLOAD ─────────────────────────────────
+// An estimator's instinct is to drag the whole issued set in — 120 sheets,
+// architectural through electrical — and let the app find the refrigeration.
+// It will not. It reads a bounded number of sheets, and the ones past the
+// limit are simply absent from the takeoff. The app already SAYS so afterwards
+// (a flag naming the sheets it skipped), but afterwards is too late to be
+// useful: the upload has burned minutes and the number on screen is already
+// short. Say it on the upload screen, before the file picker opens.
+//
+// The page numbers come from pdfRender.js, so this note cannot drift away from
+// what the readers actually do.
+export function uploadGuidance(mode, limits = {}) {
+  const {
+    refrigPages = 12, hvacTextPages = 40, hvacVisionSheets = 18,
+  } = limits;
+  const hvac = /hvac/i.test(String(mode || ''));
+  return {
+    headline: hvac
+      ? `Up to ${hvacVisionSheets} drawing sheets per PDF`
+      : `Up to ${refrigPages} pages per PDF`,
+    detail: hvac
+      ? `A mechanical set is read ${hvacTextPages} pages deep for schedules and specs, and up to `
+        + `${hvacVisionSheets} of its DRAWING sheets go through the vision pass — that is the expensive half. `
+        + 'Sheets past that are named in a flag rather than read, so a full issued set will come back short. '
+        + 'Pull the M-series sheets out and upload those.'
+      : `A redline package is read ${refrigPages} pages deep. Past that, sheets are named in a flag rather `
+        + 'than read, so dropping a whole issued set in will come back short. Pull out the refrigeration '
+        + 'sheets — the redlines, the BPR, the schedule — and upload those.',
+    sizes: `Spreadsheets, Word docs and saved emails: ${fmtSize(POSTED_WHOLE_MAX)} each — they go to the `
+      + `server whole. PDFs and photos: ${fmtSize(RENDERED_MAX)} — those are read here on the device, page `
+      + 'by page, so they can be much larger.',
+    split: 'Nothing is lost by splitting a set across several uploads. Every file adds to the same takeoff, '
+      + 'and the cross-sheet check gets better the more sheets it has to compare.',
   };
 }
 

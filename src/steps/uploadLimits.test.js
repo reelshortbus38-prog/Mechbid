@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  checkUploadSize, partitionBySize, limitFor, fmtSize,
+  checkUploadSize, partitionBySize, limitFor, fmtSize, uploadGuidance,
   POSTED_WHOLE_MAX, RENDERED_MAX,
 } from './uploadLimits.js';
+import { REFRIG_MAX_PAGES, HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from '../api/pdfRender.js';
 
 const MB = 1024 * 1024;
 
@@ -37,7 +38,7 @@ describe('a file that is too big', () => {
   it('stops a spreadsheet the server would refuse anyway', () => {
     const r = checkUploadSize({ name: 'Scanned BPR.xlsx', size: 9 * MB, type: 'excel' });
     expect(r).toBeTruthy();
-    expect(r.message).toContain('9.0 MB');
+    expect(r.message).toContain('9 MB');
     expect(r.message).toContain('3.3 MB');
   });
 
@@ -81,11 +82,75 @@ describe('one bad file does not stop the rest', () => {
 
 describe('sizes read the way a person would say them', () => {
   it('uses MB above a megabyte and KB below', () => {
-    expect(fmtSize(9 * MB)).toBe('9.0 MB');
+    expect(fmtSize(9 * MB)).toBe('9 MB');
     expect(fmtSize(380 * 1024)).toBe('380 KB');
   });
 
   it('never says 0 KB for a small but real file', () => {
     expect(fmtSize(200)).toBe('1 KB');
+  });
+
+  it('drops a trailing zero on a round limit', () => {
+    // "120.0 MB" reads as a measurement; "120 MB" reads as a limit.
+    expect(fmtSize(120 * MB)).toBe('120 MB');
+    expect(fmtSize(4.5 * MB)).toBe('4.5 MB');
+  });
+});
+
+describe('telling a customer the limit before they upload', () => {
+  // The instinct is to drag a whole 120-sheet issued set in. The app reads a
+  // bounded number and the rest is simply absent from the takeoff, so this has
+  // to be said on the upload screen — afterwards the minutes are spent and the
+  // number on screen is already short.
+  const REAL = { refrigPages: REFRIG_MAX_PAGES, hvacTextPages: HVAC_TEXT_MAX_PAGES, hvacVisionSheets: HVAC_VISION_MAX_SHEETS };
+
+  it('quotes the number the refrigeration reader actually enforces', () => {
+    const g = uploadGuidance('Commercial Refrigeration', REAL);
+    expect(g.headline).toContain(String(REFRIG_MAX_PAGES));
+    expect(g.detail).toContain(`${REFRIG_MAX_PAGES} pages deep`);
+  });
+
+  it('quotes the numbers the HVAC reader actually enforces', () => {
+    const g = uploadGuidance('Commercial HVAC', REAL);
+    expect(g.headline).toContain(String(HVAC_VISION_MAX_SHEETS));
+    expect(g.detail).toContain(String(HVAC_TEXT_MAX_PAGES));
+    expect(g.detail).toContain(String(HVAC_VISION_MAX_SHEETS));
+  });
+
+  it('is derived from the readers, never retyped', () => {
+    // If somebody raises a limit in pdfRender.js and this note keeps the old
+    // number, the app is lying to a customer about what it will read. Feeding
+    // it different numbers must change what it says.
+    const g = uploadGuidance('Commercial Refrigeration', { ...REAL, refrigPages: 99 });
+    expect(g.headline).toContain('99');
+    expect(g.headline).not.toContain(String(REFRIG_MAX_PAGES));
+  });
+
+  it('treats residential as HVAC, since that is the reader it uses', () => {
+    expect(uploadGuidance('Residential HVAC', REAL).headline)
+      .toBe(uploadGuidance('Commercial HVAC', REAL).headline);
+  });
+
+  it('says what to do instead of dropping the whole set in', () => {
+    expect(uploadGuidance('Commercial Refrigeration', REAL).detail).toMatch(/pull out the refrigeration/i);
+    expect(uploadGuidance('Commercial HVAC', REAL).detail).toMatch(/M-series/);
+  });
+
+  it('says splitting a set costs nothing, because people assume it does', () => {
+    const g = uploadGuidance('Commercial Refrigeration', REAL);
+    expect(g.split).toMatch(/adds to the same takeoff/i);
+  });
+
+  it('states both size ceilings in the units a person reads', () => {
+    const g = uploadGuidance('Commercial Refrigeration', REAL);
+    expect(g.sizes).toContain(fmtSize(POSTED_WHOLE_MAX));
+    expect(g.sizes).toContain(fmtSize(RENDERED_MAX));
+  });
+
+  it('still produces a usable note with no arguments at all', () => {
+    const g = uploadGuidance();
+    expect(g.headline).toBeTruthy();
+    expect(g.detail).toBeTruthy();
+    expect(g.sizes).toBeTruthy();
   });
 });
