@@ -6,6 +6,21 @@
 // Uses pdfjs-dist (Mozilla's PDF.js), loaded dynamically so it doesn't bloat the
 // initial bundle for users who never upload a PDF.
 
+// ── HOW MUCH OF A SET GETS READ ──────────────────────────────────────────────
+// These are the numbers a customer needs told BEFORE they upload a 120-sheet
+// issued set and wonder why most of it is missing. Exported so the note on the
+// upload screen is derived from what the code actually does and cannot drift
+// away from it.
+//
+// REFRIG_MAX_PAGES covers both the text layer and the vision pass on the
+// refrigeration side — a redline package is a handful of marked-up sheets, not
+// a whole set. HVAC mechanical sets are genuinely bigger, so their text pass
+// reaches further and a separate cap governs how many DRAWING sheets go
+// through vision, which is the expensive half.
+export const REFRIG_MAX_PAGES = 12;
+export const HVAC_TEXT_MAX_PAGES = 40;
+export const HVAC_VISION_MAX_SHEETS = 18;
+
 let pdfjsLib = null;
 
 async function loadPdfJs() {
@@ -25,7 +40,7 @@ async function loadPdfJs() {
 // downscaled raster), so we try it BEFORE falling back to rendering + vision.
 // Returns one { pageNum, text, lineCount } per page; pages with no real text
 // layer (true scans) come back with little/no text and route to vision instead.
-export async function extractPdfPagesText(file, { maxPages = 12 } = {}) {
+export async function extractPdfPagesText(file, { maxPages = REFRIG_MAX_PAGES } = {}) {
   const lib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
@@ -187,7 +202,7 @@ function stampScaleBar(ctx, w, h, ftPerPx) {
 // set doesn't explode the number of vision calls. Returns one entry per tile:
 //   { pageNum, tileNum, tilesOnPage, base64 }
 export async function renderPdfPagesToImages(file, {
-  maxPages = 12,
+  maxPages = REFRIG_MAX_PAGES,
   scale = 3,
   tile = true,
   tileTargetPx = 2600,  // approx source px per tile edge → ~2×2 on a big sheet

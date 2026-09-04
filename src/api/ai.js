@@ -13,6 +13,7 @@ import { reclassifyRuns, canonicalDuctSize } from './runKind.js';
 import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 import { countScopeShapedLines, countScheduleShapedLines, textExtractionSanity } from './textSanity.js';
+import { HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from './pdfRender.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -1000,7 +1001,8 @@ const SPEC_PAGE_MIN_CHARS = 1800; // dense enough that it's prose, not a sheet
 // Sheets read in parallel. Raised from 10 now that passes overlap: ten
 // sequential calls was 4-7 minutes, and at this width eighteen sheets finish
 // faster than ten used to. See api/concurrency.js for why the width is small.
-const MAX_VISION_PAGES = 18;
+// Owned by pdfRender.js so the upload-screen note and the reader cannot drift.
+const MAX_VISION_PAGES = HVAC_VISION_MAX_SHEETS;
 const VISION_CONCURRENCY = 3;
 // Sheets rendered to images at once. Bounds peak memory — this runs on iPads.
 const RENDER_BATCH = 6;
@@ -1056,7 +1058,7 @@ export async function analyzeHvacPlanPdf(file, fileName) {
   const scaleByPage = {};
   let pages = [];
   try {
-    const res = await extractPdfPagesText(file, { maxPages: 40 });
+    const res = await extractPdfPagesText(file, { maxPages: HVAC_TEXT_MAX_PAGES });
     pages = res?.pages || [];
     for (const p of pages) {
       const s = detectDrawingScale(p.text);
