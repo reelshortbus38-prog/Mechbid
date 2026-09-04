@@ -188,6 +188,13 @@ export const initialState = {
   // medium temp is one job, and a single three-way toggle would have forced a
   // choice the job does not make.
   secondaryLoop: 'none',   // 'none' | 'glycol' | 'water'
+  // Shared suction header, or home run — see components/headers.js. A DIFFERENT
+  // question from secondaryLoop above, which is about the working fluid; this
+  // one is about how the suction piping is laid out, and a DX store can be
+  // either. Empty means nobody has said, which is NOT the same as home run:
+  // unset still lets the double-counted-header check speak up, and 'homeRun'
+  // silences it because that is an answer rather than an omission.
+  pipingLayout: '',        // '' | 'sharedHeader' | 'homeRun'
   projName: '', projAddr: '', storeNumber: '', projGC: '', projCont: '', projBidDate: '',
   // Key bid dates a refrigeration estimator needs up front.
   preconDate: '',       // pre-construction meeting

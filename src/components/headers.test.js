@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { foldHeaders, headerInsulCategory, headerSanityNote, mergeBySize, newHeader } from './headers.js';
+import { foldHeaders, headerInsulCategory, headerSanityNote, mergeBySize, newHeader, HOME_RUN, SHARED_HEADER } from './headers.js';
 import { normalizePipeSize, DEFAULT_CU_RATES } from '../state/store.js';
 
 const fold = h => foldHeaders(h, normalizePipeSize);
@@ -88,7 +88,7 @@ describe('headerSanityNote — catching the header hidden inside the circuits', 
 
   it('speaks up when long circuit runs meet no header at all', () => {
     const note = headerSanityNote(longCircuits, []);
-    expect(note).toMatch(/bought once per circuit/);
+    expect(note).toMatch(/buy it once per circuit/);
   });
 
   it('stays quiet once a header is entered', () => {
@@ -104,6 +104,66 @@ describe('headerSanityNote — catching the header hidden inside the circuits', 
   });
 
   it('does not fire on a header entered with no length yet', () => {
-    expect(headerSanityNote(longCircuits, [{ size: '4-1/8"', lengthFt: 0 }])).toMatch(/bought once per circuit/);
+    expect(headerSanityNote(longCircuits, [{ size: '4-1/8"', lengthFt: 0 }])).toMatch(/buy it once per circuit/);
+  });
+});
+
+// ── THE WARNING THAT TOLD A CORRECT JOB IT WAS WRONG ─────────────────────────
+// A working estimator, on a home-run store: "It is not a loop system. Also
+// there's a toggle for the loop system on the setup page so I would've tapped
+// that before uploading if it was."
+//
+// He was right twice. The check was handed circuits and headers and nothing
+// else, so it could not tell "no header because home run" from "no header
+// yet" — and the card printed "No shared header — correct for a home-run
+// layout" directly beneath the warning. It also called this a "loop layout",
+// colliding with Setup's SECONDARY LOOP setting, which is a different question
+// entirely.
+
+describe('the header check reads the job, not just the circuits', () => {
+  const longRuns = Array.from({ length: 10 }, (_, i) => ({ circuitId: `C${i + 1}`, runLength: 161 }));
+
+  it('still speaks up when nobody has said how the store is piped', () => {
+    // Unset is not an answer. Eleven circuits at 161 ft with no header really
+    // might be buying the header eleven times, and that is worth a look.
+    expect(headerSanityNote(longRuns, [])).toMatch(/no shared header is entered/);
+  });
+
+  it('goes quiet the moment the estimator says home run', () => {
+    expect(headerSanityNote(longRuns, [], { pipingLayout: HOME_RUN })).toBe('');
+  });
+
+  it('keeps warning on a store said to have a shared header', () => {
+    // Saying "shared header" and then entering none is exactly the mistake.
+    expect(headerSanityNote(longRuns, [], { pipingLayout: SHARED_HEADER }))
+      .toMatch(/no shared header is entered/);
+  });
+
+  it('never fires on a secondary system, which has no suction header at all', () => {
+    // Glycol and water loops have no suction or liquid line per case. There is
+    // nothing here to share or to double-count; that piping is the glycol
+    // card's business.
+    for (const loop of ['glycol', 'water']) {
+      expect(headerSanityNote(longRuns, [], { secondaryLoop: loop }), loop).toBe('');
+    }
+    expect(headerSanityNote(longRuns, [], { secondaryLoop: 'none' })).toMatch(/no shared header/);
+  });
+
+  it('stops calling it a loop, which is a different setting', () => {
+    // Two things called "loop" in one app is how a correct warning came to
+    // read as the app ignoring an answer somebody had already given.
+    const note = headerSanityNote(longRuns, []);
+    expect(note).not.toMatch(/loop/i);
+    expect(note).toMatch(/shared suction header/i);
+  });
+
+  it('tells the estimator how to make it stop', () => {
+    expect(headerSanityNote(longRuns, [])).toMatch(/home run, say so/i);
+  });
+
+  it('is unchanged by the new options when they are absent', () => {
+    // Every existing caller passes two arguments. They must behave as before.
+    expect(headerSanityNote(longRuns, [])).toBe(headerSanityNote(longRuns, [], {}));
+    expect(headerSanityNote([{ runLength: 40 }, { runLength: 45 }], [])).toBe('');
   });
 });
