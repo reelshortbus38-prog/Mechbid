@@ -30,6 +30,7 @@ import { forMode, stampMode, resultText } from '../state/tradeScope.js';
 import { dedupeSchedule } from '../components/scheduleDedupe.js';
 import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } from './docRoute.js';
 import { scopeTasksBecomeLineItems, resolveBidMethod, METHOD_LABEL, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
+import { partitionBySize } from './uploadLimits.js';
 
 // The pasted-email box analyzes as a synthetic file so it shares the upload
 // path's routing, review screen and "already done" tracking.
@@ -75,7 +76,23 @@ export default function Step1_Setup({ onNext }) {
   }
 
   function handleFiles(files) {
-    const arr = Array.from(files);
+    // Nothing checked size before this. A file too big for the serverless
+    // function failed in whichever way it happened to fail — a request the
+    // server never explains, or an iPad tab going white part-way through
+    // base64-encoding it — and neither said "that file is too big", which is
+    // the one thing the person needs to hear. One oversized file in a batch
+    // of eight must not stop the other seven, so they are partitioned.
+    const picked = Array.from(files).map(f => ({ file: f, name: f.name, size: f.size, type: detectType(f) }));
+    const { accepted, rejected } = partitionBySize(picked);
+    if (rejected.length) {
+      setResults(prev => [...prev, ...rejected.map(r => `❌ ${r.message}`)]);
+      dispatch({ type: 'SET', key: 'flags', value: dedupeFlags([
+        ...(state.flags || []),
+        ...stampMode(rejected.map(r => ({ type: 'warn', text: r.message, source: r.name })), state.mode),
+      ]) });
+    }
+    if (!accepted.length) return;
+    const arr = accepted.map(a => a.file);
     const newMeta = arr.map(f => {
       const id = uid();
       fileObjects.current[id] = f; // store File in ref
