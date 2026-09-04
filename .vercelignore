@@ -1,0 +1,27 @@
+# ── WHY THIS FILE EXISTS ─────────────────────────────────────────────────────
+# Vercel turns EVERY .js file under api/ into its own Serverless Function. Not
+# just the request handlers — every file. api/ also holds the pure modules the
+# handlers require (bprCircuit, bprFormat, partsOrderForm, sheetSanity) and, up
+# to now, their unit tests, so the deployment was building thirteen functions
+# where four are real endpoints and five were test files.
+#
+# Thirteen is one over the Hobby plan's limit of twelve. Every deployment after
+# api/sheetSanity.js and its test landed — which took the count from eleven to
+# thirteen — failed at "Deploying outputs", AFTER a completely healthy build.
+# The build log showed vite finishing in 3.77s and dist written, so the failure
+# read as unrelated to the code, and production quietly went on serving an
+# older build while a day of merges piled up behind it.
+#
+# Excluding the tests takes it from thirteen to eight. api/*.test.js is dev
+# tooling; it has no business being uploaded, let alone deployed.
+#
+# Guarded by api/functionCount.test.js, which fails the suite before a push can
+# repeat this.
+
+*.test.js
+test/
+
+# Never uploaded, and large: the local build output and the dev-only vitest
+# config are of no use to a deployment.
+dist/
+vitest.config.js
