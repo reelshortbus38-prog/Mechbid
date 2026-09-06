@@ -71,15 +71,32 @@ export const DEFAULT_DRAIN_SIZE = '1-1/4"';
 // count differs between them — which is how the end case was described too,
 // with its own coupling and bushing named for suction and again for liquid.
 //
-// BOTH ARE ONCE PER LINEUP. A circuit with eight cases gets one start set and
-// one end set, not eight of each. If that is wrong the count is badly short,
-// so every generated line says which position it is for.
+// EVERY CASE IN BETWEEN. The run passes over them and each one taps it:
 //
-// STILL OPEN: the cases in the MIDDLE. On a lineup of eight, six of them are
-// neither the start nor the end, and nothing here gives them any fittings at
-// all. Physically they should each tee off the run the same way the start case
-// does — but that is a guess, and this module has already had two guesses
-// corrected, so it stays out until somebody says.
+//   "The middle cases just get a tee and 2 ells and coupling and bushing
+//    depending on the size the case is stubbed up."
+//
+// These are the ones that MULTIPLY. Start and end are one set each per lineup;
+// middle is one set per case, so a lineup of eight carries six of them — and
+// until this was filled in they carried nothing at all, which made the middle
+// of every lineup free. Two ells on both lines here, not the one-versus-two
+// split the start case has.
+//
+// The bushing is the size adapter, and its real size is the run size against
+// what the case is stubbed up with — which the takeoff does not know. It is
+// priced on the circuit's line size and says so.
+export const MIDDLE_CASE_SUCTION = [
+  { type: 'Elbow 90°', qty: 2 },
+  { type: 'Tee', qty: 1 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
+export const MIDDLE_CASE_LIQUID = [
+  { type: 'Elbow 90°', qty: 2 },
+  { type: 'Tee', qty: 1 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
 export const END_CASE_SUCTION = [
   { type: 'Elbow 90°', qty: 2 },
   { type: 'Street Ell', qty: 1 },
@@ -104,10 +121,22 @@ export const START_CASE_LIQUID = [
   { type: 'Bushing', qty: 1 },
 ];
 
-// Position → the two sets and the wording that goes on the line.
+// Position → its fitting sets, its wording, and HOW MANY of it a lineup of n
+// cases has. The count function is the whole point: start and end happen once,
+// the middle happens per case, and getting that backwards is the difference
+// between six sets of fittings and one.
+//
+//   1 case  → end only. It starts and ends at the same case and there is
+//             nothing for a tee to carry the run on to.
+//   2 cases → start + end, no middle.
+//   n cases → start + end + (n − 2) middles.
 export const LINEUP_POSITIONS = [
-  { key: 'start', label: 'start case', suction: START_CASE_SUCTION, liquid: START_CASE_LIQUID },
-  { key: 'end', label: 'end case', suction: END_CASE_SUCTION, liquid: END_CASE_LIQUID },
+  { key: 'start', label: 'start case', suction: START_CASE_SUCTION, liquid: START_CASE_LIQUID,
+    count: n => (n >= 2 ? 1 : 0), per: 'lineup' },
+  { key: 'middle', label: 'middle case', suction: MIDDLE_CASE_SUCTION, liquid: MIDDLE_CASE_LIQUID,
+    count: n => Math.max(0, n - 2), per: 'case' },
+  { key: 'end', label: 'end case', suction: END_CASE_SUCTION, liquid: END_CASE_LIQUID,
+    count: n => (n >= 1 ? 1 : 0), per: 'lineup' },
 ];
 
 // ── READING THE CASE COUNT OFF THE LEGEND ───────────────────────────────────
@@ -218,20 +247,28 @@ export function caseHookupLines({
     });
   }
 
-  // The two ends of the run along the case tops. One set each per lineup — see
-  // LINEUP_POSITIONS for why the start case has a tee and the end case does
-  // not, and for the middle cases that are still nobody's.
+  // The run along the case tops: one set at each end, and one at every case in
+  // between. See LINEUP_POSITIONS for why the start case tees, the end case
+  // does not, and the middle is the part that multiplies.
   if (endFittings) {
-    // A one-case lineup starts and ends at the same case, so it takes the end
-    // set only: there is nothing for a tee to carry on to.
-    const positions = n === 1 ? LINEUP_POSITIONS.filter(p => p.key === 'end') : LINEUP_POSITIONS;
-    positions.forEach(pos => {
+    LINEUP_POSITIONS.forEach(pos => {
+      const sets = pos.count(n);
+      if (sets <= 0) return;
+      const basis = pos.per === 'case'
+        ? `${sets} middle case(s) on a ${n}-case lineup — the run passes over each one and it taps in`
+        : `one set per lineup — the ${pos.label} where the piping runs along the case tops`;
       const set = (list, size, line) => list.forEach(f => {
         if (!size) return;
         lines.push({
-          section: 'Case Hookups', desc: `${size} ${f.type} — ${line} at ${pos.label}`, qty: f.qty, unit: 'ea',
+          section: 'Case Hookups', desc: `${size} ${f.type} — ${line} at ${pos.label}`,
+          qty: f.qty * sets, unit: 'ea',
           fittingType: f.type, pipeSize: size, lineupPosition: pos.key,
-          notes: `one set per lineup — the ${pos.label} where the piping runs along the case tops`,
+          // The bushing is the size adapter and the estimator flagged it:
+          // "depending on the size the case is stubbed up". The takeoff does
+          // not know the case stub, so it prices on the run size and says so.
+          notes: f.type === 'Bushing'
+            ? `${basis} · sized run-to-case-stub — priced at ${size}; correct it once the case stub size is known`
+            : basis,
         });
       });
       set(pos.suction, sucSize, 'suction');
