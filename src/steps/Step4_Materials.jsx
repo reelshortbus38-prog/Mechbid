@@ -10,7 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
-import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_DRAIN_FT, DEFAULT_DRAIN_SIZE } from '../components/caseHookup.js';
+import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
@@ -1075,7 +1075,7 @@ export default function Step4_Materials({ onNext, onBack }) {
         sucSize: c.sucHoriz ? normalizePipeSize(c.sucHoriz) : '',
         liqSize: c.liqHoriz ? normalizePipeSize(c.liqHoriz) : '',
         stubFt: rates.caseStubFt ?? DEFAULT_STUB_FT,
-        drainFt: rates.caseDrainFt ?? DEFAULT_DRAIN_FT,
+        caseFt: rates.caseFt ?? DEFAULT_CASE_FT,
         drainSize: rates.caseDrainSize || DEFAULT_DRAIN_SIZE,
         setsTxv: !!rates.setsTxv,
         // Medium-temp liquid is not insulated, but the suction stub always is,
@@ -1092,13 +1092,22 @@ export default function Step4_Materials({ onNext, onBack }) {
       // Copper stubs price off the same rate table the runs use; everything
       // else starts at 0 for the estimator to price.
       let unitCost = 0;
-      if (l.pipeSize && /stubs$/.test(l.desc)) {
+      let note = l.notes;
+      if (l.fittingType) {
+        // Real fittings the estimator named, priced off the same ACR table the
+        // fitting picker uses — not folded into a percentage.
+        const hit = fittingPrice(l.fittingType, l.pipeSize);
+        if (hit) {
+          unitCost = hit.price;
+          note = [l.notes, fittingNote(hit)].filter(Boolean).join(' · ');
+        }
+      } else if (l.pipeSize && /stubs$/.test(l.desc)) {
         unitCost = hpPipeRate(copperRate(l.pipeSize, rates).rate, state.systemType, hpMult);
       } else if (l.pipeSize && /insulation$/.test(l.desc)) {
         unitCost = insulRate(l.pipeSize, rates, 'medSuction').rate;
       }
       items.push({ id: uid(), section: l.section, desc: l.desc, qty: l.qty, unit: l.unit,
-        unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: l.notes });
+        unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: note });
     });
 
     // Consumables an RC crew actually burns through on a remodel — quantities
@@ -1389,8 +1398,8 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <Input type="number" value={state.rates?.caseStubFt ?? DEFAULT_STUB_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Drain to Hub (ft)</div>
-              <Input type="number" value={state.rates?.caseDrainFt ?? DEFAULT_DRAIN_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseDrainFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Length (ft)</div>
+              <Input type="number" value={state.rates?.caseFt ?? DEFAULT_CASE_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Support Spacing (ft)</div>
@@ -1410,9 +1419,11 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
             </label>
           </Row>
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
-            Case hookups price a suction and liquid stub, stub insulation, and PVC from each case to the floor drain hub —
-            multiplied by the Cases box on each circuit. The EPR and liquid ball valves are <strong>not</strong> in there;
-            on a direct-expansion job those live on the rack and are already on the rack parts list.
+            Case hookups price a suction and liquid stub, stub insulation, and the drain — which runs the <strong>length
+            of the case</strong> to the hub underneath it, so set Case Length to the cases on this store (8 ft cases run 8 ft
+            of PVC). Each lineup also gets one set of end-case fittings: 2 ells, a street ell, a coupling and a bushing on
+            suction; 2 ells, a coupling and a bushing on liquid. The EPR and liquid ball valves are <strong>not</strong> in
+            there; on a direct-expansion job those live on the rack and are already on the rack parts list.
             <br />
             Support spacing sets the pipe-saddle count — 6 ft is the Food Lion spec, but it's a spec and it changes by chain.
             Hangers, strut, all-thread and beam clamps are <strong>not</strong> calculated from it: how many a job needs depends
