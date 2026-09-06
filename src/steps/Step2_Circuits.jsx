@@ -3,6 +3,7 @@ import { useStore, uid, normalizePipeSize } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, EmptyState } from '../components/UI.jsx';
 import { newHeader, headerSanityNote, HOME_RUN, SHARED_HEADER } from '../components/headers.js';
+import { casesFromApplication } from '../components/caseHookup.js';
 
 // Stops at 3-1/8 no longer: a loop system's shared suction header runs 3-5/8,
 // 4-1/8 and larger, and a size the dropdown does not offer is a size the
@@ -11,6 +12,16 @@ const PIPE_SIZES = ['', '1/4"', '3/8"', '1/2"', '5/8"', '7/8"', '1-1/8"', '1-3/8
 const TEMP_TYPES = ['medium', 'low'];
 
 function CircuitRow({ circuit, onUpdate, onRemove }) {
+  // "The legend that I upload usually says what cases are hooked to each
+  // circuit" — and it already reaches this card. The application field carries
+  // it verbatim off the sheet, and the placeholder in this very component has
+  // read "MD Produce 2-4, N71" since it was written.
+  //
+  // Offered rather than applied. A range that reads as three cases could be two
+  // cases and a mislabel, and a wrong count multiplies straight into the labor.
+  const suggest = circuit.caseCount === '' || circuit.caseCount === undefined || circuit.caseCount === null
+    ? casesFromApplication(circuit.application)
+    : null;
   return (
     <div style={{
       background: colors.card2, border: `1px solid ${colors.border}`,
@@ -55,6 +66,18 @@ function CircuitRow({ circuit, onUpdate, onRemove }) {
           </div>
         )}
       </Row>
+
+      {/* What the legend already said, one tap from being the answer. */}
+      {suggest && !circuit.isRiserOnly && (
+        <Row style={{ marginBottom: 10 }}>
+          <button
+            onClick={() => onUpdate('caseCount', String(suggest.cases))}
+            style={{ background: `${colors.green}1A`, border: `1px solid ${colors.green}66`, color: colors.green,
+              borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', textAlign: 'left' }}>
+            Use {suggest.cases} case{suggest.cases === 1 ? '' : 's'} — {suggest.basis}
+          </button>
+        </Row>
+      )}
 
       {/* Riser only toggle */}
       <Row style={{ marginBottom: 10 }}>

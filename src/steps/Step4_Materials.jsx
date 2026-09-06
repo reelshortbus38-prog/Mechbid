@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice, circuitCases } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
@@ -10,6 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
+import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_DRAIN_FT, DEFAULT_DRAIN_SIZE } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
@@ -1056,6 +1057,50 @@ export default function Step4_Materials({ onNext, onBack }) {
         qty: s.qty, unitCost: 0, total: 0 });
     });
 
+    // ── Case hookups ──────────────────────────────────────────────────────
+    // The most repeated job on the store, and it had no material at all — case
+    // work existed as one labor unit and nothing else. Stubs and drains are
+    // built PER CIRCUIT so each lineup takes its own circuit's line sizes,
+    // then merged, because the estimate wants one "case suction stubs" line
+    // rather than one per circuit. See components/caseHookup.js for what is
+    // deliberately NOT in here: the EPR and liquid ball valves live on the
+    // rack, not at the case.
+    const hookupMerged = new Map();
+    state.circuits.forEach(c => {
+      if (c.isRiserOnly) return;
+      const n = circuitCases(c).cases;
+      if (n <= 0) return;
+      caseHookupLines({
+        cases: n,
+        sucSize: c.sucHoriz ? normalizePipeSize(c.sucHoriz) : '',
+        liqSize: c.liqHoriz ? normalizePipeSize(c.liqHoriz) : '',
+        stubFt: rates.caseStubFt ?? DEFAULT_STUB_FT,
+        drainFt: rates.caseDrainFt ?? DEFAULT_DRAIN_FT,
+        drainSize: rates.caseDrainSize || DEFAULT_DRAIN_SIZE,
+        setsTxv: !!rates.setsTxv,
+        // Medium-temp liquid is not insulated, but the suction stub always is,
+        // and that is the only stub this insulates.
+        insulate: true,
+      }).forEach(l => {
+        const prev = hookupMerged.get(l.desc);
+        // A 'lot' line is one lot however many circuits asked for it.
+        if (prev) prev.qty = l.unit === 'lot' ? prev.qty : prev.qty + l.qty;
+        else hookupMerged.set(l.desc, { ...l });
+      });
+    });
+    [...hookupMerged.values()].forEach(l => {
+      // Copper stubs price off the same rate table the runs use; everything
+      // else starts at 0 for the estimator to price.
+      let unitCost = 0;
+      if (l.pipeSize && /stubs$/.test(l.desc)) {
+        unitCost = hpPipeRate(copperRate(l.pipeSize, rates).rate, state.systemType, hpMult);
+      } else if (l.pipeSize && /insulation$/.test(l.desc)) {
+        unitCost = insulRate(l.pipeSize, rates, 'medSuction').rate;
+      }
+      items.push({ id: uid(), section: l.section, desc: l.desc, qty: l.qty, unit: l.unit,
+        unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: l.notes });
+    });
+
     // Consumables an RC crew actually burns through on a remodel — quantities
     // start at 0 so nothing is charged until you fill in what applies.
     items.push({id:uid(),section:'Consumables',desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
@@ -1340,6 +1385,14 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub (ft each)</div>
+              <Input type="number" value={state.rates?.caseStubFt ?? DEFAULT_STUB_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Drain to Hub (ft)</div>
+              <Input type="number" value={state.rates?.caseDrainFt ?? DEFAULT_DRAIN_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseDrainFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+            <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Support Spacing (ft)</div>
               <Input type="number" value={state.rates?.hangerSpacingFt||6} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'hangerSpacingFt',value:parseFloat(e.target.value)||6})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
@@ -1348,7 +1401,19 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
           </Row>
+          <Row style={{ gap:20, flexWrap:'wrap', marginTop:12 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:colors.text }}>
+              <input type="checkbox" checked={!!state.rates?.setsTxv}
+                onChange={e=>dispatch({type:'SET_RATES_MISC',key:'setsTxv',value:e.target.checked})}
+                style={{ accentColor: colors.green }} />
+              We set the TXVs (off = the energy team sets them)
+            </label>
+          </Row>
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
+            Case hookups price a suction and liquid stub, stub insulation, and PVC from each case to the floor drain hub —
+            multiplied by the Cases box on each circuit. The EPR and liquid ball valves are <strong>not</strong> in there;
+            on a direct-expansion job those live on the rack and are already on the rack parts list.
+            <br />
             Support spacing sets the pipe-saddle count — 6 ft is the Food Lion spec, but it's a spec and it changes by chain.
             Hangers, strut, all-thread and beam clamps are <strong>not</strong> calculated from it: how many a job needs depends
             on where the circuits route and how many share each one, which nobody knows until they walk it. Those lines generate
