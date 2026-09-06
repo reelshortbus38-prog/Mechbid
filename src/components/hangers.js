@@ -39,6 +39,11 @@ export const DEFAULT_SPACING_FT = 6;
 // it, because whether there is room to double-stack is a site question.
 export const CIRCUITS_PER_HANGER = '6-8';
 
+// All-thread size. Rod, beam clamps, couplings, nuts and washers all share it,
+// so it is written once rather than typed into four descriptions that can drift
+// apart. 3/8" is what refrigeration trapezes run.
+export const ROD_SIZE = '3/8"';
+
 export const normalizeSpacing = (ft) => Math.max(1, Number(ft) || DEFAULT_SPACING_FT);
 
 // The facts the takeoff can honestly state about a hanger route, for printing
@@ -79,6 +84,11 @@ export function basisText(b) {
 export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAULT_SPACING_FT) {
   const b = hangerBasis(circuits, headerHorizFt, spacingFt);
   if (b.routeFt <= 0) return [];
+  // Rod, beam clamps, couplings, nuts and washers are all the SAME thread, so
+  // the size is written once and the whole set of lines stays consistent. 3/8"
+  // is what this trade runs; a heavier trapeze that specs 1/2" is one edit on
+  // each line, and every description in this app is editable.
+  const R = ROD_SIZE;
   return [
     { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
       desc: `Pipe Hangers / trapezes — COUNT ON SITE (${basisText(b)})` },
@@ -92,19 +102,19 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
     // bid, not a measurement. So the line asks for the thing they will actually
     // give it — a bundle count off experience — and says what drives it.
     { section: 'Hardware', hangerManual: true, unit: 'stick', qty: 0, unitCost: 0, total: 0,
-      desc: `3/8" All-Thread Rod — ORDER FROM EXPERIENCE (2 drops per hanger; drop length is joist-to-pipe and varies with the route, longer where hangers are double-stacked. Sold in 10' sticks — switch the unit to bundle if that is how you buy it)` },
+      desc: `${R} All-Thread Rod — ORDER FROM EXPERIENCE (2 drops per hanger; drop length is joist-to-pipe and varies with the route, longer where hangers are double-stacked. Sold in 10' sticks — switch the unit to bundle if that is how you buy it)` },
     // Beam clamps were missing from the takeoff entirely. They are how the rod
     // gets attached to the bar joist — every drop needs one — so on a store
     // with fifty hangers that is a hundred of them, at real money each. They
     // were not folded into the loose-hardware lot below; they simply were not
     // on the list.
     { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
-      desc: `Beam clamps — bar joist attachment (2 per hanger, one per rod drop; check the spec, some jobs call for welded or bolted attachment instead)` },
+      desc: `${R} Beam clamps — bar joist attachment (2 per hanger, one per rod drop; check the spec, some jobs call for welded or bolted attachment instead)` },
     // Loose hardware stays one lot. Nuts and washers are genuinely pocket
     // change and nobody counts them; the beam clamps that used to be lumped in
     // with items like this are now their own line above, because they are not.
     { section: 'Hardware', unit: 'lot', qty: 0, unitCost: 0, total: 0,
-      desc: 'Strut Nuts, Rod Couplings, Nuts & Washers' },
+      desc: `Strut Nuts, ${R} Rod Couplings, Nuts & Washers` },
   ];
 }
 

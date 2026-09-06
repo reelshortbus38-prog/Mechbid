@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hangerBasis, basisText, hangerLines, saddleCounts,
-  DEFAULT_SPACING_FT, normalizeSpacing,
+  DEFAULT_SPACING_FT, normalizeSpacing, ROD_SIZE,
 } from './hangers.js';
 
 const norm = s => String(s || '');
@@ -84,15 +84,26 @@ describe('the trapeze lines', () => {
     expect(unitOf(/^Pipe Hangers/)).toBe('ea');
     expect(unitOf(/^Unistrut/)).toBe('stick');
     expect(unitOf(/All-Thread Rod/)).toBe('stick');
-    expect(unitOf(/^Beam clamps/)).toBe('ea');
+    expect(unitOf(/Beam clamps/)).toBe('ea');
     expect(unitOf(/Strut Nuts/)).toBe('lot');
+  });
+
+  it('runs one thread size across rod, clamps and loose hardware', () => {
+    // A beam clamp and a rod coupling are sized to the thread they go on, so a
+    // 3/8" rod line beside an unsized clamp line is not an orderable list. One
+    // constant, three descriptions — they cannot drift apart.
+    expect(ROD_SIZE).toBe('3/8"');
+    const sized = lines.filter(l => l.desc.includes(ROD_SIZE));
+    expect(sized).toHaveLength(3);
+    expect(sized.map(l => l.desc.match(/All-Thread Rod|Beam clamps|Rod Couplings/)?.[0]).sort())
+      .toEqual(['All-Thread Rod', 'Beam clamps', 'Rod Couplings']);
   });
 
   it('carries beam clamps, which the takeoff used to leave off entirely', () => {
     // Every rod drop needs one to get onto the bar joist. Fifty hangers is a
     // hundred clamps at real money each, and they were on no line at all —
     // not even folded into the loose-hardware lot.
-    const clamps = lines.find(l => /^Beam clamps/.test(l.desc));
+    const clamps = lines.find(l => /Beam clamps/.test(l.desc));
     expect(clamps).toBeTruthy();
     expect(clamps.desc).toContain('2 per hanger');
     expect(clamps.hangerManual).toBe(true);
