@@ -106,6 +106,32 @@ export function checkBidReadiness(state = {}, totals = {}) {
     });
   }
 
+  // 3b. Trapeze materials left at zero.
+  //
+  // These lines are generated at qty 0 deliberately — how much strut and rod a
+  // job needs depends on where the circuits route and how many share each
+  // hanger, and nobody knows that from a takeoff. But "deliberately zero" and
+  // "forgotten" look identical on the printed bid, and this trade buys strut
+  // and all-thread by the truckload on a full store.
+  //
+  // A warning, not a blocker: a shop that carries hangers inside a hardware
+  // allowance, or a job where the GC supplies them, is entitled to leave these
+  // at zero. It just has to be a decision somebody made rather than one nobody
+  // noticed.
+  const hangerLines = (state.lineItems || []).filter(p => p.hangerManual);
+  const hangerUnfilled = hangerLines.filter(p => num(p.qty) <= 0);
+  if (hangerLines.length > 0 && hangerUnfilled.length === hangerLines.length) {
+    issues.push({
+      key: 'hangersUnfilled', severity: 'warn',
+      title: 'Trapeze strut and all-thread are still at zero',
+      detail: 'These are filled in after somebody walks the job — the app will not guess them, because how many '
+        + 'hangers a store needs depends on the routes the circuits take and how many share each one. Count them '
+        + 'on site and enter them in Bid Materials under Hardware. If hangers are inside a hardware allowance or '
+        + 'supplied by others, this is fine as it stands.',
+      count: hangerUnfilled.length,
+    });
+  }
+
   // 4. No labor at all. Every one of these jobs is installed by somebody.
   const labor = num(totals.laborTotal) + num(totals.rackLaborTotal) + num(totals.fieldTasksTotal);
   if (labor <= 0) {

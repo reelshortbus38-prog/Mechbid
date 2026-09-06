@@ -315,6 +315,11 @@ export const initialState = {
     // 'manual' = no allowance line; fittings are added one-by-one via the fitting picker.
     fittingsMode: 'percentage',
     wasteFactor: 10,
+    // Distance between pipe supports, in feet. 6 is the Food Lion spec and the
+    // most common one, but it is a SPEC — it changes by chain and by job, and
+    // it drives the saddle count, so it is a setting rather than a constant
+    // buried in the takeoff.
+    hangerSpacingFt: 6,
   },
   laborPeriods: [],
   // Two ways to bid commercial labor. 'periods' (default): phase-by-phase crews
