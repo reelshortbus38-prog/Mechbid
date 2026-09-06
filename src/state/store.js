@@ -1147,6 +1147,25 @@ export const DEFAULT_LABOR_UNITS = {
 // How many fittings-joints a circuit carries, and whether anybody actually
 // knows. A counted number beats an allowance and must never be overridden by
 // one; that is the whole reason the two are distinguishable here.
+// ── HOW MANY CASES HANG OFF THIS CIRCUIT ────────────────────────────────────
+// The labor estimate charged exactly ONE case hookup per circuit, and no field
+// existed to say otherwise. But a circuit does not feed a case, it feeds a
+// LINEUP — "MD Produce 2-4" in the app's own placeholder is three of them, and
+// a run of coffin cases or multi-decks is commonly six or eight. Every one gets
+// stubbed, valved, brazed and insulated separately.
+//
+// So a six-case lineup was booking 1.5 hours of case work instead of nine, on
+// every circuit, and the error runs in the direction that loses money.
+//
+// Unset means one, which is exactly what the old behaviour was — a job saved
+// before this field existed estimates the same as it did yesterday, and only
+// changes when somebody says how many cases are really out there.
+export function circuitCases(circuit) {
+  const n = parseFloat(circuit?.caseCount);
+  if (!Number.isFinite(n) || n < 0) return { cases: 1, source: 'assumed' };
+  return { cases: Math.round(n), source: 'counted' };
+}
+
 export function circuitJoints(circuit, units) {
   const u = { ...DEFAULT_LABOR_UNITS, ...(units || {}) };
   const counted = parseFloat(circuit?.fittingJoints);
@@ -1183,7 +1202,9 @@ export function estimateCircuitLabor(circuits, units) {
     // walked the route, allowed for if nobody has yet.
     const fit = circuitJoints(c, u);
     const joints = Math.ceil(ft / (u.stickLength || 20)) + fit.joints;
-    const hrs = ft * perFt + joints * perJoint + u.perCase + u.perRackTie;
+    // Case hookup is PER CASE, not per circuit. A lineup of six gets six.
+    const cs = circuitCases(c);
+    const hrs = ft * perFt + joints * perJoint + cs.cases * u.perCase + u.perRackTie;
     totalHours += hrs;
     perCircuit.push({
       circuitId: c.circuitId || '?', application: c.application || '', ft, bucket,
@@ -1191,8 +1212,14 @@ export function estimateCircuitLabor(circuits, units) {
       // Carried so the estimator can see WHICH circuits are standing on a
       // fittings allowance and which were walked and counted.
       joints, fittings: fit.joints, fittingsSource: fit.source,
+      cases: cs.cases, casesSource: cs.source,
     });
   });
   const assumed = perCircuit.filter(p => p.fittingsSource === 'assumed').length;
-  return { totalHours: Math.round(totalHours * 10) / 10, perCircuit, assumedFittings: assumed };
+  const assumedCases = perCircuit.filter(p => p.casesSource === 'assumed').length;
+  return {
+    totalHours: Math.round(totalHours * 10) / 10, perCircuit,
+    assumedFittings: assumed, assumedCases,
+    totalCases: perCircuit.reduce((s, p) => s + p.cases, 0),
+  };
 }

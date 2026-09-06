@@ -407,6 +407,22 @@ function CircuitLaborEstimator() {
         </div>
       )}
 
+      {/* Case count runs the same way, and the miss was bigger. Until there was
+          a field for it every circuit booked exactly ONE case hookup — a lineup
+          of six multi-decks got 1.5 hours instead of nine, in the direction
+          that loses money. Unset still means one, so nothing moved on its own;
+          it just says which circuits nobody has counted. */}
+      {est.assumedCases > 0 && (
+        <div style={{ marginTop: 10, fontSize: 11, color: colors.textDim, lineHeight: 1.6,
+          padding: '8px 10px', borderRadius: 6, border: `1px solid ${colors.yellow}40`, background: `${colors.yellow}0D` }}>
+          <strong style={{ color: colors.yellow }}>{est.assumedCases} of {est.perCircuit.length} circuit{est.perCircuit.length !== 1 ? 's' : ''}</strong>{' '}
+          {est.assumedCases === 1 ? 'is counted as one case' : 'are counted as one case each'} because nobody has said
+          otherwise — {est.totalCases} case hookup{est.totalCases !== 1 ? 's' : ''} in this estimate. A circuit usually
+          feeds a lineup, not a single case, and each one gets its own stub, valves, joints and insulation.
+          Put the count in the Cases box on the Circuits step.
+        </div>
+      )}
+
       <div onClick={() => setOpen(o => !o)} style={{ marginTop: 10, fontSize: 11, color: colors.textDim, cursor: 'pointer', userSelect: 'none' }}>
         {open ? '▲ Hide assumptions' : `▼ Adjust labor-unit assumptions (man-hours) — ${confidence.confirmed} confirmed, ${confidence.unconfirmed + confidence.varies} not`}
       </div>

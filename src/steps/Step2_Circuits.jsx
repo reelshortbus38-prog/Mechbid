@@ -42,6 +42,18 @@ function CircuitRow({ circuit, onUpdate, onRemove }) {
             <option value="low">Low Temp</option>
           </Select>
         </div>
+
+        {/* Cases on this circuit. A circuit feeds a LINEUP — the placeholder
+            beside this one, "MD Produce 2-4", is three cases — and every one
+            gets stubbed, valved, brazed and insulated on its own. Labor
+            charged for exactly one until this field existed. */}
+        {!circuit.isRiserOnly && (
+          <div style={{ flex: '0 0 74px' }}>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Cases</div>
+            <Input type="number" value={circuit.caseCount ?? ''} onChange={e => onUpdate('caseCount', e.target.value)}
+              placeholder="1" style={{ fontFamily: "'DM Mono', monospace", textAlign: 'center' }} />
+          </div>
+        )}
       </Row>
 
       {/* Riser only toggle */}
@@ -123,7 +135,11 @@ export default function Step2_Circuits({ onNext, onBack }) {
   function addCircuit() {
     dispatch({
       type: 'ADD_CIRCUIT',
-      circuit: { id: uid(), circuitId: '', rack: '', application: '', runLength: 0, riserLength: 20, sucHoriz: '', sucRiser: '', liqHoriz: '', tempType: 'medium', isRiserOnly: false, notes: '' }
+      // caseCount is left unset rather than defaulted to 1. Unset reads as "one,
+      // nobody has said" and is flagged as an assumption; a typed 1 is somebody
+      // saying there is one case. The estimate is the same either way — the
+      // difference is whether the app claims to know.
+      circuit: { id: uid(), circuitId: '', rack: '', application: '', runLength: 0, riserLength: 20, sucHoriz: '', sucRiser: '', liqHoriz: '', tempType: 'medium', isRiserOnly: false, caseCount: '', notes: '' }
     });
   }
 
