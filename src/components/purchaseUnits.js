@@ -24,7 +24,7 @@
 // The units a mechanical estimate actually uses. Offered in the row dropdown,
 // in this order, because that is roughly how often they come up.
 export const PURCHASE_UNITS = [
-  'ea', 'ft', 'lb', 'lot', 'set', 'roll', 'box', 'stick', 'gal',
+  'ea', 'ft', 'lb', 'lot', 'set', 'roll', 'box', 'stick', 'bundle', 'gal',
   'can', 'tube', 'cylinder', 'sq ft', 'sheet', 'pair', 'day', 'hr',
 ];
 

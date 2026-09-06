@@ -70,8 +70,8 @@ export function basisText(b) {
     + ` — about ${b.supportsPerRoute} supports per route at ${b.spacingFt} ft`;
 }
 
-// The three trapeze lines, at zero, plus the loose hardware that goes with
-// them. `hangerManual: true` is what the bid pre-flight looks for — matching on
+// The trapeze lines, at zero, plus the loose hardware that goes with them.
+// `hangerManual: true` is what the bid pre-flight looks for — matching on
 // description text would break the moment the wording improved.
 //
 // → [] when there is no horizontal pipe at all (a riser-only or rack-only
@@ -84,8 +84,25 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
       desc: `Pipe Hangers / trapezes — COUNT ON SITE (${basisText(b)})` },
     { section: 'Hardware', hangerManual: true, unit: 'stick', qty: 0, unitCost: 0, total: 0,
       desc: `Unistrut — trapeze (10' sticks) — MEASURE ON SITE (5-6 ft per hanger, ${CIRCUITS_PER_HANGER} circuits each; double-stack or a second route past that)` },
+    // Rod does not say MEASURE ON SITE, because that is not what happens.
+    // Verifying a drop length means getting up in the ceiling with a tape, and
+    // the estimator's read is that most contractors won't: "they just order a
+    // bundle or so depending on their own experience." Telling somebody to go
+    // measure something they are not going to measure produces a zero on the
+    // bid, not a measurement. So the line asks for the thing they will actually
+    // give it — a bundle count off experience — and says what drives it.
     { section: 'Hardware', hangerManual: true, unit: 'stick', qty: 0, unitCost: 0, total: 0,
-      desc: `3/8" All-Thread Rod (10' sticks) — MEASURE ON SITE (2 drops per hanger, joist to pipe; longer where hangers are double-stacked)` },
+      desc: `3/8" All-Thread Rod — ORDER FROM EXPERIENCE (2 drops per hanger; drop length is joist-to-pipe and varies with the route, longer where hangers are double-stacked. Sold in 10' sticks — switch the unit to bundle if that is how you buy it)` },
+    // Beam clamps were missing from the takeoff entirely. They are how the rod
+    // gets attached to the bar joist — every drop needs one — so on a store
+    // with fifty hangers that is a hundred of them, at real money each. They
+    // were not folded into the loose-hardware lot below; they simply were not
+    // on the list.
+    { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
+      desc: `Beam clamps — bar joist attachment (2 per hanger, one per rod drop; check the spec, some jobs call for welded or bolted attachment instead)` },
+    // Loose hardware stays one lot. Nuts and washers are genuinely pocket
+    // change and nobody counts them; the beam clamps that used to be lumped in
+    // with items like this are now their own line above, because they are not.
     { section: 'Hardware', unit: 'lot', qty: 0, unitCost: 0, total: 0,
       desc: 'Strut Nuts, Rod Couplings, Nuts & Washers' },
   ];

@@ -123,11 +123,11 @@ export function checkBidReadiness(state = {}, totals = {}) {
   if (hangerLines.length > 0 && hangerUnfilled.length === hangerLines.length) {
     issues.push({
       key: 'hangersUnfilled', severity: 'warn',
-      title: 'Trapeze strut and all-thread are still at zero',
-      detail: 'These are filled in after somebody walks the job — the app will not guess them, because how many '
-        + 'hangers a store needs depends on the routes the circuits take and how many share each one. Count them '
-        + 'on site and enter them in Bid Materials under Hardware. If hangers are inside a hardware allowance or '
-        + 'supplied by others, this is fine as it stands.',
+      title: 'Hangers, strut, all-thread and beam clamps are all still at zero',
+      detail: 'The app will not guess these, because how many hangers a store needs depends on the routes the '
+        + 'circuits take and how many share each one. Enter them in Bid Materials under Hardware — rod and clamps '
+        + 'usually go in off experience rather than a site measurement. If hangers are inside a hardware allowance '
+        + 'or supplied by others, this is fine as it stands.',
       count: hangerUnfilled.length,
     });
   }
