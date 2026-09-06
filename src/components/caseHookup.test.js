@@ -3,6 +3,7 @@ import {
   casesFromApplication, caseHookupLines,
   DEFAULT_STUB_FT, DEFAULT_CASE_FT, LINEUP_POSITIONS,
   END_CASE_SUCTION, END_CASE_LIQUID, START_CASE_SUCTION, START_CASE_LIQUID,
+  MIDDLE_CASE_SUCTION, MIDDLE_CASE_LIQUID,
 } from './caseHookup.js';
 import { fittingPrice } from './fittingPrices.js';
 
@@ -201,15 +202,36 @@ describe('lineup fittings', () => {
     expect(at('1-1/8"', 'Street Ell', 'suction', 'start case')).toBeUndefined();
   });
 
-  it('is ONE set of each per lineup, not one per case', () => {
-    // A circuit with eight cases has one start and one end. If that read is
-    // wrong the count is badly short, which is why every line says so.
-    const two = caseHookupLines({ cases: 2, sucSize: '1-1/8"', liqSize: '1/2"' });
+  it('taps every case in the middle, and that is the part that multiplies', () => {
+    // "The middle cases just get a tee and 2 ells and coupling and bushing."
+    // Eight cases = six middles. Until this was filled in the middle of every
+    // lineup was free.
+    expect(at('1-1/8"', 'Tee', 'suction', 'middle case').qty).toBe(6);
+    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'middle case').qty).toBe(12);
+    expect(at('1-1/8"', 'Coupling', 'suction', 'middle case').qty).toBe(6);
+    expect(at('1-1/8"', 'Bushing', 'suction', 'middle case').qty).toBe(6);
+    // Two ells on BOTH lines here — not the 1-vs-2 split the start case has.
+    expect(at('1/2"', 'Elbow 90°', 'liquid', 'middle case').qty).toBe(12);
+    expect(at('1/2"', 'Tee', 'liquid', 'middle case').qty).toBe(6);
+  });
+
+  it('scales the middle with the case count and leaves the ends alone', () => {
+    const count = (ls, pos, type, line) =>
+      ls.find(l => l.lineupPosition === pos && l.fittingType === type && new RegExp(line).test(l.desc))?.qty ?? 0;
+    const four = caseHookupLines({ cases: 4, sucSize: '1-1/8"', liqSize: '1/2"' });
     const twenty = caseHookupLines({ cases: 20, sucSize: '1-1/8"', liqSize: '1/2"' });
-    const fittings = ls => ls.filter(l => l.fittingType)
-      .map(l => `${l.desc}:${l.qty}`).sort().join('|');
-    expect(fittings(twenty)).toBe(fittings(two));
-    expect(lines.every(l => !l.fittingType || /one set per lineup/.test(l.notes))).toBe(true);
+    expect(count(four, 'middle', 'Tee', 'suction')).toBe(2);
+    expect(count(twenty, 'middle', 'Tee', 'suction')).toBe(18);
+    // The ends do not move.
+    expect(count(twenty, 'start', 'Tee', 'suction')).toBe(count(four, 'start', 'Tee', 'suction'));
+    expect(count(twenty, 'end', 'Street Ell', 'suction')).toBe(count(four, 'end', 'Street Ell', 'suction'));
+  });
+
+  it('has no middle on a two-case lineup', () => {
+    const two = caseHookupLines({ cases: 2, sucSize: '1-1/8"', liqSize: '1/2"' });
+    expect(two.some(l => l.lineupPosition === 'middle')).toBe(false);
+    expect(two.some(l => l.lineupPosition === 'start')).toBe(true);
+    expect(two.some(l => l.lineupPosition === 'end')).toBe(true);
   });
 
   it('gives a single-case lineup only the end set', () => {
@@ -217,22 +239,39 @@ describe('lineup fittings', () => {
     // the run on to.
     const one = caseHookupLines({ cases: 1, sucSize: '1-1/8"', liqSize: '1/2"' });
     expect(one.some(l => l.lineupPosition === 'start')).toBe(false);
+    expect(one.some(l => l.lineupPosition === 'middle')).toBe(false);
     expect(one.some(l => l.lineupPosition === 'end')).toBe(true);
     expect(one.some(l => l.fittingType === 'Tee')).toBe(false);
+  });
+
+  it('says the bushing size is the one thing the takeoff cannot know', () => {
+    // "...and bushing depending on the size the case is stubbed up." The run
+    // size is known; what the case is stubbed with is not.
+    const bushings = lines.filter(l => l.fittingType === 'Bushing');
+    expect(bushings.length).toBeGreaterThan(0);
+    for (const b of bushings) expect(b.notes).toMatch(/case stub size/);
   });
 
   it('names fitting types the ACR price table can actually price', () => {
     // These carry fittingType so the caller prices them off the same quoted
     // table the fitting picker uses, instead of a percentage.
-    const all = [...END_CASE_SUCTION, ...END_CASE_LIQUID, ...START_CASE_SUCTION, ...START_CASE_LIQUID];
+    const all = [...END_CASE_SUCTION, ...END_CASE_LIQUID, ...START_CASE_SUCTION,
+      ...START_CASE_LIQUID, ...MIDDLE_CASE_SUCTION, ...MIDDLE_CASE_LIQUID];
     for (const f of all) expect(fittingPrice(f.type, '1-1/8')).toBeTruthy();
   });
 
-  it('covers both ends of the run and nothing in between', () => {
-    // The middle cases have no fittings on purpose — physically they should
-    // each tee like the start case does, but nobody has said so and this
-    // module has had two guesses corrected already.
-    expect(LINEUP_POSITIONS.map(p => p.key)).toEqual(['start', 'end']);
+  it('covers the whole lineup — both ends and everything between', () => {
+    expect(LINEUP_POSITIONS.map(p => p.key)).toEqual(['start', 'middle', 'end']);
+    // Only the middle is per-case. Getting that backwards is the difference
+    // between six sets of fittings and one.
+    expect(LINEUP_POSITIONS.filter(p => p.per === 'case').map(p => p.key)).toEqual(['middle']);
+  });
+
+  it('accounts for every case in the lineup exactly once', () => {
+    for (const n of [1, 2, 3, 8, 20]) {
+      const total = LINEUP_POSITIONS.reduce((s, p) => s + p.count(n), 0);
+      expect(total, `${n}-case lineup`).toBe(n);
+    }
   });
 
   it('can be switched off for a job that itemises fittings by hand', () => {
