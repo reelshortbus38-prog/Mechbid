@@ -206,3 +206,50 @@ describe('a sizeless run still has to be finished before bidding', () => {
     expect(hit.detail).toMatch(/could not be read at all/);
   });
 });
+
+// ── TRAPEZE MATERIALS LEFT AT ZERO ──────────────────────────────────────────
+// The trapeze lines used to carry a calculated number. It was wrong — it put a
+// hanger under every pipe instead of one under all of them — so it is gone, and
+// the lines now generate at zero for somebody to fill in after they walk the
+// job. That trade is only safe if "still zero at send time" gets said out loud.
+describe('hangers left unfilled', () => {
+  const hangerLines = [
+    { id: 'h1', section: 'Hardware', hangerManual: true, desc: 'Pipe Hangers / trapezes — COUNT ON SITE', qty: 0, unit: 'ea', unitCost: 0, total: 0 },
+    { id: 'h2', section: 'Hardware', hangerManual: true, desc: "Unistrut — trapeze (10' sticks) — MEASURE ON SITE", qty: 0, unit: 'stick', unitCost: 0, total: 0 },
+    { id: 'h3', section: 'Hardware', hangerManual: true, desc: '3/8" All-Thread Rod — MEASURE ON SITE', qty: 0, unit: 'stick', unitCost: 0, total: 0 },
+  ];
+  const job = lineItems => ({ mode: 'Commercial Refrigeration', projName: 'Store 47', lineItems });
+  const totals = { laborTotal: 40000, markupAmt: 5000, markupBase: 25000 };
+  const keys = state => checkBidReadiness(state, totals).issues.map(i => i.key);
+
+  it('warns when every trapeze line is still at zero', () => {
+    expect(keys(job(hangerLines))).toContain('hangersUnfilled');
+  });
+
+  it('warns rather than blocks — an allowance or supplied-by-others is legitimate', () => {
+    const { blockers, warnings } = checkBidReadiness(job(hangerLines), totals);
+    expect(blockers.map(i => i.key)).not.toContain('hangersUnfilled');
+    expect(warnings.map(i => i.key)).toContain('hangersUnfilled');
+  });
+
+  it('goes quiet once any of them is filled in', () => {
+    // Somebody walked the job. That is the whole point of the line.
+    const filled = hangerLines.map((l, i) => i === 1 ? { ...l, qty: 14, unitCost: 22, total: 308 } : l);
+    expect(keys(job(filled))).not.toContain('hangersUnfilled');
+  });
+
+  it('says nothing on a job that generated no trapeze lines at all', () => {
+    // No horizontal run — a riser-only or rack-only scope.
+    expect(keys(job([{ id: 'x', section: 'Copper', desc: '2-1/8" ACR', qty: 40, unit: 'ft', unitCost: 9, total: 360 }])))
+      .not.toContain('hangersUnfilled');
+  });
+
+  it('does not double-report them as unpriced material lines', () => {
+    // Check 3 only fires on a line with a QUANTITY and no price. A zero-qty
+    // hanger line has neither, so it must not appear there too.
+    const filled = hangerLines.map(l => ({ ...l, qty: 10 }));
+    const issues = checkBidReadiness(job(filled), totals).issues;
+    expect(issues.map(i => i.key)).toContain('unpricedParts');
+    expect(issues.map(i => i.key)).not.toContain('hangersUnfilled');
+  });
+});

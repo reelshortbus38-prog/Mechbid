@@ -9,6 +9,7 @@ import CrossSheetCard from '../components/CrossSheetCard.jsx';
 import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
+import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
@@ -937,6 +938,10 @@ export default function Step4_Materials({ onNext, onBack }) {
     const items = [];
     const rates = state.rates || {};
     const wasteFactor = 1+((rates.wasteFactor||10)/100);
+    // Support spacing is a SPEC, not a constant. 6 ft is what Food Lion calls
+    // for and is the most common, but it changes by chain and by job — and it
+    // sets the saddle count, so it has to be reachable without editing code.
+    const spacingFt = Math.max(1, Number(rates.hangerSpacingFt) || 6);
     // CO₂ transcritical: high-pressure side uses K65 copper-iron alloy (rated for
     // ~1300+ psi), not standard ACR copper, and the joining/fittings differ.
     const isCO2 = state.systemType === 'CO2';
@@ -1040,48 +1045,15 @@ export default function Step4_Materials({ onNext, onBack }) {
     pushInsulLines(lowLiqBySize, 'lowLiquid', `Liquid Insulation — Low Temp (${INSUL_WALL.lowLiquid} wall)`);
 
     // ── Hardware & consumables ────────────────────────────────────────────
-    // Hangers carry every horizontal foot of pipe, not just the single longest
-    // circuit. Estimate from TOTAL horizontal run footage across all circuits
-    // at 6ft spacing. (Risers are strapped separately and not counted here.)
-    const totalHorizRun = state.circuits
-      .filter(c => !c.isRiserOnly)
-      .reduce((s, c) => s + (parseFloat(c.runLength) || 0), 0)
-      + hdr.horizFt;   // the header runs the length of the store and hangs like any main
-    if (totalHorizRun > 0) {
-      const supports = Math.ceil(totalHorizRun / 6);
-      items.push({ id: uid(), section: 'Hardware', desc: 'Pipe Hangers @ 6ft spacing', qty: supports, unit: 'ea', unitCost: 0, total: 0 });
-      // Trapeze materials, in the 10' sticks they're actually bought in:
-      // each support is a trapeze — ~2 ft of strut across + two all-thread
-      // drops (~2 ft each). Quantities are estimates off the takeoff; adjust
-      // for ceiling height and shared trapezes where circuits run together.
-      const strutSticks = Math.ceil((supports * 2) / 10);
-      const rodSticks = Math.ceil((supports * 4) / 10);
-      items.push({ id: uid(), section: 'Hardware', desc: "Unistrut — trapeze @ 6ft (10' sticks, ~2 ft/support)", qty: strutSticks, unit: 'stick', unitCost: 0, total: 0 });
-      items.push({ id: uid(), section: 'Hardware', desc: "3/8\" All-Thread Rod — 2 drops/trapeze (10' sticks)", qty: rodSticks, unit: 'stick', unitCost: 0, total: 0 });
-      items.push({ id: uid(), section: 'Hardware', desc: 'Strut Nuts, Rod Couplings, Nuts & Washers', qty: 0, unit: 'lot', unitCost: 0, total: 0 });
-    }
+    // Trapeze materials generate at ZERO and saddles calculate. See
+    // components/hangers.js for why those two are different questions.
+    hangerLines(state.circuits, hdr.horizFt, spacingFt)
+      .forEach(l => items.push({ id: uid(), ...l }));
 
-    // Pipe saddles (Insuguard-style cradles) — insulated lines ride in a
-    // saddle at every support point so the hanger/strut doesn't crush the
-    // insulation; many scopes require them on all refrigeration piping.
-    // Sized to the pipe: one per support @ 6ft over each insulated
-    // HORIZONTAL run (suction both temps + low-temp liquid). Risers are
-    // strapped, not saddled.
-    const saddleBySize = {};
-    state.circuits.forEach(c => {
-      if (c.isRiserOnly) return;
-      const run = parseFloat(c.runLength) || 0;
-      if (run <= 0) return;
-      const add = (size) => {
-        if (!size) return;
-        const k = normalizePipeSize(size);
-        saddleBySize[k] = (saddleBySize[k] || 0) + run;
-      };
-      add(c.sucHoriz);
-      if (c.tempType === 'low') add(c.liqHoriz);
-    });
-    Object.entries(saddleBySize).forEach(([size, ft]) => {
-      items.push({ id: uid(), section: 'Hardware', desc: `${size}" Pipe Saddles (Insuguard) @ 6ft spacing`, qty: Math.ceil(ft / 6), unit: 'ea', unitCost: 0, total: 0, pipeSize: size });
+    saddleCounts(state.circuits, spacingFt, normalizePipeSize).forEach(s => {
+      items.push({ id: uid(), section: 'Hardware', pipeSize: s.pipeSize, unit: 'ea',
+        desc: `${s.pipeSize}" Pipe Saddles (Insuguard) @ ${spacingFt}ft spacing`,
+        qty: s.qty, unitCost: 0, total: 0 });
     });
 
     // Consumables an RC crew actually burns through on a remodel — quantities
@@ -1368,10 +1340,20 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Support Spacing (ft)</div>
+              <Input type="number" value={state.rates?.hangerSpacingFt||6} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'hangerSpacingFt',value:parseFloat(e.target.value)||6})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
+            <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Materials Markup (%)</div>
               <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
           </Row>
+          <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
+            Support spacing sets the pipe-saddle count — 6 ft is the Food Lion spec, but it's a spec and it changes by chain.
+            Trapeze strut and all-thread are <strong>not</strong> calculated from it: how many hangers a job needs depends on
+            where the circuits route and how many share each one, which nobody knows until they walk it. Those lines generate
+            at zero for you to fill in.
+          </div>
         </>
       )}
     </Card>
