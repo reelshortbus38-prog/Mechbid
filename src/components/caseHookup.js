@@ -35,12 +35,44 @@
 // Stub from the branch down to the case connection. Short, because the branch
 // runs past the lineup; the length that matters is already in the circuit.
 export const DEFAULT_STUB_FT = 5;
-// Case to the floor drain hub. Varies with where the hub landed, which is why
-// it is a setting and not a constant.
-export const DEFAULT_DRAIN_FT = 15;
+
+// ── THE DRAIN IS THE CASE, NOT THE WALK TO A HUB ────────────────────────────
+// This was modelled as "distance from the case to the floor drain hub" and
+// defaulted to 15 ft, which is the wrong SHAPE, not just the wrong number:
+// "They try to have a hub under every case, so the longest run would be 12 ft
+// on a 12 ft case, 8 ft on a 8 ft case."
+//
+// The hub is underneath. The pipe runs the length of the case and drops. So
+// the quantity is the CASE LENGTH, and the setting says so — a shop running 8
+// ft cases sets 8 and gets the right answer, which "distance to hub" never
+// would have let them do.
+export const DEFAULT_CASE_FT = 12;
 export const DEFAULT_DRAIN_SIZE = '1-1/4"';
-// Suction on, suction off, liquid on, liquid off.
-export const JOINTS_PER_CASE = 4;
+
+// ── WHAT THE END OF A LINEUP TAKES ──────────────────────────────────────────
+// The branch arrives at the lineup and has to get up onto the case tops. That
+// connection is a known, countable set of fittings rather than an allowance,
+// and the estimator gave it exactly:
+//
+//   "For piping on top of the cases, just for the top of the case on the end
+//    case, there is usually 2 ells, 1 street ell, a coupling, and a bushing
+//    for suction. For liquid it would be 2 ells, a coupling and a bushing."
+//
+// PER LINEUP, not per case — it is the END case that gets this. A circuit with
+// eight cases has one of these sets, not eight. If that read is wrong the
+// number is eight times too small, so it is stated on the line itself where
+// somebody can see it and say so.
+export const END_CASE_SUCTION = [
+  { type: 'Elbow 90°', qty: 2 },
+  { type: 'Street Ell', qty: 1 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
+export const END_CASE_LIQUID = [
+  { type: 'Elbow 90°', qty: 2 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
 
 // ── READING THE CASE COUNT OFF THE LEGEND ───────────────────────────────────
 // "The legend that I upload usually says what cases are hooked to each
@@ -91,26 +123,27 @@ export function casesFromApplication(application) {
 // "Case suction stubs" line, not forty.
 //
 // opts:
-//   cases       total case hookups on the job
+//   cases       case hookups on this lineup
 //   sucSize     stub size for suction — the circuit's own size, as a start
 //   liqSize     stub size for liquid
 //   stubFt      ft of stub per case, each line
-//   drainFt     ft of PVC per case to the floor hub
+//   caseFt      length of a case — the drain runs it and drops to the hub below
 //   drainSize   PVC size
 //   setsTxv     true when this shop sets the valves rather than the energy team
 //   insulate    suction stubs are insulated at the circuit's temperature
+//   endFittings include the end-of-lineup fitting set (once per lineup)
 //
 // → [{ section, desc, qty, unit, notes }] — no ids, no prices; the caller
 // prices from its own rate tables so this module never guesses at money.
 export function caseHookupLines({
   cases = 0, sucSize = '', liqSize = '', stubFt = DEFAULT_STUB_FT,
-  drainFt = DEFAULT_DRAIN_FT, drainSize = DEFAULT_DRAIN_SIZE,
-  setsTxv = false, insulate = true,
+  caseFt = DEFAULT_CASE_FT, drainSize = DEFAULT_DRAIN_SIZE,
+  setsTxv = false, insulate = true, endFittings = true,
 } = {}) {
   const n = Math.max(0, Math.round(Number(cases) || 0));
   if (n === 0) return [];
   const stub = Math.max(0, Number(stubFt) || 0);
-  const drain = Math.max(0, Number(drainFt) || 0);
+  const drain = Math.max(0, Number(caseFt) || 0);
   const lines = [];
 
   if (stub > 0 && sucSize) {
@@ -136,16 +169,33 @@ export function caseHookupLines({
   }
 
   // The drains. Left off the first draft entirely on the assumption they were
-  // plumbing by others; they are not. Forty cases to floor hubs is real pipe.
+  // plumbing by others; they are not. A hub sits under each case, so the run is
+  // the length of the case and no further.
   if (drain > 0) {
     lines.push({
-      section: 'Case Hookups', desc: `${drainSize} PVC case drain — case to floor hub`, qty: Math.ceil(n * drain), unit: 'ft',
-      notes: `${n} case(s) × ${drain} ft — set the run length to the hub distance on this store`,
+      section: 'Case Hookups', desc: `${drainSize} PVC case drain — runs the case to the hub below`, qty: Math.ceil(n * drain), unit: 'ft',
+      notes: `${n} case(s) × ${drain} ft — a hub under each case, so this is the CASE LENGTH, not a walk across the floor`,
     });
     lines.push({
       section: 'Case Hookups', desc: 'PVC drain fittings, hub adapters & solvent cement', qty: 1, unit: 'lot',
       notes: `elbows and couplings for ${n} drain run(s)`,
     });
+  }
+
+  // The end of the lineup, where the branch gets up onto the case tops. One set
+  // per lineup — see END_CASE_SUCTION for why that is the read and what it
+  // costs if it is wrong.
+  if (endFittings) {
+    const set = (list, size, line) => list.forEach(f => {
+      if (!size) return;
+      lines.push({
+        section: 'Case Hookups', desc: `${size} ${f.type} — ${line} at end case`, qty: f.qty, unit: 'ea',
+        fittingType: f.type, pipeSize: size,
+        notes: 'one set per lineup where the piping comes onto the case tops',
+      });
+    });
+    set(END_CASE_SUCTION, sucSize, 'suction');
+    set(END_CASE_LIQUID, liqSize, 'liquid');
   }
 
   if (setsTxv) {
@@ -158,10 +208,17 @@ export function caseHookupLines({
   return lines;
 }
 
-// Braze joints the case hookups add, for the labor side. Four per case —
-// suction on and off, liquid on and off — and they are NOT already in the
-// circuit's fittings allowance, which covers the ells the RUN takes getting
-// across the store.
-export function caseHookupJoints(cases = 0) {
-  return Math.max(0, Math.round(Number(cases) || 0)) * JOINTS_PER_CASE;
-}
+// ── STILL OPEN: WHAT THESE ADD TO THE LABOR ─────────────────────────────────
+// There was a caseHookupJoints() here returning four per case — suction on and
+// off, liquid on and off. It was a guess, and the end-case fitting set above
+// replaced the guess with a counted list of real parts, so it went.
+//
+// Nothing now feeds case hookups into the BRAZING time, and that is deliberate
+// rather than forgotten. The circuit already carries a fittings allowance, but
+// that allowance is described as the ells a RUN takes crossing the store —
+// whether it also covers the connections at the lineup is a question for the
+// estimator, and quietly adding joints on top of it would double-count the
+// exact way this app keeps finding elsewhere.
+//
+// The material is right. The labor for hooking a case up is still the flat
+// perCase unit, now correctly multiplied by the case count.

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  casesFromApplication, caseHookupLines, caseHookupJoints,
-  DEFAULT_STUB_FT, DEFAULT_DRAIN_FT, JOINTS_PER_CASE,
+  casesFromApplication, caseHookupLines,
+  DEFAULT_STUB_FT, DEFAULT_CASE_FT, END_CASE_SUCTION, END_CASE_LIQUID,
 } from './caseHookup.js';
+import { fittingPrice } from './fittingPrices.js';
 
 // ── READING THE COUNT OFF THE LEGEND ────────────────────────────────────────
 // "The legend that I upload usually says what cases are hooked to each
@@ -82,9 +83,25 @@ describe('caseHookupLines', () => {
     const lines = caseHookupLines(base);
     const drain = lines.find(l => /PVC case drain/.test(l.desc));
     expect(drain).toBeTruthy();
-    expect(drain.qty).toBe(8 * DEFAULT_DRAIN_FT);
     expect(drain.unit).toBe('ft');
     expect(lines.some(l => /drain fittings/i.test(l.desc) && l.unit === 'lot')).toBe(true);
+  });
+
+  it('runs a drain the LENGTH OF THE CASE, not a walk to a hub', () => {
+    // "They try to have a hub under every case, so the longest run would be 12
+    // ft on a 12 ft case, 8 ft on a 8 ft case." This was modelled as distance
+    // to a hub and defaulted to 15 ft — the wrong shape, not just the wrong
+    // number, because it gave a shop with 8 ft cases no way to be right.
+    const twelve = caseHookupLines({ ...base, caseFt: 12 });
+    const eight = caseHookupLines({ ...base, caseFt: 8 });
+    expect(twelve.find(l => /PVC case drain/.test(l.desc)).qty).toBe(8 * 12);
+    expect(eight.find(l => /PVC case drain/.test(l.desc)).qty).toBe(8 * 8);
+    expect(DEFAULT_CASE_FT).toBe(12);
+  });
+
+  it('says on the line that the quantity is the case length', () => {
+    const drain = caseHookupLines(base).find(l => /PVC case drain/.test(l.desc));
+    expect(drain.notes).toMatch(/CASE LENGTH/);
   });
 
   it('leaves TXVs off by default', () => {
@@ -119,14 +136,14 @@ describe('caseHookupLines', () => {
     expect(descs({ liqSize: '' })).not.toMatch(/liquid stubs/);
   });
 
-  it('honours stub and drain lengths set for the job', () => {
-    const lines = caseHookupLines({ ...base, stubFt: 8, drainFt: 30 });
+  it('honours stub and case lengths set for the job', () => {
+    const lines = caseHookupLines({ ...base, stubFt: 8, caseFt: 10 });
     expect(lines.find(l => /suction stubs/.test(l.desc)).qty).toBe(64);
-    expect(lines.find(l => /PVC case drain/.test(l.desc)).qty).toBe(240);
+    expect(lines.find(l => /PVC case drain/.test(l.desc)).qty).toBe(80);
   });
 
-  it('drops the drain lines when the hub distance is zeroed out', () => {
-    expect(descs({ drainFt: 0 })).not.toMatch(/drain/i);
+  it('drops the drain lines when the case length is zeroed out', () => {
+    expect(descs({ caseFt: 0 })).not.toMatch(/drain/i);
   });
 
   it('carries a correct unit on every line', () => {
@@ -142,10 +159,59 @@ describe('caseHookupLines', () => {
   });
 });
 
-describe('caseHookupJoints', () => {
-  it('is four per case — suction on and off, liquid on and off', () => {
-    expect(caseHookupJoints(8)).toBe(8 * JOINTS_PER_CASE);
-    expect(caseHookupJoints(0)).toBe(0);
-    expect(caseHookupJoints()).toBe(0);
+// ── THE END OF THE LINEUP ───────────────────────────────────────────────────
+// "For piping on top of the cases, just for the top of the case on the end
+//  case, there is usually 2 ells, 1 street ell, a coupling, and a bushing for
+//  suction. For liquid it would be 2 ells, a coupling and a bushing."
+describe('end-case fittings', () => {
+  const lines = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '1/2"' });
+  const at = (size, type, line) =>
+    lines.find(l => l.desc === `${size} ${type} — ${line} at end case`);
+
+  it('puts the named suction set on the end case', () => {
+    expect(at('1-1/8"', 'Elbow 90°', 'suction').qty).toBe(2);
+    expect(at('1-1/8"', 'Street Ell', 'suction').qty).toBe(1);
+    expect(at('1-1/8"', 'Coupling', 'suction').qty).toBe(1);
+    expect(at('1-1/8"', 'Bushing', 'suction').qty).toBe(1);
+  });
+
+  it('puts the named liquid set on the end case, with no street ell', () => {
+    expect(at('1/2"', 'Elbow 90°', 'liquid').qty).toBe(2);
+    expect(at('1/2"', 'Coupling', 'liquid').qty).toBe(1);
+    expect(at('1/2"', 'Bushing', 'liquid').qty).toBe(1);
+    expect(at('1/2"', 'Street Ell', 'liquid')).toBeUndefined();
+  });
+
+  it('is ONE set per lineup, not one per case', () => {
+    // The end case gets it. A circuit with eight cases has one of these sets.
+    // If that read is wrong the count is eight times too small, which is why
+    // the line says "one set per lineup" on its face.
+    const one = caseHookupLines({ cases: 1, sucSize: '1-1/8"', liqSize: '1/2"' });
+    const many = caseHookupLines({ cases: 20, sucSize: '1-1/8"', liqSize: '1/2"' });
+    for (const t of ['Elbow 90°', 'Street Ell', 'Coupling', 'Bushing']) {
+      const a = one.find(l => l.fittingType === t && /suction/.test(l.desc));
+      const b = many.find(l => l.fittingType === t && /suction/.test(l.desc));
+      expect(b.qty).toBe(a.qty);
+    }
+    expect(lines.every(l => !l.fittingType || /one set per lineup/.test(l.notes))).toBe(true);
+  });
+
+  it('names a fitting type the ACR price table can actually price', () => {
+    // These carry fittingType so the caller prices them off the same quoted
+    // table the fitting picker uses, instead of a percentage.
+    for (const f of [...END_CASE_SUCTION, ...END_CASE_LIQUID]) {
+      expect(fittingPrice(f.type, '1-1/8')).toBeTruthy();
+    }
+  });
+
+  it('can be switched off for a job that itemises fittings by hand', () => {
+    expect(caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '1/2"', endFittings: false })
+      .some(l => l.fittingType)).toBe(false);
+  });
+
+  it('skips a side whose size nobody has set', () => {
+    const noLiq = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '' });
+    expect(noLiq.some(l => l.fittingType && /liquid/.test(l.desc))).toBe(false);
+    expect(noLiq.some(l => l.fittingType && /suction/.test(l.desc))).toBe(true);
   });
 });
