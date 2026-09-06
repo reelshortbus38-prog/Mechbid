@@ -9,6 +9,7 @@ import {
   calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
   crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
   memberOtHours, otRuleConflict, STANDARD_WEEK_HOURS, DAYS_PER_WEEK_OPTIONS,
+  circuitCases,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -649,5 +650,83 @@ describe('deleteJob survives a browser that cannot write', () => {
       expect(JSON.parse(data.jobs)).toEqual({ j2: { id: 'j2' } });
       expect(getLastSaveError()).toBe('');
     });
+  });
+});
+
+// ── CASES PER CIRCUIT ───────────────────────────────────────────────────────
+// The estimate charged exactly one case hookup per circuit and had no field to
+// say otherwise. A circuit feeds a LINEUP — the app's own placeholder, "MD
+// Produce 2-4", is three cases — so a six-case run booked 1.5 hours of case
+// work instead of nine, on every circuit, in the direction that loses money.
+describe('circuitCases', () => {
+  it('reads a counted number', () => {
+    expect(circuitCases({ caseCount: 6 })).toEqual({ cases: 6, source: 'counted' });
+    expect(circuitCases({ caseCount: '4' })).toEqual({ cases: 4, source: 'counted' });
+  });
+
+  it('treats unset as one, and says it is an assumption', () => {
+    // The old behaviour exactly. A job saved before the field existed has to
+    // estimate the same today as it did yesterday.
+    expect(circuitCases({})).toEqual({ cases: 1, source: 'assumed' });
+    expect(circuitCases({ caseCount: '' })).toEqual({ cases: 1, source: 'assumed' });
+    expect(circuitCases(undefined)).toEqual({ cases: 1, source: 'assumed' });
+  });
+
+  it('distinguishes a typed 1 from nobody having looked', () => {
+    // Same number, different claim. One of them is somebody saying so.
+    expect(circuitCases({ caseCount: 1 }).source).toBe('counted');
+    expect(circuitCases({}).source).toBe('assumed');
+  });
+
+  it('allows zero — a circuit can feed a walk-in coil, not a case', () => {
+    expect(circuitCases({ caseCount: 0 })).toEqual({ cases: 0, source: 'counted' });
+  });
+
+  it('ignores nonsense rather than billing it', () => {
+    expect(circuitCases({ caseCount: -3 }).cases).toBe(1);
+    expect(circuitCases({ caseCount: 'six' }).cases).toBe(1);
+  });
+});
+
+describe('estimateCircuitLabor — case hookups scale with the lineup', () => {
+  const circuit = extra => ({
+    circuitId: 'A6', runLength: 150, riserLength: 0, sucHoriz: '1-1/8',
+    liqHoriz: '1/2', tempType: 'medium', fittingJoints: 4, ...extra,
+  });
+  const units = DEFAULT_LABOR_UNITS;
+
+  it('bills six case hookups on a six-case lineup, not one', () => {
+    const one = estimateCircuitLabor([circuit()], units).totalHours;
+    const six = estimateCircuitLabor([circuit({ caseCount: 6 })], units).totalHours;
+    // Five extra cases at the perCase unit, and nothing else moved.
+    expect(six - one).toBeCloseTo(5 * units.perCase, 5);
+  });
+
+  it('leaves a job with no case counts exactly where it was', () => {
+    // The regression that matters: opening an old job must not change its bid.
+    const est = estimateCircuitLabor([circuit(), circuit({ circuitId: 'A7' })], units);
+    const ft = 150, perFt = units.perFtMed, perJoint = units.perJointMed;
+    const joints = Math.ceil(ft / units.stickLength) + 4;
+    const each = ft * perFt + joints * perJoint + units.perCase + units.perRackTie;
+    expect(est.totalHours).toBeCloseTo(Math.round(each * 2 * 10) / 10, 5);
+  });
+
+  it('reports how many circuits are standing on the assumption', () => {
+    const est = estimateCircuitLabor(
+      [circuit({ caseCount: 6 }), circuit({ circuitId: 'A7' }), circuit({ circuitId: 'A8' })], units);
+    expect(est.assumedCases).toBe(2);
+    expect(est.totalCases).toBe(8);       // 6 counted + 1 + 1 assumed
+  });
+
+  it('carries the count and its provenance per circuit', () => {
+    const est = estimateCircuitLabor([circuit({ caseCount: 4 })], units);
+    expect(est.perCircuit[0].cases).toBe(4);
+    expect(est.perCircuit[0].casesSource).toBe('counted');
+  });
+
+  it('bills no case hookup on a circuit that feeds none', () => {
+    const none = estimateCircuitLabor([circuit({ caseCount: 0 })], units).totalHours;
+    const one = estimateCircuitLabor([circuit({ caseCount: 1 })], units).totalHours;
+    expect(one - none).toBeCloseTo(units.perCase, 5);
   });
 });
