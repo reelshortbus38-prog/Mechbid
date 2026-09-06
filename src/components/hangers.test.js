@@ -73,10 +73,10 @@ describe('the trapeze lines', () => {
     for (const l of lines) expect(l.qty).toBe(0);
   });
 
-  it('marks the three that need somebody to walk the job', () => {
+  it('marks the four the estimator has to supply', () => {
     // The pre-flight check keys off this flag, not off the wording, so the
     // description can improve without breaking the warning.
-    expect(lines.filter(l => l.hangerManual)).toHaveLength(3);
+    expect(lines.filter(l => l.hangerManual)).toHaveLength(4);
   });
 
   it('buys strut and rod by the stick, hangers by the each, hardware as a lot', () => {
@@ -84,7 +84,28 @@ describe('the trapeze lines', () => {
     expect(unitOf(/^Pipe Hangers/)).toBe('ea');
     expect(unitOf(/^Unistrut/)).toBe('stick');
     expect(unitOf(/All-Thread Rod/)).toBe('stick');
+    expect(unitOf(/^Beam clamps/)).toBe('ea');
     expect(unitOf(/Strut Nuts/)).toBe('lot');
+  });
+
+  it('carries beam clamps, which the takeoff used to leave off entirely', () => {
+    // Every rod drop needs one to get onto the bar joist. Fifty hangers is a
+    // hundred clamps at real money each, and they were on no line at all —
+    // not even folded into the loose-hardware lot.
+    const clamps = lines.find(l => /^Beam clamps/.test(l.desc));
+    expect(clamps).toBeTruthy();
+    expect(clamps.desc).toContain('2 per hanger');
+    expect(clamps.hangerManual).toBe(true);
+  });
+
+  it('asks for rod the way it actually gets ordered, not by measuring', () => {
+    // Verifying a drop means getting in the ceiling with a tape and most
+    // contractors won't. "MEASURE ON SITE" on a line nobody measures just
+    // produces a zero.
+    const rod = lines.find(l => /All-Thread Rod/.test(l.desc));
+    expect(rod.desc).toContain('ORDER FROM EXPERIENCE');
+    expect(rod.desc).not.toContain('MEASURE ON SITE');
+    expect(rod.desc).toMatch(/bundle/);
   });
 
   it("keeps unistrut in 10' sticks — a shop buying 20' adds its own line", () => {

@@ -1350,8 +1350,8 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
           </Row>
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
             Support spacing sets the pipe-saddle count — 6 ft is the Food Lion spec, but it's a spec and it changes by chain.
-            Trapeze strut and all-thread are <strong>not</strong> calculated from it: how many hangers a job needs depends on
-            where the circuits route and how many share each one, which nobody knows until they walk it. Those lines generate
+            Hangers, strut, all-thread and beam clamps are <strong>not</strong> calculated from it: how many a job needs depends
+            on where the circuits route and how many share each one, which nobody knows until they walk it. Those lines generate
             at zero for you to fill in.
           </div>
         </>
