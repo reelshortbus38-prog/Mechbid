@@ -49,19 +49,37 @@ export const DEFAULT_STUB_FT = 5;
 export const DEFAULT_CASE_FT = 12;
 export const DEFAULT_DRAIN_SIZE = '1-1/4"';
 
-// ── WHAT THE END OF A LINEUP TAKES ──────────────────────────────────────────
-// The branch arrives at the lineup and has to get up onto the case tops. That
-// connection is a known, countable set of fittings rather than an allowance,
-// and the estimator gave it exactly:
+// ── WHERE A CASE SITS IN THE LINEUP DECIDES ITS FITTINGS ────────────────────
+// The piping runs along the case tops, and the two ends of that run are
+// different jobs. The estimator gave both, and the difference between them is
+// a TEE — which is the detail that makes the whole model make sense.
+//
+// THE END CASE. Nothing continues past it, so the run terminates: it turns
+// down into the case and stops. No tee.
 //
 //   "For piping on top of the cases, just for the top of the case on the end
 //    case, there is usually 2 ells, 1 street ell, a coupling, and a bushing
 //    for suction. For liquid it would be 2 ells, a coupling and a bushing."
 //
-// PER LINEUP, not per case — it is the END case that gets this. A circuit with
-// eight cases has one of these sets, not eight. If that read is wrong the
-// number is eight times too small, so it is stated on the line itself where
-// somebody can see it and say so.
+// THE START CASE. The run has to serve this case AND carry on to the next one,
+// so it tees: one leg down into the case, one leg onward.
+//
+//   "For cases that start the line up it would be one coupling, one bushing, a
+//    tee, and one ell for liquid and 2 for suction."
+//
+// Read as: the coupling, bushing and tee are on EACH line, and only the ell
+// count differs between them — which is how the end case was described too,
+// with its own coupling and bushing named for suction and again for liquid.
+//
+// BOTH ARE ONCE PER LINEUP. A circuit with eight cases gets one start set and
+// one end set, not eight of each. If that is wrong the count is badly short,
+// so every generated line says which position it is for.
+//
+// STILL OPEN: the cases in the MIDDLE. On a lineup of eight, six of them are
+// neither the start nor the end, and nothing here gives them any fittings at
+// all. Physically they should each tee off the run the same way the start case
+// does — but that is a guess, and this module has already had two guesses
+// corrected, so it stays out until somebody says.
 export const END_CASE_SUCTION = [
   { type: 'Elbow 90°', qty: 2 },
   { type: 'Street Ell', qty: 1 },
@@ -72,6 +90,24 @@ export const END_CASE_LIQUID = [
   { type: 'Elbow 90°', qty: 2 },
   { type: 'Coupling', qty: 1 },
   { type: 'Bushing', qty: 1 },
+];
+export const START_CASE_SUCTION = [
+  { type: 'Elbow 90°', qty: 2 },
+  { type: 'Tee', qty: 1 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
+export const START_CASE_LIQUID = [
+  { type: 'Elbow 90°', qty: 1 },
+  { type: 'Tee', qty: 1 },
+  { type: 'Coupling', qty: 1 },
+  { type: 'Bushing', qty: 1 },
+];
+
+// Position → the two sets and the wording that goes on the line.
+export const LINEUP_POSITIONS = [
+  { key: 'start', label: 'start case', suction: START_CASE_SUCTION, liquid: START_CASE_LIQUID },
+  { key: 'end', label: 'end case', suction: END_CASE_SUCTION, liquid: END_CASE_LIQUID },
 ];
 
 // ── READING THE CASE COUNT OFF THE LEGEND ───────────────────────────────────
@@ -182,20 +218,25 @@ export function caseHookupLines({
     });
   }
 
-  // The end of the lineup, where the branch gets up onto the case tops. One set
-  // per lineup — see END_CASE_SUCTION for why that is the read and what it
-  // costs if it is wrong.
+  // The two ends of the run along the case tops. One set each per lineup — see
+  // LINEUP_POSITIONS for why the start case has a tee and the end case does
+  // not, and for the middle cases that are still nobody's.
   if (endFittings) {
-    const set = (list, size, line) => list.forEach(f => {
-      if (!size) return;
-      lines.push({
-        section: 'Case Hookups', desc: `${size} ${f.type} — ${line} at end case`, qty: f.qty, unit: 'ea',
-        fittingType: f.type, pipeSize: size,
-        notes: 'one set per lineup where the piping comes onto the case tops',
+    // A one-case lineup starts and ends at the same case, so it takes the end
+    // set only: there is nothing for a tee to carry on to.
+    const positions = n === 1 ? LINEUP_POSITIONS.filter(p => p.key === 'end') : LINEUP_POSITIONS;
+    positions.forEach(pos => {
+      const set = (list, size, line) => list.forEach(f => {
+        if (!size) return;
+        lines.push({
+          section: 'Case Hookups', desc: `${size} ${f.type} — ${line} at ${pos.label}`, qty: f.qty, unit: 'ea',
+          fittingType: f.type, pipeSize: size, lineupPosition: pos.key,
+          notes: `one set per lineup — the ${pos.label} where the piping runs along the case tops`,
+        });
       });
+      set(pos.suction, sucSize, 'suction');
+      set(pos.liquid, liqSize, 'liquid');
     });
-    set(END_CASE_SUCTION, sucSize, 'suction');
-    set(END_CASE_LIQUID, liqSize, 'liquid');
   }
 
   if (setsTxv) {

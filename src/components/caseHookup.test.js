@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   casesFromApplication, caseHookupLines,
-  DEFAULT_STUB_FT, DEFAULT_CASE_FT, END_CASE_SUCTION, END_CASE_LIQUID,
+  DEFAULT_STUB_FT, DEFAULT_CASE_FT, LINEUP_POSITIONS,
+  END_CASE_SUCTION, END_CASE_LIQUID, START_CASE_SUCTION, START_CASE_LIQUID,
 } from './caseHookup.js';
 import { fittingPrice } from './fittingPrices.js';
 
@@ -159,49 +160,79 @@ describe('caseHookupLines', () => {
   });
 });
 
-// ── THE END OF THE LINEUP ───────────────────────────────────────────────────
+// ── WHERE A CASE SITS DECIDES ITS FITTINGS ──────────────────────────────────
 // "For piping on top of the cases, just for the top of the case on the end
 //  case, there is usually 2 ells, 1 street ell, a coupling, and a bushing for
 //  suction. For liquid it would be 2 ells, a coupling and a bushing."
-describe('end-case fittings', () => {
+//
+// "For cases that start the line up it would be one coupling, one bushing, a
+//  tee, and one ell for liquid and 2 for suction."
+describe('lineup fittings', () => {
   const lines = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '1/2"' });
-  const at = (size, type, line) =>
-    lines.find(l => l.desc === `${size} ${type} — ${line} at end case`);
+  const at = (size, type, line, pos) =>
+    lines.find(l => l.desc === `${size} ${type} — ${line} at ${pos}`);
 
-  it('puts the named suction set on the end case', () => {
-    expect(at('1-1/8"', 'Elbow 90°', 'suction').qty).toBe(2);
-    expect(at('1-1/8"', 'Street Ell', 'suction').qty).toBe(1);
-    expect(at('1-1/8"', 'Coupling', 'suction').qty).toBe(1);
-    expect(at('1-1/8"', 'Bushing', 'suction').qty).toBe(1);
+  it('terminates the end case with no tee', () => {
+    // Nothing continues past it, which is exactly why it has no tee.
+    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'end case').qty).toBe(2);
+    expect(at('1-1/8"', 'Street Ell', 'suction', 'end case').qty).toBe(1);
+    expect(at('1-1/8"', 'Coupling', 'suction', 'end case').qty).toBe(1);
+    expect(at('1-1/8"', 'Bushing', 'suction', 'end case').qty).toBe(1);
+    expect(at('1-1/8"', 'Tee', 'suction', 'end case')).toBeUndefined();
+    expect(at('1/2"', 'Elbow 90°', 'liquid', 'end case').qty).toBe(2);
+    expect(at('1/2"', 'Street Ell', 'liquid', 'end case')).toBeUndefined();
+    expect(at('1/2"', 'Tee', 'liquid', 'end case')).toBeUndefined();
   });
 
-  it('puts the named liquid set on the end case, with no street ell', () => {
-    expect(at('1/2"', 'Elbow 90°', 'liquid').qty).toBe(2);
-    expect(at('1/2"', 'Coupling', 'liquid').qty).toBe(1);
-    expect(at('1/2"', 'Bushing', 'liquid').qty).toBe(1);
-    expect(at('1/2"', 'Street Ell', 'liquid')).toBeUndefined();
+  it('tees the start case, because the run carries on past it', () => {
+    expect(at('1-1/8"', 'Tee', 'suction', 'start case').qty).toBe(1);
+    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'start case').qty).toBe(2);
+    expect(at('1-1/8"', 'Coupling', 'suction', 'start case').qty).toBe(1);
+    expect(at('1-1/8"', 'Bushing', 'suction', 'start case').qty).toBe(1);
+    // Liquid takes ONE ell where suction takes two — the only difference
+    // between the two lines at this position.
+    expect(at('1/2"', 'Elbow 90°', 'liquid', 'start case').qty).toBe(1);
+    expect(at('1/2"', 'Tee', 'liquid', 'start case').qty).toBe(1);
+    expect(at('1/2"', 'Coupling', 'liquid', 'start case').qty).toBe(1);
+    expect(at('1/2"', 'Bushing', 'liquid', 'start case').qty).toBe(1);
   });
 
-  it('is ONE set per lineup, not one per case', () => {
-    // The end case gets it. A circuit with eight cases has one of these sets.
-    // If that read is wrong the count is eight times too small, which is why
-    // the line says "one set per lineup" on its face.
-    const one = caseHookupLines({ cases: 1, sucSize: '1-1/8"', liqSize: '1/2"' });
-    const many = caseHookupLines({ cases: 20, sucSize: '1-1/8"', liqSize: '1/2"' });
-    for (const t of ['Elbow 90°', 'Street Ell', 'Coupling', 'Bushing']) {
-      const a = one.find(l => l.fittingType === t && /suction/.test(l.desc));
-      const b = many.find(l => l.fittingType === t && /suction/.test(l.desc));
-      expect(b.qty).toBe(a.qty);
-    }
+  it('gives no street ell to the start case', () => {
+    expect(at('1-1/8"', 'Street Ell', 'suction', 'start case')).toBeUndefined();
+  });
+
+  it('is ONE set of each per lineup, not one per case', () => {
+    // A circuit with eight cases has one start and one end. If that read is
+    // wrong the count is badly short, which is why every line says so.
+    const two = caseHookupLines({ cases: 2, sucSize: '1-1/8"', liqSize: '1/2"' });
+    const twenty = caseHookupLines({ cases: 20, sucSize: '1-1/8"', liqSize: '1/2"' });
+    const fittings = ls => ls.filter(l => l.fittingType)
+      .map(l => `${l.desc}:${l.qty}`).sort().join('|');
+    expect(fittings(twenty)).toBe(fittings(two));
     expect(lines.every(l => !l.fittingType || /one set per lineup/.test(l.notes))).toBe(true);
   });
 
-  it('names a fitting type the ACR price table can actually price', () => {
+  it('gives a single-case lineup only the end set', () => {
+    // It starts and ends at the same case. There is nothing for a tee to carry
+    // the run on to.
+    const one = caseHookupLines({ cases: 1, sucSize: '1-1/8"', liqSize: '1/2"' });
+    expect(one.some(l => l.lineupPosition === 'start')).toBe(false);
+    expect(one.some(l => l.lineupPosition === 'end')).toBe(true);
+    expect(one.some(l => l.fittingType === 'Tee')).toBe(false);
+  });
+
+  it('names fitting types the ACR price table can actually price', () => {
     // These carry fittingType so the caller prices them off the same quoted
     // table the fitting picker uses, instead of a percentage.
-    for (const f of [...END_CASE_SUCTION, ...END_CASE_LIQUID]) {
-      expect(fittingPrice(f.type, '1-1/8')).toBeTruthy();
-    }
+    const all = [...END_CASE_SUCTION, ...END_CASE_LIQUID, ...START_CASE_SUCTION, ...START_CASE_LIQUID];
+    for (const f of all) expect(fittingPrice(f.type, '1-1/8')).toBeTruthy();
+  });
+
+  it('covers both ends of the run and nothing in between', () => {
+    // The middle cases have no fittings on purpose — physically they should
+    // each tee like the start case does, but nobody has said so and this
+    // module has had two guesses corrected already.
+    expect(LINEUP_POSITIONS.map(p => p.key)).toEqual(['start', 'end']);
   });
 
   it('can be switched off for a job that itemises fittings by hand', () => {

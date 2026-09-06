@@ -1421,9 +1421,10 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
             Case hookups price a suction and liquid stub, stub insulation, and the drain — which runs the <strong>length
             of the case</strong> to the hub underneath it, so set Case Length to the cases on this store (8 ft cases run 8 ft
-            of PVC). Each lineup also gets one set of end-case fittings: 2 ells, a street ell, a coupling and a bushing on
-            suction; 2 ells, a coupling and a bushing on liquid. The EPR and liquid ball valves are <strong>not</strong> in
-            there; on a direct-expansion job those live on the rack and are already on the rack parts list.
+            of PVC). Each lineup also gets the fittings at both ends of the run along the case tops — the <strong>start</strong>
+            case tees so the run carries on, the <strong>end</strong> case just turns down and stops. Cases in the middle of a
+            lineup carry no fittings here yet. The EPR and liquid ball valves are <strong>not</strong> in there; on a
+            direct-expansion job those live on the rack and are already on the rack parts list.
             <br />
             Support spacing sets the pipe-saddle count — 6 ft is the Food Lion spec, but it's a spec and it changes by chain.
             Hangers, strut, all-thread and beam clamps are <strong>not</strong> calculated from it: how many a job needs depends
