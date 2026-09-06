@@ -72,44 +72,91 @@ export function defaultHardwarePrice(desc) {
 // the Duct → Purchase Units calculator (pounds of sheet metal, spiral joints,
 // flex boxes, insulation rolls), which carries its own defaults. Pricing the
 // footage line too would double-count.
+// [pattern, price, UNIT THE PRICE IS PER]. The third column used to be a
+// trailing comment, and a comment cannot stop the number being multiplied by
+// the wrong quantity — which is exactly what was happening:
+//
+//   "Ductwork — 8\" flex duct" is a TAKEOFF line whose Qty is linear feet. It
+//   matched the flex rule and took $95, the price of a 25-FOOT BOX. Sixty feet
+//   of flex came out at $5,700, and then the Duct → Purchase card added the
+//   three boxes it actually needs for $285 on top.
+//
+//   "Linear slot diffuser or grille — 204x4 face" carries its length in FEET,
+//   because that is how the device is bought. It matched the grille rule and
+//   took $40 EACH, so a single 17-foot device priced at $680.
+//
+// Now that every row carries the unit it is bought by, the fill can simply
+// decline when the price is quoted in something else. See fillDefaults.
 const DEFAULT_HVAC_PRICES = [
+  // A linear diffuser is sold by the FOOT of device, and its takeoff line
+  // carries feet — a 204" tag is a 17-foot device. It has to sit above the
+  // grille rules, because the app writes it as "Linear slot diffuser or
+  // GRILLE — 204x4 face" and the generic grille rule was catching it first and
+  // pricing it $40 each: seventeen diffusers where the plan shows one. ($120
+  // "per section" was the old figure and was never per foot either.)
+  [/linear\s*(?:slot\s*)?(?:diffuser|grille)|(?:^|\W)LD-?\d/i, 60, 'ft'],
   // Air devices — per each. Bigger face = a bit more; keep it simple by type.
-  [/transfer\s*grille|(?:^|\W)TG-?\d/i, 40],
-  [/return\s*grille|(?:^|\W)RG-?\d/i, 45],
-  [/(?:supply\s*)?grille|register|(?:^|\W)SG-?\d/i, 40],
-  [/linear\s*(?:slot\s*)?diffuser|(?:^|\W)LD-?\d/i, 120], // per section
-  [/ceiling\s*diffuser|diffuser|(?:^|\W)CD-?\d/i, 55],
+  [/transfer\s*grille|(?:^|\W)TG-?\d/i, 40, 'ea'],
+  [/return\s*grille|(?:^|\W)RG-?\d/i, 45, 'ea'],
+  [/(?:supply\s*)?grille|register|(?:^|\W)SG-?\d/i, 40, 'ea'],
+  [/ceiling\s*diffuser|diffuser|(?:^|\W)CD-?\d/i, 55, 'ea'],
   // Common misc / quick-add HVAC items.
-  [/curb\s*adapter/i, 450],
-  [/roof\s*curb|curb\s*\/\s*rails|rails/i, 350],
-  [/crane|rigging/i, 1200],
-  [/disconnect|whip/i, 85],
-  [/thermostat|bms|controls?/i, 180],
-  [/economizer/i, 400],
-  [/low[-\s]?ambient/i, 250],
-  [/hail\s*guard/i, 150],
-  [/condensate|p[-\s]?trap|drain/i, 40],
-  [/smoke\s*detector/i, 220],
-  [/vibration\s*isolation|isolator/i, 120],
-  [/filter\s*rack|filters?/i, 90],
-  [/flex(?:ible)?\s*(?:duct\s*)?connection|transitions?|flex\s*connector/i, 60],
-  [/refrigerant\s*line\s*insulation|line\s*insulation/i, 1.5], // per ft
-  [/refrigerant\b/i, 18],  // per lb
-  [/lineset/i, 120],
+  [/curb\s*adapter/i, 450, 'ea'],
+  [/roof\s*curb|curb\s*\/\s*rails|rails/i, 350, 'ea'],
+  [/crane|rigging/i, 1200, 'day'],
+  [/disconnect|whip/i, 85, 'ea'],
+  [/thermostat|bms|controls?/i, 180, 'ea'],
+  [/economizer/i, 400, 'ea'],
+  [/low[-\s]?ambient/i, 250, 'ea'],
+  [/hail\s*guard/i, 150, 'set'],
+  [/condensate|p[-\s]?trap|drain/i, 40, 'ea'],
+  [/smoke\s*detector/i, 220, 'ea'],
+  [/vibration\s*isolation|isolator/i, 120, 'set'],
+  [/filter\s*rack|filters?/i, 90, 'ea'],
+  [/flex(?:ible)?\s*(?:duct\s*)?connection|transitions?|flex\s*connector/i, 60, 'lot'],
+  [/refrigerant\s*line\s*insulation|line\s*insulation/i, 1.5, 'ft'],
+  [/refrigerant\b/i, 18, 'lb'],
+  [/lineset/i, 120, 'set'],
   // Duct purchase-unit lines (from the calculator) — sane fallbacks if unpriced.
-  [/galvanized.*duct|rectangular\s*duct/i, 4.5], // per lb, fabricated
-  [/spiral.*duct/i, 9],    // per ft
-  [/flex\s*duct/i, 95],    // per 25' box
-  [/duct\s*wrap|wrap\s*insulation/i, 115], // per roll
+  [/galvanized.*duct|rectangular\s*duct/i, 4.5, 'lb'], // fabricated
+  [/spiral.*duct/i, 9, 'ft'],
+  [/flex\s*duct/i, 95, 'box'],   // a 25' box, NOT a foot
+  [/duct\s*wrap|wrap\s*insulation/i, 115, 'roll'],
 ];
-export function defaultHvacPrice(desc) {
-  // Pipe first, and by SIZE. It is the one material here that cannot take a
-  // flat rate — 1/2" to 6" on one hydronic sheet is a 10x spread — and the
-  // generic rules below would happily price a condensate line at $40 a foot.
+
+// Pipe first, and by SIZE. It is the one material here that cannot take a flat
+// rate — 1/2" to 6" on one hydronic sheet is a 10x spread — and the generic
+// rules below would happily price a condensate line at $40 a foot. Pipe is
+// always quoted per foot.
+function hvacPriceEntry(desc) {
   const pipe = pipeDefaultPrice(desc);
-  if (pipe > 0) return pipe;
+  if (pipe > 0) return { price: pipe, unit: 'ft' };
   const hit = DEFAULT_HVAC_PRICES.find(([re]) => re.test(desc || ''));
-  return hit ? hit[1] : 0;
+  return hit ? { price: hit[1], unit: hit[2] } : { price: 0, unit: '' };
+}
+
+export function defaultHvacPrice(desc) {
+  return hvacPriceEntry(desc).price;
+}
+
+// What that default price is quoted PER. '' when there is no default at all.
+export function defaultHvacPriceUnit(desc) {
+  return hvacPriceEntry(desc).unit;
+}
+
+// The default price for a row, or 0 when the price is quoted in a different
+// unit than the row is measured in.
+//
+// A takeoff line and a purchase line can carry the same words and mean
+// different things — "flex duct" is feet on the one and boxes on the other —
+// so the words alone were never enough to decide. Declining is the right
+// answer: a $0 line is visibly unpriced and gets priced, while a line filled
+// from the wrong basis looks finished and is off by a factor of twenty-five.
+export function defaultHvacPriceFor(desc, unit) {
+  const { price, unit: basis } = hvacPriceEntry(desc);
+  if (!price) return 0;
+  if (!unit || !basis) return price;
+  return unit === basis ? price : 0;
 }
 
 // ── INSULATION WALL THICKNESS — ONE SOURCE OF TRUTH ─────────────────────────

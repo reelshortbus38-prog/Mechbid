@@ -212,6 +212,42 @@ export function TblInput({ value, onChange, type = 'text', style, ...props }) {
   );
 }
 
+// ── THE UNIT CELL ───────────────────────────────────────────────────────────
+// Every materials table in the app needs the same narrow control: what this
+// row's Qty is measured in. A dropdown rather than a text box because it is
+// tapped on an iPad and because free text produces "ea", "EA", "each" and "ct"
+// in the same table.
+//
+// A row whose stored unit is not in the standard list — a legacy job, an import,
+// a shop with its own wording — keeps it. The list is a shortcut, not a gate,
+// and silently rewriting somebody's unit to the nearest standard one would be
+// changing their estimate to make a dropdown tidy.
+export function UnitSelect({ value, options, onChange, style }) {
+  const opts = options.includes(value) || !value ? options : [value, ...options];
+  return (
+    <select
+      value={value || ''}
+      onChange={e => onChange(e.target.value)}
+      title="How this line is bought"
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderBottom: `1px solid ${colors.border}`,
+        color: colors.textDim,
+        fontSize: 11,
+        fontFamily: "'DM Mono', monospace",
+        padding: '4px 2px',
+        outline: 'none',
+        cursor: 'pointer',
+        width: 62,
+        ...style,
+      }}
+    >
+      {opts.map(u => <option key={u} value={u}>{u}</option>)}
+    </select>
+  );
+}
+
 // Auto-growing textarea: wraps long text instead of clipping it, sized to fit
 // its content. Single-line <input> cells were cutting off extracted scope
 // tasks mid-sentence, which made them unreadable without clicking into each

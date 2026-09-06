@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useStore, uid, fmt, calcRackTaskCost, primaryCrew } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput, TblArea } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Row, EmptyState, TblInput, TblArea, UnitSelect } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip } from '../components/PriceBook.jsx';
+import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
 
 // Rack tasks group by which rack they're on. Newer extractions carry a rack
 // field; earlier ones baked a "[Rack A]" prefix into the description instead —
@@ -117,7 +118,11 @@ export default function Step3_Rack({ onNext, onBack }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: colors.surface }}>
-                    {['Part #', 'Description', 'Qty', 'Supplied By', 'Unit Cost', 'Total', ''].map(h => (
+                    {/* Rack parts have carried a unit since the parts list
+                        importer was written — it was simply never shown, so a
+                        line reading "80" gave no way to tell 80 feet of
+                        pre-insulated tubing from 80 fittings. */}
+                    {['Part #', 'Description', 'Qty', 'Unit', 'Supplied By', 'Unit Cost', 'Total', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
                     ))}
                   </tr>
@@ -133,6 +138,9 @@ export default function Step3_Rack({ onNext, onBack }) {
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <TblInput type="number" value={p.qty} onChange={e => updateRackPart(p.id, 'qty', e.target.value)} style={{ width: 50, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                      </td>
+                      <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
+                        <UnitSelect value={p.unit || 'ea'} options={PURCHASE_UNITS} onChange={u => updateRackPart(p.id, 'unit', u)} />
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <select

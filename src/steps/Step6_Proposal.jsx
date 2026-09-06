@@ -6,6 +6,7 @@ import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { groupHvacParts } from '../components/partGroups.js';
+import { rowUnit } from '../components/purchaseUnits.js';
 import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
 import { ESTIMATOR_WARNING, DEFAULT_PROPOSAL_TERMS, basisOfBid, basisComplete } from '../components/proposalTerms.js';
 import { checkBidReadiness } from '../components/bidReadiness.js';
@@ -566,13 +567,17 @@ function ProposalView({ company = {} }) {
       const parts = (state.resParts || []).filter(p => (p.total || 0) > 0 || p.desc);
       const linesetTotal = calcResLinesetTotal(state);
       if (parts.length > 0 || linesetTotal > 0) {
-        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
-        parts.forEach(p => { scopeRows += `<tr><td>${p.desc || ''}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+        // The Unit column is on the CUSTOMER's copy for the same reason it is
+        // on the estimator's: "1.8" against a refrigerant charge adder is
+        // 1.8 pounds, and a quantity nobody can name is a line nobody can
+        // check. The refrigeration proposal has printed it from the start.
+        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>`;
+        parts.forEach(p => { scopeRows += `<tr><td>${p.desc || ''}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:center">${p.unit || 'ea'}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
         if (linesetTotal > 0) {
           const lsDesc = (state.resLinesetType || 'preinsulated') === 'roll'
             ? `Lineset — roll copper ${state.resSucSize || ''} / ${state.resLiqSize || ''}${state.resLineLength ? ` × ${state.resLineLength} ft` : ''}`
             : 'Lineset — pre-insulated';
-          scopeRows += `<tr><td>${lsDesc}</td><td style="text-align:center">—</td><td style="text-align:right">${fmt(linesetTotal)}</td></tr>`;
+          scopeRows += `<tr><td>${lsDesc}</td><td style="text-align:center">—</td><td style="text-align:center">set</td><td style="text-align:right">${fmt(linesetTotal)}</td></tr>`;
         }
         scopeRows += `</tbody></table>`;
       }
@@ -588,10 +593,14 @@ function ProposalView({ company = {} }) {
       // (the same sections the Equipment step shows) rather than 100 loose rows.
       const partGroups = groupHvacParts((state.hvacParts || []).filter(p => p.desc));
       if (partGroups.length > 0) {
-        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
+        // A duct line reading "412" with no unit is 412 POUNDS of fabricated
+        // sheet metal, and the line under it reading "45" is 45 FEET of spiral.
+        // Printing both as bare numbers is how a customer decides the takeoff
+        // is wrong.
+        scopeRows += `<h2>Materials</h2><table><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>`;
         partGroups.forEach(g => {
-          scopeRows += `<tr style="background:#f3f4f6"><td colspan="3" style="padding:6px 10px;font-weight:700;color:#1f4e79;font-size:11px;text-transform:uppercase">${g.label} — ${fmt(g.subtotal)}</td></tr>`;
-          g.parts.forEach(p => { scopeRows += `<tr><td>${p.desc}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+          scopeRows += `<tr style="background:#f3f4f6"><td colspan="4" style="padding:6px 10px;font-weight:700;color:#1f4e79;font-size:11px;text-transform:uppercase">${g.label} — ${fmt(g.subtotal)}</td></tr>`;
+          g.parts.forEach(p => { scopeRows += `<tr><td>${p.desc}</td><td style="text-align:center">${p.qty || ''}</td><td style="text-align:center">${rowUnit(p)}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
         });
         scopeRows += `</tbody></table>`;
       }
@@ -608,8 +617,8 @@ function ProposalView({ company = {} }) {
       // can't see invites a dispute.
       const contractorRackParts = (state.rackParts || []).filter(p => !p.storeSupplied && (p.total || 0) > 0);
       if (contractorRackParts.length > 0) {
-        scopeRows += `<h2>Rack Parts (Contractor Supplied)</h2><table><thead><tr><th>Part #</th><th>Description</th><th>Qty</th><th>Total</th></tr></thead><tbody>`;
-        contractorRackParts.forEach(p => { scopeRows += `<tr><td>${p.partId || '—'}</td><td>${p.desc}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
+        scopeRows += `<h2>Rack Parts (Contractor Supplied)</h2><table><thead><tr><th>Part #</th><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>`;
+        contractorRackParts.forEach(p => { scopeRows += `<tr><td>${p.partId || '—'}</td><td>${p.desc}</td><td style="text-align:center">${p.qty}</td><td style="text-align:center">${p.unit || 'ea'}</td><td style="text-align:right">${fmt(p.total)}</td></tr>`; });
         scopeRows += `</tbody></table>`;
       }
       const sections = [...new Set((state.lineItems || []).map(i => i.section))];

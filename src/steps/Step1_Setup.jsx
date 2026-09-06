@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useStore, uid, defaultHvacPrice } from '../state/store.js';
+import { useStore, uid, defaultHvacPriceFor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Flag, EmptyState, Spinner } from '../components/UI.jsx';
 import {
@@ -32,6 +32,7 @@ import { isHvacTrade, routeTextDoc, equipmentKey, partsKey, toResEquipment } fro
 import { scopeTasksBecomeLineItems, resolveBidMethod, METHOD_LABEL, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 import { partitionBySize, uploadGuidance } from './uploadLimits.js';
 import { HOME_RUN, SHARED_HEADER } from '../components/headers.js';
+import { unitFor } from '../components/purchaseUnits.js';
 import { REFRIG_MAX_PAGES, HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from '../api/pdfRender.js';
 
 // The pasted-email box analyzes as a synthetic file so it shares the upload
@@ -191,6 +192,10 @@ export default function Step1_Setup({ onNext }) {
         pushPending('hvacPart', 'vision', entry.fileName, {
           desc: entry.desc,
           qty: entry.qty,
+          // Air devices are counted (ea), duct and pipe are scaled off the
+          // sheet (ft), a linear diffuser tagged in duct notation is bought by
+          // the foot of device. The push sites set it; this only carries it.
+          unit: entry.unit || '',
           unitCost: entry.unitCost || 0,
           // The per-sheet tally stays on the card: a resolved number nobody
           // can trace back to a sheet is a number nobody will bid on.
@@ -235,7 +240,7 @@ export default function Step1_Setup({ onNext }) {
         // is only meaningful if each sheet is named correctly.
         const dSheet = d.drawing || drawing;
         pushHvacPart(fileMeta.name, {
-          desc, qty: Number(d.qty) || 1, unitCost: 0, cfm: Number(d.cfm) || 0,
+          desc, qty: Number(d.qty) || 1, unit: 'ea', unitCost: 0, cfm: Number(d.cfm) || 0,
           notes: dSheet,
         }, dSheet);
       });
@@ -263,7 +268,9 @@ export default function Step1_Setup({ onNext }) {
           const ft = linearDeviceFt(parsedSize.len);
           pushHvacPart(fileMeta.name, {
             desc: `Linear slot diffuser or grille — ${parsedSize.len}x${parsedSize.face} face${r.service ? ` (${r.service})` : ''}`,
-            qty: ft, unitCost: 0,
+            // Feet of DEVICE, not each and not sheet metal — the whole reason
+            // this line exists is that it was being read as duct.
+            qty: ft, unit: 'ft', unitCost: 0,
             notes: [
               `${ft} ft as tagged (${parsedSize.len}" long × ${parsedSize.face}" face)`,
               'CONFIRM against the device legend on the sheet — if the tag reads TYP n, multiply by n',
@@ -306,7 +313,9 @@ export default function Step1_Setup({ onNext }) {
         const estLf = Math.max(0, Math.round(Number(r.estLengthFt) || 0));
         pushHvacPart(fileMeta.name, {
           desc: `Ductwork — ${label}${r.service ? ` (${r.service})` : ''}`,
-          qty: estLf, unitCost: 0,
+          // Linear feet off the sheet. The POUNDS come later, from the
+          // Duct → Purchase card; this line is the takeoff, not the buy.
+          qty: estLf, unit: 'ft', unitCost: 0,
           notes: [
             suspect ? '⚠ SIZE LOOKS MISREAD — verify on plan' : '',
             r.sizeMissing ? missingSizeNote(r, 'duct')
@@ -329,7 +338,7 @@ export default function Step1_Setup({ onNext }) {
         const pipeLf = Math.max(0, Math.round(Number(r.estLengthFt) || 0));
         pushHvacPart(fileMeta.name, {
           desc: `Pipe — ${r.sizeMissing ? 'SIZE NEEDED' : r.size}${r.service ? ` ${r.service}` : ''}`,
-          qty: pipeLf, unitCost: 0,
+          qty: pipeLf, unit: 'ft', unitCost: 0,
           notes: [
             // Never let the split be silent — the estimator has to be able to
             // see WHY there are now two lines where the sheet has one label.
@@ -417,7 +426,7 @@ export default function Step1_Setup({ onNext }) {
       });
       terminals.forEach((g) => {
         const desc = [g.type, g.size, g.model].filter(Boolean).join(' · ');
-        pushHvacPart(g.fileName, { desc, qty: g.qty, unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') }, g.drawing);
+        pushHvacPart(g.fileName, { desc, qty: g.qty, unit: 'ea', unitCost: 0, notes: [g.drawing].filter(Boolean).join(' · ') }, g.drawing);
       });
       if (suppressed > 0) {
         flags.push({ type: 'info', text: `${suppressed} plan-read duplicate(s) suppressed — these tags also have a schedule row, and the schedule's copy (with model/size data) is the one kept. Units that appear ONLY on the drawings are still included.`, source: 'System' });
@@ -1262,10 +1271,19 @@ export default function Step1_Setup({ onNext }) {
             const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
             if (match) unitCost = Number(match.entry.price) || 0;
           }
-          // Ballpark default so the line isn't $0 (skips duct FOOTAGE lines,
-          // which are priced by the Duct → Purchase Units calculator instead).
-          if (!unitCost) unitCost = defaultHvacPrice(item.data.desc);
-          newHvacParts.push({ id: uid(), src: item.fileName || '', desc: item.data.desc, qty, unitCost, total: qty * unitCost, notes: item.data.notes || '' });
+          // What the push site said this is bought by, or what the wording
+          // implies for a line reviewed under an older build.
+          const unit = item.data.unit || unitFor(item.data.desc);
+          // Ballpark default so the line isn't $0 — but only when the default
+          // is quoted in the same unit the line is measured in. A "flex duct"
+          // takeoff line carries FEET and the default is per 25' BOX; that
+          // fill was multiplying a box price by a footage and landing 25x
+          // high, on top of the boxes the Duct → Purchase card then adds.
+          if (!unitCost) unitCost = defaultHvacPriceFor(item.data.desc, unit);
+          newHvacParts.push({
+            id: uid(), src: item.fileName || '', desc: item.data.desc, qty,
+            unit, unitCost, total: qty * unitCost, notes: item.data.notes || '',
+          });
         }
       } else if (item.kind === 'hvacEquip') {
         // Confirmed family-closure unit → the Equipment step, mapped the same

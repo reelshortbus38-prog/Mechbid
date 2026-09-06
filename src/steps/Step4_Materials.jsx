@@ -10,7 +10,8 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
-import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
+import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { estimateRefrigerantLbs, REFRIGERANTS } from '../components/refrigerant.js';
@@ -425,6 +426,11 @@ function ResidentialEquipment({ onNext, onBack }) {
                 <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
                 {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
                 <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                {/* The quick-add chips are all packages priced whole — one
+                    disconnect, one $160 jug — so they are each. The charge
+                    adder is the exception: it adds POUNDS of refrigerant at a
+                    per-pound price, and said "1.8" with nothing beside it. */}
+                <UnitSelect value={p.unit || 'ea'} options={PURCHASE_UNITS} onChange={u => updatePart(p.id, 'unit', u)} />
                 <TblInput type="number" value={p.unitCost||''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
                 <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
                 <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
@@ -749,7 +755,13 @@ function BidMaterials({ onGenerate }) {
                     <tr key={item.id} style={{ background:idx%2===0?'transparent':colors.surface+'30' }}>
                       <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblInput value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} /></td>
                       <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblInput type="number" value={item.qty} onChange={e=>updateItem(item.id,'qty',e.target.value)} style={{ width:55, textAlign:'center', fontFamily:"'DM Mono',monospace" }} /></td>
-                      <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}`, color:colors.textDim }}>{item.unit}</td>
+                      {/* Was plain text. Every generated line fills this in
+                          correctly, but a hand-added Misc row was stamped 'ea'
+                          with no way to change it — so 200 ft of something you
+                          typed in yourself could only ever read "200 ea". */}
+                      <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}>
+                        <UnitSelect value={item.unit || 'ea'} options={PURCHASE_UNITS} onChange={u=>updateItem(item.id,'unit',u)} />
+                      </td>
                       <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblInput type="number" value={item.unitCost||0} onChange={e=>updateItem(item.id,'unitCost',e.target.value)} style={{ width:75, textAlign:'right', fontFamily:"'DM Mono',monospace" }} /></td>
                       <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}`, fontFamily:"'DM Mono',monospace", fontWeight:700, color:colors.green }}>{fmtDec(item.total)}</td>
                       <td style={{ padding:'7px 8px', borderBottom:`1px solid ${colors.border}`, textAlign:'center' }}>
@@ -879,6 +891,10 @@ function SupplyHouseList() {
                 <TblInput value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} placeholder="Description" style={{ flex:1 }} />
                 {!item.unitCost && <PriceMatchChip desc={item.desc} partId={item.partId} onFill={price => updateItem(item.id, 'unitCost', price)} />}
                 <TblInput type="number" value={item.qty} onChange={e=>updateItem(item.id,'qty',e.target.value)} placeholder="Qty" style={{ width:50, textAlign:'center', fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
+                {/* This list EXPORTS a Unit column to the supply house, and
+                    until now it was the one thing on the row nobody could see
+                    or correct before hitting send. */}
+                <UnitSelect value={item.unit || 'ea'} options={PURCHASE_UNITS} onChange={u=>updateItem(item.id,'unit',u)} style={{ flexShrink:0 }} />
                 <TblInput type="number" value={item.unitCost||''} onChange={e=>updateItem(item.id,'unitCost',e.target.value)} placeholder="$" style={{ width:70, textAlign:'right', fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
                 <span style={{ fontFamily:"'DM Mono',monospace", fontSize:12, fontWeight:700, color:colors.green, minWidth:60, textAlign:'right', flexShrink:0 }}>{item.total>0?fmt(item.total):'—'}</span>
                 <button onClick={()=>searchSupplier(item.partId||item.desc,supplier)} style={{ background:colors.blue, border:'none', color:'#fff', borderRadius:5, padding:'3px 8px', fontSize:10, cursor:'pointer', flexShrink:0 }}>🔍</button>

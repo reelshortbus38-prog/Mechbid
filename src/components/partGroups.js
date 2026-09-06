@@ -6,25 +6,26 @@
 // Pure functions over the parts array; the React side only renders the result.
 import { parseDuctDesc, ductServiceOf } from './ductwork.js';
 import { isTerminalUnit } from './hvacEquip.js';
+import { commonUnit } from './purchaseUnits.js';
 
 // Section order is fixed — takeoff evidence (duct footage) first, then the
 // purchase rollup that actually prices, then countable boxes, pipe, misc.
 export const PART_GROUPS = [
-  { key: 'duct-rect', label: 'Ductwork — rectangular', icon: '🌀', qtyUnit: 'ft' },
-  { key: 'duct-round', label: 'Ductwork — round & flex', icon: '⭕', qtyUnit: 'ft' },
+  { key: 'duct-rect', label: 'Ductwork — rectangular', icon: '🌀' },
+  { key: 'duct-round', label: 'Ductwork — round & flex', icon: '⭕' },
   // Runs the analyzer saw but could not size. Their own section so they read
   // as a to-do rather than as material — an estimator scanning the table
   // should never have to wonder what "unspecified duct" is.
-  { key: 'duct-unsized', label: 'Ductwork & pipe — SIZE NEEDED', icon: '📏', qtyUnit: 'ft' },
+  { key: 'duct-unsized', label: 'Ductwork & pipe — SIZE NEEDED', icon: '📏' },
   // Linear slot diffusers and bar grilles, which are tagged with a face size
   // in duct notation ("204x4") and so arrive looking like ductwork. Their own
   // section because they are bought by the foot of DEVICE — putting them
   // anywhere near the duct groups is how they get priced as sheet metal.
-  { key: 'linear-device', label: 'Linear diffusers & grilles', icon: '📶', qtyUnit: 'ft' },
-  { key: 'purchase', label: 'Duct purchase units', icon: '🧾', qtyUnit: '' },
-  { key: 'terminal', label: 'VAV / terminal boxes', icon: '📦', qtyUnit: 'ea' },
-  { key: 'pipe', label: 'Pipe', icon: '〰️', qtyUnit: 'ft' },
-  { key: 'other', label: 'Other parts & materials', icon: '🔧', qtyUnit: '' },
+  { key: 'linear-device', label: 'Linear diffusers & grilles', icon: '📶' },
+  { key: 'purchase', label: 'Duct purchase units', icon: '🧾' },
+  { key: 'terminal', label: 'VAV / terminal boxes', icon: '📦' },
+  { key: 'pipe', label: 'Pipe', icon: '〰️' },
+  { key: 'other', label: 'Other parts & materials', icon: '🔧' },
 ];
 
 export function partGroupOf(p = {}) {
@@ -71,6 +72,15 @@ export function sortGroupParts(key, parts) {
 // → ordered [{ key, label, icon, qtyUnit, parts, count, qtySum, pricedCount,
 //    subtotal }], only groups that have lines. Each group's header numbers let
 // the collapsed table still read as a summary.
+//
+// qtyUnit is READ OFF THE LINES rather than declared per section, so the
+// collapsed header can only ever say something the rows agree on. It used to be
+// a constant per group, which was right for the duct sections and a lie for the
+// purchase section — pounds of rectangular, feet of spiral, boxes of flex and
+// rolls of wrap all sit in there, and summing them into one number labelled
+// with any single unit would be meaningless. That section declared '' to dodge
+// it; now a section that happens to be all one unit gets to say so, and a mixed
+// one still says nothing.
 export function groupHvacParts(parts = []) {
   const buckets = new Map();
   for (const p of parts) {
@@ -82,6 +92,7 @@ export function groupHvacParts(parts = []) {
     const items = sortGroupParts(g.key, buckets.get(g.key));
     return {
       ...g,
+      qtyUnit: commonUnit(items),
       parts: items,
       count: items.length,
       qtySum: items.reduce((s, p) => s + (Number(p.qty) || 0), 0),

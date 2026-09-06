@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, defaultHvacPrice } from '../state/store.js';
+import { useStore, uid, fmt, defaultHvacPriceFor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Select, Row, TblInput, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
 import { isHydronicService, pipeDescSize } from '../components/pipePricing.js';
 import { hydronicValveLines, countHydronicEquipment } from '../components/hydronicValves.js';
 import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
+import { PURCHASE_UNITS, unitFor, rowUnit } from '../components/purchaseUnits.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 
 const HVAC_EQUIP_TYPES = [
@@ -263,6 +264,10 @@ function MiscParts() {
   const [openGroups, setOpenGroups] = useState({});
 
   function addPart() {
+    // No unit is set here on purpose. An empty unit TRACKS the description —
+    // type "Refrigerant by lb" and the column says lb without being told — and
+    // picking one from the dropdown pins it. Stamping 'ea' on creation would
+    // freeze the wrong answer before the row even has a description.
     dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc: '', qty: 1, unitCost: 0, total: 0 }] });
   }
 
@@ -308,7 +313,10 @@ function MiscParts() {
         if (existing) {
           if (existing.price !== price) savePriceBook(book.map(e => e === existing ? { ...e, price } : e));
         } else {
-          savePriceBook([...book, { id: uid(), desc: it.desc, partId: '', category: 'HVAC', unit: 'ea', price }]);
+          // The line's real purchase unit, not a hardcoded 'ea'. $4.50 filed
+          // under "each" for fabricated duct is a price book that lies the next
+          // time it autofills — the number is per POUND.
+          savePriceBook([...book, { id: uid(), desc: it.desc, partId: '', category: 'HVAC', unit: rowUnit(it), price }]);
         }
       }
     }
@@ -326,8 +334,15 @@ function MiscParts() {
     'Refrigerant (R-410A / R-454B) by lb', 'Lineset (split)', 'Refrigerant line insulation',
   ];
   const addNamed = desc => {
-    const uc = defaultHvacPrice(desc);
-    dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc, qty: 1, unitCost: uc, total: uc }] });
+    // Same gate as the fill: the chip's price and the chip's unit have to be
+    // talking about the same thing. Every chip is pinned in purchaseUnits.test.js
+    // so this can never quietly start adding $0 lines.
+    const uc = defaultHvacPriceFor(desc, unitFor(desc));
+    // The chip's unit is stamped on, because these descriptions are fixed and
+    // the answer is known: refrigerant by the lb, lineset as a set, crane by
+    // the day, line insulation by the foot. Still editable — a shop that buys
+    // hail guards singly changes it once.
+    dispatch({ type: 'SET', key: 'hvacParts', value: [...parts, { id: uid(), desc, qty: 1, unit: unitFor(desc), unitCost: uc, total: uc }] });
   };
 
   // Backfill ballpark prices onto any line still at $0 — the takeoff's air
@@ -338,14 +353,16 @@ function MiscParts() {
     let filled = 0;
     const next = parts.map(p => {
       if ((p.unitCost || 0) > 0) return p;
-      const uc = defaultHvacPrice(p.desc);
+      // Unit-aware: a default quoted per 25' BOX does not go on a line whose
+      // Qty is linear feet. That mismatch was live — see DEFAULT_HVAC_PRICES.
+      const uc = defaultHvacPriceFor(p.desc, rowUnit(p));
       if (!uc) return p;
       filled++;
       return { ...p, unitCost: uc, total: (p.qty || 0) * uc };
     });
     if (filled) dispatch({ type: 'SET', key: 'hvacParts', value: next });
   }
-  const unpricedCount = parts.filter(p => (p.unitCost || 0) === 0 && defaultHvacPrice(p.desc) > 0).length;
+  const unpricedCount = parts.filter(p => (p.unitCost || 0) === 0 && defaultHvacPriceFor(p.desc, rowUnit(p)) > 0).length;
 
   // One row, used by both the flat list and the grouped sections. Tighter
   // padding than the old rows — on a 100-line table that alone halves the scroll.
@@ -354,6 +371,10 @@ function MiscParts() {
       <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
       {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
       <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+      {/* What that Qty is IN. A "8" beside fabricated duct is eight POUNDS and
+          a "45" beside spiral is forty-five FEET — the column that says which
+          was missing entirely, and the unit prices are read against it. */}
+      <UnitSelect value={rowUnit(p)} options={PURCHASE_UNITS} onChange={u => updatePart(p.id, 'unit', u)} />
       <TblInput type="number" value={p.unitCost || ''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
       <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
@@ -455,7 +476,9 @@ function HydronicFittingsCalculator() {
     const line = {
       id: uid(), dgen: true, gen: 'hydronic',
       desc: `Hydronic fittings, joints & hangers — ${pct}% of pipe material (valves NOT included)`,
-      qty: 1, unitCost: allowance, total: allowance,
+      // One lot, the same way the refrigeration side's fittings allowance is
+      // one lot — not "1 each" of a thing nobody can order.
+      qty: 1, unit: 'lot', unitCost: allowance, total: allowance,
     };
     dispatch({ type: 'SET', key: 'hvacParts',
       value: [...parts.filter(p => !(p.dgen && p.gen === 'hydronic')), line] });
@@ -545,7 +568,7 @@ function HydronicValveCalculator() {
       const unitCost = match ? Number(match.entry.price) || 0 : (l.defaultPrice || 0);
       return {
         id: uid(), dgen: true, gen: 'valves',
-        desc: l.desc, qty: l.qty, unitCost, total: l.qty * unitCost,
+        desc: l.desc, qty: l.qty, unit: l.unit, unitCost, total: l.qty * unitCost,
         notes: [l.notes, match ? '' : 'default price is a PLACEHOLDER — correct it once and the price book remembers'].filter(Boolean).join(' · '),
       };
     });
@@ -687,7 +710,12 @@ function DuctCalculator() {
       const unitCost = match ? Number(match.entry.price) || 0 : (l.defaultPrice || 0);
       return {
         id: uid(), desc: `${l.desc}${l.notes ? ` (${l.notes})` : ''}`,
-        qty: l.qty, unitCost, total: l.qty * unitCost, dgen: true, gen: 'duct',
+        // ductPurchase() has always worked this out — lb for fabricated
+        // rectangular, ft for spiral, box for 25' flex, roll for wrap — and
+        // until the row had a unit field it was computed and discarded, so the
+        // table showed "8" for eight pounds of duct beside "3" for three
+        // diffusers. Carry it.
+        qty: l.qty, unit: l.unit, unitCost, total: l.qty * unitCost, dgen: true, gen: 'duct',
       };
     });
     // Regenerating replaces the previously generated purchase lines, so
