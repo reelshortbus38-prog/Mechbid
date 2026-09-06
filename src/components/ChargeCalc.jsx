@@ -11,8 +11,11 @@ import { CHARGE_OZ_PER_FT, CHARGE_REFRIGERANTS, estimateChargeAdder } from './re
 // Residential HVAC page (pre-filled from the job's lineset fields) and the
 // Commercial HVAC Equipment step (one row per split system, run it per unit).
 //
-// onAdd(line) receives { desc, qty (lbs), unitCost, total } — the caller
-// appends it to its own parts list (resParts / hvacParts).
+// onAdd(line) receives { desc, qty, unit: 'lb', unitCost, total } — the caller
+// appends it to its own parts list (resParts / hvacParts). The unit is on the
+// line because the quantity is pounds of refrigerant and the price is per
+// pound; a row that carries the number without the unit invites somebody to
+// read it as one unit of something.
 export default function ChargeAdderCalc({ defaultLiqSize = '3/8', defaultLengthFt = 0, onAdd }) {
   const [liqSize, setLiqSize] = useState(defaultLiqSize || '3/8');
   const [lengthFt, setLengthFt] = useState(defaultLengthFt || '');
@@ -28,7 +31,7 @@ export default function ChargeAdderCalc({ defaultLiqSize = '3/8', defaultLengthF
     const match = findPriceMatch(loadPriceBook(), { desc: `${refrigerant} refrigerant per lb` });
     const unitCost = match ? Number(match.entry.price) || 0 : (CHARGE_REFRIGERANTS[refrigerant]?.price || 0);
     const qty = Math.max(est.addLbs, 0.5); // never bill under half a pound — you open the jug either way
-    onAdd({ desc, qty, unitCost, total: Math.round(qty * unitCost * 100) / 100 });
+    onAdd({ desc, qty, unit: 'lb', unitCost, total: Math.round(qty * unitCost * 100) / 100 });
     setAdded(true);
   }
 
