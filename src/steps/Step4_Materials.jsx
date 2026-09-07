@@ -10,7 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
-import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE } from '../components/caseHookup.js';
+import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
@@ -51,7 +51,11 @@ const RES_PART_QUICKADD = [
   ['Drain line (PVC)', 40], ['Surge protector', 45], ['Permit', 150],
 ];
 
-const RES_LABOR_PERIOD_NAMES = ['Installation Day','Startup & Commissioning','Service Call','Warranty Return'];
+// What a case gets stubbed up with. Small sizes only — this is the connection
+// at the case, not the run feeding it.
+const CASE_STUB_SIZES = ['1/4"', '3/8"', '1/2"', '5/8"', '7/8"', '1-1/8"'];
+
+const RES_LABOR_PERIOD_NAMES =['Installation Day','Startup & Commissioning','Service Call','Warranty Return'];
 
 // ── RESIDENTIAL LABOR ─────────────────────────────────────────────────────────
 function ResLaborPeriodCard({ period, onUpdate, onRemove }) {
@@ -1074,6 +1078,10 @@ export default function Step4_Materials({ onNext, onBack }) {
         cases: n,
         sucSize: c.sucHoriz ? normalizePipeSize(c.sucHoriz) : '',
         liqSize: c.liqHoriz ? normalizePipeSize(c.liqHoriz) : '',
+        // What the CASE is stubbed up with — 5/8" suction and 3/8" liquid as a
+        // rule — which is a different number from the run the branch is in.
+        stubSuc: rates.caseStubSuction || DEFAULT_STUB_SUCTION,
+        stubLiq: rates.caseStubLiquid || DEFAULT_STUB_LIQUID,
         stubFt: rates.caseStubFt ?? DEFAULT_STUB_FT,
         caseFt: rates.caseFt ?? DEFAULT_CASE_FT,
         drainSize: rates.caseDrainSize || DEFAULT_DRAIN_SIZE,
@@ -1095,8 +1103,12 @@ export default function Step4_Materials({ onNext, onBack }) {
       let note = l.notes;
       if (l.fittingType) {
         // Real fittings the estimator named, priced off the same ACR table the
-        // fitting picker uses — not folded into a percentage.
-        const hit = fittingPrice(l.fittingType, l.pipeSize);
+        // fitting picker uses — not folded into a percentage. A bushing spans
+        // two sizes and prices on the larger, which is the body it is made
+        // from; fittingPriceForPair exists for exactly that.
+        const hit = l.spanSize
+          ? fittingPriceForPair(l.fittingType, l.spanSize, l.pipeSize)
+          : fittingPrice(l.fittingType, l.pipeSize);
         if (hit) {
           unitCost = hit.price;
           note = [l.notes, fittingNote(hit)].filter(Boolean).join(' · ');
@@ -1397,6 +1409,18 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub (ft each)</div>
               <Input type="number" value={state.rates?.caseStubFt ?? DEFAULT_STUB_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
+            <div style={{ flex:1, minWidth:110 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub — Suc</div>
+              <Select value={state.rates?.caseStubSuction || DEFAULT_STUB_SUCTION} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubSuction',value:e.target.value})}>
+                {CASE_STUB_SIZES.map(z => <option key={z} value={z}>{z}</option>)}
+              </Select>
+            </div>
+            <div style={{ flex:1, minWidth:110 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub — Liq</div>
+              <Select value={state.rates?.caseStubLiquid || DEFAULT_STUB_LIQUID} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubLiquid',value:e.target.value})}>
+                {CASE_STUB_SIZES.map(z => <option key={z} value={z}>{z}</option>)}
+              </Select>
+            </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Length (ft)</div>
               <Input type="number" value={state.rates?.caseFt ?? DEFAULT_CASE_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
@@ -1421,7 +1445,9 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
             Case hookups price a suction and liquid stub, stub insulation, and the drain — which runs the <strong>length
             of the case</strong> to the hub underneath it, so set Case Length to the cases on this store (8 ft cases run 8 ft
-            of PVC). Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
+            of PVC). Cases are stubbed <strong>smaller than the run</strong> — 5/8" suction and 3/8" liquid as a rule — so the
+            stub copper prices at the case size and the bushing at each tap prices as the real run-by-stub part.
+            Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
             every <strong>middle</strong> case taps it with a tee of its own, and the <strong>end</strong> case turns down and
             stops. Only the middle multiplies — a lineup of eight is one start, six middles and one end. Bushings are priced at
             the run size; correct them once you know what the cases are stubbed up with. The EPR and liquid ball valves are
