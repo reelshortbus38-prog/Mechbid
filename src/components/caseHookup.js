@@ -370,20 +370,24 @@ export function caseHookupLines({
   return lines;
 }
 
-// ── STILL OPEN: WHAT THESE ADD TO THE LABOR ─────────────────────────────────
-// There was a caseHookupJoints() here returning four per case — suction on and
-// off, liquid on and off. It was a guess, and the end-case fitting set above
-// replaced the guess with a counted list of real parts, so it went.
+// ── THESE FITTINGS ADD NO BRAZING TIME, AND THAT IS THE ANSWER ──────────────
+// Asked whether case-fitting joints should be added to the labor: they should
+// not, and adding them would be the same double-count this app keeps finding.
 //
-// Nothing now feeds case hookups into the BRAZING time, and that is deliberate
-// rather than forgotten. The circuit already carries a fittings allowance, but
-// that allowance is described as the ells a RUN takes crossing the store —
-// whether it also covers the connections at the lineup is a question for the
-// estimator, and quietly adding joints on top of it would double-count the
-// exact way this app keeps finding elsewhere.
+// The labor library has `perCase` — "hrs to hook up a refrigerated case" —
+// multiplied by the case count. Hooking a case up IS brazing this fitting set,
+// cooling it, checking it and insulating it. There is nothing left over to
+// charge. Putting joints on top would bill the same work twice, once as a case
+// and once as four fittings, on every case in the store.
 //
-// The material is right. The labor for hooking a case up is still the flat
-// perCase unit, now correctly multiplied by the case count.
+// The estimator's point about bunched joints is real and it landed somewhere
+// else, where it does apply: see clusterFactor in the labor units. The per-
+// joint rate is for a joint on its own, and a riser's four — the ells up and
+// over plus the P-trap, all in one spot — were being charged four full trips.
+// That is now one full unit and three discounted ones.
+//
+// So the material here is priced part by part, and the labor for installing it
+// stays inside perCase where it already was.
 
 // ── SPARE RISER COPPER ──────────────────────────────────────────────────────
 // Pipe for the drops nobody has found yet. Sized and lengthed off the job's

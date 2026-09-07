@@ -63,6 +63,15 @@ export const UNIT_PROVENANCE = {
       + 'given circuit does is something you find out by walking it. This is an allowance until somebody has; '
       + 'a circuit with its own counted fittings uses that number instead.',
   },
+  clusterFactor: {
+    state: 'unconfirmed',
+    note: 'What a joint costs when it is one of a bunch in the same place, as a fraction of a joint on its own. '
+      + '"When you have a bunch of joints in the same place, like the end of the case, it\'s not gonna be the same '
+      + 'as brazing each one and stopping to cool and check it and insulate it." The trip, the purge and the '
+      + 'insulating are shared; the prep, braze, cool and check are not. 0.65 is a reasoned split of the unit, not '
+      + 'a measurement — and the same estimator warned that "it takes different people different amounts of time". '
+      + 'Set it to 1 to price every joint as a standalone one.',
+  },
   jointsPerRiser: {
     state: 'unconfirmed',
     note: 'Added on top for a circuit with a riser — the ells up and over, and the P-trap at the bottom. '

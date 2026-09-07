@@ -351,6 +351,7 @@ function CircuitLaborEstimator() {
     { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
     { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
     { key: 'jointsPerCircuit', label: 'Fittings/circuit' }, { key: 'jointsPerRiser', label: 'Fittings/riser' },
+    { key: 'clusterFactor', label: 'Bunched joint ×' },
   ];
   const confidence = unitsConfidence(UNIT_FIELDS.map(f => f.key));
 

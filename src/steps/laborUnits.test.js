@@ -131,14 +131,17 @@ describe('fittings — the number you cannot get from a drawing', () => {
 
   it('uses a counted number when somebody walked the route', () => {
     const c = { circuitId: 'A', runLength: 150, fittingJoints: 14 };
-    expect(circuitJoints(c, DEFAULT_LABOR_UNITS)).toEqual({ joints: 14, source: 'counted' });
+    // All fourteen are LOOSE: nothing says which of them are bunched together,
+    // so none get the cluster discount. See clusterJointEquivalent.
+    expect(circuitJoints(c, DEFAULT_LABOR_UNITS))
+      .toEqual({ joints: 14, loose: 14, clustered: 0, source: 'counted' });
   });
 
   it('lets a walked circuit count ZERO fittings', () => {
     // A straight shot down one aisle is rare but real, and a falsy-zero bug
     // would silently put the allowance back on it.
     expect(circuitJoints({ fittingJoints: 0 }, DEFAULT_LABOR_UNITS))
-      .toEqual({ joints: 0, source: 'counted' });
+      .toEqual({ joints: 0, loose: 0, clustered: 0, source: 'counted' });
   });
 
   it('never lets an allowance override a counted number', () => {
