@@ -399,14 +399,18 @@ describe('spareRiserPlan', () => {
     expect(spareRiserPlan(job, 1, norm).size).toBe('1-3/8');
   });
 
-  it('uses the typical riser on THIS job, rounded up', () => {
-    // (14 + 10 + 12) / 3 = 12. A spare that is short is not a spare.
-    expect(spareRiserPlan(job, 1, norm).ftPerDrop).toBe(12);
+  it('reads the typical riser off THIS job, then buys a whole stick', () => {
+    // (14 + 10 + 12) / 3 = 12 ft typical — and 12 ft of hard copper cannot be
+    // ordered, so the spare is a 20 ft stick. A spare you cannot buy is not a
+    // spare.
+    const p = spareRiserPlan(job, 1, norm);
+    expect(p.typical).toBe(12);
+    expect(p.ftPerDrop).toBe(20);
   });
 
   it('scales for a store that carries a few', () => {
-    // "...or even a few for multiple circuits."
-    expect(spareRiserPlan(job, 3, norm).ft).toBe(36);
+    // "...or even a few for multiple circuits." Three sticks.
+    expect(spareRiserPlan(job, 3, norm).ft).toBe(60);
   });
 
   it('carries nothing when the estimator sets it to zero', () => {
@@ -422,6 +426,6 @@ describe('spareRiserPlan', () => {
 
   it('says what the number is built from', () => {
     expect(spareRiserPlan(job, 2, norm).basis)
-      .toBe('2 spare drop(s) × 12 ft — the typical riser on this job, at the size it runs most');
+      .toBe('2 spare drop(s) × 20 ft — a whole 20 ft stick per drop, at the size this job runs most');
   });
 });

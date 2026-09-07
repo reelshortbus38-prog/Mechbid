@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rateLookup, copperRate, insulRate, unratedCopperSizes, unratedNote } from './copperRates.js';
+import { rateLookup, copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt, HARD_STICK_FT } from './copperRates.js';
 import { DEFAULT_CU_RATES, DEFAULT_INSUL_RATES, INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 
 // ── A 4-1/8 SUCTION MAIN PRICED AT ZERO ──────────────────────────────────────
@@ -224,5 +224,43 @@ describe('insulation matches the quoted bands at the wall each category uses', (
     // neither gets "corrected" back toward the other.
     expect(DEFAULT_INSUL_RATES.lowLiquid['7/8']).toBeLessThan(2.15);   // was 2.15
     expect(DEFAULT_INSUL_RATES.lowSuction['7/8']).toBeGreaterThan(2.70); // was 2.70
+  });
+});
+
+// ── RISERS ARE BOUGHT BY THE STICK ──────────────────────────────────────────
+// "There should be a certain amount of pipe bought for any circuit with a
+// riser. 20 ft for the riser size even if the run length is short — there
+// still needs to be copper for the riser."
+describe('riserPurchaseFt', () => {
+  it('buys a whole stick for a short riser', () => {
+    // The typical drop to a case is twelve feet. Twelve feet of hard copper is
+    // not a thing you can order.
+    expect(riserPurchaseFt(12)).toBe(20);
+    expect(riserPurchaseFt(3)).toBe(20);
+    expect(riserPurchaseFt(20)).toBe(20);
+  });
+
+  it('buys two sticks for a riser that needs them', () => {
+    expect(riserPurchaseFt(21)).toBe(40);
+    expect(riserPurchaseFt(40)).toBe(40);
+    expect(riserPurchaseFt(41)).toBe(60);
+  });
+
+  it('buys nothing for no riser', () => {
+    expect(riserPurchaseFt(0)).toBe(0);
+    expect(riserPurchaseFt(undefined)).toBe(0);
+    expect(riserPurchaseFt(-5)).toBe(0);
+  });
+
+  it('takes another stick length for a shop that buys differently', () => {
+    expect(riserPurchaseFt(12, 10)).toBe(20);
+    expect(riserPurchaseFt(12, 12)).toBe(12);
+    expect(HARD_STICK_FT).toBe(20);
+  });
+
+  it('rounds per riser, because the offcut will not make another', () => {
+    // Two 12 ft risers is two sticks, not 24 ft pooled into 40 and hoped for.
+    // The 8 ft left over from the first will not make the second.
+    expect(riserPurchaseFt(12) * 2).toBe(40);
   });
 });

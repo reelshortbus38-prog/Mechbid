@@ -50,3 +50,29 @@ export function unratedNote(size) {
   return `NO RATE for ${size}" — this line is priced at $0 and is NOT in your total. `
     + 'Enter a rate in the rates panel, or the footage on screen is free copper.';
 }
+
+// ── YOU CANNOT BUY TWELVE FEET OF HARD COPPER ───────────────────────────────
+// Hard drawn ACR comes in 20 ft straight lengths. A riser is short — twelve
+// feet is the typical drop to a case — so the takeoff was ordering a length
+// that does not exist, and doing it once per riser on the job.
+//
+//   "There should be a certain amount of pipe bought for any circuit with a
+//    riser. 20 ft for the riser size even if the run length is short — there
+//    still needs to be copper for the riser."
+//
+// One stick per riser, and the offcut is scrap: a 20 ft stick with a 12 ft
+// riser out of it leaves 8 ft, which will not make another 12 ft riser. So
+// this rounds UP per circuit rather than pooling the footage and rounding the
+// total, because pooling would quietly assume the offcuts add up.
+//
+// Long runs are NOT rounded this way. A 150 ft main is cut from sticks
+// end-to-end and the waste factor already covers the joint offcuts; it is the
+// short pieces where a whole stick per piece is the real purchase.
+export const HARD_STICK_FT = 20;
+
+export function riserPurchaseFt(riserFt, stickFt = HARD_STICK_FT) {
+  const ft = Number(riserFt) || 0;
+  const stick = Math.max(1, Number(stickFt) || HARD_STICK_FT);
+  if (ft <= 0) return 0;
+  return Math.ceil(ft / stick) * stick;
+}
