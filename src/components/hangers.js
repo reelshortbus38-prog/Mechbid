@@ -12,6 +12,9 @@
 // A SADDLE is not shared. Every insulated pipe rides in its own cradle at every
 // point it crosses a support, so the hanger doesn't crush the insulation.
 //
+// Neither exists for a line run IN THE FLOOR. Those are supported by the slab,
+// and a circuit flagged that way is skipped by both.
+//
 // The old takeoff calculated both the same way: sum every circuit's run length,
 // divide by six. For saddles that is exactly right. For trapezes it is a hanger
 // under every single pipe — eight circuits down the same back hall bought eight
@@ -55,7 +58,12 @@ export const normalizeSpacing = (ft) => Math.max(1, Number(ft) || DEFAULT_SPACIN
 // precisely the mistake this replaces.
 export function hangerBasis(circuits = [], headerHorizFt = 0, spacingFt = DEFAULT_SPACING_FT) {
   const spacing = normalizeSpacing(spacingFt);
-  const onRoute = circuits.filter(c => !c?.isRiserOnly && (parseFloat(c?.runLength) || 0) > 0);
+  // In-floor lines carry nothing: "some lines might get pushed in the floor
+  // and those don't need hangers". They are excluded from the route entirely,
+  // not just from the count, because a store whose circuits all run in the
+  // floor should generate no trapeze lines at all.
+  const onRoute = circuits.filter(c =>
+    !c?.isRiserOnly && !c?.inFloor && (parseFloat(c?.runLength) || 0) > 0);
   const longestRun = onRoute.reduce((m, c) => Math.max(m, parseFloat(c.runLength) || 0), 0);
   const headerFt = Number(headerHorizFt) || 0;
   const routeFt = Math.max(longestRun, headerFt);
@@ -131,6 +139,9 @@ export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, norm
   const bySize = {};
   for (const c of circuits) {
     if (c?.isRiserOnly) continue;
+    // Nothing in the floor rides in a saddle either — a saddle exists to stop
+    // a hanger crushing insulation, and there is no hanger.
+    if (c?.inFloor) continue;
     const run = parseFloat(c?.runLength) || 0;
     if (run <= 0) continue;
     const add = (size) => {

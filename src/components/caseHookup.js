@@ -30,11 +30,34 @@
 // whatever the case comes stubbed with, 5/8" suction and 3/8" liquid as a rule.
 // So everything here is run-sized except the bushing, which spans the two.
 //
+// UNLESS THE DROP IS LONG. "We run the same size all the way to the case
+// except when there are drops over 5 ft, and with those we change the suction
+// line only and run the riser size." A drop past that stops being a stub and
+// becomes a riser, which is sized as one — and only on suction. The liquid
+// stays run size however far it falls, the same rule the circuit's own riser
+// already follows.
+//
 // Pure — no React, no store.
 
 // Drop from the branch down to the case connection. Short, because the branch
 // runs past the lineup; the length that matters is already in the circuit.
 export const DEFAULT_STUB_FT = 5;
+
+// Past this, the suction drop is a RISER and takes the riser size. The liquid
+// does not change — "we change the suction line only".
+export const RISER_THRESHOLD_FT = 5;
+
+// What a new circuit's riser starts at. It was 20 ft, which is most of a
+// two-storey drop on a line that only has to reach a case: "maybe to calculate
+// the riser lengths would be about 10-12 ft per circuit for dropping at the
+// case." Twelve, the top of the range he gave, because it is still a guess and
+// the guess should not be the one that under-buys.
+//
+// And it is a guess. "You never know till you look in person to know exact.
+// The line might drop over 5 ft somewhere else" — a riser is not only the drop
+// at the case, and where else one turns up is a walk-the-job question, like
+// the fittings and the hangers before it.
+export const DEFAULT_CASE_RISER_FT = 12;
 
 // ── THE DRAIN IS THE CASE, NOT THE WALK TO A HUB ────────────────────────────
 // This was modelled as "distance from the case to the floor drain hub" and
@@ -220,9 +243,10 @@ export function casesFromApplication(application) {
 //   cases       case hookups on this lineup
 //   sucSize     the RUN size for suction — the circuit's own line
 //   liqSize     the RUN size for liquid
+//   sucRiser    the circuit's riser size — used when the drop is over 5 ft
 //   stubSuc     what the case is stubbed up with on suction (5/8" as a rule)
 //   stubLiq     what the case is stubbed up with on liquid (3/8" as a rule)
-//   stubFt      ft of stub per case, each line
+//   stubFt      ft of drop per case, each line
 //   caseFt      length of a case — the drain runs it and drops to the hub below
 //   drainSize   PVC size
 //   setsTxv     true when this shop sets the valves rather than the energy team
@@ -232,7 +256,7 @@ export function casesFromApplication(application) {
 // → [{ section, desc, qty, unit, notes }] — no ids, no prices; the caller
 // prices from its own rate tables so this module never guesses at money.
 export function caseHookupLines({
-  cases = 0, sucSize = '', liqSize = '',
+  cases = 0, sucSize = '', liqSize = '', sucRiser = '',
   stubSuc = DEFAULT_STUB_SUCTION, stubLiq = DEFAULT_STUB_LIQUID,
   stubFt = DEFAULT_STUB_FT,
   caseFt = DEFAULT_CASE_FT, drainSize = DEFAULT_DRAIN_SIZE,
@@ -244,27 +268,35 @@ export function caseHookupLines({
   const drain = Math.max(0, Number(caseFt) || 0);
   const lines = [];
 
+  // A drop past 5 ft is a riser, and takes the riser size — on SUCTION only.
+  const isRiser = stub > RISER_THRESHOLD_FT && !!sucRiser;
+  const sucDrop = isRiser ? sucRiser : sucSize;
+  const riserNote = isRiser
+    ? ` · over ${RISER_THRESHOLD_FT} ft, so the suction drop takes the RISER size`
+    : '';
+
   // The drop is RUN size, not case size. "We reduce at the case", so the pipe
   // between the tee and the bushing is the same copper as the run it came off.
-  if (stub > 0 && sucSize) {
+  if (stub > 0 && sucDrop) {
     lines.push({
-      section: 'Case Hookups', desc: `${sucSize} Case drops — suction`, qty: Math.ceil(n * stub), unit: 'ft',
-      notes: `${n} case(s) × ${stub} ft — run size down to the case, reduced at the case to ${stubSuc || 'the case stub'}`,
-      pipeSize: sucSize,
+      section: 'Case Hookups', desc: `${sucDrop} Case drops — suction`, qty: Math.ceil(n * stub), unit: 'ft',
+      notes: `${n} case(s) × ${stub} ft — down to the case, reduced at the case to ${stubSuc || 'the case stub'}${riserNote}`,
+      pipeSize: sucDrop,
     });
   }
   if (stub > 0 && liqSize) {
     lines.push({
       section: 'Case Hookups', desc: `${liqSize} Case drops — liquid`, qty: Math.ceil(n * stub), unit: 'ft',
+      // Liquid never changes size on the drop, however far it falls.
       notes: `${n} case(s) × ${stub} ft — run size down to the case, reduced at the case to ${stubLiq || 'the case stub'}`,
       pipeSize: liqSize,
     });
   }
-  if (insulate && stub > 0 && sucSize) {
+  if (insulate && stub > 0 && sucDrop) {
     lines.push({
-      section: 'Case Hookups', desc: `${sucSize} Case drop insulation`, qty: Math.ceil(n * stub), unit: 'ft',
+      section: 'Case Hookups', desc: `${sucDrop} Case drop insulation`, qty: Math.ceil(n * stub), unit: 'ft',
       notes: 'the drop is insulated at the circuit temperature, same as the run it came off',
-      pipeSize: sucSize,
+      pipeSize: sucDrop,
     });
   }
 
@@ -308,7 +340,8 @@ export function caseHookupLines({
             : basis,
         });
       });
-      set(pos.suction, sucSize, stubSuc, 'suction');
+      // The suction fittings follow whatever the suction drop turned out to be.
+      set(pos.suction, sucDrop, stubSuc, 'suction');
       set(pos.liquid, liqSize, stubLiq, 'liquid');
     });
   }

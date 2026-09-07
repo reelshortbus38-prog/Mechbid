@@ -953,17 +953,23 @@ export default function Step4_Materials({ onNext, onBack }) {
     const copperLabel = isCO2 ? 'K65 Copper (CO₂ HP)' : 'ACR Copper';
 
     // ── Copper, bucketed by size ──────────────────────────────────────────
-    const copperBySize = {};
+    // Two buckets, because hard and soft are two different products. A line
+    // pushed in the floor is "always soft copper" — it arrives in a coil, not
+    // in 20 ft sticks, and it is a different part number at the supply house.
+    // Mixing them into one "2-1/8 ACR" line would order the wrong thing.
+    const copperBySize = {}, softBySize = {};
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
       const total=c.isRiserOnly?riser:run+riser;
+      const bucket = c.inFloor && !c.isRiserOnly ? softBySize : copperBySize;
+      const add=(size,ft)=>{ if(!size||ft<=0) return; const k=normalizePipeSize(size); bucket[k]=(bucket[k]||0)+ft; };
       // Riser-only = the SUCTION line only (estimator-confirmed: the liquid
       // doesn't get a riser on these drops).
-      if(c.isRiserOnly){if(c.sucRiser){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}}
+      if(c.isRiserOnly){ add(c.sucRiser, riser); }
       else{
-        if(c.sucHoriz&&run>0){const k=normalizePipeSize(c.sucHoriz);copperBySize[k]=(copperBySize[k]||0)+run;}
-        if(c.sucRiser&&riser>0){const k=normalizePipeSize(c.sucRiser);copperBySize[k]=(copperBySize[k]||0)+riser;}
-        if(c.liqHoriz&&total>0){const k=normalizePipeSize(c.liqHoriz);copperBySize[k]=(copperBySize[k]||0)+total;}
+        add(c.sucHoriz, run);
+        add(c.sucRiser, riser);
+        add(c.liqHoriz, total);
       }
     });
     // K65 is not priced like ACR copper. The label already said K65; the RATE
@@ -978,7 +984,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     Object.entries(hdr.copperBySize).forEach(([size, ft]) => {
       copperBySize[size] = (copperBySize[size] || 0) + ft;
     });
-    const unrated = unratedCopperSizes(Object.keys(copperBySize), rates);
+    const unrated = unratedCopperSizes([...Object.keys(copperBySize), ...Object.keys(softBySize)], rates);
     Object.entries(copperBySize).forEach(([size,footage])=>{
       // Fall back to the CURRENT defaults for a size this job never copied —
       // an old job picks up 3-5/8, 4-1/8 and larger without losing a rate it
@@ -988,6 +994,16 @@ export default function Step4_Materials({ onNext, onBack }) {
       const qty=Math.ceil(footage*wasteFactor);
       items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,
         notes:[look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')||undefined});
+    });
+    // Soft copper for anything in the floor. Same rate table — it is the same
+    // metal at the same size — but its own lines, because it is ordered as
+    // coil and it is the one copper on the job that carries no hangers.
+    Object.entries(softBySize).forEach(([size,footage])=>{
+      const look = copperRate(size, rates);
+      const rate=hpPipeRate(look.rate, state.systemType, hpMult);
+      const qty=Math.ceil(footage*wasteFactor);
+      items.push({id:uid(),section:'Copper',desc:`${size}" Soft Copper (coil) — in floor`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,softCopper:true,
+        notes:['in-floor line — soft copper in coils, no hangers or saddles', look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')});
     });
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
 
@@ -1078,6 +1094,8 @@ export default function Step4_Materials({ onNext, onBack }) {
         cases: n,
         sucSize: c.sucHoriz ? normalizePipeSize(c.sucHoriz) : '',
         liqSize: c.liqHoriz ? normalizePipeSize(c.liqHoriz) : '',
+        // A drop over 5 ft is a riser, and takes the riser size on suction.
+        sucRiser: c.sucRiser ? normalizePipeSize(c.sucRiser) : '',
         // What the CASE comes stubbed with. Used for one thing: the small end
         // of the bushing. The drop that meets it is run size, because the
         // reduction happens at the case.

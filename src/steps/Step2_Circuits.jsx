@@ -3,7 +3,7 @@ import { useStore, uid, normalizePipeSize } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Select, Row, EmptyState } from '../components/UI.jsx';
 import { newHeader, headerSanityNote, HOME_RUN, SHARED_HEADER } from '../components/headers.js';
-import { casesFromApplication } from '../components/caseHookup.js';
+import { casesFromApplication, DEFAULT_CASE_RISER_FT } from '../components/caseHookup.js';
 
 // Stops at 3-1/8 no longer: a loop system's shared suction header runs 3-5/8,
 // 4-1/8 and larger, and a size the dropdown does not offer is a size the
@@ -90,6 +90,21 @@ function CircuitRow({ circuit, onUpdate, onRemove }) {
           />
           Riser only (no horizontal run)
         </label>
+        {/* In-floor lines are a different product and a different install:
+            "some lines might get pushed in the floor and those don't need
+            hangers and are always soft copper." Soft comes in coils rather
+            than 20 ft sticks, and the slab does the supporting. */}
+        {!circuit.isRiserOnly && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: colors.text, marginLeft: 18 }}>
+            <input
+              type="checkbox"
+              checked={circuit.inFloor || false}
+              onChange={e => onUpdate('inFloor', e.target.checked)}
+              style={{ accentColor: colors.green }}
+            />
+            In the floor (soft copper, no hangers)
+          </label>
+        )}
       </Row>
 
       <Row style={{ flexWrap: 'wrap', gap: 8 }}>
@@ -104,7 +119,7 @@ function CircuitRow({ circuit, onUpdate, onRemove }) {
         {/* Riser length */}
         <div style={{ flex: '0 0 90px' }}>
           <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Riser (ft)</div>
-          <Input type="number" value={circuit.riserLength || ''} onChange={e => onUpdate('riserLength', e.target.value)} placeholder="20" />
+          <Input type="number" value={circuit.riserLength || ''} onChange={e => onUpdate('riserLength', e.target.value)} placeholder={String(DEFAULT_CASE_RISER_FT)} />
         </div>
 
         {/* Suc Horiz */}
@@ -162,7 +177,7 @@ export default function Step2_Circuits({ onNext, onBack }) {
       // nobody has said" and is flagged as an assumption; a typed 1 is somebody
       // saying there is one case. The estimate is the same either way — the
       // difference is whether the app claims to know.
-      circuit: { id: uid(), circuitId: '', rack: '', application: '', runLength: 0, riserLength: 20, sucHoriz: '', sucRiser: '', liqHoriz: '', tempType: 'medium', isRiserOnly: false, caseCount: '', notes: '' }
+      circuit: { id: uid(), circuitId: '', rack: '', application: '', runLength: 0, riserLength: DEFAULT_CASE_RISER_FT, sucHoriz: '', sucRiser: '', liqHoriz: '', tempType: 'medium', isRiserOnly: false, inFloor: false, caseCount: '', notes: '' }
     });
   }
 
