@@ -67,31 +67,41 @@ describe('caseHookupLines', () => {
 
   it('multiplies stubs by the case count', () => {
     const lines = caseHookupLines(base);
-    const suc = lines.find(l => /suction stubs/.test(l.desc));
+    const suc = lines.find(l => /Case drops — suction/.test(l.desc));
     expect(suc.qty).toBe(8 * DEFAULT_STUB_FT);
     expect(suc.unit).toBe('ft');
   });
 
-  it('stubs the case at the CASE size, not the run size', () => {
-    // "Case stubs are usually 5/8 for suction and 3/8 for liquid." This took
-    // the circuit's line size, so a 1-1/8" run bought 1-1/8" copper down to
-    // every case.
+  it('drops to the case in RUN-size copper, because the reduction is at the case', () => {
+    // "We reduce at the case so the ells are run size." If the ells are run
+    // size the pipe between them is too. This was briefly modelled the other
+    // way — reduce at the tee and run small — which under-buys the drop.
     const lines = caseHookupLines(base);   // run is 1-1/8" suction, 1/2" liquid
-    expect(lines.find(l => /suction stubs/.test(l.desc)).pipeSize).toBe('5/8"');
-    expect(lines.find(l => /liquid stubs/.test(l.desc)).pipeSize).toBe('3/8"');
+    expect(lines.find(l => /Case drops — suction/.test(l.desc)).pipeSize).toBe('1-1/8"');
+    expect(lines.find(l => /Case drops — liquid/.test(l.desc)).pipeSize).toBe('1/2"');
+  });
+
+  it('insulates the drop at the run size', () => {
+    expect(caseHookupLines(base).find(l => /insulation/i.test(l.desc)).pipeSize).toBe('1-1/8"');
+  });
+
+  it('says on the drop what it reduces to at the bottom', () => {
+    const suc = caseHookupLines(base).find(l => /Case drops — suction/.test(l.desc));
+    expect(suc.notes).toMatch(/run size down to the case, reduced at the case to 5\/8"/);
+  });
+
+  it('uses the case-stub size for the bushing and nothing else', () => {
+    // "Some are different but that's what I would set as a default." Changing
+    // it moves the bushing and leaves every run-size part alone.
+    const std = caseHookupLines(base);
+    const alt = caseHookupLines({ ...base, stubSuc: '7/8"', stubLiq: '1/2"' });
+    const notBushing = ls => ls.filter(l => l.fittingType !== 'Bushing')
+      .map(l => `${l.desc}:${l.qty}`).sort().join('|');
+    expect(notBushing(alt)).toBe(notBushing(std));
+    expect(alt.find(l => l.fittingType === 'Bushing' && /suction/.test(l.desc)).desc)
+      .toContain('1-1/8" × 7/8"');
     expect(DEFAULT_STUB_SUCTION).toBe('5/8"');
     expect(DEFAULT_STUB_LIQUID).toBe('3/8"');
-  });
-
-  it('insulates the stub at the stub size', () => {
-    expect(caseHookupLines(base).find(l => /insulation/i.test(l.desc)).pipeSize).toBe('5/8"');
-  });
-
-  it('takes a different stub size for a store that runs one', () => {
-    // "Some are different but that's what I would set as a default."
-    const lines = caseHookupLines({ ...base, stubSuc: '7/8"', stubLiq: '1/2"' });
-    expect(lines.find(l => /suction stubs/.test(l.desc)).pipeSize).toBe('7/8"');
-    expect(lines.find(l => /liquid stubs/.test(l.desc)).pipeSize).toBe('1/2"');
   });
 
   it('does NOT price a liquid ball valve at the case', () => {
@@ -155,14 +165,14 @@ describe('caseHookupLines', () => {
     expect(caseHookupLines({})).toEqual([]);
   });
 
-  it('skips a stub whose size nobody has set', () => {
-    // Better an absent line than a line reading '" Case liquid stubs'.
-    expect(descs({ stubLiq: '' })).not.toMatch(/liquid stubs/);
+  it('skips a drop whose run size nobody has set', () => {
+    // Better an absent line than one reading '" Case drops — liquid'.
+    expect(descs({ liqSize: '' })).not.toMatch(/Case drops — liquid/);
   });
 
   it('honours stub and case lengths set for the job', () => {
     const lines = caseHookupLines({ ...base, stubFt: 8, caseFt: 10 });
-    expect(lines.find(l => /suction stubs/.test(l.desc)).qty).toBe(64);
+    expect(lines.find(l => /Case drops — suction/.test(l.desc)).qty).toBe(64);
     expect(lines.find(l => /PVC case drain/.test(l.desc)).qty).toBe(80);
   });
 
@@ -270,9 +280,9 @@ describe('lineup fittings', () => {
   });
 
   it('makes the bushing a real run-by-stub part, not a caveat', () => {
-    // "...and bushing depending on the size the case is stubbed up." With both
-    // sizes known that stops being an open question: a 1-1/8" run reducing to
-    // a 5/8" case stub is a 1-1/8" x 5/8" bushing.
+    // "...and bushing depending on the size the case is stubbed up." It is the
+    // ONE fitting that spans the two sizes, which is why the estimator tied
+    // the caveat to it and to nothing else.
     const b = lines.find(l => l.fittingType === 'Bushing' && /suction/.test(l.desc));
     expect(b.desc).toContain('1-1/8" × 5/8"');
     expect(b.spanSize).toBe('1-1/8"');
@@ -283,12 +293,17 @@ describe('lineup fittings', () => {
       .toBe(fittingPrice('Bushing', '1-1/8').price);
   });
 
-  it('sizes the tee on the RUN and everything downstream on the stub', () => {
-    // The tee is in the run; the bushing reduces; the rest is on the stub. At
-    // 5/8" against 1-1/8" that is $9.60 an ell rather than $24.30.
+  it('keeps every fitting at RUN size except the bushing', () => {
+    // "We reduce at the case so the ells are run size." The reduction happens
+    // once, at the last fitting. Sizing the ells small instead would be $9.60
+    // against $24.30 across two dozen ells a lineup — an under-bid every time.
     expect(at('Tee', 'suction', 'middle').pipeSize).toBe('1-1/8"');
-    expect(at('Elbow 90°', 'suction', 'middle').pipeSize).toBe('5/8"');
-    expect(at('Coupling', 'suction', 'middle').pipeSize).toBe('5/8"');
+    expect(at('Elbow 90°', 'suction', 'middle').pipeSize).toBe('1-1/8"');
+    expect(at('Coupling', 'suction', 'middle').pipeSize).toBe('1-1/8"');
+    expect(at('Street Ell', 'suction', 'end').pipeSize).toBe('1-1/8"');
+    // Only this one steps down.
+    expect(at('Bushing', 'suction', 'middle').spanSize).toBe('1-1/8"');
+    expect(at('Bushing', 'suction', 'middle').pipeSize).toBe('5/8"');
   });
 
   it('names fitting types the ACR price table can actually price', () => {
@@ -318,14 +333,11 @@ describe('lineup fittings', () => {
       .some(l => l.fittingType)).toBe(false);
   });
 
-  it('drops only what it cannot size when a RUN size is missing', () => {
-    // Without a run size there is no tee and no bushing, because both need it.
-    // The stub-side fittings are still known — the case is stubbed 3/8"
-    // whether or not anybody typed the liquid run — so they stay.
+  it('generates no fittings for a side whose run size is missing', () => {
+    // Every fitting is sized off the run now, including the bushing's large
+    // end, so without a run size there is nothing on that side to size.
     const noLiq = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '' });
-    expect(at('Tee', 'liquid', 'middle', noLiq)).toBeUndefined();
-    expect(at('Bushing', 'liquid', 'middle', noLiq)).toBeUndefined();
-    expect(at('Elbow 90°', 'liquid', 'middle', noLiq).pipeSize).toBe('3/8"');
+    expect(noLiq.some(l => l.fittingType && /liquid/.test(l.desc))).toBe(false);
     expect(at('Tee', 'suction', 'middle', noLiq).pipeSize).toBe('1-1/8"');
   });
 });
