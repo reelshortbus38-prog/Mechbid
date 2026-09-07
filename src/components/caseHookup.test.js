@@ -4,8 +4,9 @@ import {
   DEFAULT_STUB_FT, DEFAULT_CASE_FT, LINEUP_POSITIONS,
   END_CASE_SUCTION, END_CASE_LIQUID, START_CASE_SUCTION, START_CASE_LIQUID,
   MIDDLE_CASE_SUCTION, MIDDLE_CASE_LIQUID,
+  DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID,
 } from './caseHookup.js';
-import { fittingPrice } from './fittingPrices.js';
+import { fittingPrice, fittingPriceForPair } from './fittingPrices.js';
 
 // ── READING THE COUNT OFF THE LEGEND ────────────────────────────────────────
 // "The legend that I upload usually says what cases are hooked to each
@@ -71,6 +72,28 @@ describe('caseHookupLines', () => {
     expect(suc.unit).toBe('ft');
   });
 
+  it('stubs the case at the CASE size, not the run size', () => {
+    // "Case stubs are usually 5/8 for suction and 3/8 for liquid." This took
+    // the circuit's line size, so a 1-1/8" run bought 1-1/8" copper down to
+    // every case.
+    const lines = caseHookupLines(base);   // run is 1-1/8" suction, 1/2" liquid
+    expect(lines.find(l => /suction stubs/.test(l.desc)).pipeSize).toBe('5/8"');
+    expect(lines.find(l => /liquid stubs/.test(l.desc)).pipeSize).toBe('3/8"');
+    expect(DEFAULT_STUB_SUCTION).toBe('5/8"');
+    expect(DEFAULT_STUB_LIQUID).toBe('3/8"');
+  });
+
+  it('insulates the stub at the stub size', () => {
+    expect(caseHookupLines(base).find(l => /insulation/i.test(l.desc)).pipeSize).toBe('5/8"');
+  });
+
+  it('takes a different stub size for a store that runs one', () => {
+    // "Some are different but that's what I would set as a default."
+    const lines = caseHookupLines({ ...base, stubSuc: '7/8"', stubLiq: '1/2"' });
+    expect(lines.find(l => /suction stubs/.test(l.desc)).pipeSize).toBe('7/8"');
+    expect(lines.find(l => /liquid stubs/.test(l.desc)).pipeSize).toBe('1/2"');
+  });
+
   it('does NOT price a liquid ball valve at the case', () => {
     // "For the ones I've done that's not a loop system the EPR and liquid ball
     // valves are on the rack." Forty valves in the motor room, not forty at
@@ -121,7 +144,6 @@ describe('caseHookupLines', () => {
   it('insulates the suction stub and not the liquid', () => {
     const lines = caseHookupLines(base);
     expect(lines.filter(l => /insulation/i.test(l.desc))).toHaveLength(1);
-    expect(lines.find(l => /insulation/i.test(l.desc)).pipeSize).toBe('1-1/8"');
   });
 
   it('skips insulation when the job does not insulate', () => {
@@ -135,7 +157,7 @@ describe('caseHookupLines', () => {
 
   it('skips a stub whose size nobody has set', () => {
     // Better an absent line than a line reading '" Case liquid stubs'.
-    expect(descs({ liqSize: '' })).not.toMatch(/liquid stubs/);
+    expect(descs({ stubLiq: '' })).not.toMatch(/liquid stubs/);
   });
 
   it('honours stub and case lengths set for the job', () => {
@@ -170,49 +192,52 @@ describe('caseHookupLines', () => {
 //  tee, and one ell for liquid and 2 for suction."
 describe('lineup fittings', () => {
   const lines = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '1/2"' });
-  const at = (size, type, line, pos) =>
-    lines.find(l => l.desc === `${size} ${type} — ${line} at ${pos}`);
+  // Find by what a fitting IS and where it sits, not by its rendered size —
+  // the size now depends on whether the fitting is on the run or the stub.
+  const at = (type, line, pos, ls = lines) =>
+    ls.find(l => l.fittingType === type && l.lineupPosition === pos
+      && new RegExp(`${line} at `).test(l.desc));
 
   it('terminates the end case with no tee', () => {
     // Nothing continues past it, which is exactly why it has no tee.
-    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'end case').qty).toBe(2);
-    expect(at('1-1/8"', 'Street Ell', 'suction', 'end case').qty).toBe(1);
-    expect(at('1-1/8"', 'Coupling', 'suction', 'end case').qty).toBe(1);
-    expect(at('1-1/8"', 'Bushing', 'suction', 'end case').qty).toBe(1);
-    expect(at('1-1/8"', 'Tee', 'suction', 'end case')).toBeUndefined();
-    expect(at('1/2"', 'Elbow 90°', 'liquid', 'end case').qty).toBe(2);
-    expect(at('1/2"', 'Street Ell', 'liquid', 'end case')).toBeUndefined();
-    expect(at('1/2"', 'Tee', 'liquid', 'end case')).toBeUndefined();
+    expect(at('Elbow 90°', 'suction', 'end').qty).toBe(2);
+    expect(at('Street Ell', 'suction', 'end').qty).toBe(1);
+    expect(at('Coupling', 'suction', 'end').qty).toBe(1);
+    expect(at('Bushing', 'suction', 'end').qty).toBe(1);
+    expect(at('Tee', 'suction', 'end')).toBeUndefined();
+    expect(at('Elbow 90°', 'liquid', 'end').qty).toBe(2);
+    expect(at('Street Ell', 'liquid', 'end')).toBeUndefined();
+    expect(at('Tee', 'liquid', 'end')).toBeUndefined();
   });
 
   it('tees the start case, because the run carries on past it', () => {
-    expect(at('1-1/8"', 'Tee', 'suction', 'start case').qty).toBe(1);
-    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'start case').qty).toBe(2);
-    expect(at('1-1/8"', 'Coupling', 'suction', 'start case').qty).toBe(1);
-    expect(at('1-1/8"', 'Bushing', 'suction', 'start case').qty).toBe(1);
+    expect(at('Tee', 'suction', 'start').qty).toBe(1);
+    expect(at('Elbow 90°', 'suction', 'start').qty).toBe(2);
+    expect(at('Coupling', 'suction', 'start').qty).toBe(1);
+    expect(at('Bushing', 'suction', 'start').qty).toBe(1);
     // Liquid takes ONE ell where suction takes two — the only difference
     // between the two lines at this position.
-    expect(at('1/2"', 'Elbow 90°', 'liquid', 'start case').qty).toBe(1);
-    expect(at('1/2"', 'Tee', 'liquid', 'start case').qty).toBe(1);
-    expect(at('1/2"', 'Coupling', 'liquid', 'start case').qty).toBe(1);
-    expect(at('1/2"', 'Bushing', 'liquid', 'start case').qty).toBe(1);
+    expect(at('Elbow 90°', 'liquid', 'start').qty).toBe(1);
+    expect(at('Tee', 'liquid', 'start').qty).toBe(1);
+    expect(at('Coupling', 'liquid', 'start').qty).toBe(1);
+    expect(at('Bushing', 'liquid', 'start').qty).toBe(1);
   });
 
   it('gives no street ell to the start case', () => {
-    expect(at('1-1/8"', 'Street Ell', 'suction', 'start case')).toBeUndefined();
+    expect(at('Street Ell', 'suction', 'start')).toBeUndefined();
   });
 
   it('taps every case in the middle, and that is the part that multiplies', () => {
     // "The middle cases just get a tee and 2 ells and coupling and bushing."
     // Eight cases = six middles. Until this was filled in the middle of every
     // lineup was free.
-    expect(at('1-1/8"', 'Tee', 'suction', 'middle case').qty).toBe(6);
-    expect(at('1-1/8"', 'Elbow 90°', 'suction', 'middle case').qty).toBe(12);
-    expect(at('1-1/8"', 'Coupling', 'suction', 'middle case').qty).toBe(6);
-    expect(at('1-1/8"', 'Bushing', 'suction', 'middle case').qty).toBe(6);
+    expect(at('Tee', 'suction', 'middle').qty).toBe(6);
+    expect(at('Elbow 90°', 'suction', 'middle').qty).toBe(12);
+    expect(at('Coupling', 'suction', 'middle').qty).toBe(6);
+    expect(at('Bushing', 'suction', 'middle').qty).toBe(6);
     // Two ells on BOTH lines here — not the 1-vs-2 split the start case has.
-    expect(at('1/2"', 'Elbow 90°', 'liquid', 'middle case').qty).toBe(12);
-    expect(at('1/2"', 'Tee', 'liquid', 'middle case').qty).toBe(6);
+    expect(at('Elbow 90°', 'liquid', 'middle').qty).toBe(12);
+    expect(at('Tee', 'liquid', 'middle').qty).toBe(6);
   });
 
   it('scales the middle with the case count and leaves the ends alone', () => {
@@ -244,12 +269,26 @@ describe('lineup fittings', () => {
     expect(one.some(l => l.fittingType === 'Tee')).toBe(false);
   });
 
-  it('says the bushing size is the one thing the takeoff cannot know', () => {
-    // "...and bushing depending on the size the case is stubbed up." The run
-    // size is known; what the case is stubbed with is not.
-    const bushings = lines.filter(l => l.fittingType === 'Bushing');
-    expect(bushings.length).toBeGreaterThan(0);
-    for (const b of bushings) expect(b.notes).toMatch(/case stub size/);
+  it('makes the bushing a real run-by-stub part, not a caveat', () => {
+    // "...and bushing depending on the size the case is stubbed up." With both
+    // sizes known that stops being an open question: a 1-1/8" run reducing to
+    // a 5/8" case stub is a 1-1/8" x 5/8" bushing.
+    const b = lines.find(l => l.fittingType === 'Bushing' && /suction/.test(l.desc));
+    expect(b.desc).toContain('1-1/8" × 5/8"');
+    expect(b.spanSize).toBe('1-1/8"');
+    expect(b.pipeSize).toBe('5/8"');
+    expect(b.notes).toMatch(/reduces the 1-1\/8" run to the 5\/8" case stub/);
+    // It prices on the larger body, which is what fittingPriceForPair is for.
+    expect(fittingPriceForPair('Bushing', '1-1/8', '5/8').price)
+      .toBe(fittingPrice('Bushing', '1-1/8').price);
+  });
+
+  it('sizes the tee on the RUN and everything downstream on the stub', () => {
+    // The tee is in the run; the bushing reduces; the rest is on the stub. At
+    // 5/8" against 1-1/8" that is $9.60 an ell rather than $24.30.
+    expect(at('Tee', 'suction', 'middle').pipeSize).toBe('1-1/8"');
+    expect(at('Elbow 90°', 'suction', 'middle').pipeSize).toBe('5/8"');
+    expect(at('Coupling', 'suction', 'middle').pipeSize).toBe('5/8"');
   });
 
   it('names fitting types the ACR price table can actually price', () => {
@@ -279,9 +318,14 @@ describe('lineup fittings', () => {
       .some(l => l.fittingType)).toBe(false);
   });
 
-  it('skips a side whose size nobody has set', () => {
+  it('drops only what it cannot size when a RUN size is missing', () => {
+    // Without a run size there is no tee and no bushing, because both need it.
+    // The stub-side fittings are still known — the case is stubbed 3/8"
+    // whether or not anybody typed the liquid run — so they stay.
     const noLiq = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '' });
-    expect(noLiq.some(l => l.fittingType && /liquid/.test(l.desc))).toBe(false);
-    expect(noLiq.some(l => l.fittingType && /suction/.test(l.desc))).toBe(true);
+    expect(at('Tee', 'liquid', 'middle', noLiq)).toBeUndefined();
+    expect(at('Bushing', 'liquid', 'middle', noLiq)).toBeUndefined();
+    expect(at('Elbow 90°', 'liquid', 'middle', noLiq).pipeSize).toBe('3/8"');
+    expect(at('Tee', 'suction', 'middle', noLiq).pipeSize).toBe('1-1/8"');
   });
 });
