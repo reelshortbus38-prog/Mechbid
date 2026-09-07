@@ -23,8 +23,8 @@
 // rod, and it carried a comment above it explaining why it was correct.
 //
 // So: saddles still calculate, because the arithmetic matches the thing. The
-// trapeze lines do not, because no arithmetic does. From the estimator who
-// installs them: "It's really hard to auto calculate the hangers because you
+// trapeze lines do not, because no arithmetic does. From the mechanic who
+// builds them: "It's really hard to auto calculate the hangers because you
 // just never know till you go look." They generate at ZERO, carrying the facts
 // the takeoff does know, and get filled in after somebody walks the job.
 //
@@ -104,7 +104,7 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
       desc: `Unistrut — trapeze (10' sticks) — MEASURE ON SITE (5-6 ft per hanger, ${CIRCUITS_PER_HANGER} circuits each; double-stack or a second route past that)` },
     // Rod does not say MEASURE ON SITE, because that is not what happens.
     // Verifying a drop length means getting up in the ceiling with a tape, and
-    // the estimator's read is that most contractors won't: "they just order a
+    // the read from the field is that most contractors won't: "they just order a
     // bundle or so depending on their own experience." Telling somebody to go
     // measure something they are not going to measure produces a zero on the
     // bid, not a measurement. So the line asks for the thing they will actually

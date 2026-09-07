@@ -32,28 +32,41 @@ export function manHoursOf(task) {
   return (Number(task?.men) || 0) * (Number(task?.hrs) || 0);
 }
 
-// ── WHICH OF THESE NUMBERS ANYBODY HAS ACTUALLY CHECKED ──────────────────────
+// ── WHICH OF THESE NUMBERS ANYBODY HAS ACTUALLY CHECKED, AND BY WHOM ────────
 // The app's other numbers are checked against a document you can point at. The
 // labor units were not — they were my ballparks. Marking which have since been
-// confirmed, by whom, is the difference between a number and a guess wearing a
-// number's clothes, and the estimator is entitled to see which one he is
-// pricing with.
+// confirmed, and by whom, is the difference between a number and a guess
+// wearing a number's clothes.
+//
+// WHO HAS ACTUALLY LOOKED AT THESE. Almost everything in this app about what a
+// job consists of came from a refrigeration mechanic who INSTALLS this work —
+// what a case hookup is made of, where the fittings go, which lines change
+// size, what runs in the floor. That is strong ground for materials and it is
+// better than an estimator's read for the physical questions, because he is
+// the one holding the torch.
+//
+// It is NOT the same as bidding knowledge. The times below were checked with
+// his foreman on one occasion and are otherwise reasoned. NOBODY WHO BIDS JOBS
+// FOR A LIVING HAS REVIEWED THIS APP. Until one has, every 'confirmed' here
+// means "a man who does the work says the number looks right", which is worth
+// a great deal and is not the same as a number that has been bid, won and
+// built against.
 export const UNIT_PROVENANCE = {
-  perJointSmall: { state: 'confirmed', note: 'Confirmed by a working estimator — brazing times looked right as they stood.' },
-  perJointMed:   { state: 'confirmed', note: 'Confirmed by a working estimator — brazing times looked right as they stood.' },
-  perJointLarge: { state: 'confirmed', note: 'Confirmed by a working estimator — brazing times looked right as they stood.' },
+  perJointSmall: { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
+  perJointMed:   { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
+  perJointLarge: { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
   perCase: {
     state: 'varies',
     note: 'A working estimator would not put one number on this: "it\'s always different, too many variables." '
       + 'Treated as a placeholder allowance, not an estimate — check it against the cases this job actually has.',
   },
-  // Halved on an estimator's read of the totals, not on a measurement. That is
+  // Halved on an installing mechanic's read of the totals, not on a measurement. That is
   // better than the ballpark it replaced and still short of a checked number,
   // so it stays marked unconfirmed — a cut in the right direction is not the
   // same as knowing the figure.
-  perFtSmall:  { state: 'unconfirmed', note: 'Halved from 0.06 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
-  perFtMed:    { state: 'unconfirmed', note: 'Halved from 0.09 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
-  perFtLarge:  { state: 'unconfirmed', note: 'Halved from 0.13 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
+  perFtSmall:  { state: 'unconfirmed', note: 'Halved from 0.06 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
+  perFtMed:    { state: 'unconfirmed', note: 'Halved from 0.09 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
+  perFtLarge:  { state: 'unconfirmed', note: 'Halved from 0.13 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: {
     state: 'unconfirmed',

@@ -1469,7 +1469,7 @@ export default function Step1_Setup({ onNext }) {
       {/* ── SUCTION PIPING LAYOUT ──
           Lives HERE, with the other job-shape questions, because that is where
           an estimator goes looking for it. It was on the Circuits card next to
-          the warning it silences, and a working estimator went to Setup twice
+          the warning it silences, and the mechanic testing it went to Setup twice
           expecting it — job type, system type, secondary loop and project type
           are all on this step, and this is the same kind of question.
 
