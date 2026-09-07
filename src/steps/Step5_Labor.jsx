@@ -448,11 +448,19 @@ function CircuitLaborEstimator() {
               number look identical in a box, and the estimator is the one who
               has to defend the total. */}
           <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
-            <span style={{ color: colors.green, fontWeight: 700 }}>✓</span> confirmed by a working estimator ·{' '}
+            <span style={{ color: colors.green, fontWeight: 700 }}>✓</span> checked with a working foreman ·{' '}
             <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> varies too much for one number ·{' '}
             <span style={{ fontWeight: 700 }}>?</span> not yet checked against a finished job.
             <br />
             {provenanceOf('perCase').note}
+            <br />
+            {/* Said plainly on screen, not only in a comment. What this app knows
+                about the WORK came from someone who installs it; what it does
+                not yet have is anyone who bids for a living. */}
+            <strong style={{ color: colors.yellow }}>These units have not been reviewed by an estimator.</strong>{' '}
+            The materials in this app come from a refrigeration mechanic who installs the work, which is solid ground
+            for what a job is made of. Times are a different question — check these against your own jobs before you
+            lean on them.
           </div>
         </>
       )}

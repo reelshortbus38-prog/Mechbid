@@ -1111,7 +1111,7 @@ export function calcFieldTasksTotal(fieldTasks, crew) {
 // dominate, so they're tracked separately from footage. Sizes are bucketed
 // small (≤7/8") / med (1-1/8"–1-3/8") / large (≥1-5/8").
 export const DEFAULT_LABOR_UNITS = {
-  // Running rates, halved from 0.06/0.09/0.13 after a working estimator read
+  // Running rates, halved from 0.06/0.09/0.13 after an installing mechanic read
   // the circuit totals as running about double. The brazing times below were
   // looked at in the same pass and left alone — he said those were about right,
   // so the whole cut lands here rather than being spread over a number somebody
@@ -1130,7 +1130,7 @@ export const DEFAULT_LABOR_UNITS = {
   // ── FITTINGS: THE NUMBER YOU CANNOT GET FROM A DESK ───────────────────────
   // Joints a circuit has BEYOND one per stick. This started as a hardcoded +2
   // — the rack tie and the case — which described a straight pipe from the
-  // motor room to the case. No such circuit exists. In a working estimator's
+  // motor room to the case. No such circuit exists. In an installing mechanic's
   // words, a run leaves the motor room and ells one way or the other, goes
   // down the back hall, takes another set of ells to turn onto the sales
   // floor, sometimes ells up and over, another set toward the case, then a set

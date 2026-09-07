@@ -12,12 +12,12 @@
 //
 // WHERE THE NUMBERS COME FROM — this matters, because only one of them is real:
 //
-//   COPPER is derived from the estimator's own figure, 3/4" Type L at $9/ft.
+//   COPPER is derived from a field figure pulled by a mechanic, 3/4" Type L at $9/ft.
 //   Copper cost tracks the weight of metal in the pipe, so every other size is
 //   that price scaled by Type L weight per foot. Change the anchor and the whole
 //   table moves with it, staying internally consistent.
 //
-//   STEEL is NOT from the estimator. It is a round placeholder from typical
+//   STEEL is from nobody at all. It is a round placeholder from typical
 //   schedule-40 black pipe pricing, and it is flagged as such wherever it is
 //   used. Anyone bidding off it should replace it with a real quote.
 //

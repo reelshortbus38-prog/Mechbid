@@ -3,7 +3,7 @@
 // the takeoff had none — case work existed only as a single labor unit, and the
 // material it consumes was folded invisibly into circuit footage.
 //
-// What is actually in one, from the estimator who does them:
+// What is actually in one, from a refrigeration mechanic who installs them:
 //
 //   ONE SUCTION BRANCH SERVES A LINEUP. "One 1-1/8 suction could run multiple
 //   cases." So a hookup is a short drop off a branch that is already running
@@ -51,7 +51,7 @@ export const RISER_THRESHOLD_FT = 5;
 // What a new circuit's riser starts at. It was 20 ft, which is most of a
 // two-storey drop on a line that only has to reach a case: "maybe to calculate
 // the riser lengths would be about 10-12 ft per circuit for dropping at the
-// case." Twelve, the top of the range he gave, because it is still a guess and
+// case." Twelve, the top of the range given, because it is still a guess and
 // the guess should not be the one that under-buys.
 //
 // And it is a guess. "You never know till you look in person to know exact.
@@ -93,15 +93,15 @@ export const DEFAULT_DRAIN_SIZE = '1-1/4"';
 // This is the CASE's own connection, not pipe anybody buys — the drop that
 // meets it is run size all the way down (see the `at` note below). So these
 // two numbers do exactly one job: they are the small end of the bushing, which
-// is the fitting the estimator attached the sizing caveat to and the only one
-// that spans the two sizes.
+// is the fitting he attached the sizing caveat to, and the only one that spans
+// the two sizes.
 export const DEFAULT_STUB_SUCTION = '5/8"';
 export const DEFAULT_STUB_LIQUID = '3/8"';
 
 // ── WHERE A CASE SITS IN THE LINEUP DECIDES ITS FITTINGS ────────────────────
 // The piping runs along the case tops, and the two ends of that run are
-// different jobs. The estimator gave both, and the difference between them is
-// a TEE — which is the detail that makes the whole model make sense.
+// different jobs. He gave both, and the difference between them is a TEE —
+// which is the detail that makes the whole model make sense.
 //
 // THE END CASE. Nothing continues past it, so the run terminates: it turns
 // down into the case and stops. No tee.
@@ -380,7 +380,7 @@ export function caseHookupLines({
 // charge. Putting joints on top would bill the same work twice, once as a case
 // and once as four fittings, on every case in the store.
 //
-// The estimator's point about bunched joints is real and it landed somewhere
+// His point about bunched joints is real and it landed somewhere
 // else, where it does apply: see clusterFactor in the labor units. The per-
 // joint rate is for a joint on its own, and a riser's four — the ells up and
 // over plus the P-trap, all in one spot — were being charged four full trips.
