@@ -59,6 +59,19 @@ export const RISER_THRESHOLD_FT = 5;
 // the fittings and the hangers before it.
 export const DEFAULT_CASE_RISER_FT = 12;
 
+// ── THE DROP YOU HAVEN'T FOUND YET ──────────────────────────────────────────
+// Every unknown in this app so far has been handled by saying so and leaving a
+// zero. This one has a real answer, because the trade already solved it —
+// nobody predicts where the extra drop is, they buy pipe for it:
+//
+//   "Usually they will have ordered enough pipe to handle one other drop in
+//    the store, or even a few for multiple circuits."
+//
+// So the allowance is a COUNT OF SPARE DROPS, not a percentage and not a
+// guess at locations. One is the common answer; a big store with a lot of
+// circuits carries a few.
+export const DEFAULT_SPARE_DROPS = 1;
+
 // ── THE DRAIN IS THE CASE, NOT THE WALK TO A HUB ────────────────────────────
 // This was modelled as "distance from the case to the floor drain hub" and
 // defaulted to 15 ft, which is the wrong SHAPE, not just the wrong number:
@@ -370,3 +383,45 @@ export function caseHookupLines({
 //
 // The material is right. The labor for hooking a case up is still the flat
 // perCase unit, now correctly multiplied by the case count.
+
+// ── SPARE RISER COPPER ──────────────────────────────────────────────────────
+// Pipe for the drops nobody has found yet. Sized and lengthed off the job's
+// OWN risers rather than a table: the size with the most riser footage is the
+// one a surprise drop is most likely to need, and the typical riser on this
+// store is the best guess at how long it will be.
+//
+// Suction only. A drop over 5 ft changes the suction line and nothing else,
+// which is the same rule the case drops follow.
+//
+// normalize: the app's pipe-size normalizer, passed in so this module stays
+// free of store imports.
+//
+// → { size, ftPerDrop, drops, ft, basis } or null when the job has no risers
+// to be spare of.
+export function spareRiserPlan(circuits = [], drops = DEFAULT_SPARE_DROPS, normalize = (s) => String(s || '')) {
+  const n = Math.max(0, Math.round(Number(drops) || 0));
+  if (n === 0) return null;
+
+  // Which riser size this job actually runs, by footage — not by count, since
+  // one long riser matters more than two short ones.
+  const ftBySize = {};
+  const lengths = [];
+  for (const c of circuits) {
+    const riser = parseFloat(c?.riserLength) || 0;
+    if (riser <= 0 || !c?.sucRiser) continue;
+    const k = normalize(c.sucRiser);
+    ftBySize[k] = (ftBySize[k] || 0) + riser;
+    lengths.push(riser);
+  }
+  const entries = Object.entries(ftBySize);
+  if (entries.length === 0) return null;
+
+  const [size] = entries.sort((a, b) => b[1] - a[1])[0];
+  // The typical drop on THIS store, rounded up — a spare that is short is not
+  // a spare.
+  const ftPerDrop = Math.ceil(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+  return {
+    size, ftPerDrop, drops: n, ft: n * ftPerDrop,
+    basis: `${n} spare drop(s) × ${ftPerDrop} ft — the typical riser on this job, at the size it runs most`,
+  };
+}
