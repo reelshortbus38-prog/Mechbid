@@ -200,3 +200,37 @@ describe('basisText', () => {
       .toBe('11 circuit(s), longest run 150 ft, header 220 ft — about 37 supports per route at 6 ft');
   });
 });
+
+// ── LINES IN THE FLOOR ──────────────────────────────────────────────────────
+// "Some lines might get pushed in the floor and those don't need hangers and
+// are always soft copper." The slab supports them, so they take neither a
+// trapeze nor a saddle.
+describe('in-floor circuits', () => {
+  const overhead = { id: 'a', runLength: 150, sucHoriz: '2-1/8', liqHoriz: '7/8', tempType: 'low' };
+  const buried = { id: 'b', runLength: 400, inFloor: true, sucHoriz: '2-1/8', liqHoriz: '7/8', tempType: 'low' };
+
+  it('leaves an in-floor run out of the hanger route', () => {
+    // The buried run is the LONGEST one here. If it counted, it would set the
+    // route and buy 67 supports of strut for pipe sitting in concrete.
+    const b = hangerBasis([overhead, buried], 0, 6);
+    expect(b.routeFt).toBe(150);
+    expect(b.circuits).toBe(1);
+  });
+
+  it('generates no trapeze lines at all when everything is in the floor', () => {
+    expect(hangerLines([buried], 0, 6)).toEqual([]);
+  });
+
+  it('gives an in-floor run no saddles either', () => {
+    // A saddle stops a hanger crushing insulation. There is no hanger.
+    const only = saddleCounts([buried], 6, norm);
+    expect(only).toEqual([]);
+    const mixed = saddleCounts([overhead, buried], 6, norm);
+    expect(mixed.find(s => s.pipeSize === '2-1/8').ft).toBe(150);
+  });
+
+  it('still hangs a riser-only drop, which is not in the floor', () => {
+    const riser = { id: 'r', isRiserOnly: true, riserLength: 20, sucRiser: '1-3/8' };
+    expect(hangerBasis([overhead, riser], 0, 6).routeFt).toBe(150);
+  });
+});

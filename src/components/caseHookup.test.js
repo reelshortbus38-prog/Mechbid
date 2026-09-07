@@ -87,7 +87,37 @@ describe('caseHookupLines', () => {
 
   it('says on the drop what it reduces to at the bottom', () => {
     const suc = caseHookupLines(base).find(l => /Case drops — suction/.test(l.desc));
-    expect(suc.notes).toMatch(/run size down to the case, reduced at the case to 5\/8"/);
+    expect(suc.notes).toMatch(/reduced at the case to 5\/8"/);
+  });
+
+  it('takes the RISER size on suction once the drop passes 5 ft', () => {
+    // "We run the same size all the way to the case except when there are
+    // drops over 5 ft, and with those we change the suction line only and run
+    // the riser size."
+    const long = caseHookupLines({ ...base, stubFt: 9, sucRiser: '1-3/8"' });
+    const suc = long.find(l => /Case drops — suction/.test(l.desc));
+    expect(suc.pipeSize).toBe('1-3/8"');
+    expect(suc.notes).toMatch(/over 5 ft, so the suction drop takes the RISER size/);
+    // Liquid does not change, however far it falls.
+    expect(long.find(l => /Case drops — liquid/.test(l.desc)).pipeSize).toBe('1/2"');
+    // Insulation follows the pipe it goes on.
+    expect(long.find(l => /insulation/i.test(l.desc)).pipeSize).toBe('1-3/8"');
+  });
+
+  it('carries the riser size through to the suction fittings', () => {
+    const long = caseHookupLines({ ...base, stubFt: 9, sucRiser: '1-3/8"' });
+    const tee = long.find(l => l.fittingType === 'Tee' && /suction/.test(l.desc));
+    expect(tee.pipeSize).toBe('1-3/8"');
+    // The liquid side is untouched.
+    expect(long.find(l => l.fittingType === 'Tee' && /liquid/.test(l.desc)).pipeSize).toBe('1/2"');
+  });
+
+  it('stays run size at exactly 5 ft, and when no riser size is set', () => {
+    expect(caseHookupLines({ ...base, stubFt: 5, sucRiser: '1-3/8"' })
+      .find(l => /Case drops — suction/.test(l.desc)).pipeSize).toBe('1-1/8"');
+    // Nothing to switch to — better the run size than a blank line.
+    expect(caseHookupLines({ ...base, stubFt: 9 })
+      .find(l => /Case drops — suction/.test(l.desc)).pipeSize).toBe('1-1/8"');
   });
 
   it('uses the case-stub size for the bushing and nothing else', () => {
