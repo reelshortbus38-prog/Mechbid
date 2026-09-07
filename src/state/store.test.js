@@ -9,7 +9,7 @@ import {
   calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
   crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
   memberOtHours, otRuleConflict, STANDARD_WEEK_HOURS, DAYS_PER_WEEK_OPTIONS,
-  circuitCases,
+  circuitCases, circuitJoints, clusterJointEquivalent,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -728,5 +728,98 @@ describe('estimateCircuitLabor — case hookups scale with the lineup', () => {
     const none = estimateCircuitLabor([circuit({ caseCount: 0 })], units).totalHours;
     const one = estimateCircuitLabor([circuit({ caseCount: 1 })], units).totalHours;
     expect(one - none).toBeCloseTo(units.perCase, 5);
+  });
+});
+
+// ── JOINTS IN A BUNCH ───────────────────────────────────────────────────────
+// "When you have a bunch of joints in the same place, like the end of the case,
+// it's not gonna be the same as brazing each one and stopping to cool and check
+// it and insulate it." The per-joint unit is for a joint on its own — the trip,
+// the purge and the insulating are shared across a cluster.
+describe('clusterJointEquivalent', () => {
+  it('charges the first joint in full and the rest at the factor', () => {
+    expect(clusterJointEquivalent(1, 0.65)).toBe(1);
+    expect(clusterJointEquivalent(4, 0.65)).toBeCloseTo(1 + 3 * 0.65, 5);
+  });
+
+  it('prices every joint as a standalone one at a factor of 1', () => {
+    // The behaviour before this existed, one setting away.
+    expect(clusterJointEquivalent(4, 1)).toBe(4);
+  });
+
+  it('is nothing for no cluster', () => {
+    expect(clusterJointEquivalent(0, 0.65)).toBe(0);
+    expect(clusterJointEquivalent(undefined, 0.65)).toBe(0);
+  });
+
+  it('falls back rather than pricing at zero on a bad factor', () => {
+    expect(clusterJointEquivalent(4, undefined)).toBeCloseTo(1 + 3 * 0.65, 5);
+    expect(clusterJointEquivalent(4, 'x')).toBeCloseTo(1 + 3 * 0.65, 5);
+  });
+});
+
+describe('circuitJoints — which joints are bunched', () => {
+  const units = DEFAULT_LABOR_UNITS;
+
+  it('puts the riser fittings in the cluster and the turns loose', () => {
+    // The riser's are the ells up and over plus the P-trap: one spot, one
+    // setup. The circuit's own fittings are turns taken crossing the store.
+    const c = circuitJoints({ riserLength: 12 }, units);
+    expect(c.loose).toBe(units.jointsPerCircuit);
+    expect(c.clustered).toBe(units.jointsPerRiser);
+    expect(c.joints).toBe(units.jointsPerCircuit + units.jointsPerRiser);
+  });
+
+  it('clusters nothing on a circuit with no riser', () => {
+    const c = circuitJoints({ riserLength: 0 }, units);
+    expect(c.clustered).toBe(0);
+    expect(c.loose).toBe(units.jointsPerCircuit);
+  });
+
+  it('treats a COUNTED number as all loose', () => {
+    // Somebody walked the route and wrote down fourteen fittings. Nothing says
+    // which are bunched, and discounting an arrangement nobody described would
+    // be inventing a saving.
+    const c = circuitJoints({ fittingJoints: 14, riserLength: 12 }, units);
+    expect(c.source).toBe('counted');
+    expect(c.loose).toBe(14);
+    expect(c.clustered).toBe(0);
+  });
+});
+
+describe('estimateCircuitLabor — bunched joints cost less than scattered ones', () => {
+  const circuit = extra => ({
+    circuitId: 'A6', runLength: 100, riserLength: 12, sucHoriz: '1-1/8',
+    liqHoriz: '1/2', tempType: 'medium', ...extra,
+  });
+
+  it('discounts the riser cluster but not the joints along the run', () => {
+    const u = { ...DEFAULT_LABOR_UNITS, clusterFactor: 0.65 };
+    const est = estimateCircuitLabor([circuit()], u);
+    const row = est.perCircuit[0];
+    // 112 ft over 20 ft sticks = 6, plus 2 loose turns, plus a 4-joint riser
+    // cluster priced as 1 + 3 x 0.65.
+    expect(row.joints).toBe(6 + 2 + 4);
+    expect(row.jointUnits).toBeCloseTo(6 + 2 + (1 + 3 * 0.65), 2);
+  });
+
+  it('reports the joint COUNT unchanged, so the row still reads true', () => {
+    const est = estimateCircuitLabor([circuit()], DEFAULT_LABOR_UNITS);
+    expect(est.perCircuit[0].joints).toBeGreaterThan(est.perCircuit[0].jointUnits);
+  });
+
+  it('reproduces the old number exactly at a factor of 1', () => {
+    // The regression guard: this change lowers bids, so the way back has to be
+    // one setting and it has to land on the old figure.
+    const u = { ...DEFAULT_LABOR_UNITS, clusterFactor: 1 };
+    const est = estimateCircuitLabor([circuit()], u);
+    const row = est.perCircuit[0];
+    expect(row.jointUnits).toBe(row.joints);
+  });
+
+  it('does not discount a circuit whose fittings were counted', () => {
+    const u = { ...DEFAULT_LABOR_UNITS, clusterFactor: 0.65 };
+    const est = estimateCircuitLabor([circuit({ fittingJoints: 9 })], u);
+    expect(est.perCircuit[0].jointUnits).toBe(est.perCircuit[0].joints);
   });
 });

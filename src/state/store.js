@@ -1142,6 +1142,23 @@ export const DEFAULT_LABOR_UNITS = {
   // because the riser length is on the sheet — so it is added rather than
   // guessed at.
   jointsPerRiser: 4,
+  // ── JOINTS IN A BUNCH ARE NOT JOINTS IN A ROW ─────────────────────────────
+  // The per-joint units above are for a joint on its own: get to it, prep it,
+  // purge it, braze it, cool it, check it, insulate it, move on. From the
+  // estimator: "when you have a bunch of joints in the same place, like the
+  // end of the case, it's not gonna be the same as brazing each one and
+  // stopping to cool and check it and insulate it."
+  //
+  // Getting there happens once. The purge is once on the same line. The
+  // insulation is one operation over the group. Only the prep, the braze, the
+  // cool and the check are genuinely per joint. So the FIRST joint in a
+  // cluster costs the full unit and the rest cost this fraction of it.
+  //
+  // 0.65 is a reasoned split of that unit, not a measurement — and he warned
+  // in the same breath that "it takes different people different amounts of
+  // time." It is editable and marked unconfirmed. Set it to 1 to price every
+  // joint as a standalone one, which is what the app did before.
+  clusterFactor: 0.65,
 };
 
 // How many fittings-joints a circuit carries, and whether anybody actually
@@ -1166,14 +1183,33 @@ export function circuitCases(circuit) {
   return { cases: Math.round(n), source: 'counted' };
 }
 
+// `loose` are scattered along the route and each costs a full unit. `clustered`
+// are the riser's — the ells up and over and the P-trap, all in one spot, one
+// setup — and after the first they cost clusterFactor of a unit.
+//
+// A COUNTED number is all loose. If somebody walked the route and wrote down
+// fourteen fittings, nothing tells us which of them are bunched, and charging
+// a discount on an arrangement nobody described would be inventing a saving.
 export function circuitJoints(circuit, units) {
   const u = { ...DEFAULT_LABOR_UNITS, ...(units || {}) };
   const counted = parseFloat(circuit?.fittingJoints);
-  if (Number.isFinite(counted) && counted >= 0) return { joints: counted, source: 'counted' };
+  if (Number.isFinite(counted) && counted >= 0) {
+    return { joints: counted, loose: counted, clustered: 0, source: 'counted' };
+  }
   const base = Number.isFinite(parseFloat(u.jointsPerCircuit)) ? parseFloat(u.jointsPerCircuit) : 2;
   const hasRiser = (parseFloat(circuit?.riserLength) || 0) > 0 || !!circuit?.isRiserOnly;
   const riser = hasRiser && Number.isFinite(parseFloat(u.jointsPerRiser)) ? parseFloat(u.jointsPerRiser) : 0;
-  return { joints: base + riser, source: 'assumed' };
+  return { joints: base + riser, loose: base, clustered: riser, source: 'assumed' };
+}
+
+// What a cluster of n joints costs, in units of one standalone joint. One full
+// unit for the first, a fraction of it for each one after — because the trip,
+// the purge and the insulating are shared and only the brazing is not.
+export function clusterJointEquivalent(n, factor) {
+  const count = Math.max(0, Number(n) || 0);
+  if (count === 0) return 0;
+  const f = Number.isFinite(parseFloat(factor)) ? parseFloat(factor) : 0.65;
+  return 1 + (count - 1) * f;
 }
 
 export function pipeSizeBucket(size) {
@@ -1202,16 +1238,25 @@ export function estimateCircuitLabor(circuits, units) {
     // walked the route, allowed for if nobody has yet.
     const fit = circuitJoints(c, u);
     const joints = Math.ceil(ft / (u.stickLength || 20)) + fit.joints;
+    // Stick joints are spread along the run and each is its own trip. The
+    // circuit's loose fittings are the turns it takes crossing the store —
+    // also scattered. Only the riser's are bunched in one place.
+    const jointUnits = Math.ceil(ft / (u.stickLength || 20)) + fit.loose
+      + clusterJointEquivalent(fit.clustered, u.clusterFactor);
     // Case hookup is PER CASE, not per circuit. A lineup of six gets six.
     const cs = circuitCases(c);
-    const hrs = ft * perFt + joints * perJoint + cs.cases * u.perCase + u.perRackTie;
+    const hrs = ft * perFt + jointUnits * perJoint + cs.cases * u.perCase + u.perRackTie;
     totalHours += hrs;
     perCircuit.push({
       circuitId: c.circuitId || '?', application: c.application || '', ft, bucket,
       hours: Math.round(hrs * 10) / 10,
       // Carried so the estimator can see WHICH circuits are standing on a
       // fittings allowance and which were walked and counted.
-      joints, fittings: fit.joints, fittingsSource: fit.source,
+      // `joints` stays the COUNT of joints, for the estimator reading the row.
+      // `jointUnits` is what it was priced as, which is lower wherever joints
+      // share a setup.
+      joints, jointUnits: Math.round(jointUnits * 100) / 100,
+      fittings: fit.joints, fittingsSource: fit.source,
       cases: cs.cases, casesSource: cs.source,
     });
   });
