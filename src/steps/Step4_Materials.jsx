@@ -7,7 +7,7 @@ import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
 import CrossSheetCard from '../components/CrossSheetCard.jsx';
 import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../components/co2Pipe.js';
-import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
+import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt, HARD_STICK_FT } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { caseHookupLines, spareRiserPlan, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID, DEFAULT_SPARE_DROPS } from '../components/caseHookup.js';
@@ -961,14 +961,22 @@ export default function Step4_Materials({ onNext, onBack }) {
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
       const total=c.isRiserOnly?riser:run+riser;
-      const bucket = c.inFloor && !c.isRiserOnly ? softBySize : copperBySize;
+      const soft = c.inFloor && !c.isRiserOnly;
+      const bucket = soft ? softBySize : copperBySize;
       const add=(size,ft)=>{ if(!size||ft<=0) return; const k=normalizePipeSize(size); bucket[k]=(bucket[k]||0)+ft; };
+      // A riser is bought as a whole 20 ft stick, because that is the only way
+      // hard copper is sold and a 12 ft drop cannot be ordered. Rounded PER
+      // CIRCUIT — the 8 ft left over will not make another riser. Soft copper
+      // is coil, so it is cut to length and never rounded.
+      const riserBuy = soft ? riser : riserPurchaseFt(riser);
       // Riser-only = the SUCTION line only (estimator-confirmed: the liquid
       // doesn't get a riser on these drops).
-      if(c.isRiserOnly){ add(c.sucRiser, riser); }
+      if(c.isRiserOnly){ add(c.sucRiser, riserBuy); }
       else{
         add(c.sucHoriz, run);
-        add(c.sucRiser, riser);
+        add(c.sucRiser, riserBuy);
+        // Liquid has no riser of its own — it runs the full horizontal plus
+        // vertical distance at horizontal size, cut from the main lengths.
         add(c.liqHoriz, total);
       }
     });

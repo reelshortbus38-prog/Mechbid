@@ -38,6 +38,7 @@
 // already follows.
 //
 // Pure — no React, no store.
+import { riserPurchaseFt, HARD_STICK_FT } from './copperRates.js';
 
 // Drop from the branch down to the case connection. Short, because the branch
 // runs past the lineup; the length that matters is already in the circuit.
@@ -417,11 +418,13 @@ export function spareRiserPlan(circuits = [], drops = DEFAULT_SPARE_DROPS, norma
   if (entries.length === 0) return null;
 
   const [size] = entries.sort((a, b) => b[1] - a[1])[0];
-  // The typical drop on THIS store, rounded up — a spare that is short is not
-  // a spare.
-  const ftPerDrop = Math.ceil(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+  // The typical drop on THIS store — and then a whole stick, because that is
+  // how hard copper is sold and a spare you cannot order is not a spare.
+  const typical = Math.ceil(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+  const ftPerDrop = riserPurchaseFt(typical);
   return {
     size, ftPerDrop, drops: n, ft: n * ftPerDrop,
-    basis: `${n} spare drop(s) × ${ftPerDrop} ft — the typical riser on this job, at the size it runs most`,
+    typical,
+    basis: `${n} spare drop(s) × ${ftPerDrop} ft — a whole ${HARD_STICK_FT} ft stick per drop, at the size this job runs most`,
   };
 }
