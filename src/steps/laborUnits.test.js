@@ -88,12 +88,14 @@ describe('every assumption is a number somebody can change', () => {
   // in this path is one nobody can correct on the job in front of them.
   const circuits = [{ circuitId: '1', runLength: 150, riserLength: 0, sucHoriz: '1-3/8' }];
   // One circuit per size bucket so a rate that only applies to small pipe has
-  // something small to apply to, and one with a riser so the riser fittings
-  // have somewhere to land.
+  // something small to apply to, one with a riser so the riser fittings have
+  // somewhere to land, and one in the FLOOR at a size soft copper is made in,
+  // so the coil length has a line that is jointed by the coil.
   const allBuckets = [
     { circuitId: 'S', runLength: 60, riserLength: 0, sucHoriz: '7/8' },
     { circuitId: 'M', runLength: 150, riserLength: 18, sucHoriz: '1-3/8' },
     { circuitId: 'L', runLength: 250, riserLength: 0, sucHoriz: '2-1/8' },
+    { circuitId: 'F', runLength: 400, riserLength: 0, sucHoriz: '7/8', inFloor: true },
   ];
 
   it('moves the answer when ANY unit is changed', () => {

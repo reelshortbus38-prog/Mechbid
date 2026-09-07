@@ -10,6 +10,7 @@ import {
   crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
   memberOtHours, otRuleConflict, STANDARD_WEEK_HOURS, DAYS_PER_WEEK_OPTIONS,
   circuitCases, circuitJoints, clusterJointEquivalent,
+  softCopperAvailable, jointSpacingFt, SOFT_COPPER_MAX,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
 
@@ -821,5 +822,83 @@ describe('estimateCircuitLabor — bunched joints cost less than scattered ones'
     const u = { ...DEFAULT_LABOR_UNITS, clusterFactor: 0.65 };
     const est = estimateCircuitLabor([circuit({ fittingJoints: 9 })], u);
     expect(est.perCircuit[0].jointUnits).toBe(est.perCircuit[0].joints);
+  });
+});
+
+// ── SOFT COPPER DOES NOT COME IN STICKS ─────────────────────────────────────
+// "Some lines might get pushed in the floor and those don't need hangers and
+// are always soft copper." Soft arrives in coils, so the joint count that
+// divides by a 20 ft stick was pricing a product that has no sticks.
+describe('softCopperAvailable', () => {
+  it('is drawn soft up to 1-1/8"', () => {
+    for (const s of ['1/4', '3/8', '1/2', '5/8', '7/8', '1-1/8']) {
+      expect(softCopperAvailable(s), s).toBe(true);
+    }
+  });
+
+  it('is hard drawn only above that', () => {
+    // A 2-1/8" line in the slab is still hard copper. Calling it a coil would
+    // put a part number on the order that nobody stocks.
+    for (const s of ['1-3/8', '1-5/8', '2-1/8', '3-1/8', '4-1/8']) {
+      expect(softCopperAvailable(s), s).toBe(false);
+    }
+  });
+
+  it('does not assume coil for a size it cannot read', () => {
+    // Hard drawn is the safe read — every size can be bought as hard.
+    expect(softCopperAvailable('')).toBe(false);
+    expect(softCopperAvailable(undefined)).toBe(false);
+    expect(softCopperAvailable('banana')).toBe(false);
+  });
+
+  it('reads a decimal or quoted size like the rest of the app', () => {
+    expect(softCopperAvailable('0.875')).toBe(true);
+    expect(softCopperAvailable('1-1/8"')).toBe(true);
+  });
+});
+
+describe('jointSpacingFt', () => {
+  const u = DEFAULT_LABOR_UNITS;
+
+  it('runs the coil length for an in-floor line soft copper is made in', () => {
+    expect(jointSpacingFt({ inFloor: true, sucHoriz: '7/8' }, u)).toBe(u.coilLength);
+    expect(u.coilLength).toBe(50);
+  });
+
+  it('runs the stick length overhead', () => {
+    expect(jointSpacingFt({ sucHoriz: '7/8' }, u)).toBe(u.stickLength);
+    expect(jointSpacingFt({ inFloor: false, sucHoriz: '7/8' }, u)).toBe(u.stickLength);
+  });
+
+  it('runs the stick length for an in-floor line too big for coil', () => {
+    // In the floor, but 2-1/8" is hard drawn whatever it is buried in.
+    expect(jointSpacingFt({ inFloor: true, sucHoriz: '2-1/8' }, u)).toBe(u.stickLength);
+  });
+
+  it('does not coil a riser-only drop', () => {
+    expect(jointSpacingFt({ inFloor: true, isRiserOnly: true, sucRiser: '7/8' }, u)).toBe(u.stickLength);
+  });
+});
+
+describe('estimateCircuitLabor — an in-floor run is jointed by the coil', () => {
+  const buried = { circuitId: 'F', runLength: 400, riserLength: 0, sucHoriz: '7/8', inFloor: true };
+
+  it('charges eight joints on 400 ft, not twenty', () => {
+    const est = estimateCircuitLabor([buried], DEFAULT_LABOR_UNITS);
+    // 400 / 50 = 8 coil joints, plus the 2 loose fittings the circuit assumes.
+    expect(est.perCircuit[0].joints).toBe(8 + DEFAULT_LABOR_UNITS.jointsPerCircuit);
+  });
+
+  it('costs less than the same run overhead', () => {
+    const over = estimateCircuitLabor([{ ...buried, inFloor: false }], DEFAULT_LABOR_UNITS).totalHours;
+    const under = estimateCircuitLabor([buried], DEFAULT_LABOR_UNITS).totalHours;
+    // Twelve fewer joints at the small-bucket rate.
+    expect(over - under).toBeCloseTo(12 * DEFAULT_LABOR_UNITS.perJointSmall, 5);
+  });
+
+  it('does not discount a big in-floor line, which is still hard copper', () => {
+    const big = { ...buried, sucHoriz: '2-1/8' };
+    const over = estimateCircuitLabor([{ ...big, inFloor: false }], DEFAULT_LABOR_UNITS).totalHours;
+    expect(estimateCircuitLabor([big], DEFAULT_LABOR_UNITS).totalHours).toBe(over);
   });
 });
