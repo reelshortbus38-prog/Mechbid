@@ -6,6 +6,10 @@ import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
 import { hasCompanyDefaults } from '../state/companyDefaults.js';
+import {
+  loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
+  laborHistorySummary, suggestedUnitScale, scaleLaborUnits,
+} from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
@@ -468,6 +472,140 @@ function CircuitLaborEstimator() {
   );
 }
 
+// ── CLOSING A JOB OUT ─────────────────────────────────────────────────────────
+// The units this app prices with are opinions until somebody builds a job with
+// them and comes back with the timesheet. Nobody was ever going to do that as a
+// favour — so the deal here is that the shop tunes ITS OWN numbers and keeps
+// them, which is worth more to them than a published table and is the only
+// version anybody will actually maintain.
+//
+// One ratio per job, and it refuses to read a trend into fewer than three. See
+// components/laborHistory.js for what it deliberately will not claim.
+function CloseOutCard() {
+  const { state, dispatch } = useStore();
+  const [rows, setRows] = useState(loadLaborHistory);
+  const [hours, setHours] = useState('');
+  const [onlyType, setOnlyType] = useState(false);
+
+  const circuits = state.circuits || [];
+  const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+  const est = circuits.length ? estimateCircuitLabor(circuits, units) : null;
+  const projectType = state.projectType || 'remodel';
+
+  const persist = next => { setRows(next); saveLaborHistory(next); };
+
+  function closeOut() {
+    const act = parseFloat(hours) || 0;
+    if (!est || act <= 0) return;
+    persist([...rows, { ...recordFromEstimate(state, est), actHours: act }]);
+    setHours('');
+  }
+
+  const filter = onlyType ? { projectType } : {};
+  const summary = laborHistorySummary(rows, filter);
+  const scale = suggestedUnitScale(rows, filter);
+
+  function applyScale() {
+    if (!scale) return;
+    const next = scaleLaborUnits(units, scale.factor);
+    if (!confirm(
+      `Scale every labor RATE by ${scale.factor}x?\n\n`
+      + `Run/ft, joints, case hookup and rack tie all move. Stick and coil lengths, joint counts and the `
+      + `bunched-joint factor are quantities and stay put.\n\n`
+      + `${scale.note}\n\nThis changes the estimate on THIS job. It does not touch jobs already saved.`
+    )) return;
+    dispatch({ type: 'SET', key: 'laborUnits', value: next });
+  }
+
+  const pct = n => `${n >= 1 ? '+' : ''}${Math.round((n - 1) * 100)}%`;
+
+  return (
+    <Card style={{ background: colors.surface }}>
+      <SLabel>📒 Close a job out</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
+        When a job is built, put the <strong>actual man-hours off the timesheet</strong> here. After a few of them the
+        app can tell you whether its units run light or heavy <em>for your crews</em> — which is worth more than any
+        published labor table, because it is yours.
+        <br />
+        It will not guess which unit is wrong. Separating a per-foot rate from a per-joint rate needs far more jobs
+        than anybody has; this reports one honest number and scales by it.
+      </div>
+
+      {est ? (
+        <Row style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>This job estimated</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, fontWeight: 700 }}>{est.totalHours} hrs</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Actual man-hours</div>
+            <Input type="number" value={hours} onChange={e => setHours(e.target.value)} placeholder="0"
+              style={{ width: 110, fontFamily: "'DM Mono', monospace" }} />
+          </div>
+          <Btn variant="green" size="sm" onClick={closeOut} disabled={!(parseFloat(hours) > 0)}>
+            Record this job
+          </Btn>
+        </Row>
+      ) : (
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 12 }}>
+          No circuits on this job yet — there is nothing to compare a timesheet against.
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
+            {rows.slice().reverse().map(r => {
+              const ratio = recordRatio(r);
+              return (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11,
+                  padding: '5px 0', borderBottom: `1px solid ${colors.border}40` }}>
+                  <span style={{ flex: 1, color: colors.text }}>{r.name || 'Untitled job'}</span>
+                  <span style={{ color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
+                    {r.circuits} ckt · {r.ft} ft · {r.cases} case{r.cases === 1 ? '' : 's'}
+                  </span>
+                  <span style={{ color: colors.textDim }}>{r.projectType}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>{r.estHours} → {r.actHours} hrs</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700,
+                    color: ratio > 1.1 ? colors.yellow : ratio ? colors.green : colors.textDim, minWidth: 52, textAlign: 'right' }}>
+                    {ratio ? pct(ratio) : '—'}
+                  </span>
+                  <button onClick={() => persist(rows.filter(x => x.id !== r.id))}
+                    style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 20, height: 20, cursor: 'pointer', fontSize: 11 }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 11, color: colors.textDim, marginTop: 10 }}>
+            <input type="checkbox" checked={onlyType} onChange={e => setOnlyType(e.target.checked)} style={{ accentColor: colors.green }} />
+            {/* "On remodels those numbers will always be different. New jobs
+                would be a more accurate assessment." */}
+            Only count {projectType} jobs — a remodel and a ground-up run differently
+          </label>
+
+          {summary && (
+            <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: colors.card2 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                {summary.jobs} job{summary.jobs === 1 ? '' : 's'} · {summary.actHours} actual against {summary.estHours} estimated ·{' '}
+                <span style={{ color: summary.ratio > 1.1 ? colors.yellow : colors.green, fontFamily: "'DM Mono', monospace" }}>
+                  {summary.ratio}x
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6 }}>{scale?.note}</div>
+              {scale?.confidence === 'fair' && (
+                <Btn variant="green" size="sm" onClick={applyScale} style={{ marginTop: 10 }}>
+                  Scale this job's labor rates by {scale.factor}x ({pct(scale.factor)})
+                </Btn>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 // ── MAIN STEP 5 ───────────────────────────────────────────────────────────────
 export default function Step5_Labor({ onNext, onBack }) {
   const { state, dispatch } = useStore();
@@ -640,6 +778,11 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* And the only thing that will ever confirm those units: what the job
+          actually took. Sits directly under the estimator because that is the
+          number it is checking. */}
+      <CloseOutCard />
 
       {/* ── Crew-and-nights and per-circuit hours are the SAME labor ──
           Two methods of pricing one job: crew periods is how a lump-sum
