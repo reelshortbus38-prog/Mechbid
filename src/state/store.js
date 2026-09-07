@@ -1121,6 +1121,12 @@ export const DEFAULT_LABOR_UNITS = {
   perCase: 1.5,      // hrs to hook up a refrigerated case
   perRackTie: 2.0,   // hrs to tie a circuit into the rack
   stickLength: 20,   // ft of hard copper per stick → number of joints
+  // ── AND SOFT COPPER DOES NOT COME IN STICKS ───────────────────────────────
+  // A line pushed in the floor is soft copper, and soft copper arrives in
+  // COILS. Fifty feet is the common ACR coil. So a 400 ft in-floor run is
+  // eight joints, not the twenty this used to charge it — the stick length was
+  // being applied to a product that has no sticks.
+  coilLength: 50,
   // ── FITTINGS: THE NUMBER YOU CANNOT GET FROM A DESK ───────────────────────
   // Joints a circuit has BEYOND one per stick. This started as a hardcoded +2
   // — the rack tie and the case — which described a straight pipe from the
@@ -1212,8 +1218,37 @@ export function clusterJointEquivalent(n, factor) {
   return 1 + (count - 1) * f;
 }
 
+// ── HOW BIG SOFT COPPER GETS ────────────────────────────────────────────────
+// Above about 1-1/8" ACR copper is drawn hard and sold in straight lengths
+// only; there is no coil to buy. So "in the floor" does not automatically mean
+// soft — a 2-1/8" line in the slab is still hard drawn, still jointed every 20
+// ft, and calling it a coil would put a part number on the order that nobody
+// stocks. It keeps the one thing being in the floor really does change: it
+// carries no hangers.
+export const SOFT_COPPER_MAX = '1-1/8';
+
+const PIPE_ORDER = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8','3-5/8','4-1/8','5-1/8','6-1/8'];
+
+export function softCopperAvailable(size) {
+  const i = PIPE_ORDER.indexOf(normalizePipeSize(size));
+  // An unreadable size is not assumed to be coil — hard drawn is the safe read,
+  // since it is what every size can be bought as.
+  if (i < 0) return false;
+  return i <= PIPE_ORDER.indexOf(SOFT_COPPER_MAX);
+}
+
+// How many feet of pipe a circuit gets between joints. Soft coil runs further
+// than a hard stick, so an in-floor line has far fewer.
+export function jointSpacingFt(circuit, units) {
+  const u = { ...DEFAULT_LABOR_UNITS, ...(units || {}) };
+  const stick = Number(u.stickLength) || 20;
+  if (!circuit?.inFloor || circuit?.isRiserOnly) return stick;
+  if (!softCopperAvailable(circuit.sucHoriz || circuit.sucRiser)) return stick;
+  return Number(u.coilLength) || 50;
+}
+
 export function pipeSizeBucket(size) {
-  const order = ['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1/8','2-5/8','3-1/8'];
+  const order = PIPE_ORDER;
   const i = order.indexOf(normalizePipeSize(size));
   if (i < 0) return 'med';
   if (i <= 4) return 'small';   // ≤ 7/8"
@@ -1237,11 +1272,14 @@ export function estimateCircuitLabor(circuits, units) {
     // One joint per stick, plus this circuit's fittings — counted if somebody
     // walked the route, allowed for if nobody has yet.
     const fit = circuitJoints(c, u);
-    const joints = Math.ceil(ft / (u.stickLength || 20)) + fit.joints;
-    // Stick joints are spread along the run and each is its own trip. The
+    // Hard stick or soft coil — an in-floor line runs 50 ft between joints
+    // rather than 20, because it is not cut from sticks.
+    const lengthJoints = Math.ceil(ft / jointSpacingFt(c, u));
+    const joints = lengthJoints + fit.joints;
+    // Length joints are spread along the run and each is its own trip. The
     // circuit's loose fittings are the turns it takes crossing the store —
     // also scattered. Only the riser's are bunched in one place.
-    const jointUnits = Math.ceil(ft / (u.stickLength || 20)) + fit.loose
+    const jointUnits = lengthJoints + fit.loose
       + clusterJointEquivalent(fit.clustered, u.clusterFactor);
     // Case hookup is PER CASE, not per circuit. A lineup of six gets six.
     const cs = circuitCases(c);

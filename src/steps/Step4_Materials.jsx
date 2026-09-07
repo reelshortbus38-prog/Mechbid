@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice, circuitCases } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice, circuitCases, softCopperAvailable, SOFT_COPPER_MAX, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
@@ -961,7 +961,10 @@ export default function Step4_Materials({ onNext, onBack }) {
     state.circuits.forEach(c => {
       const run=parseFloat(c.runLength)||0, riser=parseFloat(c.riserLength)||0;
       const total=c.isRiserOnly?riser:run+riser;
-      const soft = c.inFloor && !c.isRiserOnly;
+      // In the floor, AND a size soft copper is actually made in. Above about
+      // 1-1/8" there is no coil to buy, so a big line in the slab is still hard
+      // drawn — it just still carries no hangers.
+      const soft = c.inFloor && !c.isRiserOnly && softCopperAvailable(c.sucHoriz || c.sucRiser);
       const bucket = soft ? softBySize : copperBySize;
       const add=(size,ft)=>{ if(!size||ft<=0) return; const k=normalizePipeSize(size); bucket[k]=(bucket[k]||0)+ft; };
       // A riser is bought as a whole 20 ft stick, because that is the only way
@@ -992,6 +995,13 @@ export default function Step4_Materials({ onNext, onBack }) {
     Object.entries(hdr.copperBySize).forEach(([size, ft]) => {
       copperBySize[size] = (copperBySize[size] || 0) + ft;
     });
+    // Sizes that run in the floor but are too big for coil. They are priced as
+    // hard drawn in the loop below, which is right — but "in the floor" and
+    // "soft copper" have been the same sentence all along, so a 2-1/8" line
+    // that quietly stayed hard would look like the toggle was ignored.
+    const hardInFloor = new Set(state.circuits
+      .filter(c => c.inFloor && !c.isRiserOnly && !softCopperAvailable(c.sucHoriz || c.sucRiser))
+      .map(c => normalizePipeSize(c.sucHoriz || c.sucRiser)).filter(Boolean));
     const unrated = unratedCopperSizes([...Object.keys(copperBySize), ...Object.keys(softBySize)], rates);
     Object.entries(copperBySize).forEach(([size,footage])=>{
       // Fall back to the CURRENT defaults for a size this job never copied —
@@ -1001,7 +1011,11 @@ export default function Step4_Materials({ onNext, onBack }) {
       const rate=hpPipeRate(look.rate, state.systemType, hpMult);
       const qty=Math.ceil(footage*wasteFactor);
       items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,
-        notes:[look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')||undefined});
+        notes:[
+          hardInFloor.has(size)
+            ? `runs in the floor but priced as HARD copper — soft ACR is not drawn above ${SOFT_COPPER_MAX}", so there is no coil at this size. No hangers or saddles either way, and still jointed every stick.`
+            : '',
+          look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')||undefined});
     });
     // Soft copper for anything in the floor. Same rate table — it is the same
     // metal at the same size — but its own lines, because it is ordered as
@@ -1011,7 +1025,7 @@ export default function Step4_Materials({ onNext, onBack }) {
       const rate=hpPipeRate(look.rate, state.systemType, hpMult);
       const qty=Math.ceil(footage*wasteFactor);
       items.push({id:uid(),section:'Copper',desc:`${size}" Soft Copper (coil) — in floor`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,softCopper:true,
-        notes:['in-floor line — soft copper in coils, no hangers or saddles', look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')});
+        notes:[`in-floor line — soft copper in ${rates.coilLength || DEFAULT_LABOR_UNITS.coilLength} ft coils, no hangers or saddles`, look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')});
     });
     // ── Spare pipe for the drop nobody has found yet ──────────────────────
     // "Usually they will have ordered enough pipe to handle one other drop in

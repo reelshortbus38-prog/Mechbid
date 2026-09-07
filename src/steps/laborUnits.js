@@ -55,7 +55,18 @@ export const UNIT_PROVENANCE = {
   perFtMed:    { state: 'unconfirmed', note: 'Halved from 0.09 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
   perFtLarge:  { state: 'unconfirmed', note: 'Halved from 0.13 — a working estimator read the circuit totals as running about double. Not yet measured against a finished job.' },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
-  stickLength: { state: 'unconfirmed', note: 'Assumes 20 ft hard stick at every size. Soft coil on the small sizes would mean far fewer joints than this produces.' },
+  stickLength: {
+    state: 'unconfirmed',
+    note: '20 ft hard stick. Applies to everything overhead; a line in the FLOOR is soft copper and jointed by '
+      + 'the coil instead — see coilLength.',
+  },
+  coilLength: {
+    state: 'unconfirmed',
+    note: 'Soft ACR copper arrives in coils, not sticks: "some lines might get pushed in the floor and those are '
+      + 'always soft copper." Fifty feet is the common coil, so a 400 ft in-floor run is eight joints rather than '
+      + 'the twenty a 20 ft stick length produced. Only applies to in-floor circuits at a size soft copper is '
+      + 'actually drawn in — above about 1-1/8" there is no coil to buy and the stick length is used.',
+  },
   jointsPerCircuit: {
     state: 'varies',
     note: 'Cannot be worked out from a drawing. A run ells out of the motor room, down the back hall, '
