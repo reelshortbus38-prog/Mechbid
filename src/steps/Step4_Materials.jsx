@@ -10,7 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
-import { caseHookupLines, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID } from '../components/caseHookup.js';
+import { caseHookupLines, spareRiserPlan, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID, DEFAULT_SPARE_DROPS } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
@@ -1005,6 +1005,28 @@ export default function Step4_Materials({ onNext, onBack }) {
       items.push({id:uid(),section:'Copper',desc:`${size}" Soft Copper (coil) — in floor`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,softCopper:true,
         notes:['in-floor line — soft copper in coils, no hangers or saddles', look.source==='none'?unratedNote(size):'', hpNote].filter(Boolean).join(' · ')});
     });
+    // ── Spare pipe for the drop nobody has found yet ──────────────────────
+    // "Usually they will have ordered enough pipe to handle one other drop in
+    // the store, or even a few for multiple circuits." A riser can turn up
+    // anywhere on a route and you don't know until you walk it — so rather
+    // than a zero and a warning, this is the answer the trade already uses:
+    // carry pipe for it. Suction only, because that is the only line a drop
+    // changes.
+    const spare = spareRiserPlan(state.circuits, rates.spareDrops ?? DEFAULT_SPARE_DROPS, normalizePipeSize);
+    if (spare) {
+      const look = copperRate(spare.size, rates);
+      const rate = hpPipeRate(look.rate, state.systemType, hpMult);
+      items.push({ id:uid(), section:'Copper', desc:`${spare.size}" ${copperLabel} — spare for unfound drops`,
+        qty:spare.ft, unit:'ft', unitCost:rate, total:spare.ft*rate, pipeSize:spare.size, spareRiser:true,
+        notes:[`${spare.basis} — a drop over 5 ft can turn up anywhere on a route and only shows on a walk`,
+          look.source==='none'?unratedNote(spare.size):'', hpNote].filter(Boolean).join(' · ')});
+      // A drop needs insulating like any other suction line. Ordering the pipe
+      // and forgetting the Armaflex is how the spare stops being a spare.
+      const ir = insulRate(spare.size, rates, 'medSuction').rate;
+      items.push({ id:uid(), section:'Insulation', desc:`${spare.size}" Suction Insulation — spare for unfound drops`,
+        qty:spare.ft, unit:'ft', unitCost:ir, total:spare.ft*ir, pipeSize:spare.size, insulCategory:'medSuction', spareRiser:true,
+        notes:spare.basis });
+    }
     const copperTotal=items.reduce((s,i)=>s+(i.total||0),0);
 
     // ── Fittings — either a flat % allowance, or nothing (manual entry via picker) ──
@@ -1428,6 +1450,10 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub (ft each)</div>
               <Input type="number" value={state.rates?.caseStubFt ?? DEFAULT_STUB_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Spare Drops</div>
+              <Input type="number" value={state.rates?.spareDrops ?? DEFAULT_SPARE_DROPS} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'spareDrops',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
+            </div>
             <div style={{ flex:1, minWidth:110 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Comes Stubbed — Suc</div>
               <Select value={state.rates?.caseStubSuction || DEFAULT_STUB_SUCTION} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubSuction',value:e.target.value})}>
@@ -1466,7 +1492,9 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
             of the case</strong> to the hub underneath it, so set Case Length to the cases on this store (8 ft cases run 8 ft
             of PVC). The drop to each case is <strong>run size the whole way down</strong> — the reduction happens at the case,
             so the ells, tee and coupling are all run size and only the bushing steps down to whatever the case comes stubbed
-            with (5/8" suction, 3/8" liquid as a rule). Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
+            with (5/8" suction, 3/8" liquid as a rule). <strong>Spare Drops</strong> carries suction pipe and insulation for
+            risers nobody has found yet — a line can drop over 5 ft anywhere on a route and it only shows on a walk, so rather
+            than leave a gap this orders pipe for it the way the trade already does. Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
             every <strong>middle</strong> case taps it with a tee of its own, and the <strong>end</strong> case turns down and
             stops. Only the middle multiplies — a lineup of eight is one start, six middles and one end. Bushings are priced at
             the run size; correct them once you know what the cases are stubbed up with. The EPR and liquid ball valves are

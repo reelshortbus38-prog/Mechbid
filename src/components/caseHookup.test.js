@@ -5,6 +5,7 @@ import {
   END_CASE_SUCTION, END_CASE_LIQUID, START_CASE_SUCTION, START_CASE_LIQUID,
   MIDDLE_CASE_SUCTION, MIDDLE_CASE_LIQUID,
   DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID,
+  spareRiserPlan, DEFAULT_SPARE_DROPS,
 } from './caseHookup.js';
 import { fittingPrice, fittingPriceForPair } from './fittingPrices.js';
 
@@ -369,5 +370,58 @@ describe('lineup fittings', () => {
     const noLiq = caseHookupLines({ cases: 8, sucSize: '1-1/8"', liqSize: '' });
     expect(noLiq.some(l => l.fittingType && /liquid/.test(l.desc))).toBe(false);
     expect(at('Tee', 'suction', 'middle', noLiq).pipeSize).toBe('1-1/8"');
+  });
+});
+
+// ── SPARE PIPE FOR THE DROP NOBODY HAS FOUND ────────────────────────────────
+// "You never know till you look in person to know exact. The line might drop
+// over 5 ft somewhere else." Followed by how the trade actually handles it:
+// "Usually they will have ordered enough pipe to handle one other drop in the
+// store, or even a few for multiple circuits."
+describe('spareRiserPlan', () => {
+  const norm = s => String(s || '').replace(/"/g, '');
+  const job = [
+    { sucRiser: '1-3/8"', riserLength: 14 },
+    { sucRiser: '1-3/8"', riserLength: 10 },
+    { sucRiser: '7/8"', riserLength: 12 },
+  ];
+
+  it('carries one spare drop by default', () => {
+    expect(DEFAULT_SPARE_DROPS).toBe(1);
+    const p = spareRiserPlan(job, DEFAULT_SPARE_DROPS, norm);
+    expect(p.drops).toBe(1);
+    expect(p.ft).toBe(p.ftPerDrop);
+  });
+
+  it('picks the size the job runs most, by FOOTAGE not by count', () => {
+    // 1-3/8" is 24 ft across two circuits; 7/8" is 12 ft across one. One long
+    // riser matters more than one short one, so footage decides.
+    expect(spareRiserPlan(job, 1, norm).size).toBe('1-3/8');
+  });
+
+  it('uses the typical riser on THIS job, rounded up', () => {
+    // (14 + 10 + 12) / 3 = 12. A spare that is short is not a spare.
+    expect(spareRiserPlan(job, 1, norm).ftPerDrop).toBe(12);
+  });
+
+  it('scales for a store that carries a few', () => {
+    // "...or even a few for multiple circuits."
+    expect(spareRiserPlan(job, 3, norm).ft).toBe(36);
+  });
+
+  it('carries nothing when the estimator sets it to zero', () => {
+    expect(spareRiserPlan(job, 0, norm)).toBeNull();
+  });
+
+  it('carries nothing on a job with no risers to be spare of', () => {
+    expect(spareRiserPlan([{ runLength: 100, sucHoriz: '1-1/8"' }], 1, norm)).toBeNull();
+    expect(spareRiserPlan([], 1, norm)).toBeNull();
+    // A riser size with no length is not a riser.
+    expect(spareRiserPlan([{ sucRiser: '7/8"', riserLength: 0 }], 1, norm)).toBeNull();
+  });
+
+  it('says what the number is built from', () => {
+    expect(spareRiserPlan(job, 2, norm).basis)
+      .toBe('2 spare drop(s) × 12 ft — the typical riser on this job, at the size it runs most');
   });
 });
