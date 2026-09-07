@@ -25,13 +25,14 @@
 //   drains out entirely on the assumption they were plumbing by others. Forty
 //   cases of PVC to floor hubs is real money that was on nobody's list.
 //
-// TWO SIZES, NOT ONE. The run is whatever the circuit is; the case is stubbed
-// small — 5/8" suction and 3/8" liquid as a rule, and "some are different".
-// Everything here is sized off one or the other, and the bushing spans them.
+// TWO SIZES, ONE REDUCTION. The drop off the branch is RUN size the whole way
+// down — "we reduce at the case" — and only the last fitting steps it down to
+// whatever the case comes stubbed with, 5/8" suction and 3/8" liquid as a rule.
+// So everything here is run-sized except the bushing, which spans the two.
 //
 // Pure — no React, no store.
 
-// Stub from the branch down to the case connection. Short, because the branch
+// Drop from the branch down to the case connection. Short, because the branch
 // runs past the lineup; the length that matters is already in the circuit.
 export const DEFAULT_STUB_FT = 5;
 
@@ -48,16 +49,15 @@ export const DEFAULT_STUB_FT = 5;
 export const DEFAULT_CASE_FT = 12;
 export const DEFAULT_DRAIN_SIZE = '1-1/4"';
 
-// ── THE CASE IS STUBBED SMALL, WHATEVER THE RUN IS ──────────────────────────
-// The stubs took the circuit's own line size, which made a 1-1/8" run buy
-// 1-1/8" stubs down to every case. It does not: "Case stubs are usually 5/8
-// for suction and 3/8 for liquid. Some are different but that's what I would
-// set as a default."
+// ── WHAT THE CASE COMES STUBBED WITH ────────────────────────────────────────
+// "Case stubs are usually 5/8 for suction and 3/8 for liquid. Some are
+// different but that's what I would set as a default."
 //
-// The run size and the case size are two different numbers, and the fitting
-// that spans them is the bushing — which is exactly the caveat the estimator
-// attached to it. With both sizes known the bushing stops being a caveat and
-// becomes a real 1-1/8" × 5/8" part.
+// This is the CASE's own connection, not pipe anybody buys — the drop that
+// meets it is run size all the way down (see the `at` note below). So these
+// two numbers do exactly one job: they are the small end of the bushing, which
+// is the fitting the estimator attached the sizing caveat to and the only one
+// that spans the two sizes.
 export const DEFAULT_STUB_SUCTION = '5/8"';
 export const DEFAULT_STUB_LIQUID = '3/8"';
 
@@ -94,49 +94,59 @@ export const DEFAULT_STUB_LIQUID = '3/8"';
 // of every lineup free. Two ells on both lines here, not the one-versus-two
 // split the start case has.
 //
-// `at` says which pipe each fitting is ON, now that the run and the case are
-// known to be different sizes. A tee sits in the RUN and is run-sized. The
-// bushing SPANS the two — that is its whole job, and it is why the estimator
-// tied the sizing caveat to that fitting and no other. Everything downstream of
-// the bushing is on the stub and is stub-sized, which at 5/8" against a 1-1/8"
-// run is a real difference: $9.60 an ell against $24.30.
+// ── THE DROP STAYS BIG UNTIL IT REACHES THE CASE ────────────────────────────
+// `at` says which pipe each fitting is ON. Everything is RUN size except the
+// bushing, which spans:
 //
-// Only the tee's position is stated fact; the rest follows from a reducing
-// branch being reduced at the bushing. If ells and couplings are really bought
-// at run size, they are cheap to move — `at` is the one word to change.
+//   "We reduce at the case so the ells are run size."
+//
+// This was briefly modelled the other way round — reduce at the tee, then run
+// small the rest of the way — which is a reasonable-sounding arrangement and
+// not the one this trade uses. The reduction happens once, at the very end,
+// against whatever the case comes stubbed with. So the tee, the ells, the
+// street ell and the coupling are all in run-size pipe, and only the last
+// fitting steps down.
+//
+// It is worth real money: a 1-1/8" ell is $24.30 against $9.60 at 5/8", and an
+// eight-case lineup carries about two dozen ells. Guessing this one cheap
+// would have under-bid every lineup in the store.
+//
+// It also means the DROP ITSELF is run size — if the ells are 1-1/8" then the
+// copper between them is too. The 5/8" and 3/8" case-stub sizes now do exactly
+// one job: they size the bushing.
 export const MIDDLE_CASE_SUCTION = [
-  { type: 'Elbow 90°', qty: 2, at: 'stub' },
+  { type: 'Elbow 90°', qty: 2, at: 'run' },
   { type: 'Tee', qty: 1, at: 'run' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 export const MIDDLE_CASE_LIQUID = [
-  { type: 'Elbow 90°', qty: 2, at: 'stub' },
+  { type: 'Elbow 90°', qty: 2, at: 'run' },
   { type: 'Tee', qty: 1, at: 'run' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 export const END_CASE_SUCTION = [
-  { type: 'Elbow 90°', qty: 2, at: 'stub' },
-  { type: 'Street Ell', qty: 1, at: 'stub' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Elbow 90°', qty: 2, at: 'run' },
+  { type: 'Street Ell', qty: 1, at: 'run' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 export const END_CASE_LIQUID = [
-  { type: 'Elbow 90°', qty: 2, at: 'stub' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Elbow 90°', qty: 2, at: 'run' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 export const START_CASE_SUCTION = [
-  { type: 'Elbow 90°', qty: 2, at: 'stub' },
+  { type: 'Elbow 90°', qty: 2, at: 'run' },
   { type: 'Tee', qty: 1, at: 'run' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 export const START_CASE_LIQUID = [
-  { type: 'Elbow 90°', qty: 1, at: 'stub' },
+  { type: 'Elbow 90°', qty: 1, at: 'run' },
   { type: 'Tee', qty: 1, at: 'run' },
-  { type: 'Coupling', qty: 1, at: 'stub' },
+  { type: 'Coupling', qty: 1, at: 'run' },
   { type: 'Bushing', qty: 1, at: 'span' },
 ];
 
@@ -234,27 +244,27 @@ export function caseHookupLines({
   const drain = Math.max(0, Number(caseFt) || 0);
   const lines = [];
 
-  // The stub is the CASE's size, not the run's. This used to take the circuit's
-  // line size, which bought 1-1/8" copper down to every case on a 1-1/8" run.
-  if (stub > 0 && stubSuc) {
+  // The drop is RUN size, not case size. "We reduce at the case", so the pipe
+  // between the tee and the bushing is the same copper as the run it came off.
+  if (stub > 0 && sucSize) {
     lines.push({
-      section: 'Case Hookups', desc: `${stubSuc} Case suction stubs`, qty: Math.ceil(n * stub), unit: 'ft',
-      notes: `${n} case(s) × ${stub} ft — what the case is stubbed up with, off a ${sucSize || 'larger'} run`,
-      pipeSize: stubSuc,
+      section: 'Case Hookups', desc: `${sucSize} Case drops — suction`, qty: Math.ceil(n * stub), unit: 'ft',
+      notes: `${n} case(s) × ${stub} ft — run size down to the case, reduced at the case to ${stubSuc || 'the case stub'}`,
+      pipeSize: sucSize,
     });
   }
-  if (stub > 0 && stubLiq) {
+  if (stub > 0 && liqSize) {
     lines.push({
-      section: 'Case Hookups', desc: `${stubLiq} Case liquid stubs`, qty: Math.ceil(n * stub), unit: 'ft',
-      notes: `${n} case(s) × ${stub} ft — what the case is stubbed up with, off a ${liqSize || 'larger'} run`,
-      pipeSize: stubLiq,
+      section: 'Case Hookups', desc: `${liqSize} Case drops — liquid`, qty: Math.ceil(n * stub), unit: 'ft',
+      notes: `${n} case(s) × ${stub} ft — run size down to the case, reduced at the case to ${stubLiq || 'the case stub'}`,
+      pipeSize: liqSize,
     });
   }
-  if (insulate && stub > 0 && stubSuc) {
+  if (insulate && stub > 0 && sucSize) {
     lines.push({
-      section: 'Case Hookups', desc: `${stubSuc} Case stub insulation`, qty: Math.ceil(n * stub), unit: 'ft',
-      notes: 'suction stubs are insulated at the circuit temperature, same as the run',
-      pipeSize: stubSuc,
+      section: 'Case Hookups', desc: `${sucSize} Case drop insulation`, qty: Math.ceil(n * stub), unit: 'ft',
+      notes: 'the drop is insulated at the circuit temperature, same as the run it came off',
+      pipeSize: sucSize,
     });
   }
 
@@ -283,11 +293,10 @@ export function caseHookupLines({
         ? `${sets} middle case(s) on a ${n}-case lineup — the run passes over each one and it taps in`
         : `one set per lineup — the ${pos.label} where the piping runs along the case tops`;
       const set = (list, runSize, stubSize, line) => list.forEach(f => {
-        // A fitting on the run needs the run size; on the stub, the stub size;
-        // a bushing needs both, because spanning them is what it is for.
+        // Everything is in run-size pipe until the bushing, which needs both
+        // sizes because spanning them is what it is for.
         const size = f.at === 'run' ? runSize : stubSize;
-        if (!size) return;
-        if (f.at === 'span' && !runSize) return;
+        if (!size || !runSize) return;
         const label = f.at === 'span' ? `${runSize} × ${stubSize}` : size;
         lines.push({
           section: 'Case Hookups', desc: `${label} ${f.type} — ${line} at ${pos.label}`,

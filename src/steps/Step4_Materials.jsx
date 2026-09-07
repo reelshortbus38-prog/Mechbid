@@ -1078,8 +1078,9 @@ export default function Step4_Materials({ onNext, onBack }) {
         cases: n,
         sucSize: c.sucHoriz ? normalizePipeSize(c.sucHoriz) : '',
         liqSize: c.liqHoriz ? normalizePipeSize(c.liqHoriz) : '',
-        // What the CASE is stubbed up with — 5/8" suction and 3/8" liquid as a
-        // rule — which is a different number from the run the branch is in.
+        // What the CASE comes stubbed with. Used for one thing: the small end
+        // of the bushing. The drop that meets it is run size, because the
+        // reduction happens at the case.
         stubSuc: rates.caseStubSuction || DEFAULT_STUB_SUCTION,
         stubLiq: rates.caseStubLiquid || DEFAULT_STUB_LIQUID,
         stubFt: rates.caseStubFt ?? DEFAULT_STUB_FT,
@@ -1410,13 +1411,13 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
               <Input type="number" value={state.rates?.caseStubFt ?? DEFAULT_STUB_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:110 }}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub — Suc</div>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Comes Stubbed — Suc</div>
               <Select value={state.rates?.caseStubSuction || DEFAULT_STUB_SUCTION} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubSuction',value:e.target.value})}>
                 {CASE_STUB_SIZES.map(z => <option key={z} value={z}>{z}</option>)}
               </Select>
             </div>
             <div style={{ flex:1, minWidth:110 }}>
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub — Liq</div>
+              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Comes Stubbed — Liq</div>
               <Select value={state.rates?.caseStubLiquid || DEFAULT_STUB_LIQUID} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseStubLiquid',value:e.target.value})}>
                 {CASE_STUB_SIZES.map(z => <option key={z} value={z}>{z}</option>)}
               </Select>
@@ -1445,9 +1446,9 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
           <div style={{ fontSize:10, color:colors.textMuted, marginTop:8, lineHeight:1.5 }}>
             Case hookups price a suction and liquid stub, stub insulation, and the drain — which runs the <strong>length
             of the case</strong> to the hub underneath it, so set Case Length to the cases on this store (8 ft cases run 8 ft
-            of PVC). Cases are stubbed <strong>smaller than the run</strong> — 5/8" suction and 3/8" liquid as a rule — so the
-            stub copper prices at the case size and the bushing at each tap prices as the real run-by-stub part.
-            Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
+            of PVC). The drop to each case is <strong>run size the whole way down</strong> — the reduction happens at the case,
+            so the ells, tee and coupling are all run size and only the bushing steps down to whatever the case comes stubbed
+            with (5/8" suction, 3/8" liquid as a rule). Fittings follow the run along the case tops: the <strong>start</strong> case tees so the run carries on,
             every <strong>middle</strong> case taps it with a tee of its own, and the <strong>end</strong> case turns down and
             stops. Only the middle multiplies — a lineup of eight is one start, six middles and one end. Bushings are priced at
             the run size; correct them once you know what the cases are stubbed up with. The EPR and liquid ball valves are
