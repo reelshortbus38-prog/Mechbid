@@ -18,9 +18,9 @@
 // wrong. With a handful of jobs you cannot separate a per-foot rate from a
 // per-joint rate — the shapes are too similar and the sample is too small, and
 // a regression on four jobs would produce confident nonsense. So it reports one
-// honest number, the ratio of actual to estimated hours, and offers to scale
-// the units by it. Which unit is off is a question for a lot more jobs than
-// anybody has yet, and the module says so rather than guessing.
+// honest number and offers to scale the units by it. Which unit is off is a
+// question for a lot more jobs than anybody has yet, and the module says so
+// rather than guessing.
 //
 // Pure except for the two storage functions, which are the same localStorage
 // pattern the price book uses: shop data, shared across every job, kept out of
@@ -51,21 +51,41 @@ export function saveLaborHistory(records) {
   } catch { return false; }
 }
 
-// One closed-out job. The SHAPE is kept alongside the hours because a ratio
-// with no shape cannot be argued with later — an estimator looking at 1.4 wants
-// to know whether that job was forty circuits or four.
+// ── THREE NUMBERS, AND THEY ANSWER DIFFERENT QUESTIONS ──────────────────────
+//   estHours  what the app said
+//   bidHours  what the estimator actually bid it at
+//   actHours  what payroll says it took
 //
-// estHours is what the app said. actHours is what payroll says. Everything else
-// is the job's fingerprint.
+// bidHours is here because ACTUALS TAKE MONTHS. An estimator trying this app
+// out has what they bid the job at sitting in a folder this afternoon, and
+// waiting for a store to be built before the app can say anything useful is
+// how a trial quietly ends. So either number will drive a comparison.
+//
+// They are not the same question and the module never pretends they are:
+//
+//   against BID     — does this agree with how I estimate? Useful immediately.
+//                     Matching it makes the app think like this shop. It does
+//                     not make either of them right.
+//   against ACTUAL  — was the estimate true? Slower, and the only one of the
+//                     two that is evidence.
+//
+// So actuals win wherever both exist, and the basis is reported rather than
+// buried.
+//
+// The SHAPE is kept alongside all three, because a ratio with no shape cannot
+// be argued with later — an estimator looking at 1.4x wants to know whether
+// that job was forty circuits or four.
 export function newLaborRecord({
   id, name = '', date = '', projectType = 'remodel', mode = '',
-  estHours = 0, actHours = 0, circuits = 0, ft = 0, joints = 0, cases = 0, notes = '',
+  estHours = 0, bidHours = 0, actHours = 0,
+  circuits = 0, ft = 0, joints = 0, cases = 0, notes = '',
 } = {}) {
   return {
     id: id || `lh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     name, date: date || new Date().toISOString().slice(0, 10),
     projectType, mode,
     estHours: Math.max(0, Number(estHours) || 0),
+    bidHours: Math.max(0, Number(bidHours) || 0),
     actHours: Math.max(0, Number(actHours) || 0),
     circuits: Math.max(0, Math.round(Number(circuits) || 0)),
     ft: Math.max(0, Math.round(Number(ft) || 0)),
@@ -92,8 +112,32 @@ export function recordFromEstimate(state = {}, est = {}) {
   });
 }
 
-const usable = r => (Number(r?.estHours) || 0) > 0 && (Number(r?.actHours) || 0) > 0;
-export const recordRatio = r => (usable(r) ? r.actHours / r.estHours : null);
+// Which comparison a record can support. Actual is evidence; bid is agreement.
+export const BASIS_ACTUAL = 'actual';
+export const BASIS_BID = 'bid';
+
+const hoursFor = (r, basis) =>
+  Number((basis === BASIS_BID ? r?.bidHours : r?.actHours)) || 0;
+
+// The basis a record can actually be compared on, preferring evidence over
+// agreement. → 'actual' | 'bid' | null.
+export function recordBasis(r, prefer) {
+  if ((Number(r?.estHours) || 0) <= 0) return null;
+  const has = { actual: (Number(r?.actHours) || 0) > 0, bid: (Number(r?.bidHours) || 0) > 0 };
+  if (prefer && has[prefer]) return prefer;
+  if (prefer) return null;
+  if (has.actual) return BASIS_ACTUAL;
+  if (has.bid) return BASIS_BID;
+  return null;
+}
+
+const usable = (r, prefer) => recordBasis(r, prefer) !== null;
+
+export function recordRatio(r, prefer) {
+  const basis = recordBasis(r, prefer);
+  if (!basis) return null;
+  return hoursFor(r, basis) / r.estHours;
+}
 
 // → { jobs, estHours, actHours, ratio, low, high, spread, wide } or null.
 //
@@ -101,18 +145,23 @@ export const recordRatio = r => (usable(r) ? r.actHours / r.estHours : null);
 // hour store and a forty-hour callout should not carry the same weight in a
 // number that is going to scale everybody's units.
 export function laborHistorySummary(records = [], filter = {}) {
-  const rows = (records || []).filter(usable).filter(r =>
+  const prefer = filter.basis;
+  const rows = (records || []).filter(r => usable(r, prefer)).filter(r =>
     (!filter.projectType || r.projectType === filter.projectType)
     && (!filter.mode || r.mode === filter.mode));
   if (rows.length === 0) return null;
 
   const estHours = rows.reduce((s, r) => s + r.estHours, 0);
-  const actHours = rows.reduce((s, r) => s + r.actHours, 0);
-  const ratios = rows.map(recordRatio);
+  const actHours = rows.reduce((s, r) => s + hoursFor(r, recordBasis(r, prefer)), 0);
+  const ratios = rows.map(r => recordRatio(r, prefer));
+  // A mixed set is reported as mixed rather than as whichever came first.
+  const bases = [...new Set(rows.map(r => recordBasis(r, prefer)))];
+  const basis = bases.length === 1 ? bases[0] : 'mixed';
   const low = Math.min(...ratios), high = Math.max(...ratios);
   const spread = high - low;
   return {
     jobs: rows.length,
+    basis,
     estHours: Math.round(estHours * 10) / 10,
     actHours: Math.round(actHours * 10) / 10,
     ratio: Math.round((actHours / estHours) * 1000) / 1000,
@@ -133,33 +182,47 @@ export const SCALABLE_UNITS = [
   'perCase', 'perRackTie',
 ];
 
-// → { factor, jobs, ratio, confidence, note } or null when there is not enough
-// to say anything.
+// → { factor, jobs, ratio, basis, confidence, note } or null when there is not
+// enough to say anything.
 //
 // confidence is deliberately blunt: 'none' below the job threshold, 'weak' when
 // the jobs disagree with each other by a lot, 'fair' otherwise. Nothing here
 // earns the word 'good' — three jobs is three jobs.
+//
+// A bid-based answer is never more than 'fair' either, and its wording says
+// what it is: matching an estimator makes the app agree with them, which is
+// not the same as making it correct.
 export function suggestedUnitScale(records = [], filter = {}) {
   const s = laborHistorySummary(records, filter);
   if (!s) return null;
+  const base = { factor: s.ratio, jobs: s.jobs, ratio: s.ratio, basis: s.basis };
+  const what = s.basis === BASIS_BID ? 'bid' : s.basis === 'mixed' ? 'recorded' : 'actual';
   if (!s.enough) {
     return {
-      factor: s.ratio, jobs: s.jobs, ratio: s.ratio, confidence: 'none',
-      note: `${s.jobs} closed job${s.jobs === 1 ? '' : 's'} — ${MIN_JOBS_FOR_TREND} is the least that says anything. `
+      ...base, confidence: 'none',
+      note: `${s.jobs} job${s.jobs === 1 ? '' : 's'} recorded — ${MIN_JOBS_FOR_TREND} is the least that says anything. `
         + 'One job is a rained-off week or a store full of surprises, not a trend.',
     };
   }
   if (s.wide) {
     return {
-      factor: s.ratio, jobs: s.jobs, ratio: s.ratio, confidence: 'weak',
+      ...base, confidence: 'weak',
       note: `These ${s.jobs} jobs ran between ${s.low}x and ${s.high}x the estimate. An average of `
         + `${s.ratio}x is true of none of them — look at what is different about the jobs before scaling anything.`,
     };
   }
+  const caveat = s.basis === BASIS_BID
+    ? ' These are BID hours, not built ones: scaling to them makes the app agree with how this shop estimates, '
+      + 'which is worth having and is not the same as either of you being right. Record actual hours when the '
+      + 'jobs finish and the answer stops being an opinion.'
+    : s.basis === 'mixed'
+      ? ' Some of these are bid hours and some are built ones — the two answer different questions, so read this '
+        + 'as a rough direction rather than a measurement.'
+      : '';
   return {
-    factor: s.ratio, jobs: s.jobs, ratio: s.ratio, confidence: 'fair',
-    note: `${s.jobs} closed jobs, ${s.actHours} actual hours against ${s.estHours} estimated. `
-      + `They agree within ${s.spread}x of each other, so ${s.ratio}x is a number worth applying.`,
+    ...base, confidence: 'fair',
+    note: `${s.jobs} jobs, ${s.actHours} ${what} hours against ${s.estHours} estimated. `
+      + `They agree within ${s.spread}x of each other, so ${s.ratio}x is a number worth applying.${caveat}`,
   };
 }
 

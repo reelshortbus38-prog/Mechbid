@@ -45,12 +45,19 @@ export function manHoursOf(task) {
 // better than an estimator's read for the physical questions, because he is
 // the one holding the torch.
 //
-// It is NOT the same as bidding knowledge. The times below were checked with
-// his foreman on one occasion and are otherwise reasoned. NOBODY WHO BIDS JOBS
-// FOR A LIVING HAS REVIEWED THIS APP. Until one has, every 'confirmed' here
-// means "a man who does the work says the number looks right", which is worth
-// a great deal and is not the same as a number that has been bid, won and
-// built against.
+// The times are a different question from the materials, and they have had two
+// pairs of eyes: his foreman checked the brazing units on one occasion, and
+// somebody who has estimated jobs has been involved throughout the app's
+// development.
+//
+// WHAT IS STILL MISSING IS NOT AN OPINION, IT IS A JOB. No number here has been
+// bid with, won, built, and checked against the timesheet that came back. Every
+// 'confirmed' means "somebody who knows this work says the figure looks right",
+// which is worth a great deal and is still not evidence.
+//
+// That gap is the one components/laborHistory.js exists to close, and it closes
+// per shop: record what a job was bid at and what it took, and after a few the
+// units stop being anybody's opinion and start being that shop's measurement.
 export const UNIT_PROVENANCE = {
   perJointSmall: { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
   perJointMed:   { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },

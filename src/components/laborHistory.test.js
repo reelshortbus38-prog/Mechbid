@@ -3,6 +3,7 @@ import {
   newLaborRecord, recordFromEstimate, recordRatio, laborHistorySummary,
   suggestedUnitScale, scaleLaborUnits, loadLaborHistory, saveLaborHistory,
   SCALABLE_UNITS, MIN_JOBS_FOR_TREND, WIDE_SPREAD,
+  recordBasis, BASIS_ACTUAL, BASIS_BID,
 } from './laborHistory.js';
 import { DEFAULT_LABOR_UNITS, estimateCircuitLabor } from '../state/store.js';
 
@@ -210,5 +211,86 @@ describe('storage', () => {
     globalThis.localStorage = undefined;
     expect(loadLaborHistory()).toEqual([]);
     expect(saveLaborHistory([])).toBe(false);
+  });
+});
+
+// ── BID HOURS: THE ANSWER YOU CAN HAVE THIS AFTERNOON ───────────────────────
+// Actuals take months. An estimator trying the app out has what they bid the
+// job at sitting in a folder right now, and waiting for a store to be built
+// before the app says anything useful is how a trial quietly ends.
+describe('comparing against what was bid', () => {
+  const bidOnly = newLaborRecord({ estHours: 100, bidHours: 130 });
+  const actOnly = newLaborRecord({ estHours: 100, actHours: 120 });
+  const both = newLaborRecord({ estHours: 100, bidHours: 130, actHours: 150 });
+
+  it('compares against the bid when that is all there is', () => {
+    expect(recordBasis(bidOnly)).toBe(BASIS_BID);
+    expect(recordRatio(bidOnly)).toBeCloseTo(1.3, 5);
+  });
+
+  it('prefers ACTUAL over bid, because only one of them is evidence', () => {
+    expect(recordBasis(both)).toBe(BASIS_ACTUAL);
+    expect(recordRatio(both)).toBeCloseTo(1.5, 5);
+  });
+
+  it('can be asked for the bid comparison specifically', () => {
+    expect(recordRatio(both, BASIS_BID)).toBeCloseTo(1.3, 5);
+    // And says nothing rather than falling back when that basis is missing.
+    expect(recordRatio(actOnly, BASIS_BID)).toBeNull();
+    expect(recordRatio(bidOnly, BASIS_ACTUAL)).toBeNull();
+  });
+
+  it('is null until the app has an estimate to compare to', () => {
+    expect(recordBasis(newLaborRecord({ estHours: 0, bidHours: 100 }))).toBeNull();
+  });
+
+  it('reports which basis a summary is standing on', () => {
+    expect(laborHistorySummary([bidOnly, newLaborRecord({ estHours: 200, bidHours: 260 })]).basis).toBe(BASIS_BID);
+    expect(laborHistorySummary([actOnly]).basis).toBe(BASIS_ACTUAL);
+  });
+
+  it('calls a mixed set mixed rather than whichever came first', () => {
+    expect(laborHistorySummary([bidOnly, actOnly]).basis).toBe('mixed');
+  });
+
+  it('filters to one basis when asked', () => {
+    const rows = [bidOnly, actOnly, both];
+    // Only the two with a bid on them, compared on their bids.
+    const s = laborHistorySummary(rows, { basis: BASIS_BID });
+    expect(s.jobs).toBe(2);
+    expect(s.basis).toBe(BASIS_BID);
+  });
+
+  it('says out loud that agreeing with an estimator is not being right', () => {
+    const rows = [
+      newLaborRecord({ estHours: 100, bidHours: 130 }),
+      newLaborRecord({ estHours: 200, bidHours: 258 }),
+      newLaborRecord({ estHours: 150, bidHours: 190 }),
+    ];
+    const s = suggestedUnitScale(rows);
+    expect(s.confidence).toBe('fair');
+    expect(s.basis).toBe(BASIS_BID);
+    expect(s.note).toMatch(/BID hours, not built ones/);
+    expect(s.note).toMatch(/not the same as either of you being right/);
+  });
+
+  it('drops the caveat once the jobs are built', () => {
+    const rows = [
+      newLaborRecord({ estHours: 100, actHours: 130 }),
+      newLaborRecord({ estHours: 200, actHours: 258 }),
+      newLaborRecord({ estHours: 150, actHours: 190 }),
+    ];
+    const s = suggestedUnitScale(rows);
+    expect(s.basis).toBe(BASIS_ACTUAL);
+    expect(s.note).not.toMatch(/BID hours/);
+  });
+
+  it('warns when a set mixes the two questions together', () => {
+    const rows = [
+      newLaborRecord({ estHours: 100, bidHours: 130 }),
+      newLaborRecord({ estHours: 200, actHours: 258 }),
+      newLaborRecord({ estHours: 150, actHours: 190 }),
+    ];
+    expect(suggestedUnitScale(rows).note).toMatch(/answer different questions/);
   });
 });
