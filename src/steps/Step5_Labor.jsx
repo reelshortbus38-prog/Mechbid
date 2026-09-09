@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, loadCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, loadCompanyProfile, saveCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -486,6 +486,7 @@ function CloseOutCard() {
   const [rows, setRows] = useState(loadLaborHistory);
   const [hours, setHours] = useState('');
   const [onlyType, setOnlyType] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const circuits = state.circuits || [];
   const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
@@ -512,9 +513,19 @@ function CloseOutCard() {
       `Scale every labor RATE by ${scale.factor}x?\n\n`
       + `Run/ft, joints, case hookup and rack tie all move. Stick and coil lengths, joint counts and the `
       + `bunched-joint factor are quantities and stay put.\n\n`
-      + `${scale.note}\n\nThis changes the estimate on THIS job. It does not touch jobs already saved.`
+      + `${scale.note}\n\n`
+      + `This changes the estimate on THIS job AND becomes your shop's starting point for new ones. `
+      + `Jobs already saved keep the numbers they were priced with.`
     )) return;
     dispatch({ type: 'SET', key: 'laborUnits', value: next });
+    // KEEP IT. Without this the tuned units die with this job — the estimator
+    // would have to know to go to the Proposal step and press "save as my
+    // shop's defaults", and a loop that only closes if you remember a second
+    // button on another screen does not close. laborUnits is already a company
+    // default key; this is just writing it there at the moment it is earned.
+    const profile = loadCompanyProfile();
+    saveCompanyProfile({ ...profile, laborUnits: next });
+    setSaved(true);
   }
 
   const pct = n => `${n >= 1 ? '+' : ''}${Math.round((n - 1) * 100)}%`;
@@ -594,9 +605,20 @@ function CloseOutCard() {
               </div>
               <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6 }}>{scale?.note}</div>
               {scale?.confidence === 'fair' && (
-                <Btn variant="green" size="sm" onClick={applyScale} style={{ marginTop: 10 }}>
-                  Scale this job's labor rates by {scale.factor}x ({pct(scale.factor)})
-                </Btn>
+                <>
+                  <Btn variant="green" size="sm" onClick={applyScale} style={{ marginTop: 10 }}>
+                    Scale labor rates by {scale.factor}x ({pct(scale.factor)}) and keep it
+                  </Btn>
+                  <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 6, lineHeight: 1.5 }}>
+                    Applies to this job and becomes your shop's starting point for new ones. Saved jobs keep the
+                    numbers they were priced with.
+                  </div>
+                </>
+              )}
+              {saved && (
+                <div style={{ fontSize: 11, color: colors.green, marginTop: 8 }}>
+                  ✓ Saved as your shop's labor units. New jobs start here.
+                </div>
               )}
             </div>
           )}
