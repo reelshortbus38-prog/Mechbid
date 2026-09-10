@@ -4,6 +4,7 @@ import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import { syncShopOnLogin } from '../lib/shopSync.js';
+import { webStorage } from '../state/webStorage.js';
 import AuthButton from './AuthModal.jsx';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
@@ -108,7 +109,7 @@ export default function Wizard() {
     // Jobs and shop settings sync independently: a price book that fails to
     // pull must not stop the jobs landing, and vice versa.
     syncOnLogin(user.id, loadAllJobs, saveAllJobs).then(() => { if (active) setJobs(loadAllJobs()); });
-    syncShopOnLogin(user.id, localStorage).catch(e => console.warn('Shop sync failed:', e?.message));
+    syncShopOnLogin(user.id, webStorage()).catch(e => console.warn('Shop sync failed:', e?.message));
     return () => { active = false; };
   }, [user]);
 
