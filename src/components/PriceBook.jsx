@@ -7,6 +7,7 @@ import {
   addCustomSupplier, removeCustomSupplier,
 } from './suppliers.js';
 import { touchShopKey } from '../lib/shopSync.js';
+import { webStorage } from '../state/webStorage.js';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
 const SUPPLIER_DEFAULT_KEY = 'coldgauge_default_supplier_v1';
@@ -100,7 +101,7 @@ export function SupplierSwitcher({ value, onChange, compact = false }) {
   const globalDefault = loadDefaultSupplier();
   const current = value || globalDefault;
   const isGlobalDefault = current === globalDefault;
-  const [custom, setCustom] = useState(() => loadCustomSuppliers(localStorage));
+  const [custom, setCustom] = useState(() => loadCustomSuppliers(webStorage()));
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [err, setErr] = useState('');
@@ -115,7 +116,7 @@ export function SupplierSwitcher({ value, onChange, compact = false }) {
   }
 
   function commitAdd() {
-    const r = addCustomSupplier(localStorage, draft, { custom });
+    const r = addCustomSupplier(webStorage(), draft, { custom });
     if (!r.ok) { setErr(r.error); return; }
     setCustom(r.list);
     onChange(r.list[r.list.length - 1]);   // select what you just added
@@ -123,7 +124,7 @@ export function SupplierSwitcher({ value, onChange, compact = false }) {
   }
 
   function handleRemove(name) {
-    const r = removeCustomSupplier(localStorage, name, { custom });
+    const r = removeCustomSupplier(webStorage(), name, { custom });
     if (!r.ok) return;
     setCustom(r.list);
     // Don't leave the job pointing at a supplier that is gone from the list.

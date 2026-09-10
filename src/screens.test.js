@@ -23,7 +23,9 @@ import { describe, it, expect } from 'vitest';
 // screen is covered the moment it is added. Nobody has to remember to list it.
 const modules = import.meta.glob('./{components,steps}/*.jsx');
 
-const paths = Object.keys(modules).sort();
+// Test files that happen to be .jsx are not screens — importing one from
+// inside another test file runs its describes in the wrong place.
+const paths = Object.keys(modules).filter(p => !/\.test\.jsx$/.test(p)).sort();
 
 describe('every screen compiles and loads', () => {
   it('finds the screens to check', () => {
