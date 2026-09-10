@@ -3,7 +3,10 @@ import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLine
 import { captureCompanyDefaults, describeCompanyDefaults, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
 import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin, escalationExposure, escalationClause } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Row, Input } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Row, Input, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
+import {
+  newRental, rentalLineTotal, rentalsSummary, rateBreakNote, RENTAL_UNITS, COMMON_RENTALS,
+} from '../components/rentals.js';
 import JobInfo from '../components/JobInfo.jsx';
 import { groupHvacParts } from '../components/partGroups.js';
 import { rowUnit } from '../components/purchaseUnits.js';
@@ -185,6 +188,7 @@ function Calibration({ totals }) {
     { k: 'materials', label: 'Materials & Equipment', est: totals.markupBase || 0 },
     { k: 'labor', label: 'Labor', est: estLabor },
     { k: 'subs', label: 'Subcontractors', est: totals.subsBase || 0 },
+    { k: 'rentals', label: 'Rented equipment', est: totals.rentalsBase || 0 },
     { k: 'other', label: 'Other', est: 0 },
   ];
   const totalEst = rows.reduce((s, r) => s + r.est, 0);
@@ -260,6 +264,90 @@ function Calibration({ totals }) {
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+// ── RENTED EQUIPMENT ──────────────────────────────────────────────────────────
+// A store remodel sits on a lift for weeks and there was no line for it in this
+// app at all. See components/rentals.js for why rental is unlike every other
+// cost on a bid: it is priced by TIME, and the rate steps down as the time goes
+// up, so the app can see an over-quote in the numbers and say so.
+function RentedEquipment() {
+  const { state, dispatch } = useStore();
+  const rentals = state.rentals || [];
+  const set = next => dispatch({ type: 'SET', key: 'rentals', value: next });
+
+  const add = (prefill = {}) => set([...rentals, newRental(uid(), prefill)]);
+  const upd = (id, field, value) => set(rentals.map(r => r.id === id
+    ? { ...r, [field]: field === 'qty' || field === 'rate' ? parseFloat(value) || 0 : value } : r));
+  const summary = rentalsSummary(rentals, state.rentalMarkupPct);
+
+  return (
+    <Card>
+      <SLabel>🚜 Rented Equipment</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 12 }}>
+        Lifts, reefer trailers, dumpsters, light towers — anything on the job that belongs to somebody else.
+        Rates are left at zero because rental pricing is regional and negotiated; a plausible default here would be a
+        number nobody quoted sitting in a bid looking checked.
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+        {COMMON_RENTALS.map(c => (
+          <button key={c.desc} onClick={() => add(c)} style={{ padding: '5px 9px', borderRadius: 6, fontSize: 11,
+            cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.surface, color: colors.textDim }}>
+            + {c.desc}
+          </button>
+        ))}
+      </div>
+
+      {rentals.length === 0 ? (
+        <EmptyState icon="🚜" title="Nothing rented on this job" subtitle="Tap an item above, or + Add" />
+      ) : rentals.map(r => {
+        const note = rateBreakNote(r);
+        return (
+          <div key={r.id} style={{ padding: '7px 0', borderBottom: `1px solid ${colors.border}40` }}>
+            <Row style={{ gap: 8, alignItems: 'center' }}>
+              <TblInput value={r.desc} onChange={e => upd(r.id, 'desc', e.target.value)} placeholder="What is rented" style={{ flex: 1 }} />
+              <TblInput type="number" value={r.qty || ''} onChange={e => upd(r.id, 'qty', e.target.value)} placeholder="Qty"
+                style={{ width: 55, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+              <UnitSelect value={r.unit || 'week'} options={RENTAL_UNITS} onChange={u => upd(r.id, 'unit', u)} />
+              <TblInput type="number" value={r.rate || ''} onChange={e => upd(r.id, 'rate', e.target.value)} placeholder="$ / unit"
+                style={{ width: 80, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 70, textAlign: 'right' }}>
+                {fmt(rentalLineTotal(r))}
+              </span>
+              <button onClick={() => set(rentals.filter(x => x.id !== r.id))}
+                style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+            </Row>
+            {/* The app cannot know this supplier's monthly rate, so it does not
+                invent one. It points at the line and says go and ask. */}
+            {note && (
+              <div style={{ fontSize: 11, color: colors.yellow, marginTop: 4, paddingLeft: 2 }}>⚠ {note}</div>
+            )}
+          </div>
+        );
+      })}
+
+      <Row style={{ gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
+        <Btn variant="ghost" size="sm" onClick={() => add()}>+ Add</Btn>
+        <div>
+          <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rental Markup (%)</div>
+          <Input type="number" value={state.rentalMarkupPct ?? 0}
+            onChange={e => dispatch({ type: 'SET', key: 'rentalMarkupPct', value: parseFloat(e.target.value) || 0 })}
+            style={{ width: 80, fontFamily: "'DM Mono', monospace" }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 180, textAlign: 'right' }}>
+          <div style={{ fontSize: 11, color: colors.textDim }}>
+            {fmt(summary.base)} rented{summary.markupPct ? ` + ${summary.markupPct}% markup` : ' at cost'}
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>{fmt(summary.total)}</div>
+        </div>
+      </Row>
+      <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+        Rental is taxable in most states and this total carries no sales tax — the tax field on this step is charged on
+        materials only. Add it to the rate or check how your state treats rental.
+      </div>
     </Card>
   );
 }
@@ -634,7 +722,7 @@ function ProposalView({ company = {} }) {
       }
     }
 
-    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
+    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
     const exclusions = (state.exclusions || []).filter(x => x && x.trim());
     // The clause is generated from the allowance actually carried, so the
     // contract language and the number in the bid cannot drift apart.
@@ -678,6 +766,7 @@ function ProposalView({ company = {} }) {
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Materials & Equipment (${markupLabel})</span><span>${fmt(markupBase + markupAmt)}</span></div>
     ${taxAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Sales Tax (${taxPct}%)</span><span>${fmt(taxAmt)}</span></div>` : ''}
     ${subsTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Subcontractors</span><span>${fmt(subsTotal)}</span></div>` : ''}
+    ${rentalsTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rented Equipment</span><span>${fmt(rentalsTotal)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Labor</span><span>${fmt(laborTotal)}</span></div>
     ${rackLaborTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rack Work</span><span>${fmt(rackLaborTotal)}</span></div>` : ''}
     ${fieldTasksTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Field Work</span><span>${fmt(fieldTasksTotal)}</span></div>` : ''}
@@ -706,7 +795,7 @@ function ProposalView({ company = {} }) {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
-  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
+  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
   // What the bid actually earns, against what the estimator set. See
   // marginAnalysis in bidTotals.js for why this reports rather than corrects.
   const marginInfo = marginAnalysis(state, totals);
@@ -804,6 +893,7 @@ function ProposalView({ company = {} }) {
           { label: 'Materials Total (marked up)', value: fmt(markedUpMats), bold: true },
           taxAmt > 0 && { label: `Sales Tax (${taxPct}%)`, value: fmt(taxAmt), color: colors.text },
           subsTotal > 0 && { label: 'Subcontractors', value: fmt(subsTotal), color: colors.text },
+          rentalsTotal > 0 && { label: 'Rented Equipment', value: fmt(rentalsTotal), color: colors.text },
           { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
           rackLaborTotal > 0 && { label: 'Rack Work', value: fmt(rackLaborTotal), color: colors.yellow },
           fieldTasksTotal > 0 && { label: 'Field Work', value: fmt(fieldTasksTotal), color: colors.yellow },
@@ -1093,6 +1183,7 @@ export default function Step6_Proposal({ onBack }) {
             { label: totals.equipMarkupPct !== activeScenario.markupPct ? `Markup (mat ${activeScenario.markupPct}% · equip ${totals.equipMarkupPct}%)` : `Markup (${activeScenario.markupPct}%)`, value: fmt(totals.markupAmt), color: colors.green },
             totals.taxAmt > 0 && { label: `Sales Tax (${totals.taxPct}%)`, value: fmt(totals.taxAmt), color: colors.text },
             totals.subsTotal > 0 && { label: 'Subcontractors', value: fmt(totals.subsTotal), color: colors.text },
+            totals.rentalsTotal > 0 && { label: 'Rented Equipment', value: fmt(totals.rentalsTotal), color: colors.text },
             { label: 'Labor', value: fmt(totals.laborTotal), color: colors.yellow },
             totals.rackLaborTotal > 0 && { label: 'Rack Work Labor', value: fmt(totals.rackLaborTotal), color: colors.yellow },
             totals.fieldTasksTotal > 0 && { label: 'Field Work Labor', value: fmt(totals.fieldTasksTotal), color: colors.yellow },
@@ -1119,6 +1210,9 @@ export default function Step6_Proposal({ onBack }) {
 
       {/* Equipment markup & subcontractors */}
       <MarkupAndSubs />
+
+      {/* Rented equipment — a lift on a store remodel had nowhere to go */}
+      <RentedEquipment />
 
       {/* Tax & exclusions editor */}
       <TaxAndExclusions />

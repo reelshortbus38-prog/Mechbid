@@ -1,6 +1,7 @@
 import { jobLaborTotal, jobCrew, jobOOTTotal, calcRackLaborTotal, calcFieldTasksTotal, calcResLinesetTotal } from '../state/store.js';
 import { forMode, REFRIGERATION, RESIDENTIAL_HVAC } from '../state/tradeScope.js';
 import { billedLabor } from './bidMethod.js';
+import { rentalsBase } from '../components/rentals.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -40,6 +41,11 @@ export function computeBidTotals(state, markupPct) {
   const subsBase = (state.subcontractors || []).reduce((s, x) => s + (parseFloat(x.cost) || 0), 0);
   const subMarkupPct = parseFloat(state.subMarkupPct) || 0;
   const subsTotal = subsBase * (1 + subMarkupPct / 100);
+  // Rented equipment. Marked up on its own percentage the way subs are — a
+  // shop that passes a lift through at cost sets zero, which is the default.
+  const rentalsBaseAmt = rentalsBase(state.rentals);
+  const rentalMarkupPct = parseFloat(state.rentalMarkupPct) || 0;
+  const rentalsTotal = rentalsBaseAmt * (1 + rentalMarkupPct / 100);
   const bondPct = parseFloat(state.bondPct) || 0;
   const permitFee = parseFloat(state.permitFee) || 0;
   // When crew rates are burdened COST rather than a billing rate, labor has to
@@ -90,7 +96,9 @@ export function computeBidTotals(state, markupPct) {
   const finish = (subtotal, rest) => {
     const bondAmt = subtotal * (bondPct / 100);
     return {
-      ...rest, subsBase, subMarkupPct, subsTotal, taxPct, bondPct, bondAmt, permitFee,
+      ...rest, subsBase, subMarkupPct, subsTotal,
+      rentalsBase: rentalsBaseAmt, rentalMarkupPct, rentalsTotal,
+      taxPct, bondPct, bondAmt, permitFee,
       // What the OTHER method would have come to. Not in the total — carried so
       // the Labor step can show what is sitting out of the bid rather than
       // leaving an estimator to wonder where their task hours went.
@@ -112,7 +120,7 @@ export function computeBidTotals(state, markupPct) {
     const markupAmt = equipTotal * (equipMarkupPct / 100)
       + (partsTotal + linesetTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + laborMarkupAmt;
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + laborMarkupAmt;
     return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
@@ -124,7 +132,7 @@ export function computeBidTotals(state, markupPct) {
     const markupAmt = equipTotal * (equipMarkupPct / 100)
       + (partsTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + fieldTasksTotal + laborMarkupAmt;
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + fieldTasksTotal + laborMarkupAmt;
     return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal, equipTotal, partsTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
@@ -137,7 +145,7 @@ export function computeBidTotals(state, markupPct) {
   const markupBase = matsTotal + rackPartsContractor + escalationAmt + consumablesAmt;
   const markupAmt = markupBase * (markupPct / 100);
   const taxAmt = taxOf(markupBase + markupAmt);
-  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
+  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
   return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, laborMarkupAmt, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
 }
 
@@ -162,7 +170,7 @@ export function bidLetterBreakdown(state, totals) {
   const matsSell = (totals.markupBase || 0) + (totals.markupAmt || 0) + (totals.taxAmt || 0);
   const oot = jobOOTTotal(state);
   const labor = (totals.laborTotal || 0) + (totals.rackLaborTotal || 0) + (totals.fieldTasksTotal || 0) - oot;
-  const other = (totals.subsTotal || 0) + (totals.bondAmt || 0) + (totals.permitFee || 0);
+  const other = (totals.subsTotal || 0) + (totals.rentalsTotal || 0) + (totals.bondAmt || 0) + (totals.permitFee || 0);
 
   return {
     materials: matsSell - refrigerant,
