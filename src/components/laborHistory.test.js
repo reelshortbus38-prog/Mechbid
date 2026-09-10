@@ -3,7 +3,7 @@ import {
   newLaborRecord, recordFromEstimate, recordRatio, laborHistorySummary,
   suggestedUnitScale, scaleLaborUnits, loadLaborHistory, saveLaborHistory,
   SCALABLE_UNITS, MIN_JOBS_FOR_TREND, WIDE_SPREAD,
-  recordBasis, BASIS_ACTUAL, BASIS_BID,
+  recordBasis, comparableHours, BASIS_ACTUAL, BASIS_BID,
 } from './laborHistory.js';
 import { DEFAULT_LABOR_UNITS, estimateCircuitLabor } from '../state/store.js';
 
@@ -292,5 +292,51 @@ describe('comparing against what was bid', () => {
       newLaborRecord({ estHours: 150, actHours: 190 }),
     ];
     expect(suggestedUnitScale(rows).note).toMatch(/answer different questions/);
+  });
+});
+
+// ── THE SMALL JOB PROBLEM ───────────────────────────────────────────────────
+// The circuit estimate is pipe work. It has never covered driving to the store,
+// staging, getting the lift, or cleaning up and writing the ticket. On a
+// twenty-circuit remodel that is a rounding error. On a one-day service call it
+// can be half the day, and comparing the whole ticket against a pipe estimate
+// would read as the units being 50% light when they were right about the pipe.
+describe('hours the estimate never covered', () => {
+  it('takes them off before comparing', () => {
+    // A ten-hour ticket with three hours of drive, staging and cleanup is a
+    // seven-hour comparison against a pipe estimate.
+    const r = newLaborRecord({ estHours: 7, actHours: 10, outsideHours: 3 });
+    expect(comparableHours(r, BASIS_ACTUAL)).toBe(7);
+    expect(recordRatio(r)).toBeCloseTo(1, 5);
+  });
+
+  it('changes nothing when left at zero, which is the big-job answer', () => {
+    const r = newLaborRecord({ estHours: 100, actHours: 130 });
+    expect(comparableHours(r, BASIS_ACTUAL)).toBe(130);
+    expect(recordRatio(r)).toBeCloseTo(1.3, 5);
+  });
+
+  it('does not touch a BID, which is a number for the same scope', () => {
+    const r = newLaborRecord({ estHours: 100, bidHours: 130, outsideHours: 40 });
+    expect(comparableHours(r, BASIS_BID)).toBe(130);
+    expect(recordRatio(r, BASIS_BID)).toBeCloseTo(1.3, 5);
+  });
+
+  it('treats a typo as a typo rather than a negative job', () => {
+    const r = newLaborRecord({ estHours: 5, actHours: 8, outsideHours: 20 });
+    expect(comparableHours(r, BASIS_ACTUAL)).toBe(0);
+    // With nothing comparable left it is not usable as an actual at all.
+    expect(recordBasis(r, BASIS_ACTUAL)).toBeNull();
+  });
+
+  it('rolls into the summary on the comparable hours, not the ticket', () => {
+    const rows = [
+      newLaborRecord({ estHours: 7, actHours: 10, outsideHours: 3 }),
+      newLaborRecord({ estHours: 14, actHours: 20, outsideHours: 6 }),
+      newLaborRecord({ estHours: 21, actHours: 30, outsideHours: 9 }),
+    ];
+    const s = laborHistorySummary(rows);
+    expect(s.actHours).toBe(42);      // not the 60 that was billed
+    expect(s.ratio).toBeCloseTo(1, 3);
   });
 });
