@@ -1198,9 +1198,9 @@ export const DEFAULT_LABOR_UNITS = {
   stickLength: 20,   // ft of hard copper per stick → number of joints
   // ── AND SOFT COPPER DOES NOT COME IN STICKS ───────────────────────────────
   // A line pushed in the floor is soft copper, and soft copper arrives in
-  // COILS. Fifty feet is the common ACR coil. So a 400 ft in-floor run is
-  // eight joints, not the twenty this used to charge it — the stick length was
-  // being applied to a product that has no sticks.
+  // COILS. Fifty feet is the common ACR coil. So a 400 ft in-floor run is eight
+  // coils — seven joints between them — not the twenty this used to charge it;
+  // the stick length was being applied to a product that has no sticks.
   coilLength: 50,
   // ── FITTINGS: THE NUMBER YOU CANNOT GET FROM A DESK ───────────────────────
   // Joints a circuit has BEYOND one per stick. This started as a hardcoded +2
@@ -1312,6 +1312,30 @@ export function softCopperAvailable(size) {
   return i <= PIPE_ORDER.indexOf(SOFT_COPPER_MAX);
 }
 
+// ── JOINTS ALONG A RUN: FENCEPOSTS, NOT FENCE PANELS ────────────────────────
+// This was `Math.ceil(ft / spacing)` — the number of STICKS a run takes. But a
+// stick is not a joint. Eight sticks laid end to end have SEVEN joints between
+// them, not eight, and the app was brazing the last one twice.
+//
+// The ends are not the missing joint either: where the run meets the rack is
+// perRackTie, where it meets the case is perCase, and the turns it takes
+// crossing the store are the fittings allowance. All three are already priced
+// separately, so the +1 was not standing in for any of them.
+//
+// It is small on a long run and not small on a short one. A 20 ft riser took
+// one full braze joint for a single stick that has none, and short circuits are
+// common — so the error was largest exactly where the total is smallest, and it
+// ran the same direction every time: over.
+//
+// → joints BETWEEN the segments a run is made of. Never negative: a run shorter
+//   than one stick is one piece of pipe with nothing to braze along it.
+export function lengthJoints(ft, spacingFt) {
+  const length = Math.max(0, Number(ft) || 0);
+  const spacing = Number(spacingFt) || 20;
+  if (length <= 0 || spacing <= 0) return 0;
+  return Math.max(0, Math.ceil(length / spacing) - 1);
+}
+
 // How many feet of pipe a circuit gets between joints. Soft coil runs further
 // than a hard stick, so an in-floor line has far fewer.
 export function jointSpacingFt(circuit, units) {
@@ -1348,13 +1372,14 @@ export function estimateCircuitLabor(circuits, units) {
     // walked the route, allowed for if nobody has yet.
     const fit = circuitJoints(c, u);
     // Hard stick or soft coil — an in-floor line runs 50 ft between joints
-    // rather than 20, because it is not cut from sticks.
-    const lengthJoints = Math.ceil(ft / jointSpacingFt(c, u));
-    const joints = lengthJoints + fit.joints;
+    // rather than 20, because it is not cut from sticks. And n segments have
+    // n-1 joints between them, which is not what this used to charge.
+    const runJoints = lengthJoints(ft, jointSpacingFt(c, u));
+    const joints = runJoints + fit.joints;
     // Length joints are spread along the run and each is its own trip. The
     // circuit's loose fittings are the turns it takes crossing the store —
     // also scattered. Only the riser's are bunched in one place.
-    const jointUnits = lengthJoints + fit.loose
+    const jointUnits = runJoints + fit.loose
       + clusterJointEquivalent(fit.clustered, u.clusterFactor);
     // Case hookup is PER CASE, not per circuit. A lineup of six gets six.
     const cs = circuitCases(c);

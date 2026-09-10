@@ -9,7 +9,7 @@ import {
   calcFlatJobCost, DEFAULT_OOT_BASIS, initialState, jobLaborTotal,
   crewDayCost, dayHourSplit, otReview, STANDARD_DAY_HOURS,
   memberOtHours, otRuleConflict, STANDARD_WEEK_HOURS, DAYS_PER_WEEK_OPTIONS,
-  circuitCases, circuitJoints, clusterJointEquivalent,
+  circuitCases, circuitJoints, clusterJointEquivalent, lengthJoints,
   softCopperAvailable, jointSpacingFt, SOFT_COPPER_MAX,
 } from './store.js';
 import { emlToText, extractCalloutTasksFromText } from '../api/ai.js';
@@ -90,13 +90,13 @@ describe('rack + field task costing', () => {
 
 describe('estimateCircuitLabor', () => {
   it('derives hours from footage, joints, case and rack allowances', () => {
-    // 100ft, 7/8" suction (small bucket): run 100*0.03=3 ; joints ceil(100/20)+2=7 *0.4=2.8 ; +1.5 case +2 tie
+    // 100ft, 7/8" suction (small bucket): run 100*0.03=3 ; joints (ceil(100/20)-1)+2=6 *0.4=2.4 ; +1.5 case +2 tie
     const { totalHours, perCircuit } = estimateCircuitLabor(
       [{ circuitId: 'A1', runLength: 100, riserLength: 0, sucHoriz: '7/8' }],
       DEFAULT_LABOR_UNITS,
     );
     expect(perCircuit[0].bucket).toBe('small');
-    expect(totalHours).toBeCloseTo(9.3, 1);
+    expect(totalHours).toBeCloseTo(8.9, 1);
   });
 
   it('carries the cut on the running rates, not on the brazing', () => {
@@ -707,7 +707,7 @@ describe('estimateCircuitLabor — case hookups scale with the lineup', () => {
     // The regression that matters: opening an old job must not change its bid.
     const est = estimateCircuitLabor([circuit(), circuit({ circuitId: 'A7' })], units);
     const ft = 150, perFt = units.perFtMed, perJoint = units.perJointMed;
-    const joints = Math.ceil(ft / units.stickLength) + 4;
+    const joints = lengthJoints(ft, units.stickLength) + 4;
     const each = ft * perFt + joints * perJoint + units.perCase + units.perRackTie;
     expect(est.totalHours).toBeCloseTo(Math.round(each * 2 * 10) / 10, 5);
   });
@@ -798,10 +798,10 @@ describe('estimateCircuitLabor — bunched joints cost less than scattered ones'
     const u = { ...DEFAULT_LABOR_UNITS, clusterFactor: 0.65 };
     const est = estimateCircuitLabor([circuit()], u);
     const row = est.perCircuit[0];
-    // 112 ft over 20 ft sticks = 6, plus 2 loose turns, plus a 4-joint riser
-    // cluster priced as 1 + 3 x 0.65.
-    expect(row.joints).toBe(6 + 2 + 4);
-    expect(row.jointUnits).toBeCloseTo(6 + 2 + (1 + 3 * 0.65), 2);
+    // 112 ft is six 20 ft sticks and FIVE joints between them, plus 2 loose
+    // turns, plus a 4-joint riser cluster priced as 1 + 3 x 0.65.
+    expect(row.joints).toBe(5 + 2 + 4);
+    expect(row.jointUnits).toBeCloseTo(5 + 2 + (1 + 3 * 0.65), 2);
   });
 
   it('reports the joint COUNT unchanged, so the row still reads true', () => {
@@ -883,10 +883,11 @@ describe('jointSpacingFt', () => {
 describe('estimateCircuitLabor — an in-floor run is jointed by the coil', () => {
   const buried = { circuitId: 'F', runLength: 400, riserLength: 0, sucHoriz: '7/8', inFloor: true };
 
-  it('charges eight joints on 400 ft, not twenty', () => {
+  it('charges seven joints on 400 ft, not nineteen', () => {
     const est = estimateCircuitLabor([buried], DEFAULT_LABOR_UNITS);
-    // 400 / 50 = 8 coil joints, plus the 2 loose fittings the circuit assumes.
-    expect(est.perCircuit[0].joints).toBe(8 + DEFAULT_LABOR_UNITS.jointsPerCircuit);
+    // 400 ft is eight 50 ft coils, so SEVEN joints between them, plus the 2
+    // loose fittings the circuit assumes.
+    expect(est.perCircuit[0].joints).toBe(7 + DEFAULT_LABOR_UNITS.jointsPerCircuit);
   });
 
   it('costs less than the same run overhead', () => {
