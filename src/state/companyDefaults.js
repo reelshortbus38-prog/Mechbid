@@ -25,6 +25,9 @@ export const COMPANY_DEFAULT_KEYS = [
   'laborRateBasis', 'laborCostRatio',
   // What the shop sells at.
   'markupPct', 'equipMarkupPct', 'subMarkupPct',
+  // What the shop adds to a rented lift. A fact about how they bill, not about
+  // this job — some pass rental through at cost, some do not.
+  'rentalMarkupPct',
   // What the shop burns per labor dollar — nitrogen, rod, tips, abrasives.
   // A shop fact, not a job one, and previously retyped or left at the app's
   // number on every bid.

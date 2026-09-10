@@ -369,6 +369,11 @@ export const initialState = {
   // Subcontractors (electrical, crane/rigging, controls, insulation, demo…) as
   // first-class pass-through cost rows, with an optional blanket markup.
   subcontractors: [],   // { id, desc, cost }
+  // Rented equipment — lifts, reefer trailers, dumpsters, light towers. Priced
+  // by TIME, which is what makes it different from everything else on a bid,
+  // and it had no line anywhere until now. See components/rentals.js.
+  rentals: [],          // { id, desc, qty, unit, rate, notes }
+  rentalMarkupPct: 0,
   subMarkupPct: 0,
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
