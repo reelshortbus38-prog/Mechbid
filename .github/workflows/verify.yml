@@ -25,18 +25,18 @@ jobs:
         with:
           node-version: '22'
 
-      # `npm install`, not `npm ci`, and deliberately — it is what vercel.json
-      # sets as the installCommand, so this installs the same tree production
-      # builds from. That matters more than lockfile purity here, because of
-      # `xlsx`: package.json takes it from the SheetJS CDN rather than the npm
-      # registry (the registry copy stopped at 0.18.5 and carries known
-      # advisories), and a URL dependency is not in package-lock.json. `npm ci`
-      # refuses outright — "Missing: xlsx@0.20.3 from lock file" — which is
-      # exactly how this run first failed.
+      # `npm ci` and not `npm install`: it installs exactly what the lockfile
+      # pins and fails rather than quietly resolving something newer.
       #
-      # The lockfile being out of sync is a real thing to fix, not something
-      # this workflow should paper over quietly. It needs `npm install` run and
-      # the result committed from a machine that can reach cdn.sheetjs.com.
-      - run: npm install
+      # This briefly ran as `npm install`, because it had to — the lockfile had
+      # no entry for `xlsx` at all (package.json takes it from the SheetJS CDN,
+      # and a URL dependency does not lock itself), so `npm ci` refused with
+      # "Missing: xlsx@0.20.3 from lock file". The lockfile workflow has since
+      # fixed that, so the strong check is back.
+      #
+      # This step failing with a "not in sync" message means somebody changed
+      # package.json without regenerating the lockfile. That is the check
+      # working, not the check being in the way.
+      - run: npm ci
 
       - run: npm run verify
