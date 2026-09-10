@@ -66,7 +66,7 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
   // Costed on the JOB's out-of-town basis, so this card and the bid total
   // cannot disagree about what a per-day figure means.
   const { state: jobState } = useStore();
-  const { labor, oot, total } = calcLaborPeriodCost(period, ootOpts(jobState));
+  const { labor, travel, oot, total } = calcLaborPeriodCost(period, ootOpts(jobState));
   const itemised = ootIsItemised(jobState.ootRates);
   const ootBd = itemised
     ? ootBreakdown({
@@ -158,6 +158,16 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
                 <Input type="number" value={period.otMult} onChange={e => onUpdate('otMult', parseFloat(e.target.value) || 1)} step="0.1" placeholder="1.5" />
               </div>
             )}
+            {/* Travel is HOURS, at each traveling man's own rate. It used to
+                live inside the out-of-town dollar figure, where it took no
+                rate, showed in no hour count, and could not be told apart from
+                a hotel bill. */}
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Travel (hrs/man)</div>
+              <Input type="number" value={period.travelHrs || ''}
+                onChange={e => onUpdate('travelHrs', parseFloat(e.target.value) || 0)}
+                placeholder="0" />
+            </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/day)</div>
               <Input type="number" value={period.otAfterHours || ''}
@@ -226,12 +236,13 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
           {total > 0 && (
             <>
               <Divider />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${travel > 0 ? 4 : 3},1fr)`, gap: 10 }}>
                 {[
                   { label: 'Labor', value: fmt(labor), color: colors.yellow },
+                  travel > 0 && { label: 'Travel', value: fmt(travel), color: colors.yellow },
                   { label: 'Out of Town', value: fmt(oot), color: colors.blue },
                   { label: 'Period Total', value: fmt(total), color: colors.orange },
-                ].map(s => (
+                ].filter(Boolean).map(s => (
                   <div key={s.label} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -1169,8 +1180,22 @@ export default function Step5_Labor({ onNext, onBack }) {
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
               <Input type="number" value={flat.ootPerDay || ''} onChange={e => setFlat({ ootPerDay: parseFloat(e.target.value) || 0 })} placeholder="0" />
             </div>
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Travel (hrs/man)</div>
+              <Input type="number" value={flat.travelHrs || ''} onChange={e => setFlat({ travelHrs: parseFloat(e.target.value) || 0 })} placeholder="0" />
+            </div>
             {/* Flat mode had no overtime inputs at all, which is why a whole-job
                 crew on ten-hour days billed every hour straight. */}
+            {/* Travel is HOURS, at each traveling man's own rate. It used to
+                live inside the out-of-town dollar figure, where it took no
+                rate, showed in no hour count, and could not be told apart from
+                a hotel bill. */}
+            <div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Travel (hrs/man)</div>
+              <Input type="number" value={period.travelHrs || ''}
+                onChange={e => onUpdate('travelHrs', parseFloat(e.target.value) || 0)}
+                placeholder="0" />
+            </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/day)</div>
               <Input type="number" value={flat.otAfterHours || ''}
@@ -1195,12 +1220,13 @@ export default function Step5_Labor({ onNext, onBack }) {
           {flatCost.total > 0 && (
             <>
               <Divider />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${flatCost.travel > 0 ? 4 : 3},1fr)`, gap: 10 }}>
                 {[
                   { label: 'On-Site Days', value: `${flatCost.days}`, color: colors.text },
                   { label: 'Labor', value: fmt(flatCost.labor), color: colors.yellow },
+                  flatCost.travel > 0 && { label: 'Travel', value: fmt(flatCost.travel), color: colors.yellow },
                   { label: 'Whole-Job Total', value: fmt(flatCost.total), color: colors.orange },
-                ].map(s => (
+                ].filter(Boolean).map(s => (
                   <div key={s.label} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
