@@ -891,6 +891,38 @@ export function otRuleConflict(crew, { daysPerWeek = 0, otAfterHours = 0, weekly
   };
 }
 
+// ── TRAVEL TIME IS PAID HOURS, NOT A PER DIEM ───────────────────────────────
+// Travel was living inside the out-of-town dollar figure alongside meals and
+// hotel, which hid it from everything that makes it labor: it never took the
+// crew's own rate, it never appeared in the hours, and it could not be told
+// apart from a hotel bill on a bid letter that breaks out-of-town into its own
+// category.
+//
+// It is hours. Each traveling man's own rate, times the hours he drives.
+//
+// STRAIGHT TIME BY DEFAULT. A four-in-the-morning drive to a night shift is not
+// night-premium work and a long drive is not overtime, in most shops' practice —
+// but practice differs, so `travelPremium` puts it back on the same multipliers
+// the shift carries.
+//
+// Per TRAVELING man: somebody local to the store drives home at the end of the
+// day like any other job, which is the same `travels` flag the hotel uses.
+export function travelCost(crew, travelHrs, { shiftMult = 1, otMult = 1, premium = false } = {}) {
+  const hrs = Math.max(0, parseFloat(travelHrs) || 0);
+  if (hrs <= 0) return 0;
+  const mult = premium ? (parseFloat(shiftMult) || 1) * (parseFloat(otMult) || 1) : 1;
+  return (crew || [])
+    .filter(m => m && m.travels !== false)
+    .reduce((s, m) => s + (parseFloat(m.rate) || 0) * hrs * mult, 0);
+}
+
+// Travel hours the job carries, for the estimator and for anyone comparing the
+// app's hours against a timesheet. Man-hours, not clock hours.
+export function travelManHours(crew, travelHrs) {
+  const hrs = Math.max(0, parseFloat(travelHrs) || 0);
+  return hrs * crewTravelCount(crew);
+}
+
 // ── LABOR CALCULATIONS ─────────────────────────────────────────────────────────
 export function calcLaborPeriodCost(period, opts = {}) {
   // Each crew member contributes rate × their own hours/day, with hours past
@@ -907,7 +939,16 @@ export function calcLaborPeriodCost(period, opts = {}) {
     daysPerWeek: period.daysPerWeek,
     shiftMult: nightMult,
   }) * days;
-  return { labor, oot, total: labor + oot };
+  // Travel is LABOR — see travelCost. It rides with the labor rather than the
+  // per diem, so on a job bid without periods it drops out with the hours it
+  // is, and the out-of-town category stays what it says it is.
+  const travel = travelCost(period.crew, period.travelHrs, {
+    shiftMult: nightMult, otMult: period.otMult, premium: !!period.travelPremium,
+  });
+  // `labor` stays the WORK. Travel is reported beside it rather than folded in,
+  // so a card showing both is not showing the same money twice — and `total`
+  // carries all three, which is what calcTotalLabor sums.
+  return { labor, travel, oot, total: labor + travel + oot };
 }
 
 export function calcTotalLabor(laborPeriods, opts = {}) {
@@ -935,7 +976,8 @@ export function calcFlatJobCost(flat, opts = {}) {
     daysPerWeek: f.daysPerWeek,
   }) * days;
   const oot = ootCost(days, f.ootPerDay, f.crew, { ...opts, nights: f.nights });
-  return { days, labor, oot, total: labor + oot };
+  const travel = travelCost(f.crew, f.travelHrs, { otMult: f.otMult, premium: !!f.travelPremium });
+  return { days, labor, travel, oot, total: labor + travel + oot };
 }
 
 // Mode-aware labor total and crew — the ONE pair of accessors the bid engine
