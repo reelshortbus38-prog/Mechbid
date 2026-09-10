@@ -51,10 +51,24 @@ export function saveLaborHistory(records) {
   } catch { return false; }
 }
 
-// ── THREE NUMBERS, AND THEY ANSWER DIFFERENT QUESTIONS ──────────────────────
-//   estHours  what the app said
-//   bidHours  what the estimator actually bid it at
-//   actHours  what payroll says it took
+// ── THE NUMBERS, AND WHAT EACH ONE IS ───────────────────────────────────────
+//   estHours      what the app said
+//   bidHours      what the estimator actually bid it at
+//   actHours      what the ticket or the timesheet says, in total
+//   outsideHours  the part of that total this estimate never covered
+//
+// OUTSIDE HOURS ARE WHY A SMALL JOB CAN LIE. The circuit estimate is pipe work:
+// running it, brazing it, hooking up cases, tying into the rack. It has never
+// included driving to the store, staging, getting the lift, or cleaning up and
+// writing the ticket. On a twenty-circuit remodel that overhead is a rounding
+// error against a thousand hours. On a one-day service call it can be half the
+// day — and comparing a ten-hour ticket against a five-hour pipe estimate would
+// read as "the app is 50% light" when the app was right about the pipe and was
+// never asked about the drive.
+//
+// So the total goes in as the total, the part outside the estimate goes in
+// beside it, and the ratio is computed on what is actually comparable. Left at
+// zero it changes nothing, which is the right answer on a big job.
 //
 // bidHours is here because ACTUALS TAKE MONTHS. An estimator trying this app
 // out has what they bid the job at sitting in a folder this afternoon, and
@@ -77,7 +91,7 @@ export function saveLaborHistory(records) {
 // that job was forty circuits or four.
 export function newLaborRecord({
   id, name = '', date = '', projectType = 'remodel', mode = '',
-  estHours = 0, bidHours = 0, actHours = 0,
+  estHours = 0, bidHours = 0, actHours = 0, outsideHours = 0,
   circuits = 0, ft = 0, joints = 0, cases = 0, notes = '',
 } = {}) {
   return {
@@ -87,6 +101,7 @@ export function newLaborRecord({
     estHours: Math.max(0, Number(estHours) || 0),
     bidHours: Math.max(0, Number(bidHours) || 0),
     actHours: Math.max(0, Number(actHours) || 0),
+    outsideHours: Math.max(0, Number(outsideHours) || 0),
     circuits: Math.max(0, Math.round(Number(circuits) || 0)),
     ft: Math.max(0, Math.round(Number(ft) || 0)),
     joints: Math.max(0, Math.round(Number(joints) || 0)),
@@ -116,14 +131,27 @@ export function recordFromEstimate(state = {}, est = {}) {
 export const BASIS_ACTUAL = 'actual';
 export const BASIS_BID = 'bid';
 
-const hoursFor = (r, basis) =>
-  Number((basis === BASIS_BID ? r?.bidHours : r?.actHours)) || 0;
+// What a record contributes to a comparison. The bid is taken as given — an
+// estimator's number for the same scope — but a TOTAL of hours worked has the
+// out-of-scope part taken off it first, or a one-day job's drive time reads as
+// the units being wrong. Never below zero: outside hours larger than the total
+// is a typo, not a negative job.
+export function comparableHours(r, basis) {
+  if (basis === BASIS_BID) return Number(r?.bidHours) || 0;
+  const total = Number(r?.actHours) || 0;
+  return Math.max(0, total - (Number(r?.outsideHours) || 0));
+}
+
+const hoursFor = comparableHours;
 
 // The basis a record can actually be compared on, preferring evidence over
 // agreement. → 'actual' | 'bid' | null.
 export function recordBasis(r, prefer) {
   if ((Number(r?.estHours) || 0) <= 0) return null;
-  const has = { actual: (Number(r?.actHours) || 0) > 0, bid: (Number(r?.bidHours) || 0) > 0 };
+  const has = {
+    actual: comparableHours(r, BASIS_ACTUAL) > 0,
+    bid: (Number(r?.bidHours) || 0) > 0,
+  };
   if (prefer && has[prefer]) return prefer;
   if (prefer) return null;
   if (has.actual) return BASIS_ACTUAL;

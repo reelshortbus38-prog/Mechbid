@@ -8,7 +8,7 @@ import { forMode } from '../state/tradeScope.js';
 import { hasCompanyDefaults } from '../state/companyDefaults.js';
 import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
-  laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis,
+  laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
 } from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
@@ -486,6 +486,7 @@ function CloseOutCard() {
   const [rows, setRows] = useState(loadLaborHistory);
   const [hours, setHours] = useState('');
   const [bid, setBid] = useState('');
+  const [outside, setOutside] = useState('');
   const [onlyType, setOnlyType] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -500,8 +501,11 @@ function CloseOutCard() {
     const act = parseFloat(hours) || 0;
     const bidHrs = parseFloat(bid) || 0;
     if (!est || (act <= 0 && bidHrs <= 0)) return;
-    persist([...rows, { ...recordFromEstimate(state, est), actHours: act, bidHours: bidHrs }]);
-    setHours(''); setBid('');
+    persist([...rows, {
+      ...recordFromEstimate(state, est),
+      actHours: act, bidHours: bidHrs, outsideHours: parseFloat(outside) || 0,
+    }]);
+    setHours(''); setBid(''); setOutside('');
   }
 
   const filter = onlyType ? { projectType } : {};
@@ -548,6 +552,12 @@ function CloseOutCard() {
         After a few jobs the app can say whether its units run light or heavy <em>for your crews</em>. It will not
         guess WHICH unit is wrong — separating a per-foot rate from a per-joint rate needs far more jobs than anybody
         has, so it reports one honest number and scales by it.
+        <br />
+        <strong style={{ color: colors.yellow }}>On a small job, fill in travel &amp; setup.</strong> The estimate
+        above is <em>pipe work</em> — running it, brazing it, hooking up cases, tying into the rack. It has never
+        included driving to the store, staging, getting the lift or cleaning up. On a big remodel that is a rounding
+        error; on a one-day ticket it can be half the day, and comparing the whole ticket would read as the units
+        being far too light when they were right about the pipe.
       </div>
 
       {est ? (
@@ -564,6 +574,12 @@ function CloseOutCard() {
           <div>
             <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>It actually took</div>
             <Input type="number" value={hours} onChange={e => setHours(e.target.value)} placeholder="hrs"
+              style={{ width: 100, fontFamily: "'DM Mono', monospace" }} />
+          </div>
+          {/* The field that stops a one-day job lying. */}
+          <div>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>— of that, travel &amp; setup</div>
+            <Input type="number" value={outside} onChange={e => setOutside(e.target.value)} placeholder="0"
               style={{ width: 100, fontFamily: "'DM Mono', monospace" }} />
           </div>
           <Btn variant="green" size="sm" onClick={closeOut}
@@ -591,7 +607,9 @@ function CloseOutCard() {
                   </span>
                   <span style={{ color: colors.textDim }}>{r.projectType}</span>
                   <span style={{ fontFamily: "'DM Mono', monospace" }}>
-                    {r.estHours} → {recordBasis(r) === 'bid' ? `${r.bidHours} bid` : `${r.actHours} built`}
+                    {r.estHours} → {recordBasis(r) === 'bid'
+                      ? `${r.bidHours} bid`
+                      : `${comparableHours(r, 'actual')} built${r.outsideHours > 0 ? ` (+${r.outsideHours} travel)` : ''}`}
                   </span>
                   <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700,
                     color: ratio > 1.1 ? colors.yellow : ratio ? colors.green : colors.textDim, minWidth: 52, textAlign: 'right' }}>
