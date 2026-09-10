@@ -46,6 +46,13 @@ export function computeBidTotals(state, markupPct) {
   const rentalsBaseAmt = rentalsBase(state.rentals);
   const rentalMarkupPct = parseFloat(state.rentalMarkupPct) || 0;
   const rentalsTotal = rentalsBaseAmt * (1 + rentalMarkupPct / 100);
+  // Rental is taxable in most states, and the materials tax field is charged on
+  // materials only — so a lift was going into the bid untaxed. Its own rate,
+  // because some states tax rental at a different percentage from goods and
+  // some do not tax it at all. Unset means zero, which never inflates a bid
+  // that has not asked for it.
+  const rentalTaxPct = parseFloat(state.rentalTaxPct) || 0;
+  const rentalTaxAmt = rentalsTotal * (rentalTaxPct / 100);
   const bondPct = parseFloat(state.bondPct) || 0;
   const permitFee = parseFloat(state.permitFee) || 0;
   // When crew rates are burdened COST rather than a billing rate, labor has to
@@ -97,7 +104,7 @@ export function computeBidTotals(state, markupPct) {
     const bondAmt = subtotal * (bondPct / 100);
     return {
       ...rest, subsBase, subMarkupPct, subsTotal,
-      rentalsBase: rentalsBaseAmt, rentalMarkupPct, rentalsTotal,
+      rentalsBase: rentalsBaseAmt, rentalMarkupPct, rentalsTotal, rentalTaxPct, rentalTaxAmt,
       taxPct, bondPct, bondAmt, permitFee,
       // What the OTHER method would have come to. Not in the total — carried so
       // the Labor step can show what is sitting out of the bid rather than
@@ -120,7 +127,7 @@ export function computeBidTotals(state, markupPct) {
     const markupAmt = equipTotal * (equipMarkupPct / 100)
       + (partsTotal + linesetTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + laborMarkupAmt;
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + rentalTaxAmt + laborTotal + laborMarkupAmt;
     return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal: 0, equipTotal, partsTotal, linesetTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
@@ -132,7 +139,7 @@ export function computeBidTotals(state, markupPct) {
     const markupAmt = equipTotal * (equipMarkupPct / 100)
       + (partsTotal + escalationAmt + consumablesAmt) * (markupPct / 100);
     const taxAmt = taxOf(markupBase + markupAmt);
-    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + fieldTasksTotal + laborMarkupAmt;
+    const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + rentalTaxAmt + laborTotal + fieldTasksTotal + laborMarkupAmt;
     return finish(subtotal, { markupBase, markupAmt, equipMarkupPct, taxAmt, laborTotal, laborMarkupAmt, fieldTasksTotal, equipTotal, partsTotal, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
   }
 
@@ -145,7 +152,7 @@ export function computeBidTotals(state, markupPct) {
   const markupBase = matsTotal + rackPartsContractor + escalationAmt + consumablesAmt;
   const markupAmt = markupBase * (markupPct / 100);
   const taxAmt = taxOf(markupBase + markupAmt);
-  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
+  const subtotal = markupBase + markupAmt + taxAmt + subsTotal + rentalsTotal + rentalTaxAmt + laborTotal + rackLaborTotal + fieldTasksTotal + laborMarkupAmt;
   return finish(subtotal, { markupBase, markupAmt, equipMarkupPct: markupPct, taxAmt, laborTotal, laborMarkupAmt, rackLaborTotal, fieldTasksTotal, matsTotal, rackPartsContractor, escalationAmt, escalationPct, consumablesAmt, consumablesPct });
 }
 
@@ -170,7 +177,8 @@ export function bidLetterBreakdown(state, totals) {
   const matsSell = (totals.markupBase || 0) + (totals.markupAmt || 0) + (totals.taxAmt || 0);
   const oot = jobOOTTotal(state);
   const labor = (totals.laborTotal || 0) + (totals.rackLaborTotal || 0) + (totals.fieldTasksTotal || 0) - oot;
-  const other = (totals.subsTotal || 0) + (totals.rentalsTotal || 0) + (totals.bondAmt || 0) + (totals.permitFee || 0);
+  const other = (totals.subsTotal || 0) + (totals.rentalsTotal || 0) + (totals.rentalTaxAmt || 0)
+    + (totals.bondAmt || 0) + (totals.permitFee || 0);
 
   return {
     materials: matsSell - refrigerant,

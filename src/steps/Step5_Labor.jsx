@@ -6,6 +6,7 @@ import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
 import { hasCompanyDefaults } from '../state/companyDefaults.js';
+import { ootIsItemised, ootBreakdown, ootLines, newOotRates } from '../components/outOfTown.js';
 import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
@@ -66,6 +67,13 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
   // cannot disagree about what a per-day figure means.
   const { state: jobState } = useStore();
   const { labor, oot, total } = calcLaborPeriodCost(period, ootOpts(jobState));
+  const itemised = ootIsItemised(jobState.ootRates);
+  const ootBd = itemised
+    ? ootBreakdown({
+      days: parseFloat(period.days) || 0, nights: period.nights,
+      travelers: crewTravelCount(period.crew), rates: jobState.ootRates,
+    })
+    : null;
 
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -156,11 +164,43 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
                 onChange={e => onUpdate('otAfterHours', parseFloat(e.target.value) || 0)}
                 placeholder="whole shift" />
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
-              <Input type="number" value={period.ootPerDay || ''} onChange={e => onUpdate('ootPerDay', parseFloat(e.target.value) || 0)} placeholder="0" />
-            </div>
+            {/* When the shop has itemised meals/hotel/fuel, this flat figure is
+                dead and showing it invites somebody to type into a box that
+                does nothing. NIGHTS takes its place, because that is the one
+                number the rates cannot know — a crew that drives home Friday
+                sleeps four nights on a five-day period. */}
+            {itemised ? (
+              <div>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Hotel nights</div>
+                <Input type="number" value={period.nights ?? ''} onChange={e => onUpdate('nights', e.target.value)}
+                  placeholder={String(Math.round(parseFloat(period.days) || 0))} />
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
+                <Input type="number" value={period.ootPerDay || ''} onChange={e => onUpdate('ootPerDay', parseFloat(e.target.value) || 0)} placeholder="0" />
+              </div>
+            )}
           </div>
+
+          {/* What the out-of-town figure is made of, so it is legible rather
+              than a number that appeared. */}
+          {itemised && ootBd && ootBd.total > 0 && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px',
+              background: colors.surface, borderRadius: 6, lineHeight: 1.7 }}>
+              {ootLines(ootBd).map(l => (
+                <div key={l.key} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{l.label}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(l.amount)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: colors.text,
+                borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 4 }}>
+                <span>Out of town, this period</span>
+                <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(ootBd.total)}</span>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div style={{ marginBottom: 14 }}>
@@ -174,7 +214,11 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
             <CrewBuilder
               crew={period.crew}
               onChange={crew => onUpdate('crew', crew)}
-              showTravel={jobState.outOfTown !== false && (jobState.ootBasis || 'crew') === 'person'}
+              // Who travels matters on ANY itemised job — meals and hotel are
+              // both per person — and on the flat model only when it is charged
+              // per person.
+              showTravel={jobState.outOfTown !== false
+                && (itemised || (jobState.ootBasis || 'crew') === 'person')}
             />
           </div>
 
@@ -702,6 +746,8 @@ export default function Step5_Labor({ onNext, onBack }) {
   // in-town switch — the header read one number while the bid carried another.
   const totalOOT = jobOOTTotal(state);
   const ootCompare = ootBasisComparison(state);
+  const oRates = { ...newOotRates(), ...(state.ootRates || {}) };
+  const itemisedOot = ootIsItemised(state.ootRates);
   const otWarn = otReview(state);
   // ── WHICH METHOD IS PRICING THIS JOB ───────────────────────────────────────
   const bidMethod = resolveBidMethod(state.bidMethod);
@@ -973,7 +1019,57 @@ export default function Step5_Labor({ onNext, onBack }) {
 
         {state.outOfTown !== false && (
           <>
-            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>The $/day figure is…</div>
+            {/* ── ITEMISED ────────────────────────────────────────────────
+                One per-day figure with a single crew/person switch cannot be
+                right about all three of these at once: meals are per person
+                per day, hotel is per ROOM per NIGHT, fuel is per TRUCK. Fill
+                any one in and the flat figure below stops being used. */}
+            <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10,
+              border: `1px solid ${itemisedOot ? colors.green + '66' : colors.border}`,
+              background: itemisedOot ? colors.greenFaint : colors.card2 }}>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Itemised — meals, hotel, fuel</div>
+                {itemisedOot && (
+                  <button onClick={() => { if (confirm('Clear the itemised rates and go back to the flat $/day figure?')) dispatch({ type: 'SET', key: 'ootRates', value: newOotRates() }); }}
+                    style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.textDim,
+                      fontSize: 10, padding: '4px 8px', borderRadius: 5, cursor: 'pointer' }}>Clear</button>
+                )}
+              </Row>
+              <div style={{ fontSize: 11, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
+                These three do not multiply the same way, which is why one flat figure could not be right about all of
+                them: meals are <strong>per person per day</strong>, hotel is <strong>per room per night</strong>
+                {' '}(nights are not days — a crew that drives home Friday sleeps four on a five-day week), and fuel is
+                {' '}<strong>per truck</strong>, because three men in one truck is one fuel bill.
+                {' '}Fill any one in and it replaces the $/day figure below.
+              </div>
+              <Row style={{ gap: 12, flexWrap: 'wrap' }}>
+                {[
+                  ['mealsPerPersonDay', 'Meals $/person/day'],
+                  ['hotelPerRoomNight', 'Hotel $/room/night'],
+                  ['personsPerRoom', 'Men per room'],
+                  ['fuelPerTruckDay', 'Fuel $/truck/day'],
+                  ['trucks', 'Trucks'],
+                ].map(([k, label]) => (
+                  <div key={k}>
+                    <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{label}</div>
+                    <Input type="number" value={oRates[k] ?? ''} placeholder="0"
+                      onChange={e => dispatch({ type: 'SET', key: 'ootRates',
+                        value: { ...oRates, [k]: parseFloat(e.target.value) || 0 } })}
+                      style={{ width: 108, fontFamily: "'DM Mono', monospace" }} />
+                  </div>
+                ))}
+              </Row>
+              {itemisedOot && (
+                <div style={{ fontSize: 11, color: colors.green, marginTop: 10 }}>
+                  ✓ In use. Hotel nights are set per period — the $/day boxes on the period cards are now nights.
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6,
+              opacity: itemisedOot ? 0.5 : 1 }}>
+              {itemisedOot ? 'Not in use while the rates above are set — the $/day figure was…' : 'The $/day figure is…'}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               {[
                 { k: 'person', label: 'Per person, per day', desc: 'What per diem is. Four men do not share a room' },
