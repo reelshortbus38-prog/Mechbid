@@ -30,15 +30,18 @@ describe('computeBidTotals reconciliation', () => {
       // to go, and the invariant below would be trivially true without it.
       rentals: [{ id: 'r1', desc: "Scissor lift — 26'", qty: 3, unit: 'week', rate: 400 }],
       rentalMarkupPct: 10,
+      rentalTaxPct: 7,
       bondPct: 2,
       permitFee: 350,
     };
     const t = computeBidTotals(state, 20);
     expect(t.rentalsBase).toBe(1200);
     expect(round(t.rentalsTotal)).toBe(1320);
+    // Taxed on its own rate — the materials tax field never reached it.
+    expect(round(t.rentalTaxAmt)).toBe(round(1320 * 0.07));
     // store-supplied rack part (999) must NOT be in the contractor base
     expect(t.markupBase).toBe(1000 + 500 + 300);
-    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal
+    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal + t.rentalTaxAmt
       + t.laborTotal + t.rackLaborTotal + t.fieldTasksTotal + t.bondAmt + t.permitFee;
     expect(round(sum)).toBe(round(t.total));
     expect(t.laborTotal).toBe(6400);
@@ -63,7 +66,7 @@ describe('computeBidTotals reconciliation', () => {
     const t = computeBidTotals(state, 15);
     // equipment marked at 25%, parts at 15%
     expect(round(t.markupAmt)).toBe(round(12000 * 0.25 + 1500 * 0.15));
-    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal
+    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal + t.rentalTaxAmt
       + t.laborTotal + t.fieldTasksTotal + t.bondAmt + t.permitFee;
     expect(round(sum)).toBe(round(t.total));
   });
@@ -85,7 +88,7 @@ describe('computeBidTotals reconciliation', () => {
     };
     const t = computeBidTotals(state, 30);
     expect(t.markupBase).toBe(5500 + 600 + 350);
-    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal
+    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal + t.rentalTaxAmt
       + t.laborTotal + t.bondAmt + t.permitFee;
     expect(round(sum)).toBe(round(t.total));
   });
@@ -585,7 +588,7 @@ describe('one trade does not pay for the other trade', () => {
 
   it('the reconciliation invariant still holds in HVAC mode with a mixed task list', () => {
     const t = computeBidTotals(hvacState({ fieldTasks: [refrigTask, hvacTask] }), 20);
-    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal
+    const sum = t.markupBase + t.markupAmt + t.taxAmt + t.subsTotal + t.rentalsTotal + t.rentalTaxAmt
       + t.laborTotal + t.fieldTasksTotal + t.laborMarkupAmt + t.bondAmt + t.permitFee;
     expect(round(sum)).toBe(round(t.total));
   });

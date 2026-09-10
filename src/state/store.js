@@ -1,6 +1,7 @@
 import { pipeDefaultPrice } from '../components/pipePricing.js';
 import { touchShopKey } from '../lib/shopSync.js';
 import { createContext, useContext, useReducer } from 'react';
+import { ootIsItemised, ootBreakdown } from '../components/outOfTown.js';
 
 // ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
 // Starting-point contractor prices so a new job computes without hand-entering
@@ -333,6 +334,10 @@ export const initialState = {
   // way it does.
   outOfTown: true,
   ootBasis: DEFAULT_OOT_BASIS,
+  // Meals, hotel and fuel, each with the multiplier it actually has. Empty
+  // until somebody fills one in, and until then the flat ootPerDay above is
+  // the live number. See components/outOfTown.js.
+  ootRates: undefined,
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
@@ -374,6 +379,9 @@ export const initialState = {
   // and it had no line anywhere until now. See components/rentals.js.
   rentals: [],          // { id, desc, qty, unit, rate, notes }
   rentalMarkupPct: 0,
+  // Rental is taxable in most states; materialsTaxPct is charged on materials
+  // only. Its own rate because some states tax rental differently from goods.
+  rentalTaxPct: 0,
   subMarkupPct: 0,
   // Sales/use tax applied to the marked-up materials+equipment sell price.
   // Defaults to 0 so it's opt-in and never silently changes an existing bid.
@@ -740,11 +748,20 @@ export function crewTravelCount(crew) {
   return (crew || []).filter(m => m && m.travels !== false).length;
 }
 
-export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, outOfTown = true } = {}) {
+export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, outOfTown = true, ootRates, nights } = {}) {
   if (outOfTown === false) return 0;
-  const per = parseFloat(ootPerDay) || 0;
   const d = parseFloat(days) || 0;
-  if (!(per > 0) || !(d > 0)) return 0;
+  if (!(d > 0)) return 0;
+  // ITEMISED WINS. Meals, hotel and fuel each multiply differently — see
+  // components/outOfTown.js — and once a shop has put money in any of them,
+  // that is the live number. The flat per-day figure below is what every job
+  // used before, and a job that has never been itemised still prices on it,
+  // so nothing repriced when this shipped.
+  if (ootIsItemised(ootRates)) {
+    return ootBreakdown({ days: d, nights, travelers: crewTravelCount(crew), rates: ootRates }).total;
+  }
+  const per = parseFloat(ootPerDay) || 0;
+  if (!(per > 0)) return 0;
   if (ootBasis === 'person') return per * d * crewTravelCount(crew);
   return per * d;
 }
@@ -754,6 +771,10 @@ export function ootOpts(state) {
   return {
     ootBasis: state?.ootBasis || DEFAULT_OOT_BASIS,
     outOfTown: state?.outOfTown !== false,
+    // The itemised rates are a JOB setting (and a shop default), not a
+    // per-period one — a crew does not get a different hotel rate on Tuesday.
+    // Nights stay per period, because that is where the days are.
+    ootRates: state?.ootRates,
   };
 }
 
@@ -876,7 +897,9 @@ export function calcLaborPeriodCost(period, opts = {}) {
   // the overtime threshold paid at the multiplier. hrsPerDay defaults to 8.
   const nightMult = period.isNight ? (parseFloat(period.nightMult) || 1.5) : 1;
   const days = parseFloat(period.days) || 0;
-  const oot = ootCost(days, period.ootPerDay, period.crew, opts);
+  // Nights ride with the PERIOD, because that is where the days are — a crew
+  // that drives home on Friday sleeps four nights on a five-day period.
+  const oot = ootCost(days, period.ootPerDay, period.crew, { ...opts, nights: period.nights });
   const labor = crewDayCost(period.crew, {
     otMult: period.otMult,
     otAfterHours: period.otAfterHours,
@@ -911,7 +934,7 @@ export function calcFlatJobCost(flat, opts = {}) {
     weeklyOtHours: f.weeklyOtHours,
     daysPerWeek: f.daysPerWeek,
   }) * days;
-  const oot = ootCost(days, f.ootPerDay, f.crew, opts);
+  const oot = ootCost(days, f.ootPerDay, f.crew, { ...opts, nights: f.nights });
   return { days, labor, oot, total: labor + oot };
 }
 
@@ -1026,6 +1049,11 @@ export function otReview(state) {
 // nothing to decide then.
 export function ootBasisComparison(state) {
   if (state?.outOfTown === false) return null;
+  // The crew-versus-person question only exists for the FLAT per-day figure.
+  // Once meals, hotel and fuel are itemised each carries its own multiplier,
+  // and offering to switch a basis that no longer applies would be inviting a
+  // change that does nothing.
+  if (ootIsItemised(state?.ootRates)) return null;
   const basis = state?.ootBasis || DEFAULT_OOT_BASIS;
   const other = basis === 'person' ? 'crew' : 'person';
   const current = jobOOTTotal(state);

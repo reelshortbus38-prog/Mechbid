@@ -282,6 +282,8 @@ function RentedEquipment() {
   const upd = (id, field, value) => set(rentals.map(r => r.id === id
     ? { ...r, [field]: field === 'qty' || field === 'rate' ? parseFloat(value) || 0 : value } : r));
   const summary = rentalsSummary(rentals, state.rentalMarkupPct);
+  const matTax = parseFloat(state.materialsTaxPct) || 0;
+  const rentalTax = summary.total * ((parseFloat(state.rentalTaxPct) || 0) / 100);
 
   return (
     <Card>
@@ -337,16 +339,37 @@ function RentedEquipment() {
             onChange={e => dispatch({ type: 'SET', key: 'rentalMarkupPct', value: parseFloat(e.target.value) || 0 })}
             style={{ width: 80, fontFamily: "'DM Mono', monospace" }} />
         </div>
-        <div style={{ flex: 1, minWidth: 180, textAlign: 'right' }}>
+        <div>
+          <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Rental Tax (%)</div>
+          <Row style={{ gap: 6, alignItems: 'center' }}>
+            <Input type="number" value={state.rentalTaxPct ?? 0}
+              onChange={e => dispatch({ type: 'SET', key: 'rentalTaxPct', value: parseFloat(e.target.value) || 0 })}
+              style={{ width: 70, fontFamily: "'DM Mono', monospace" }} />
+            {/* Most states tax rental at the same rate as goods, so make that
+                one tap — without assuming it, because some tax it differently
+                and some not at all. */}
+            {matTax > 0 && (state.rentalTaxPct ?? 0) !== matTax && (
+              <button onClick={() => dispatch({ type: 'SET', key: 'rentalTaxPct', value: matTax })}
+                style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.green,
+                  fontSize: 10, padding: '4px 8px', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                use {matTax}%
+              </button>
+            )}
+          </Row>
+        </div>
+        <div style={{ flex: 1, minWidth: 160, textAlign: 'right' }}>
           <div style={{ fontSize: 11, color: colors.textDim }}>
             {fmt(summary.base)} rented{summary.markupPct ? ` + ${summary.markupPct}% markup` : ' at cost'}
+            {rentalTax > 0 ? ` + ${fmt(rentalTax)} tax` : ''}
           </div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>{fmt(summary.total)}</div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: colors.green }}>
+            {fmt(summary.total + rentalTax)}
+          </div>
         </div>
       </Row>
       <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
-        Rental is taxable in most states and this total carries no sales tax — the tax field on this step is charged on
-        materials only. Add it to the rate or check how your state treats rental.
+        Rental is taxable in most states, and the tax field on this step is charged on <em>materials</em> only — so
+        rental needs its own rate. Left at zero it is untaxed, which is right in the states that do not tax it.
       </div>
     </Card>
   );
@@ -722,7 +745,7 @@ function ProposalView({ company = {} }) {
       }
     }
 
-    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
+    const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, rentalTaxPct = 0, rentalTaxAmt = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
     const exclusions = (state.exclusions || []).filter(x => x && x.trim());
     // The clause is generated from the allowance actually carried, so the
     // contract language and the number in the bid cannot drift apart.
@@ -767,6 +790,7 @@ function ProposalView({ company = {} }) {
     ${taxAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Sales Tax (${taxPct}%)</span><span>${fmt(taxAmt)}</span></div>` : ''}
     ${subsTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Subcontractors</span><span>${fmt(subsTotal)}</span></div>` : ''}
     ${rentalsTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rented Equipment</span><span>${fmt(rentalsTotal)}</span></div>` : ''}
+    ${rentalTaxAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rental Tax (${rentalTaxPct}%)</span><span>${fmt(rentalTaxAmt)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Labor</span><span>${fmt(laborTotal)}</span></div>
     ${rackLaborTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Rack Work</span><span>${fmt(rackLaborTotal)}</span></div>` : ''}
     ${fieldTasksTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e7eb"><span>Field Work</span><span>${fmt(fieldTasksTotal)}</span></div>` : ''}
@@ -795,7 +819,7 @@ function ProposalView({ company = {} }) {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   }
 
-  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
+  const { markupBase, markupAmt, equipMarkupPct = scenario.markupPct, taxPct = 0, taxAmt = 0, subsTotal = 0, rentalsTotal = 0, rentalTaxPct = 0, rentalTaxAmt = 0, bondPct = 0, bondAmt = 0, permitFee = 0, laborTotal, rackLaborTotal = 0, fieldTasksTotal = 0, total, escalationAmt = 0, escalationPct = 0, consumablesAmt = 0, consumablesPct = 0 } = totals;
   // What the bid actually earns, against what the estimator set. See
   // marginAnalysis in bidTotals.js for why this reports rather than corrects.
   const marginInfo = marginAnalysis(state, totals);
@@ -894,6 +918,7 @@ function ProposalView({ company = {} }) {
           taxAmt > 0 && { label: `Sales Tax (${taxPct}%)`, value: fmt(taxAmt), color: colors.text },
           subsTotal > 0 && { label: 'Subcontractors', value: fmt(subsTotal), color: colors.text },
           rentalsTotal > 0 && { label: 'Rented Equipment', value: fmt(rentalsTotal), color: colors.text },
+          rentalTaxAmt > 0 && { label: `Rental Tax (${rentalTaxPct}%)`, value: fmt(rentalTaxAmt), color: colors.text },
           { label: 'Labor', value: fmt(laborTotal), color: colors.yellow },
           rackLaborTotal > 0 && { label: 'Rack Work', value: fmt(rackLaborTotal), color: colors.yellow },
           fieldTasksTotal > 0 && { label: 'Field Work', value: fmt(fieldTasksTotal), color: colors.yellow },
@@ -1184,6 +1209,7 @@ export default function Step6_Proposal({ onBack }) {
             totals.taxAmt > 0 && { label: `Sales Tax (${totals.taxPct}%)`, value: fmt(totals.taxAmt), color: colors.text },
             totals.subsTotal > 0 && { label: 'Subcontractors', value: fmt(totals.subsTotal), color: colors.text },
             totals.rentalsTotal > 0 && { label: 'Rented Equipment', value: fmt(totals.rentalsTotal), color: colors.text },
+            totals.rentalTaxAmt > 0 && { label: `Rental Tax (${totals.rentalTaxPct}%)`, value: fmt(totals.rentalTaxAmt), color: colors.text },
             { label: 'Labor', value: fmt(totals.laborTotal), color: colors.yellow },
             totals.rackLaborTotal > 0 && { label: 'Rack Work Labor', value: fmt(totals.rackLaborTotal), color: colors.yellow },
             totals.fieldTasksTotal > 0 && { label: 'Field Work Labor', value: fmt(totals.fieldTasksTotal), color: colors.yellow },

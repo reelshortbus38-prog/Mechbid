@@ -27,7 +27,7 @@ export const COMPANY_DEFAULT_KEYS = [
   'markupPct', 'equipMarkupPct', 'subMarkupPct',
   // What the shop adds to a rented lift. A fact about how they bill, not about
   // this job — some pass rental through at cost, some do not.
-  'rentalMarkupPct',
+  'rentalMarkupPct', 'rentalTaxPct',
   // What the shop burns per labor dollar — nitrogen, rod, tips, abrasives.
   // A shop fact, not a job one, and previously retyped or left at the app's
   // number on every bid.
@@ -48,6 +48,9 @@ export const COMPANY_DEFAULT_KEYS = [
   'materialsTaxPct', 'bondPct',
   // How the shop treats travel.
   'ootBasis', 'outOfTown',
+  // Meals, hotel and fuel rates. What a shop pays for a room is a fact about
+  // the shop, not about this store.
+  'ootRates',
   // The shop's own labor productivity, once it has been tuned against a job.
   'laborUnits',
   // Standing scope fence and conditions of bid.
