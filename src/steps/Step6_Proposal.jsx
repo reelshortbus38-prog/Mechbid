@@ -12,6 +12,8 @@ import { groupHvacParts } from '../components/partGroups.js';
 import { rowUnit } from '../components/purchaseUnits.js';
 import { collectBidRisks, riskToExclusion } from '../components/bidRisks.js';
 import { ESTIMATOR_WARNING, DEFAULT_PROPOSAL_TERMS, basisOfBid, basisComplete } from '../components/proposalTerms.js';
+import { auditFlags, contradictedTerms, riskSummary } from '../components/riskAudit.js';
+import { triageFlags } from '../components/flagTriage.js';
 import { checkBidReadiness } from '../components/bidReadiness.js';
 import { BRAND_HEAD, BRAND_TAIL } from '../components/brand.js';
 
@@ -450,6 +452,77 @@ function MarkupAndSubs() {
 }
 
 // ── TAX & EXCLUSIONS EDITOR ───────────────────────────────────────────────────
+// ── WHAT THE DOCUMENTS REQUIRE THAT THIS BID DOES NOT ASSUME ────────────────
+// The terms below say pricing assumes normal working hours and continuous
+// access. Nothing ever checked whether the documents agree. Where they do not,
+// the bid is straight time on a job the proposal says was not priced that way
+// — which is not a position anybody holds when the spec mandates nights.
+//
+// It prices nothing and changes nothing. It quotes the sentence and leaves the
+// judgement where it belongs.
+export function RiskAuditCard({ flags, terms }) {
+  const findings = auditFlags(flags || [], triageFlags);
+  if (!findings.length) return null;
+  const clashes = new Set(contradictedTerms(findings, terms).map(f => f.key));
+  const sum = riskSummary(findings);
+
+  const AFFECTS = {
+    hours: 'changes the hours',
+    access: 'changes the access',
+    method: 'changes the method',
+    terms: 'a commercial condition',
+  };
+
+  return (
+    <Card>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <SLabel style={{ margin: 0 }}>Conditions found in the documents</SLabel>
+        <span style={{ fontSize: 11, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
+          {sum.total} found · {sum.hours} affect the hours
+        </span>
+      </Row>
+      <p style={{ fontSize: 12, color: colors.textDim, margin: '0 0 12px' }}>
+        Read out of the scope and notes already extracted from your files. Nothing here is
+        priced or added to the bid — check each one and decide.
+      </p>
+
+      {findings.map(f => {
+        const clash = clashes.has(f.key);
+        return (
+          <div key={f.key} style={{
+            borderLeft: `3px solid ${clash ? colors.red : colors.border}`,
+            background: colors.panel, borderRadius: 4,
+            padding: '10px 12px', marginBottom: 8,
+          }}>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+              <strong style={{ fontSize: 13 }}>{f.title}</strong>
+              <span style={{ fontSize: 10, color: colors.textDim, fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                {AFFECTS[f.affects] || f.affects}
+              </span>
+            </Row>
+            <p style={{ fontSize: 12, color: colors.textDim, margin: '4px 0 0' }}>{f.why}</p>
+            {clash && (
+              <p style={{ fontSize: 12, color: colors.red, margin: '6px 0 0', fontWeight: 600 }}>
+                Your conditions of bid say this was not included. The documents require it.
+              </p>
+            )}
+            {f.quotes.map((q, i) => (
+              <p key={i} style={{
+                fontSize: 11.5, margin: '6px 0 0', paddingLeft: 8,
+                borderLeft: `2px solid ${colors.border}`, color: colors.text,
+                fontStyle: 'italic',
+              }}>
+                “{q.text}”
+                {q.source ? <span style={{ fontStyle: 'normal', color: colors.textDim }}> — {q.source}</span> : null}
+              </p>
+            ))}
+          </div>
+        );
+      })}
+    </Card>
+  );
+}
+
 function TaxAndExclusions() {
   const { state, dispatch } = useStore();
   const exclusions = state.exclusions || [];
@@ -473,6 +546,8 @@ function TaxAndExclusions() {
   const removeExclusion = i => dispatch({ type: 'SET', key: 'exclusions', value: exclusions.filter((_, idx) => idx !== i) });
 
   return (
+    <>
+    <RiskAuditCard flags={state.flags} terms={terms} />
     <Card>
       <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <SLabel style={{ margin: 0 }}>Tax, Bond, Permits & Exclusions</SLabel>
@@ -612,6 +687,7 @@ function TaxAndExclusions() {
         </Row>
       </div>
     </Card>
+    </>
   );
 }
 
