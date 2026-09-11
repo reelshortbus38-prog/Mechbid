@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore, uid, fmt, defaultHvacPriceFor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
+import { markEdited } from '../components/manualEdits.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -299,7 +300,9 @@ function MiscParts() {
       if (p.id !== id) return p;
       const updated = { ...p, [field]: field === 'qty' || field === 'unitCost' ? parseFloat(value) || 0 : value };
       updated.total = (updated.qty || 0) * (updated.unitCost || 0);
-      return updated;
+      // Remember that a person set this, so re-analyzing the file it came from
+      // does not quietly put the analyzer's number back — see manualEdits.js.
+      return markEdited(updated, field);
     })});
     // Same learning loop as the refrigeration materials table: a unit cost
     // typed here goes into the price book, so the next job autofills it.
