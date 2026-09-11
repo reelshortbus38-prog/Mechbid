@@ -6,6 +6,8 @@
 // If the Anthropic call fails for ANY reason (bad param, model change, outage),
 // the request automatically retries through OpenRouter/gpt-4o rather than
 // surfacing an error to the estimator mid-upload.
+const { requireUser, cappedMaxTokens } = require('./requireUser.js');
+
 const CLAUDE_MODEL = process.env.COLDGAUGE_TEXT_MODEL || 'claude-sonnet-5';
 
 // Older, weaker reader kept only as a degrade-don't-die path. Every response
@@ -67,12 +69,21 @@ async function callOpenRouter({ messages, system, max_tokens, temperature }) {
   return data.choices?.[0]?.message?.content || '';
 }
 
-export default async function handler(req, res) {
+// CommonJS to match every other file in api/. This was the one `export
+// default` in a package with no "type" field, which left how it resolved up to
+// the build rather than to anything written down.
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Who is calling. Without this the endpoint is an open proxy on this shop's
+  // Anthropic and OpenRouter keys — see api/requireUser.js.
+  const gate = await requireUser(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
   try {
     const messages = req.body.messages || [];
     const system = req.body.system;
-    const max_tokens = req.body.max_tokens || 4000;
+    const max_tokens = cappedMaxTokens(req.body.max_tokens);
     // Deterministic extraction on the fallback path: temperature 0 so the same
     // document yields the same result every run.
     const temperature = typeof req.body.temperature === 'number' ? req.body.temperature : 0;

@@ -1,5 +1,7 @@
 // ── AI API CALLS ──────────────────────────────────────────────────────────────
-// All AI calls go through /api/claude (OpenRouter) - no Anthropic key needed
+// All AI calls go through api/ and carry the caller's Supabase session — the
+// endpoints refuse anonymous requests now (see api/requireUser.js).
+import { apiFetch } from './apiFetch.js';
 import { crossCheckDiff } from './crossCheck.js';
 import { extractFacts, extractFactsFromItems } from './factExtract.js';
 import { digestSummaries } from '../components/summaryDigest.js';
@@ -29,7 +31,7 @@ function pickText(data) {
 }
 
 export async function callClaude(messages, system = '', opts = {}) {
-  const res = await fetch('/api/claude', {
+  const res = await apiFetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -57,7 +59,7 @@ export async function callClaude(messages, system = '', opts = {}) {
 // determinism, which makes chat answers terse and repetitive). Takes the full
 // multi-turn message history so the assistant remembers the conversation.
 export async function chatWithAI(messages, system = '') {
-  const res = await fetch('/api/claude', {
+  const res = await apiFetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ system, messages, temperature: 0.4, max_tokens: 1200 }),
@@ -105,7 +107,7 @@ Return ONLY valid JSON, no markdown:
     // clearly did for redline extraction. If results aren't meaningfully
     // different from GPT-4o on this document type, switching back to
     // OpenRouter ('/api/claude') is a one-line change.
-    const res = await fetch('/api/claude-direct', {
+    const res = await apiFetch('/api/claude-direct', {
       method: 'POST',
       // Never let a hung request hang the UI — the server caps its own model
       // calls at ~40s, so anything past 70s is dead weight.
@@ -194,7 +196,7 @@ Return ONLY valid JSON, no markdown, no commentary:
     // most relevant property here. Note the Anthropic-specific image content
     // block shape: {type:"image", source:{type:"base64", media_type, data}},
     // not OpenRouter's {type:"image_url", image_url:{url:"data:..."}}.
-    const res = await fetch('/api/claude-direct', {
+    const res = await apiFetch('/api/claude-direct', {
       method: 'POST',
       signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
@@ -595,7 +597,7 @@ export async function callClaudeVisionHVAC(base64Image, fileName, tile = null, s
     const tileContext = tile && tile.tilesTotal > 1
       ? `\n\nNOTE: This image is section ${tile.tileNum} of ${tile.tilesTotal} cropped from a single larger sheet — read only tags/labels fully legible within this crop; another tile and the full-sheet pass cover the rest, and the merge dedups overlap.`
       : '';
-    const res = await fetch('/api/claude-direct', {
+    const res = await apiFetch('/api/claude-direct', {
       method: 'POST',
       signal: AbortSignal.timeout(70_000),
       headers: { 'Content-Type': 'application/json' },
@@ -650,7 +652,7 @@ Return ONE combined JSON covering everything, counted correctly.`;
     });
     content.push({ type: 'text', text: HVAC_VISION_PROMPT });
 
-    const res = await fetch('/api/claude-direct', {
+    const res = await apiFetch('/api/claude-direct', {
       method: 'POST',
       // A hung request must not hang the UI — the server caps its own model
       // calls at ~40s, so anything past 70s is dead weight, not progress.
@@ -1372,7 +1374,7 @@ export function crossCheckVision(primaryParsed, secondRaw) {
 }
 
 export async function parseDocFile(base64, fileName) {
-  const res = await fetch('/api/parse-doc', {
+  const res = await apiFetch('/api/parse-doc', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileData: base64, fileName }),
@@ -1385,7 +1387,7 @@ export async function parseDocFile(base64, fileName) {
 }
 
 export async function parseExcelFile(base64, fileName, projectType = 'remodel') {
-  const res = await fetch('/api/parse-excel', {
+  const res = await apiFetch('/api/parse-excel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileData: base64, fileName, projectType }),

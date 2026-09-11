@@ -1,3 +1,4 @@
+const { requireUser } = require('./requireUser.js');
 const ExcelJS = require('exceljs');
 const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
 const { formatFromSignals } = require('./bprFormat.js');
@@ -877,6 +878,9 @@ function sheetsToTextGeneric(wb, isXlsx) {
 // ── MAIN HANDLER ──────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   if(req.method !== 'POST') return res.status(405).json({error:'Method not allowed'});
+
+  const gate = await requireUser(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
   try {
     const {fileData, fileName, projectType} = req.body;

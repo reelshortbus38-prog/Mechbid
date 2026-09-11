@@ -34,6 +34,8 @@ function toOpenAiMessages(messages) {
 // in more informative ways. It is never authoritative — its finds become
 // "verify this" flags, and its read is only used at all when the primary
 // failed outright, and then only with a fallbackModel marker attached.
+const { requireUser, cappedMaxTokens } = require('./requireUser.js');
+
 const SECOND_MODEL = process.env.COLDGAUGE_SECOND_MODEL || 'openai/gpt-4o';
 
 async function secondOpinion(messages, system, max_tokens) {
@@ -49,7 +51,7 @@ async function secondOpinion(messages, system, max_tokens) {
         'HTTP-Referer': 'https://coldgauge.com',
         'X-Title': 'Coldgauge',
       },
-      body: JSON.stringify({ model: SECOND_MODEL, max_tokens: max_tokens || 4000, temperature: 0, messages: orMessages }),
+      body: JSON.stringify({ model: SECOND_MODEL, max_tokens: cappedMaxTokens(max_tokens), temperature: 0, messages: orMessages }),
     });
     const data = await response.json();
     if (!response.ok) return null;
@@ -91,6 +93,9 @@ function stripLeakedThinking(text) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const gate = await requireUser(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+
   try {
     const { messages, system, max_tokens, model, crossCheck } = req.body;
     if (!messages) return res.status(400).json({ error: 'No messages provided' });
@@ -114,7 +119,7 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({
           model: activeModel,
-          max_tokens: max_tokens || 4000,
+          max_tokens: cappedMaxTokens(max_tokens),
           // No temperature: Sonnet 5 rejects the parameter outright
           // ("`temperature` is deprecated for this model" → HTTP 400).
           thinking: thinkingFor(activeModel),
