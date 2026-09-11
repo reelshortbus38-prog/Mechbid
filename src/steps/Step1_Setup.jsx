@@ -15,6 +15,7 @@ import { FileList } from '../components/FileViewer.jsx';
 import JobInfo from '../components/JobInfo.jsx';
 import { maxWeekNumber, schedDateLabel, scanScheduleDate, scanScheduleTime, scanRcFirstCaseNight, firstCaseMoveNight, extractRcSchedule, scheduleCrossCheck, PRECON_RE, PRECON_FALLBACK_RE, RCC_RE } from '../components/scheduleDates.js';
 import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content } from '../components/scopeText.js';
+import { rescuedEdits, applyRescued } from '../components/manualEdits.js';
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
@@ -1176,16 +1177,19 @@ export default function Step1_Setup({ onNext }) {
     // untouched, so adding a second sheet still adds to the takeoff.
     const reanalyzed = new Set(
       acceptedItems.filter(i => i.kind === 'hvacPart' && i.fileName).map(i => i.fileName));
-    // Prices the estimator typed are theirs, not the analyzer's — carry them
-    // across the replacement rather than resetting the job to $0.
-    const supersededPrice = new Map();
+    // Anything the estimator typed on these rows is theirs, not the
+    // analyzer's — carry it across the replacement rather than resetting the
+    // job. This was a price-only rescue; a corrected QUANTITY was being thrown
+    // away, which is the one that carries field knowledge. See manualEdits.js.
+    const supersededEdits = new Map();
     // Residential keeps its takeoff lines and units in its own two stores —
     // the residential Equipment page reads nothing else.
     const partsStore = partsKey(state.mode);
     const equipStore = equipmentKey(state.mode);
     const keptHvacParts = (state[partsStore] || []).filter(p => {
       if (!p.src || !reanalyzed.has(p.src)) return true;
-      if (Number(p.unitCost) > 0) supersededPrice.set(normalizeDesc(p.desc), Number(p.unitCost));
+      const rescued = rescuedEdits(p);
+      if (Object.keys(rescued).length) supersededEdits.set(normalizeDesc(p.desc), rescued);
       return false;
     });
 
@@ -1263,10 +1267,11 @@ export default function Step1_Setup({ onNext }) {
         // when the user hasn't typed one — same learning loop as refrigeration.
         const hpKey = p => normalizeDesc(p.desc);
         if (item.data.desc && !newHvacParts.find(x => hpKey(x) === hpKey(item.data)) && !keptHvacParts.find(x => hpKey(x) === hpKey(item.data))) {
+          const rescued = supersededEdits.get(hpKey(item.data)) || {};
           const qty = Number(item.data.qty) || 0;
           let unitCost = Number(item.data.unitCost) || 0;
           // A price the estimator typed on this line before the re-read.
-          if (!unitCost) unitCost = supersededPrice.get(hpKey(item.data)) || 0;
+          if (!unitCost) unitCost = Number(rescued.unitCost) || 0;
           if (!unitCost) {
             const match = findPriceMatch(loadPriceBook(), { desc: item.data.desc });
             if (match) unitCost = Number(match.entry.price) || 0;
@@ -1280,10 +1285,10 @@ export default function Step1_Setup({ onNext }) {
           // fill was multiplying a box price by a footage and landing 25x
           // high, on top of the boxes the Duct → Purchase card then adds.
           if (!unitCost) unitCost = defaultHvacPriceFor(item.data.desc, unit);
-          newHvacParts.push({
+          newHvacParts.push(applyRescued({
             id: uid(), src: item.fileName || '', desc: item.data.desc, qty,
             unit, unitCost, total: qty * unitCost, notes: item.data.notes || '',
-          });
+          }, rescued));
         }
       } else if (item.kind === 'hvacEquip') {
         // Confirmed family-closure unit → the Equipment step, mapped the same
