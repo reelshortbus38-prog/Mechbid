@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  markEdited, isEdited, hasEdits, rescuedEdits, applyRescued, rescueMap, CARRIED_FIELDS,
+  markEdited, isEdited, rescuedEdits, applyRescued, CARRIED_FIELDS,
 } from './manualEdits.js';
 
 const line = (o = {}) => ({
@@ -30,11 +30,6 @@ describe('markEdited', () => {
   it('leaves the row alone when nothing changes', () => {
     const r = markEdited(line(), 'qty');
     expect(markEdited(r, 'qty')).toBe(r);
-  });
-
-  it('is untouched on a row with no edits', () => {
-    expect(hasEdits(line())).toBe(false);
-    expect(hasEdits(markEdited(line(), 'qty'))).toBe(true);
   });
 });
 
@@ -124,26 +119,5 @@ describe('jobs saved before any of this existed', () => {
   it('returns the line untouched when there is nothing to lay over it', () => {
     const fresh = line({ id: 'b' });
     expect(applyRescued(fresh, {})).toBe(fresh);
-  });
-});
-
-describe('rescueMap', () => {
-  const key = r => r.desc.toLowerCase();
-
-  it('collects only the rows worth rescuing', () => {
-    const rows = [
-      markEdited(line({ desc: 'A', qty: 9 }), 'qty'),
-      line({ desc: 'B' }),
-      line({ desc: 'C', unitCost: 3 }),
-    ];
-    const m = rescueMap(rows, key);
-    expect([...m.keys()].sort()).toEqual(['a', 'c']);
-    expect(m.get('a')).toEqual({ qty: 9 });
-    expect(m.get('c')).toEqual({ unitCost: 3 });
-  });
-
-  it('is empty rather than broken with nothing to do', () => {
-    expect(rescueMap([], key).size).toBe(0);
-    expect(rescueMap(undefined, key).size).toBe(0);
   });
 });

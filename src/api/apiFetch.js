@@ -14,7 +14,7 @@
 // the point.
 import { getSupabase } from '../lib/supabase.js';
 
-export async function authHeader() {
+async function authHeader() {
   const sb = getSupabase();
   if (!sb) return {};
   try {

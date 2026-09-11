@@ -52,10 +52,6 @@ export function isEdited(row, field) {
   return !!(row && Array.isArray(row.editedFields) && row.editedFields.includes(field));
 }
 
-export function hasEdits(row) {
-  return !!(row && Array.isArray(row.editedFields) && row.editedFields.length > 0);
-}
-
 // What to rescue from a row that is about to be replaced.
 // → a patch of field → value, empty when there is nothing worth keeping.
 export function rescuedEdits(row) {
@@ -94,15 +90,4 @@ export function applyRescued(line, rescued) {
   if (priceWasMarked) marks.add('unitCost');
   if (marks.size) out.editedFields = [...marks];
   return out;
-}
-
-// Every rescued patch from the rows a re-read is about to delete, keyed the
-// way the incoming rows will be looked up.
-export function rescueMap(rows, keyOf) {
-  const map = new Map();
-  for (const row of rows || []) {
-    const patch = rescuedEdits(row);
-    if (Object.keys(patch).length) map.set(keyOf(row), patch);
-  }
-  return map;
 }
