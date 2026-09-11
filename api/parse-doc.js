@@ -1,3 +1,4 @@
+const { requireUser } = require('./requireUser.js');
 const mammoth = require('mammoth');
 const WordExtractor = require('word-extractor');
 const { execSync } = require('child_process');
@@ -7,6 +8,9 @@ const os = require('os');
 
 module.exports = async function handler(req, res) {
   if(req.method !== 'POST') return res.status(405).json({error:'Method not allowed'});
+
+  const gate = await requireUser(req);
+  if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
   try {
     const {fileData, fileName} = req.body;
