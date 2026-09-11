@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { uid, fmt } from '../state/store.js';
+import { useState, useRef } from 'react';
+import { uid, fmt, fmtDec } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
 import {
@@ -7,6 +7,7 @@ import {
   addCustomSupplier, removeCustomSupplier,
 } from './suppliers.js';
 import { touchShopKey } from '../lib/shopSync.js';
+import { toCsv, parseCsv, rowsToEntries, mergeIntoBook, importSummary } from './priceCsv.js';
 import { webStorage } from '../state/webStorage.js';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
@@ -262,6 +263,9 @@ const CATEGORIES = ['Copper', 'Fittings', 'Insulation', 'Hardware', 'Consumables
 export default function PriceBookModal({ onClose }) {
   const [entries, setEntries] = useState(loadPriceBook());
   const [search, setSearch] = useState('');
+  const [pending, setPending] = useState(null);
+  const [importErr, setImportErr] = useState('');
+  const fileRef = useRef(null);
 
   function persist(next) {
     setEntries(next);
@@ -281,13 +285,46 @@ export default function PriceBookModal({ onClose }) {
   }
 
   function exportCSV() {
-    let csv = 'Category,Description,Part Number,Unit,Price\n';
-    entries.forEach(e => { csv += `"${e.category}","${e.desc}","${e.partId}","${e.unit}",${e.price}\n`; });
+    // Built by priceCsv.toCsv, which doubles a quote inside a field. This used
+    // to interpolate the description raw, so every `1-1/8" copper` produced a
+    // broken row that this app could not read back.
+    const csv = toCsv(entries);
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'coldgauge_pricebook.csv';
     a.click();
+  }
+
+  // ── IMPORT ────────────────────────────────────────────────────────────────
+  // Nothing is written until the estimator has seen what it would do. A catalog
+  // is somebody else's numbers landing on the shop's own.
+  function importCSV(file) {
+    if (!file) return;
+    setImportErr('');
+    const reader = new FileReader();
+    reader.onerror = () => setImportErr('Could not read that file.');
+    reader.onload = () => {
+      try {
+        const { entries: incoming, skipped } = rowsToEntries(parseCsv(String(reader.result || '')));
+        if (!incoming.length) {
+          const why = skipped.map(s => s.reason).join(', ');
+          setImportErr(why ? `Nothing to import — ${why}.` : 'Nothing to import from that file.');
+          setPending(null);
+          return;
+        }
+        setPending({ name: file.name, skipped, result: mergeIntoBook(entries, incoming) });
+      } catch (e) {
+        setImportErr('Could not read that file as a price list.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function applyImport() {
+    if (!pending) return;
+    persist(pending.result.merged.map(e => (e.id ? e : { ...e, id: uid() })));
+    setPending(null);
   }
 
   const filtered = search.trim()
@@ -329,9 +366,82 @@ export default function PriceBookModal({ onClose }) {
             <Row style={{ gap: 8 }}>
               <Btn variant="ghost" size="sm" onClick={addEntry}>+ Add Entry</Btn>
               <Btn variant="surface" size="sm" onClick={exportCSV}>📥 Export CSV</Btn>
+              <Btn variant="surface" size="sm" onClick={() => fileRef.current?.click()}>📤 Import CSV</Btn>
+              <input
+                ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }}
+                onChange={e => { importCSV(e.target.files?.[0]); e.target.value = ''; }}
+              />
             </Row>
           </Row>
         </div>
+
+        {importErr && (
+          <div style={{ margin: '10px 20px 0', padding: '10px 12px', borderRadius: 6,
+            background: `${colors.red}18`, color: colors.red, fontSize: 12.5 }}>
+            {importErr}
+          </div>
+        )}
+
+        {/* ── WHAT THE IMPORT WOULD DO, BEFORE IT DOES IT ────────────────────
+            A catalog is somebody else's numbers landing on the shop's own. The
+            estimator sees the count, the price changes and anything held back,
+            and then decides. Nothing is written until Apply. */}
+        {pending && (
+          <div style={{ margin: '10px 20px 0', padding: '12px 14px', borderRadius: 6,
+            background: colors.panel, border: `1px solid ${colors.border}` }}>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+              <strong style={{ fontSize: 13 }}>{pending.name}</strong>
+              <span style={{ fontSize: 11.5, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
+                {importSummary(pending.result)}
+              </span>
+            </Row>
+
+            {pending.result.updated.length > 0 && (
+              <div style={{ marginTop: 8, maxHeight: 150, overflowY: 'auto' }}>
+                {pending.result.updated.slice(0, 40).map((u, i) => (
+                  <div key={i} style={{ fontSize: 11.5, color: colors.textDim, padding: '2px 0' }}>
+                    {u.desc} <span style={{ fontFamily: "'DM Mono', monospace" }}>
+                      {fmtDec(u.from)} → {fmtDec(u.to)}
+                    </span>
+                  </div>
+                ))}
+                {pending.result.updated.length > 40 && (
+                  <div style={{ fontSize: 11, color: colors.textDim }}>
+                    …and {pending.result.updated.length - 40} more
+                  </div>
+                )}
+              </div>
+            )}
+
+            {pending.result.conflicts.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: 12, color: colors.red, fontWeight: 600 }}>
+                  Held back — the catalog and your book disagree on the unit
+                </div>
+                <div style={{ fontSize: 11.5, color: colors.textDim, margin: '2px 0 6px' }}>
+                  A price is per something. Applying these could put a per-box price
+                  against a footage. Fix the unit on the line, then import again.
+                </div>
+                {pending.result.conflicts.slice(0, 20).map((c, i) => (
+                  <div key={i} style={{ fontSize: 11.5, padding: '2px 0', fontFamily: "'DM Mono', monospace" }}>
+                    {c.desc}: yours {fmtDec(c.oldPrice)}/{c.was} · theirs {fmtDec(c.price)}/{c.now}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {pending.skipped.length > 0 && (
+              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8 }}>
+                Skipped: {pending.skipped.map(sk => `${sk.count} ${sk.reason}`).join(', ')}
+              </div>
+            )}
+
+            <Row style={{ gap: 8, marginTop: 10 }}>
+              <Btn size="sm" onClick={applyImport}>Apply to price book</Btn>
+              <Btn variant="ghost" size="sm" onClick={() => setPending(null)}>Cancel</Btn>
+            </Row>
+          </div>
+        )}
 
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
