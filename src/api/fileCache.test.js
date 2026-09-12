@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   fileIdFor, evictionPlan, rememberFile, hasCachedFile, loadCachedFile,
   forgetFiles, clearFileCache, cacheUsage, _seedIndex, MAX_CACHE_BYTES,
+  setCloudFiles, cloudFilesReady,
 } from './fileCache.js';
 
 // Node has no IndexedDB, which is the same state as a private window or a
@@ -136,5 +137,73 @@ describe('cacheUsage', () => {
 
   it('is zero rather than broken when nothing is stored', () => {
     expect(cacheUsage()).toEqual({ files: 0, bytes: 0 });
+  });
+});
+
+// ── THE CLOUD FALLBACK ──────────────────────────────────────────────────────
+// A phone opening a job that was built on the iPad has the manifest (it rides
+// inside the job) and none of the bytes. This is the path it takes.
+describe('when a cloud mover is registered', () => {
+  const blobFor = name => ({ name, size: 42 });
+
+  it('fetches a file this device has never held', async () => {
+    setCloudFiles({ download: async id => (id === 'u1' ? blobFor('M0.1.pdf') : null) });
+    expect(await loadCachedFile('u1')).toMatchObject({ name: 'M0.1.pdf' });
+  });
+
+  it('keeps what it fetched, so the second look is not another download', async () => {
+    let downloads = 0;
+    setCloudFiles({ download: async () => { downloads++; return blobFor('a.pdf'); } });
+    await loadCachedFile('u1');
+    await loadCachedFile('u1');
+    expect(downloads).toBe(1);
+  });
+
+  it('prefers the device copy and does not go to the network at all', async () => {
+    let downloads = 0;
+    setCloudFiles({ download: async () => { downloads++; return blobFor('cloud.pdf'); } });
+    rememberFile('u1', fakeFile('local.pdf'));
+    expect(await loadCachedFile('u1')).toMatchObject({ name: 'local.pdf' });
+    expect(downloads).toBe(0);
+  });
+
+  it('is null when the account does not have it either', async () => {
+    setCloudFiles({ download: async () => null });
+    expect(await loadCachedFile('missing')).toBe(null);
+  });
+
+  it('is null rather than throwing when the fetch fails', async () => {
+    setCloudFiles({ download: async () => { throw new Error('offline'); } });
+    expect(await loadCachedFile('u1')).toBe(null);
+  });
+
+  it('sends an upload behind the local write', async () => {
+    const sent = [];
+    setCloudFiles({ download: async () => null, upload: async (id, f) => { sent.push([id, f.name]); } });
+    rememberFile('u1', fakeFile('M0.1.pdf'));
+    await Promise.resolve();
+    expect(sent).toEqual([['u1', 'M0.1.pdf']]);
+  });
+
+  it('an upload that fails does not break the local copy', async () => {
+    setCloudFiles({ download: async () => null, upload: async () => { throw new Error('quota'); } });
+    rememberFile('u1', fakeFile('M0.1.pdf'));
+    await Promise.resolve();
+    expect(hasCachedFile('u1')).toBe(true);
+    expect(await loadCachedFile('u1')).toMatchObject({ name: 'M0.1.pdf' });
+  });
+
+  it('says whether fetching is even possible', () => {
+    expect(cloudFilesReady()).toBe(false);
+    setCloudFiles({ download: async () => null });
+    expect(cloudFilesReady()).toBe(true);
+  });
+
+  it('signing out stops it reaching for files', async () => {
+    // The next person at this device is not necessarily the last.
+    setCloudFiles({ download: async () => blobFor('x.pdf') });
+    setCloudFiles(null);
+    expect(cloudFilesReady()).toBe(false);
+    expect(await loadCachedFile('u1')).toBe(null);
   });
 });
