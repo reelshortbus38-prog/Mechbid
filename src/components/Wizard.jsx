@@ -135,7 +135,14 @@ export default function Wizard() {
     let active = true;
     // Jobs and shop settings sync independently: a price book that fails to
     // pull must not stop the jobs landing, and vice versa.
-    syncOnLogin(user.id, loadAllJobs, saveAllJobs).then(() => { if (active) setJobs(loadAllJobs()); });
+    syncOnLogin(user.id, loadAllJobs, saveAllJobs, (ids, before) => {
+      // Deleted on another device. Their drawings go too — nothing can reach
+      // them once the job carrying their ids is gone from this machine.
+      for (const id of ids) {
+        const files = (before?.[id]?.data?.uploadedFiles || []).map(f => f.id).filter(Boolean);
+        if (files.length) forgetFiles(files).catch(() => {});
+      }
+    }).then(() => { if (active) setJobs(loadAllJobs()); });
     syncShopOnLogin(user.id, webStorage()).catch(e => console.warn('Shop sync failed:', e?.message));
     return () => { active = false; };
   }, [user]);

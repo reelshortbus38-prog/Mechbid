@@ -46,6 +46,17 @@ create table if not exists public.jobs (
   primary key (user_id, id)
 );
 
+-- ── WHY A DELETED JOB KEEPS ITS ROW ────────────────────────────────────────
+-- Removing the row is an absence, and every other device reads an absence as
+-- "I am ahead, let me push my copy back up." Delete every old job on one
+-- device, open the app on a second that still has them, and they all come
+-- back — which is exactly what happened.
+--
+-- A soft delete leaves a fact for the other devices to find: the id stays, the
+-- data is emptied, and deleted_at says when. See mergeJobMaps in
+-- lib/cloudSync.js for which side wins.
+alter table public.jobs add column if not exists deleted_at timestamptz;
+
 create index if not exists jobs_user_id_idx on public.jobs (user_id);
 
 alter table public.jobs enable row level security;
