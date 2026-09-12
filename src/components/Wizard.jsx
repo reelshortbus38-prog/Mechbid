@@ -12,6 +12,7 @@ import AuthButton from './AuthModal.jsx';
 import { colors } from '../styles/theme.js';
 import { Btn, Row } from './UI.jsx';
 import { BRAND_HEAD, BRAND_TAIL, BRAND_TAGLINE } from './brand.js';
+import { deleteWarning } from './deleteWarning.js';
 import Step1_Setup from '../steps/Step1_Setup.jsx';
 import Step2_Circuits from '../steps/Step2_Circuits.jsx';
 import Step3_Rack from '../steps/Step3_Rack.jsx';
@@ -221,6 +222,47 @@ export default function Wizard() {
     setStepIndex(0);
   }
 
+  // ── DELETING A BID ────────────────────────────────────────────────────────
+  // Three things that were wrong here, all of them one tap deep:
+  //
+  // 1. NO CONFIRMATION. A red button beside Open, on an iPad, wiping a bid off
+  //    every device with no undo — while the app stops to ask before reloading
+  //    the default copper prices.
+  //
+  // 2. DELETING THE JOB YOU HAVE OPEN BROUGHT IT BACK. state.jobId still
+  //    pointed at it, so the next keystroke auto-saved it straight back into
+  //    localStorage and pushed it to the cloud — except its drawings had just
+  //    been purged from this device and out of the bucket. What came back was
+  //    the bid with every "View" dead.
+  //
+  // 3. (see jobToRow in lib/cloudSync.js) the tombstone outlived the job.
+  function handleDeleteJob(job) {
+    const saved = jobs[job.id] || job;
+    if (typeof confirm === 'function' && !confirm(deleteWarning(saved, { signedIn: !!user }))) return;
+
+    // Its drawings go with it. Nothing else can reach them once the job
+    // carrying their ids is gone, so leaving them would be dead weight against
+    // the cache ceiling — and against the 1 GB bucket.
+    const ids = (saved?.data?.uploadedFiles || []).map(f => f?.id).filter(Boolean);
+    deleteJob(job.id);
+    if (ids.length) {
+      forgetFiles(ids).catch(() => {});
+      const sb = getSupabase();
+      if (sb && user?.id) removeFiles(sb, user.id, ids).catch(() => {});
+    }
+    if (user) deleteCloudJob(user.id, job.id);
+    setJobs(loadAllJobs());
+
+    // The one he was working on. Leave state.jobId pointing at a job that no
+    // longer exists and auto-save recreates it, drawings already gone.
+    if (state.jobId && state.jobId === job.id) {
+      handleNewJob();
+      // handleNewJob closes the list. He is standing in it deleting things, so
+      // put it back — clearing out old bids is rarely one bid.
+      setShowJobs(true);
+    }
+  }
+
   function handleExportJobs() {
     const blob = new Blob([exportAllJobsJSON()], { type: 'application/json' });
     const a = document.createElement('a');
@@ -391,21 +433,7 @@ export default function Wizard() {
                       </div>
                       <Row style={{ gap: 8, flexShrink: 0 }}>
                         <Btn variant="green" size="sm" onClick={() => handleLoadJob(job)}>Open</Btn>
-                        <Btn variant="red" size="sm" onClick={() => {
-                          // Its drawings go with it. Nothing else can reach
-                          // them once the job carrying their ids is gone, so
-                          // leaving them would be dead weight against the cache
-                          // ceiling.
-                          const ids = (jobs[job.id]?.data?.uploadedFiles || []).map(f => f.id).filter(Boolean);
-                          deleteJob(job.id);
-                          if (ids.length) {
-                            forgetFiles(ids).catch(() => {});
-                            const sb = getSupabase();
-                            if (sb && user?.id) removeFiles(sb, user.id, ids).catch(() => {});
-                          }
-                          if (user) deleteCloudJob(user.id, job.id);
-                          setJobs(loadAllJobs());
-                        }}>Delete</Btn>
+                        <Btn variant="red" size="sm" onClick={() => handleDeleteJob(job)}>Delete</Btn>
                       </Row>
                     </div>
                   ))

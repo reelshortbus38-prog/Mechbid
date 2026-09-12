@@ -60,6 +60,25 @@ describe('row <-> job conversion round-trips', () => {
     expect(row.updated_at).toBe('2024-03-03');
   });
 
+  it('jobToRow clears any tombstone, because a pushed job is a live job', () => {
+    // The upsert lands on a row that may already carry a deleted_at —
+    // mergeJobMaps pushes a job that was edited after being deleted elsewhere.
+    // Without this, rowToJob reads deleted_at first and every future pull
+    // hands back a tombstone however much data the row holds.
+    expect(jobToRow(job('x', '2024-03-03'), 'user-1').deleted_at).toBe(null);
+  });
+
+  it('a job that survived a delete elsewhere reaches a third device', () => {
+    // The end-to-end shape of the bug: iPad deletes, phone edits after, phone
+    // pushes. A laptop signing in for the first time must get the job.
+    const alive = job('x', '2024-06-02');
+    const cloudRow = { ...jobToRow(alive, 'u'), deleted_at: null };
+    expect(rowToJob(cloudRow).deleted).toBeUndefined();
+    expect(rowToJob(cloudRow).data.projName).toBe('x');
+    const { merged } = mergeJobMaps({}, { x: rowToJob(cloudRow) });
+    expect(merged.x).toBeTruthy();
+  });
+
   it('rowToJob restores the local shape', () => {
     const j = rowToJob({ id: 'x', name: 'Store 47', mode: 'Commercial Refrigeration', data: { projName: 'Store 47' }, updated_at: '2024-03-03' });
     expect(j.id).toBe('x');
