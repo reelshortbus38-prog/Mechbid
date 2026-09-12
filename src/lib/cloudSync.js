@@ -38,6 +38,18 @@ export function jobToRow(job, userId) {
     mode: job.mode || job.data?.mode || '',
     data: job.data || {},
     updated_at: job.lastEdited || new Date().toISOString(),
+    // ── A PUSHED JOB IS A LIVE JOB ──────────────────────────────────────────
+    // This is an upsert, so the row may already exist WITH a deleted_at on it:
+    // mergeJobMaps deliberately lets a job edited after a delete elsewhere win
+    // and pushes it back up. Leaving the tombstone standing made that win
+    // useless — rowToJob reads deleted_at first and hands back a tombstone no
+    // matter what data the row carries, so the job could never reach a device
+    // that did not already have it. The estimator goes on working it on the
+    // iPad, and his phone will not show it again, ever.
+    //
+    // Clearing it is the whole fix: writing this row is the statement that the
+    // job is alive.
+    deleted_at: null,
   };
 }
 
