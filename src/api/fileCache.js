@@ -33,6 +33,17 @@
 // Nothing from another job is reachable, and a new job that has not been saved
 // yet works the same — the id exists at upload, long before a jobId does.
 //
+// ── AND THE CLOUD, WHEN SOMEBODY IS SIGNED IN ───────────────────────────────
+// The device copy answers instantly and costs nothing, so it stays the first
+// place looked. But it only exists on the machine that did the upload, and an
+// estimator who opens a job on his phone should see the same drawings.
+//
+// So a cloud mover can be registered (see lib/fileSync.js, wired in Wizard).
+// When one is, a miss falls through to it, and what comes back is written to
+// the device so the second look is local again. Nothing in this module knows
+// what Supabase is — it is handed two functions and that keeps this testable
+// without a network.
+//
 // ── WHEN THERE IS NO INDEXEDDB ──────────────────────────────────────────────
 // Private windows, blocked site data, a browser that refuses. Every path here
 // degrades to the session-only Map, which is exactly what the app did before
@@ -61,6 +72,23 @@ const session = new Map();
 const index = new Map();
 
 let hydrated = false;
+
+// { upload(id, file), download(id) } or null. Registered when a user signs in
+// and cleared when they sign out, so a signed-out session cannot reach for
+// files that are not its own.
+let cloud = null;
+
+export function setCloudFiles(mover) {
+  cloud = mover && typeof mover.download === 'function' ? mover : null;
+}
+
+// True when a file this job lists could be fetched even if it is not on this
+// device. Callers use it to decide whether to offer a "view" at all — the
+// button then either opens the drawing or says it could not get it, which is
+// more use than no button.
+export function cloudFilesReady() {
+  return !!cloud;
+}
 
 // ── THE DATABASE ────────────────────────────────────────────────────────────
 function openDb() {
@@ -131,6 +159,7 @@ export function rememberFile(id, file) {
   if (!key || !file) return;
   session.set(key, file);
   persist(key, file);
+  pushToCloud(key, file);
 }
 
 async function persist(id, file) {
@@ -151,6 +180,15 @@ async function persist(id, file) {
   if (ok !== null) pruneFileCache().catch(() => {});
 }
 
+// Behind the estimator's work, always. A 40 MB set over cell service from
+// inside a store takes as long as it takes, and none of it should be in the
+// way of pricing the job. A failure leaves the file on this device and the app
+// exactly as it was before any of this existed.
+function pushToCloud(id, file) {
+  if (!cloud || typeof cloud.upload !== 'function') return;
+  Promise.resolve(cloud.upload(id, file)).catch(() => {});
+}
+
 // ── READING ─────────────────────────────────────────────────────────────────
 // Synchronous, because it is called while rendering to decide whether the
 // verify button should be there at all.
@@ -166,14 +204,31 @@ export async function loadCachedFile(id) {
   if (live) return live;
 
   const db = await openDb();
-  if (!db) return null;
+  // No database here — a private window, or a phone that has never held this
+  // file. The cloud is the only place left to look.
+  if (!db) return pullFromCloud(key);
   const rec = await tx(db, 'readonly', store => asPromise(store.get(key)));
   db.close();
   const blob = rec && rec.blob ? rec.blob : null;
+  if (blob) {
+    // Put it back in the session map: a sheet peek re-renders and would
+    // otherwise hit the disk on every page turn.
+    session.set(key, blob);
+    return blob;
+  }
+  return pullFromCloud(key);
+}
+
+// Not on this device. If somebody is signed in, the drawing may still be
+// theirs to fetch — this is the path a phone takes on a job built on the iPad.
+// What comes back is written to the device, so the second look is local.
+async function pullFromCloud(id) {
+  if (!cloud) return null;
+  let blob = null;
+  try { blob = await cloud.download(id); } catch { blob = null; }
   if (!blob) return null;
-  // Put it back in the session map: a sheet peek re-renders and would
-  // otherwise hit the disk on every page turn.
-  session.set(key, blob);
+  session.set(id, blob);
+  persist(id, blob).catch(() => {});
   return blob;
 }
 
@@ -238,6 +293,7 @@ export function clearFileCache() {
   session.clear();
   index.clear();
   hydrated = false;
+  cloud = null;
 }
 
 // Test seam: lets the eviction and lookup policy be exercised without a

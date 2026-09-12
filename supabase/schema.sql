@@ -102,6 +102,45 @@ drop policy if exists "own shop settings — delete" on public.shop_settings;
 create policy "own shop settings — delete" on public.shop_settings
   for delete using (auth.uid() = user_id);
 
+-- ── DRAWINGS ───────────────────────────────────────────────────────────────
+-- The job row carries the file MANIFEST already (state.uploadedFiles rides
+-- inside `data`), so the other device knows which drawings a job has. This is
+-- where their contents live, keyed by the same upload id.
+--
+-- PRIVATE, and that is not a detail. These are customer construction
+-- documents. A public bucket makes every plan set readable by anyone who
+-- guesses a URL, and the URL is a user id and an upload id.
+insert into storage.buckets (id, name, public)
+values ('job-files', 'job-files', false)
+on conflict (id) do nothing;
+
+-- Every path is `${user_id}/${upload_id}`, so the first folder IS the owner.
+-- storage.foldername(name) splits the path; [1] is that first segment.
+-- Without this, one signed-in account could read every other account's
+-- drawings just by knowing a path.
+drop policy if exists "own job files — read" on storage.objects;
+create policy "own job files — read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'job-files' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "own job files — write" on storage.objects;
+create policy "own job files — write" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'job-files' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Re-uploading the same id is the same file: the app upserts so a retry after
+-- a dropped connection is not a duplicate, and an upsert is an update.
+drop policy if exists "own job files — replace" on storage.objects;
+create policy "own job files — replace" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'job-files' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'job-files' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "own job files — delete" on storage.objects;
+create policy "own job files — delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'job-files' and (storage.foldername(name))[1] = auth.uid()::text);
+
 -- ── CHECK IT WORKED ────────────────────────────────────────────────────────
 -- Both rows should come back with rowsecurity = true and a policy count of 4.
 --
@@ -124,6 +163,17 @@ create policy "own shop settings — delete" on public.shop_settings
 --     from pg_policies
 --    where schemaname = 'public' and tablename in ('jobs', 'shop_settings')
 --    order by tablename, policyname;
+--
+-- The drawings bucket is checked separately, and the thing to confirm is that
+-- it is NOT public:
+--
+--   select id, public from storage.buckets where id = 'job-files';
+--   select policyname, cmd, qual, with_check from pg_policies
+--    where schemaname = 'storage' and tablename = 'objects'
+--      and policyname like 'own job files%';
+--
+-- `public` must be false and there must be four policies, each comparing the
+-- first path folder to auth.uid().
 --
 -- A `roles` of {public} is not a finding. In Postgres that means every role,
 -- anon included — but the policy still requires auth.uid() = user_id, and for

@@ -1,4 +1,4 @@
-import { loadCachedFile, hasCachedFile } from '../api/fileCache.js';
+import { loadCachedFile, hasCachedFile, cloudFilesReady } from '../api/fileCache.js';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Btn } from './UI.jsx';
@@ -35,6 +35,10 @@ async function viewFile(f) {
   const blob = await loadCachedFile(f.id);
   if (!blob) {
     if (tab) tab.close();
+    // Say so. A button that silently does nothing is worse than one that
+    // explains — the usual cause is a job built on another device by someone
+    // who was not signed in when they uploaded.
+    alert(`${f.name} isn't on this device and couldn't be fetched from your account.`);
     return;
   }
   const url = URL.createObjectURL(blob);
@@ -85,7 +89,11 @@ export function FileList({ fileStatuses = {} }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            {(f.previewUrl || hasCachedFile(f.id)) ? (
+            {/* Offered when the file is on this device OR could be fetched
+                 from the account. On a phone opening an iPad's job the second
+                 is the only one true, and a button that fetches beats no
+                 button — if it cannot be got, viewFile says so. */}
+            {(f.previewUrl || hasCachedFile(f.id) || cloudFilesReady()) ? (
               <Btn variant="surface" size="sm" onClick={() => viewFile(f)}>View</Btn>
             ) : (
               <span style={{ fontSize: 10, color: colors.textDim, padding: '4px 6px' }}>No preview</span>

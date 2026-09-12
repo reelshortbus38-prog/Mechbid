@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, uid, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON, loadCompanyProfile } from '../state/store.js';
 import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
-import { hydrateFileCache, forgetFiles } from '../api/fileCache.js';
+import { hydrateFileCache, forgetFiles, setCloudFiles } from '../api/fileCache.js';
+import { uploadFile, downloadFile, removeFiles } from '../lib/fileSync.js';
+import { getSupabase } from '../lib/supabase.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import { syncShopOnLogin } from '../lib/shopSync.js';
@@ -107,6 +109,23 @@ export default function Wizard() {
   // instead of the estimator having to upload the whole set again to look at
   // what he priced from.
   useEffect(() => { hydrateFileCache().catch(() => {}); }, []);
+
+  // ── DRAWINGS FOLLOW THE ESTIMATOR, ONCE HE IS SIGNED IN ───────────────────
+  // Jobs already sync, and the file manifest rides inside the job's data — so
+  // a phone opening an iPad's bid knows which drawings it has and only lacks
+  // their bytes. Registering a mover lets the cache fetch those on demand.
+  //
+  // Cleared on sign-out: a signed-out session must not be able to reach for
+  // files, and the next person at this device is not necessarily the last.
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb || !user?.id) { setCloudFiles(null); return; }
+    setCloudFiles({
+      upload: (id, file) => uploadFile(sb, user.id, id, file),
+      download: id => downloadFile(sb, user.id, id),
+    });
+    return () => setCloudFiles(null);
+  }, [user?.id]);
 
   // On sign-in (or landing with an existing session on a new device), pull the
   // user's cloud jobs, merge newest-wins with whatever's local, and push local-
@@ -372,7 +391,11 @@ export default function Wizard() {
                           // ceiling.
                           const ids = (jobs[job.id]?.data?.uploadedFiles || []).map(f => f.id).filter(Boolean);
                           deleteJob(job.id);
-                          if (ids.length) forgetFiles(ids).catch(() => {});
+                          if (ids.length) {
+                            forgetFiles(ids).catch(() => {});
+                            const sb = getSupabase();
+                            if (sb && user?.id) removeFiles(sb, user.id, ids).catch(() => {});
+                          }
                           if (user) deleteCloudJob(user.id, job.id);
                           setJobs(loadAllJobs());
                         }}>Delete</Btn>
