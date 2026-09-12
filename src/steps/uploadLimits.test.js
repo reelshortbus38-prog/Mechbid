@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  checkUploadSize, partitionBySize, limitFor, fmtSize, uploadGuidance,
-  POSTED_WHOLE_MAX, RENDERED_MAX,
+  checkUploadSize, partitionBySize, limitFor, fmtSize, uploadGuidance, POSTED_WHOLE_MAX, RENDERED_MAX, cloudSyncNote, CLOUD_MAX,
 } from './uploadLimits.js';
 import { REFRIG_MAX_PAGES, HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from '../api/pdfRender.js';
 
@@ -152,5 +151,41 @@ describe('telling a customer the limit before they upload', () => {
     expect(g.headline).toBeTruthy();
     expect(g.detail).toBeTruthy();
     expect(g.sizes).toBeTruthy();
+  });
+});
+
+// ── THE CLOUD CEILING IS NOT A REJECTION ────────────────────────────────────
+// Supabase Storage refuses a file over 50 MB on the free plan, and this app
+// cannot raise that. A 90 MB set still uploads, still analyses and still opens
+// on the device that made it — pdf.js reads it here, page by page. What it
+// will not do is follow the estimator to his phone, and failing silently is
+// what would actually hurt.
+describe('cloudSyncNote', () => {
+  it('says nothing about a file that will sync', () => {
+    expect(cloudSyncNote({ name: 'M0.1.pdf', size: 10 * 1024 * 1024 })).toBe(null);
+    expect(cloudSyncNote({ name: 'x', size: CLOUD_MAX })).toBe(null);
+  });
+
+  it('warns about one that will not, and says what still works', () => {
+    const note = cloudSyncNote({ name: 'Full set.pdf', size: 90 * 1024 * 1024 });
+    expect(note).toMatch(/90 MB/);
+    expect(note).toMatch(/50 MB/);
+    expect(note).toMatch(/stays on this device/);
+    // The half that matters: it is not broken, it just does not travel.
+    expect(note).toMatch(/still reads and opens/);
+  });
+
+  it('does not reject it — that is checkUploadSize\'s job, and it says yes', () => {
+    // 90 MB is fine for analysis. The two limits are different questions.
+    expect(checkUploadSize({ name: 'Full set.pdf', size: 90 * 1024 * 1024, type: 'plan' })).toBe(null);
+  });
+
+  it('sits below the rendered limit, or it would never be reached', () => {
+    expect(CLOUD_MAX).toBeLessThan(RENDERED_MAX);
+  });
+
+  it('is quiet on junk rather than warning about nothing', () => {
+    expect(cloudSyncNote({})).toBe(null);
+    expect(cloudSyncNote()).toBe(null);
   });
 });

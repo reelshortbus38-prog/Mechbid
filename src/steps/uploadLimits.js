@@ -23,6 +23,27 @@
 export const POSTED_WHOLE_MAX = 3.3 * 1024 * 1024;   // ~4.5 MB once base64'd
 export const RENDERED_MAX = 120 * 1024 * 1024;
 
+// ── AND A THIRD CEILING, WHICH IS NOT A LIMIT ON UPLOADING ──────────────────
+// Supabase Storage refuses a file over 50 MB on the free plan, and that is not
+// a number this app can raise. A 90 MB plan set still uploads, still analyses
+// and still opens on this device — pdf.js reads it here, page by page, and
+// none of that touches the cloud. What it will NOT do is follow the estimator
+// to his phone.
+//
+// So it is not a rejection, it is a fact to say out loud. Failing silently is
+// what would actually hurt: the drawing looks fine on the iPad and simply is
+// not there on the other device, with nothing anywhere explaining why.
+export const CLOUD_MAX = 50 * 1024 * 1024;
+
+// null when the file will sync. Otherwise a sentence saying what will happen.
+export function cloudSyncNote({ name = 'This file', size = 0 } = {}) {
+  const bytes = Number(size) || 0;
+  if (bytes <= CLOUD_MAX) return null;
+  return `${name} is ${fmtSize(bytes)} — over the ${fmtSize(CLOUD_MAX)} cloud limit, so it stays on this `
+    + 'device. It still reads and opens here; it just will not appear on your other devices. Split the set '
+    + 'if you need it everywhere.';
+}
+
 // File types that get sent to a serverless function in one piece.
 const POSTED_WHOLE = new Set(['excel', 'xls', 'scope', 'email']);
 
@@ -93,6 +114,8 @@ export function uploadGuidance(mode, limits = {}) {
     sizes: `Spreadsheets, Word docs and saved emails: ${fmtSize(POSTED_WHOLE_MAX)} each — they go to the `
       + `server whole. PDFs and photos: ${fmtSize(RENDERED_MAX)} — those are read here on the device, page `
       + 'by page, so they can be much larger.',
+    cloud: `Anything over ${fmtSize(CLOUD_MAX)} stays on this device. It reads and opens here the same, but `
+      + 'it will not follow you to another device — split the set if you need it everywhere.',
     split: 'Nothing is lost by splitting a set across several uploads. Every file adds to the same takeoff, '
       + 'and the cross-sheet check gets better the more sheets it has to compare.',
   };
