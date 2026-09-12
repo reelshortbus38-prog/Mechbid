@@ -104,10 +104,12 @@ export default function Step1_Setup({ onNext }) {
       // Generate a blob URL for every file type so it can be handed off to
       // the native app on iOS (Pages for .docx, Numbers for .xlsx, etc.)
       // via a download anchor click in the file viewer.
-      // Hold the File itself for the session so a flag can show the sheet it
-      // is talking about. Kept outside React state — state is serialized to
-      // localStorage on every save, and a 20 MB PDF would blow the quota.
-      rememberFile(f);
+      // Hold the File so a flag can show the sheet it is talking about, and so
+      // it is still there after a break. Kept outside React state — state is
+      // serialized to localStorage on every save, and a 20 MB PDF would blow
+      // that quota. Keyed by THIS upload's id, which saves with the job, so a
+      // second job containing its own M0.1.pdf cannot reach this one.
+      rememberFile(id, f);
       const previewUrl = URL.createObjectURL(f);
       return { id, name: f.name, size: f.size, type, mode: state.mode, previewUrl };
     });
