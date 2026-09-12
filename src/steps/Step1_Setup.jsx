@@ -1568,6 +1568,7 @@ export default function Step1_Setup({ onNext }) {
           <div style={{ fontWeight: 700, color: colors.text, marginBottom: 3 }}>📄 {guidance.headline}</div>
           {guidance.detail}
           <div style={{ marginTop: 6 }}>{guidance.sizes}</div>
+          <div style={{ marginTop: 6 }}>{guidance.cloud}</div>
           <div style={{ marginTop: 6, color: colors.green }}>{guidance.split}</div>
         </div>
         <div

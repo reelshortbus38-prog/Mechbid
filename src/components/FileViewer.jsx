@@ -1,5 +1,6 @@
 import { loadCachedFile, hasCachedFile } from '../api/fileCache.js';
 import { useAuth } from '../lib/auth.jsx';
+import { cloudSyncNote } from '../steps/uploadLimits.js';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Btn } from './UI.jsx';
@@ -101,6 +102,15 @@ export function FileList({ fileStatuses = {} }) {
                  before the effect registered the cloud, saw no cloud, and
                  said "No preview" forever. `user` comes from context and
                  re-renders properly. */}
+            {user && cloudSyncNote(f) && (
+              // Said on the row itself, not only on the upload screen. A file
+              // too big for the cloud looks completely normal here, and the
+              // place that matters is when somebody is deciding whether they
+              // can go and open it on a phone.
+              <span title={cloudSyncNote(f)} style={{ fontSize: 10, color: colors.yellow, padding: '4px 6px' }}>
+                this device only
+              </span>
+            )}
             {(f.previewUrl || hasCachedFile(f.id) || !!user) ? (
               <Btn variant="surface" size="sm" onClick={() => viewFile(f)}>View</Btn>
             ) : (
