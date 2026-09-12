@@ -15,6 +15,11 @@ const TABLE = 'jobs';
 
 // Cloud row  →  local job shape ({ id, name, mode, lastEdited, data }).
 export function rowToJob(row) {
+  // A soft-deleted row is a TOMBSTONE, not a job. It carries no data — only
+  // the fact that somebody deleted it and when.
+  if (row?.deleted_at) {
+    return { id: row.id, deletedAt: row.deleted_at, deleted: true };
+  }
   return {
     id: row.id,
     name: row.name || 'Untitled',
@@ -39,20 +44,48 @@ export function jobToRow(job, userId) {
 // Merge two job maps ({id: job}) newest-wins. Returns the merged map plus the
 // ids that changed on each side, so the caller knows what to write where.
 // Pure — unit-tested without any network.
+// ── WHY DELETES NEED A TOMBSTONE ────────────────────────────────────────────
+// This used to read "cloud has it, local does not" as "this device is behind,
+// copy it down" — and the mirror case as "the cloud is behind, push it up."
+// Neither can tell an absence apart from a DELETION, and that broke exactly as
+// it had to: delete every old job on the iPad, open the app on a phone that
+// still had them, and the phone pushed all of them back up as local-only work.
+// The iPad then pulled them down again. A delete could not survive any other
+// device that still held the job.
+//
+// So a deletion is now a FACT that travels, not an absence to be guessed at.
+// The cloud row is soft-deleted — it keeps its id and gains a deleted_at — and
+// that beats a local copy last edited before it.
+//
+// The one case where a tombstone does NOT win is a job edited AFTER it was
+// deleted elsewhere. That is somebody actively working on it, and losing their
+// afternoon to a delete they never saw is worse than a job reappearing.
 export function mergeJobMaps(local = {}, cloud = {}) {
   const merged = {};
-  const toPush = []; // local is newer, or cloud is missing it → write to cloud
-  const toLocal = []; // cloud is newer, or local is missing it → write to local
+  const toPush = [];   // local is newer, or cloud is missing it → write to cloud
+  const toLocal = [];  // cloud is newer, or local is missing it → write to local
+  const toDelete = []; // deleted elsewhere → drop it here too
   const ids = new Set([...Object.keys(local), ...Object.keys(cloud)]);
   const t = j => Date.parse(j?.lastEdited || 0) || 0;
+  const d = j => Date.parse(j?.deletedAt || 0) || 0;
+
   for (const id of ids) {
     const l = local[id], c = cloud[id];
+
+    if (c?.deleted) {
+      // Edited after the deletion: the work is newer than the delete, so it
+      // stands and goes back up.
+      if (l && t(l) > d(c)) { merged[id] = l; toPush.push(id); continue; }
+      if (l) toDelete.push(id);
+      continue;   // and it is not in `merged` — that is the deletion landing
+    }
+
     if (l && !c) { merged[id] = l; toPush.push(id); }
     else if (c && !l) { merged[id] = c; toLocal.push(id); }
     else if (t(l) >= t(c)) { merged[id] = l; if (t(l) > t(c)) toPush.push(id); }
     else { merged[id] = c; toLocal.push(id); }
   }
-  return { merged, toPush, toLocal };
+  return { merged, toPush, toLocal, toDelete };
 }
 
 // ── Supabase I/O (no-ops when unconfigured / logged out) ─────────────────────
@@ -77,10 +110,18 @@ export async function pushCloudJob(userId, job) {
   return true;
 }
 
+// Soft delete. A removed ROW is an absence, and an absence is exactly what
+// every other device reads as "I am behind, let me push my copy back up."
+// Stamping deleted_at leaves something for them to find.
+//
+// The data is cleared at the same time: a deleted job should not go on
+// occupying a row with a customer's bid inside it.
 export async function deleteCloudJob(userId, id) {
   const sb = getSupabase();
   if (!sb || !userId || !id) return false;
-  const { error } = await sb.from(TABLE).delete().eq('user_id', userId).eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString(), data: {}, name: '' })
+    .eq('user_id', userId).eq('id', id);
   if (error) { console.warn('Cloud delete failed:', error.message); return false; }
   return true;
 }
@@ -90,13 +131,18 @@ export async function deleteCloudJob(userId, id) {
 // Returns the merged job map so the caller can refresh the UI. localGetAll /
 // localSetAll are injected so this module doesn't import the store (avoids a
 // cycle) and stays unit-testable.
-export async function syncOnLogin(userId, localGetAll, localSetAll) {
+export async function syncOnLogin(userId, localGetAll, localSetAll, onDeleted) {
   const sb = getSupabase();
   if (!sb || !userId) return localGetAll();
   const local = localGetAll();
   const cloud = await pullCloudJobs(userId);
-  const { merged, toPush } = mergeJobMaps(local, cloud);
+  const { merged, toPush, toDelete } = mergeJobMaps(local, cloud);
   localSetAll(merged);
+  // Anything deleted on another device goes here too, drawings and all — the
+  // merged map no longer contains it, so this only reports what happened.
+  if (toDelete.length && typeof onDeleted === 'function') {
+    try { onDeleted(toDelete, local); } catch { /* reporting must not break sync */ }
+  }
   // Push local-only / locally-newer jobs to the cloud (best-effort, in parallel).
   await Promise.all(toPush.map(id => pushCloudJob(userId, merged[id])));
   return merged;

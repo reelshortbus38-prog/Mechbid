@@ -67,3 +67,75 @@ describe('row <-> job conversion round-trips', () => {
     expect(j.data.projName).toBe('Store 47');
   });
 });
+
+// ── DELETES HAVE TO STICK ───────────────────────────────────────────────────
+// Reported from the field: deleted every old job on the iPad, signed in on a
+// phone that still had them, and every one came back — then came back on the
+// iPad too. An absence cannot be told apart from a deletion, so a deletion had
+// to become something that travels.
+describe('mergeJobMaps — tombstones', () => {
+  const job = (id, at) => ({ id, name: id, lastEdited: at, data: {} });
+  const stone = (id, at) => ({ id, deleted: true, deletedAt: at });
+
+  it('a deletion removes the local copy instead of pushing it back', () => {
+    const r = mergeJobMaps(
+      { a: job('a', '2026-09-01T00:00:00Z') },
+      { a: stone('a', '2026-09-02T00:00:00Z') },
+    );
+    expect(r.merged.a).toBeUndefined();
+    expect(r.toDelete).toEqual(['a']);
+    expect(r.toPush).toEqual([]);
+  });
+
+  it('does not resurrect a job this device never had', () => {
+    const r = mergeJobMaps({}, { a: stone('a', '2026-09-02T00:00:00Z') });
+    expect(r.merged.a).toBeUndefined();
+    expect(r.toDelete).toEqual([]);
+    expect(r.toLocal).toEqual([]);
+  });
+
+  it('keeps work done AFTER the delete, rather than throwing it away', () => {
+    // Somebody is actively in that job. Losing their afternoon to a delete
+    // they never saw is worse than a job reappearing.
+    const r = mergeJobMaps(
+      { a: job('a', '2026-09-03T00:00:00Z') },
+      { a: stone('a', '2026-09-02T00:00:00Z') },
+    );
+    expect(r.merged.a).toMatchObject({ id: 'a' });
+    expect(r.toPush).toEqual(['a']);
+    expect(r.toDelete).toEqual([]);
+  });
+
+  it('leaves every other job alone', () => {
+    const r = mergeJobMaps(
+      { a: job('a', '2026-09-01T00:00:00Z'), b: job('b', '2026-09-01T00:00:00Z') },
+      { a: stone('a', '2026-09-02T00:00:00Z') },
+    );
+    expect(Object.keys(r.merged)).toEqual(['b']);
+    expect(r.toPush).toEqual(['b']);
+  });
+
+  it('still merges normally when nothing is deleted', () => {
+    const r = mergeJobMaps(
+      { a: job('a', '2026-09-01T00:00:00Z') },
+      { b: job('b', '2026-09-01T00:00:00Z') },
+    );
+    expect(Object.keys(r.merged).sort()).toEqual(['a', 'b']);
+    expect(r.toPush).toEqual(['a']);
+    expect(r.toLocal).toEqual(['b']);
+    expect(r.toDelete).toEqual([]);
+  });
+});
+
+describe('rowToJob — a soft-deleted row is not a job', () => {
+  it('reads it as a tombstone carrying no data', () => {
+    const t = rowToJob({ id: 'a', deleted_at: '2026-09-02T00:00:00Z', data: { secret: 1 } });
+    expect(t).toEqual({ id: 'a', deletedAt: '2026-09-02T00:00:00Z', deleted: true });
+  });
+
+  it('reads an ordinary row as a job', () => {
+    const j = rowToJob({ id: 'a', name: 'Food Lion', updated_at: '2026-09-01T00:00:00Z', data: { x: 1 } });
+    expect(j).toMatchObject({ id: 'a', name: 'Food Lion', data: { x: 1 } });
+    expect(j.deleted).toBeFalsy();
+  });
+});

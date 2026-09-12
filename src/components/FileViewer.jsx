@@ -1,4 +1,5 @@
-import { loadCachedFile, hasCachedFile, cloudFilesReady } from '../api/fileCache.js';
+import { loadCachedFile, hasCachedFile } from '../api/fileCache.js';
+import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Btn } from './UI.jsx';
@@ -51,6 +52,7 @@ async function viewFile(f) {
 // ── FILE LIST ─────────────────────────────────────────────────────────────────
 export function FileList({ fileStatuses = {} }) {
   const { state, dispatch } = useStore();
+  const { user } = useAuth();
   const files = (state.uploadedFiles || []).filter(f => f.mode === state.mode);
 
   if (files.length === 0) return null;
@@ -92,8 +94,14 @@ export function FileList({ fileStatuses = {} }) {
             {/* Offered when the file is on this device OR could be fetched
                  from the account. On a phone opening an iPad's job the second
                  is the only one true, and a button that fetches beats no
-                 button — if it cannot be got, viewFile says so. */}
-            {(f.previewUrl || hasCachedFile(f.id) || cloudFilesReady()) ? (
+                 button — if it cannot be got, viewFile says so.
+                 Keyed off `user` and NOT off the cache's own registration
+                 flag: that flag is a module variable, so React never re-runs
+                 this when signing in sets it. The phone rendered this list
+                 before the effect registered the cloud, saw no cloud, and
+                 said "No preview" forever. `user` comes from context and
+                 re-renders properly. */}
+            {(f.previewUrl || hasCachedFile(f.id) || !!user) ? (
               <Btn variant="surface" size="sm" onClick={() => viewFile(f)}>View</Btn>
             ) : (
               <span style={{ fontSize: 10, color: colors.textDim, padding: '4px 6px' }}>No preview</span>
