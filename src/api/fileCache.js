@@ -1,40 +1,247 @@
-// ── SESSION FILE CACHE ───────────────────────────────────────────────────────
-// To show the estimator the sheet a flag is talking about, the app has to
-// still HOLD that sheet. It doesn't: Step1 creates a blob URL at upload and
-// keeps only the URL, and store.js deliberately strips even that when a job
-// saves, because a blob URL is dead after a reload and a dead link in a saved
-// job is worse than no link.
+// ── THE FILES, KEPT ─────────────────────────────────────────────────────────
+// To show the estimator the sheet a flag is talking about, the app has to still
+// HOLD that sheet. It used to hold it for exactly as long as the tab stayed
+// open: the File objects lived in a module-level Map, and a blob URL died with
+// the session, so store.js stripped it on save rather than leave a "View"
+// button that opened nothing.
 //
-// So the File objects live here instead — in a plain module-level Map, outside
-// React state on purpose. Anything in state gets serialized to localStorage on
-// every save, and a 20 MB PDF would blow the quota on the first job.
+// That was honest and it was not enough. An estimator works a bid, breaks for
+// lunch, comes back — and to look at the drawing he priced from he has to
+// upload the whole set again. Same if he wants to re-check a job from last
+// week. The old comment in this file said as much: "Making it survive a reload
+// means IndexedDB … worth doing if re-checking old jobs turns out to matter."
+// It turned out to matter.
 //
-// This is SESSION-scoped by design. Upload a set, work down the flags, click
-// through to the sheets — that all works. Save the job, close the tab, reopen
-// it tomorrow and the files are gone, so the verify buttons simply don't
-// appear. That is the honest behaviour: no broken links, and the button is
-// present exactly when it works.
+// ── WHY INDEXEDDB AND NOT THE CLOUD ─────────────────────────────────────────
+// A plan set is 20-50 MB. Uploading that over cell service from inside a store
+// is slow, and a free Supabase bucket is 1 GB for everything. IndexedDB is on
+// the device, free, needs no account, and has room measured in gigabytes
+// rather than the 5 MB localStorage allows. It does not follow the estimator
+// to another device — that is the real limit here, and the cloud can be
+// layered behind this same interface later if it turns out to matter the way
+// this did.
 //
-// Making it survive a reload means IndexedDB, which is local and free and
-// needs no account. Worth doing if re-checking old jobs turns out to matter;
-// it is not needed for reviewing a run you just made.
+// ── WHY KEYED BY UPLOAD ID AND NOT BY FILENAME ──────────────────────────────
+// The session map was keyed by filename, which was safe only because it died
+// every session. Once files persist, two jobs that both contain an "M0.1.pdf"
+// collide, and the app shows the estimator a sheet from a different store —
+// worse than showing nothing, because it looks right.
+//
+// Every upload already carries a `uid()` in state.uploadedFiles, and that id is
+// saved with the job. So the bytes go under the id, and a lookup that starts
+// from a filename resolves through the CURRENT job's file list to get there.
+// Nothing from another job is reachable, and a new job that has not been saved
+// yet works the same — the id exists at upload, long before a jobId does.
+//
+// ── WHEN THERE IS NO INDEXEDDB ──────────────────────────────────────────────
+// Private windows, blocked site data, a browser that refuses. Every path here
+// degrades to the session-only Map, which is exactly what the app did before
+// this file changed. Nothing throws and nothing is claimed that is not true:
+// hasCachedFile answers honestly, so the verify button appears only when it
+// will work.
 
-const files = new Map(); // fileName → File
+const DB_NAME = 'coldgauge_files';
+const DB_VERSION = 1;
+const STORE = 'files';
 
-export function rememberFile(file) {
-  if (file?.name) files.set(file.name, file);
+// A ceiling, because a plan set is large and a browser that hits its quota
+// starts refusing writes with no warning an estimator would ever see. Oldest
+// files go first — the bid you are working now matters more than the one from
+// March.
+export const MAX_CACHE_BYTES = 300 * 1024 * 1024;
+
+// Session-speed layer: id → File. A file just uploaded is served from here
+// without touching the database at all.
+const session = new Map();
+
+// What is known to be on disk: id → { name, size, savedAt }. Hydrated once at
+// startup so `hasCachedFile` can stay synchronous — it is called while
+// rendering, to decide whether a verify button should exist, and a render path
+// cannot await.
+const index = new Map();
+
+let hydrated = false;
+
+// ── THE DATABASE ────────────────────────────────────────────────────────────
+function openDb() {
+  return new Promise(resolve => {
+    let idb;
+    try {
+      idb = typeof indexedDB === 'undefined' ? null : indexedDB;
+    } catch {
+      idb = null;   // Safari with site data blocked throws on the reference
+    }
+    if (!idb) { resolve(null); return; }
+
+    let req;
+    try { req = idb.open(DB_NAME, DB_VERSION); } catch { resolve(null); return; }
+
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
 }
 
-export function getCachedFile(name) {
-  return files.get(String(name || '')) || null;
+// → whatever `fn` produced, or null if the transaction did not complete.
+// A read hands back a promise for its result and is awaited here; a write
+// returns nothing and resolves `true`, so every caller can test one thing:
+// null means it did not happen.
+function tx(db, mode, fn) {
+  return new Promise(resolve => {
+    let t;
+    try { t = db.transaction(STORE, mode); } catch { resolve(null); return; }
+    let out;
+    try { out = fn(t.objectStore(STORE)); } catch { resolve(null); return; }
+    t.oncomplete = () => {
+      if (out && typeof out.then === 'function') out.then(resolve, () => resolve(null));
+      else resolve(out === undefined ? true : out);
+    };
+    t.onerror = () => resolve(null);
+    t.onabort = () => resolve(null);
+  });
 }
 
-export function hasCachedFile(name) {
-  return files.has(String(name || ''));
+const asPromise = req => new Promise(resolve => {
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => resolve(null);
+});
+
+// ── NAME → ID, WITHIN THIS JOB ──────────────────────────────────────────────
+// The only bridge between a flag (which knows a filename) and the bytes (which
+// are keyed by upload id). Scoped to the job's own file list, which is what
+// stops one job reaching another's drawings.
+export function fileIdFor(uploadedFiles, name) {
+  const wanted = String(name || '').trim().toLowerCase();
+  if (!wanted) return '';
+  const hit = (uploadedFiles || []).find(f => String(f?.name || '').trim().toLowerCase() === wanted);
+  return hit?.id || '';
 }
 
-// Only for tests and for clearing between jobs — the map is small (references,
-// not copies), so ordinary use never needs this.
+// ── WRITING ─────────────────────────────────────────────────────────────────
+// Returns immediately: the session map is what the next few minutes need, and
+// waiting on a 40 MB disk write before the upload looks finished would be felt.
+// The persist runs behind it and is allowed to fail quietly — failing means
+// the app behaves exactly as it did before this file existed.
+export function rememberFile(id, file) {
+  const key = String(id || '');
+  if (!key || !file) return;
+  session.set(key, file);
+  persist(key, file);
+}
+
+async function persist(id, file) {
+  const db = await openDb();
+  if (!db) return;
+  const record = {
+    id,
+    name: file.name || '',
+    type: file.type || '',
+    size: Number(file.size) || 0,
+    savedAt: Date.now(),
+    blob: file,
+  };
+  const ok = await tx(db, 'readwrite', store => { store.put(record); });
+  if (ok !== null) index.set(id, { name: record.name, size: record.size, savedAt: record.savedAt });
+  db.close();
+  // Only after a successful write is there anything new to prune.
+  if (ok !== null) pruneFileCache().catch(() => {});
+}
+
+// ── READING ─────────────────────────────────────────────────────────────────
+// Synchronous, because it is called while rendering to decide whether the
+// verify button should be there at all.
+export function hasCachedFile(id) {
+  const key = String(id || '');
+  return !!key && (session.has(key) || index.has(key));
+}
+
+export async function loadCachedFile(id) {
+  const key = String(id || '');
+  if (!key) return null;
+  const live = session.get(key);
+  if (live) return live;
+
+  const db = await openDb();
+  if (!db) return null;
+  const rec = await tx(db, 'readonly', store => asPromise(store.get(key)));
+  db.close();
+  const blob = rec && rec.blob ? rec.blob : null;
+  if (!blob) return null;
+  // Put it back in the session map: a sheet peek re-renders and would
+  // otherwise hit the disk on every page turn.
+  session.set(key, blob);
+  return blob;
+}
+
+// ── STARTUP ─────────────────────────────────────────────────────────────────
+// One pass to learn what is on disk. Only the metadata is read — the blobs
+// stay where they are until something actually asks for one.
+export async function hydrateFileCache() {
+  if (hydrated) return index.size;
+  hydrated = true;
+  const db = await openDb();
+  if (!db) return 0;
+  const all = await tx(db, 'readonly', store => asPromise(store.getAll()));
+  db.close();
+  for (const rec of all || []) {
+    if (rec?.id) index.set(rec.id, { name: rec.name, size: rec.size || 0, savedAt: rec.savedAt || 0 });
+  }
+  return index.size;
+}
+
+// ── HOUSEKEEPING ────────────────────────────────────────────────────────────
+export function cacheUsage() {
+  let bytes = 0;
+  for (const meta of index.values()) bytes += meta.size || 0;
+  return { files: index.size, bytes };
+}
+
+// Which ids have to go to get under the cap, oldest first. Pure, so the policy
+// is testable without a database.
+export function evictionPlan(entries, maxBytes = MAX_CACHE_BYTES) {
+  const rows = [...(entries || [])]
+    .filter(([, m]) => m)
+    .sort((a, b) => (a[1].savedAt || 0) - (b[1].savedAt || 0));
+  let total = rows.reduce((s, [, m]) => s + (m.size || 0), 0);
+  const doomed = [];
+  for (const [id, meta] of rows) {
+    if (total <= maxBytes) break;
+    doomed.push(id);
+    total -= meta.size || 0;
+  }
+  return doomed;
+}
+
+export async function pruneFileCache(maxBytes = MAX_CACHE_BYTES) {
+  const doomed = evictionPlan([...index.entries()], maxBytes);
+  if (!doomed.length) return [];
+  await forgetFiles(doomed);
+  return doomed;
+}
+
+export async function forgetFiles(ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean);
+  if (!list.length) return;
+  for (const id of list) { session.delete(id); index.delete(id); }
+  const db = await openDb();
+  if (!db) return;
+  await tx(db, 'readwrite', store => { for (const id of list) store.delete(id); });
+  db.close();
+}
+
+// Only for tests and for clearing between jobs.
 export function clearFileCache() {
-  files.clear();
+  session.clear();
+  index.clear();
+  hydrated = false;
+}
+
+// Test seam: lets the eviction and lookup policy be exercised without a
+// database, which node does not have.
+export function _seedIndex(id, meta) {
+  index.set(String(id), meta);
 }

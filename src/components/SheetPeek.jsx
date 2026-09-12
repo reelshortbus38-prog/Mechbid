@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { getCachedFile } from '../api/fileCache.js';
+import { loadCachedFile, fileIdFor } from '../api/fileCache.js';
 import { searchTerms, findTermBoxes } from '../api/pageMarks.js';
 import { ftPerPixel, measureFeet, formatFeet } from '../api/sheetScale.js';
 
@@ -41,6 +42,8 @@ const MAX_PIXELS = 8_000_000;
 
 export function SheetPeek({ fileName, page, flagText = '', onClose }) {
   const [state, setState] = useState({ status: 'loading' });
+  const { state: job } = useStore();
+  const uploadedFiles = job.uploadedFiles || [];
   // Opening centred on the mark at full resolution is right for reading the
   // label, and it leaves you with no idea WHERE on a four-foot sheet you are.
   // "Fit sheet" pulls back to the whole drawing so the mark can be placed in
@@ -59,9 +62,9 @@ export function SheetPeek({ fileName, page, flagText = '', onClose }) {
     let cancelled = false;
     let doc = null;
     (async () => {
-      const file = getCachedFile(fileName);
+      const file = await loadCachedFile(fileIdFor(uploadedFiles, fileName));
       if (!file) {
-        setState({ status: 'error', message: 'That file is no longer loaded — re-upload it to view the sheet.' });
+        setState({ status: 'error', message: 'That file is no longer on this device — re-upload it to view the sheet.' });
         return;
       }
       try {

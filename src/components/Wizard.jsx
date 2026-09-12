@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, uid, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON, loadCompanyProfile } from '../state/store.js';
 import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
+import { hydrateFileCache, forgetFiles } from '../api/fileCache.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
 import { syncShopOnLogin } from '../lib/shopSync.js';
@@ -99,6 +100,13 @@ export default function Wizard() {
   useEffect(() => {
     setJobs(loadAllJobs());
   }, [showJobs]);
+
+  // Learn what drawings are already on this device. One metadata pass, no
+  // blobs read — it only has to be enough for hasCachedFile to answer while
+  // rendering, so a "view the sheet" button appears on a job opened days later
+  // instead of the estimator having to upload the whole set again to look at
+  // what he priced from.
+  useEffect(() => { hydrateFileCache().catch(() => {}); }, []);
 
   // On sign-in (or landing with an existing session on a new device), pull the
   // user's cloud jobs, merge newest-wins with whatever's local, and push local-
@@ -357,7 +365,17 @@ export default function Wizard() {
                       </div>
                       <Row style={{ gap: 8, flexShrink: 0 }}>
                         <Btn variant="green" size="sm" onClick={() => handleLoadJob(job)}>Open</Btn>
-                        <Btn variant="red" size="sm" onClick={() => { deleteJob(job.id); if (user) deleteCloudJob(user.id, job.id); setJobs(loadAllJobs()); }}>Delete</Btn>
+                        <Btn variant="red" size="sm" onClick={() => {
+                          // Its drawings go with it. Nothing else can reach
+                          // them once the job carrying their ids is gone, so
+                          // leaving them would be dead weight against the cache
+                          // ceiling.
+                          const ids = (jobs[job.id]?.data?.uploadedFiles || []).map(f => f.id).filter(Boolean);
+                          deleteJob(job.id);
+                          if (ids.length) forgetFiles(ids).catch(() => {});
+                          if (user) deleteCloudJob(user.id, job.id);
+                          setJobs(loadAllJobs());
+                        }}>Delete</Btn>
                       </Row>
                     </div>
                   ))

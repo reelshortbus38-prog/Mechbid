@@ -1,3 +1,4 @@
+import { loadCachedFile, hasCachedFile } from '../api/fileCache.js';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Btn } from './UI.jsx';
@@ -16,12 +17,31 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-function viewFile(f) {
-  if (!f.previewUrl) return;
-  // Open the blob URL directly in a new tab — the browser handles it natively:
-  // images display as images, PDFs open in the PDF viewer, exactly like
-  // tapping a file link. User closes the tab to go back to the app.
-  window.open(f.previewUrl, '_blank');
+// ── OPENING A FILE, INCLUDING ONE FROM LAST WEEK ────────────────────────────
+// This used to require f.previewUrl, a blob URL made at upload. Those die with
+// the tab, and store.js strips them on save, so after a break the View button
+// simply vanished and the only way to look at the drawing you priced from was
+// to upload the whole set again.
+//
+// Now the bytes are on the device (see api/fileCache.js), so a URL is made on
+// demand. The window is opened BEFORE the await: iOS Safari blocks
+// window.open once it can no longer see the user's tap behind it, and an
+// await is long enough to lose that. So the tab is claimed up front and
+// pointed at the file when it arrives.
+async function viewFile(f) {
+  if (f.previewUrl) { window.open(f.previewUrl, '_blank'); return; }
+
+  const tab = window.open('', '_blank');
+  const blob = await loadCachedFile(f.id);
+  if (!blob) {
+    if (tab) tab.close();
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  if (tab) tab.location = url;
+  else window.open(url, '_blank');
+  // Not revoked immediately: the new tab still has to load from it. The URL
+  // dies with this page anyway.
 }
 
 // ── FILE LIST ─────────────────────────────────────────────────────────────────
@@ -65,7 +85,7 @@ export function FileList({ fileStatuses = {} }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            {f.previewUrl ? (
+            {(f.previewUrl || hasCachedFile(f.id)) ? (
               <Btn variant="surface" size="sm" onClick={() => viewFile(f)}>View</Btn>
             ) : (
               <span style={{ fontSize: 10, color: colors.textDim, padding: '4px 6px' }}>No preview</span>

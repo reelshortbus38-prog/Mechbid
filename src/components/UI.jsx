@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useStore } from '../state/store.js';
 import { colors, btn, slabel, inp, card } from '../styles/theme.js';
 import { flagVerifyTarget } from './flagSource.js';
-import { hasCachedFile } from '../api/fileCache.js';
+import { hasCachedFile, fileIdFor } from '../api/fileCache.js';
 import { SheetPeek } from './SheetPeek.jsx';
 
 export function Btn({ children, onClick, variant = 'green', size = 'md', disabled, style, ...props }) {
@@ -128,9 +129,14 @@ export function EmptyState({ icon, title, subtitle }) {
 
 export function Flag({ flag }) {
   const [peek, setPeek] = useState(null);
+  const { state } = useStore();
+  const uploadedFiles = state.uploadedFiles || [];
   // A flag can only offer a "view the sheet" button when it names a page AND
   // the app still holds that file. Both must be true, or the button is a lie.
-  const target = flagVerifyTarget(flag, hasCachedFile);
+  // Resolved through this job's own file list: a flag knows a filename, the
+  // bytes are keyed by upload id, and going via the job is what stops one
+  // bid's drawing appearing under another's flag.
+  const target = flagVerifyTarget(flag, name => hasCachedFile(fileIdFor(uploadedFiles, name)));
   const styles = {
     error: { bg: 'rgba(239,68,68,0.08)', border: colors.red, icon: '❌', color: colors.red },
     warn:  { bg: 'rgba(234,179,8,0.08)', border: colors.yellow, icon: '⚠️', color: colors.yellow },
