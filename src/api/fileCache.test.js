@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   fileIdFor, evictionPlan, rememberFile, hasCachedFile, loadCachedFile,
   forgetFiles, clearFileCache, cacheUsage, _seedIndex, MAX_CACHE_BYTES,
-  setCloudFiles, cloudFilesReady,
+  setCloudFiles, cloudFilesReady, cachedEntries, hydrateFileCache,
 } from './fileCache.js';
 
 // Node has no IndexedDB, which is the same state as a private window or a
@@ -205,5 +205,46 @@ describe('when a cloud mover is registered', () => {
     setCloudFiles(null);
     expect(cloudFilesReady()).toBe(false);
     expect(await loadCachedFile('u1')).toBe(null);
+  });
+});
+
+// ── WHAT THIS DEVICE IS HOLDING ─────────────────────────────────────────────
+// The catch-up pass subtracts the bucket's contents from this to find drawings
+// that never made it up — uploaded before signing in, or with no signal.
+describe('cachedEntries', () => {
+  it('lists what is on disk', () => {
+    _seedIndex('a', { name: 'a.pdf', size: 100, savedAt: 1 });
+    expect(cachedEntries()).toEqual([['a', { name: 'a.pdf', size: 100, savedAt: 1 }]]);
+  });
+
+  it('includes files uploaded this session — the pre-sign-in case', () => {
+    // Drag the set in, price the job, sign in afterwards. Those files are in
+    // the session map and nowhere else, and they are exactly the ones the
+    // cloud has never seen.
+    rememberFile('u1', fakeFile('M0.1.pdf', 2048));
+    const byId = Object.fromEntries(cachedEntries());
+    expect(byId.u1).toMatchObject({ name: 'M0.1.pdf', size: 2048 });
+  });
+
+  it('does not list a file twice when it is in both', () => {
+    _seedIndex('u1', { name: 'M0.1.pdf', size: 2048, savedAt: 5 });
+    rememberFile('u1', fakeFile('M0.1.pdf', 2048));
+    expect(cachedEntries().filter(([id]) => id === 'u1').length).toBe(1);
+  });
+
+  it('is empty rather than broken with nothing stored', () => {
+    expect(cachedEntries()).toEqual([]);
+  });
+});
+
+// ── HYDRATION IS AWAITED, NOT RACED ─────────────────────────────────────────
+describe('hydrateFileCache', () => {
+  it('hands the same work to a second caller instead of an instant zero', async () => {
+    // The catch-up pass mounts in the same tick as hydration. A bare `if
+    // (hydrated) return index.size` handed it 0 and it concluded the device
+    // was holding nothing — then never looked again.
+    const first = hydrateFileCache();
+    const second = hydrateFileCache();
+    expect(await second).toBe(await first);
   });
 });

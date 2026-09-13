@@ -83,13 +83,34 @@ export async function removeFiles(sb, userId, uploadIds) {
   }
 }
 
-// Which of this job's files are not yet in the cloud. Used to catch up a job
-// that was built before signing in, or while offline — the manifest is the
-// list of what SHOULD be there, and anything already local but never uploaded
-// is what is missing.
-export function pendingUploads(uploadedFiles, uploadedIds) {
-  const done = uploadedIds instanceof Set ? uploadedIds : new Set(uploadedIds || []);
-  return (uploadedFiles || [])
-    .map(f => f?.id)
-    .filter(id => id && !done.has(id));
+// ── WHAT THE ACCOUNT ALREADY HOLDS ──────────────────────────────────────────
+// Every object under the owner's folder is named for the upload id that made
+// it, so listing the folder IS the set of ids already in the cloud. That is
+// what the catch-up pass (lib/fileCatchUp.js) subtracts what this device holds
+// from, to find drawings that never went up.
+//
+// Paged deliberately: the list call caps at 100 by default and an estimator
+// with thirty jobs is past that, and a short read here does not fail loudly —
+// it silently re-uploads files that were already there.
+export async function listCloudFiles(sb, userId, { pageSize = 100, maxPages = 50 } = {}) {
+  const owner = String(userId || '').trim();
+  const ids = new Set();
+  if (!sb || !owner) return ids;
+  try {
+    for (let page = 0; page < maxPages; page++) {
+      const { data, error } = await sb.storage.from(BUCKET)
+        .list(owner, { limit: pageSize, offset: page * pageSize });
+      // A LISTING THAT FAILED IS NOT AN EMPTY BUCKET. Returning the ids
+      // gathered so far would read as "the cloud does not have these" and
+      // re-upload a plan set over cell service for nothing. null means "could
+      // not tell", and the caller does nothing rather than guess.
+      if (error) return null;
+      if (!data?.length) break;
+      for (const row of data) if (row?.name) ids.add(row.name);
+      if (data.length < pageSize) break;
+    }
+  } catch {
+    return null;   // offline, or the bucket is unreachable
+  }
+  return ids;
 }
