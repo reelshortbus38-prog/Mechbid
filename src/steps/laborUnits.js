@@ -106,7 +106,7 @@ export const UNIT_PROVENANCE = {
   perFtSmall:  { state: 'confirmed', note: PER_FT_MEASURED },
   perFtMed:    { state: 'confirmed', note: PER_FT_MEASURED },
   perFtLarge:  { state: 'confirmed', note: PER_FT_MEASURED },
-  perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job. This is a CIRCUIT landing on the rack, one per circuit — not rigging the rack itself, which is perRackSet.' },
+  perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job. This is a CIRCUIT landing on the rack, one per circuit — not setting the rack itself, which is perRackSet.' },
 
   // ── THE THREE THAT WERE NOT IN THE BID AT ALL ─────────────────────────────
   perRackCommission: {
@@ -117,19 +117,22 @@ export const UNIT_PROVENANCE = {
       + 'two-rack store this is 48-96 man-hours the app previously did not charge for at all.',
   },
   perRackSet: {
-    state: 'disputed',
-    note: 'Rigging and standing the rack itself. The 2026-09-12 review says 2.0 hr; the PRD says 16-24 hr. That '
-      + 'is 8-12x apart, which usually means the two are describing different scopes — 2 hours reads like the '
-      + 'set once the crane is already there and rigged, and 16-24 like the whole operation. The reviewer\'s '
-      + 'figure is the default because he is a named estimator who bids these and the PRD is not attributed to '
-      + 'anybody. Worth settling before a bid leans on it.',
+    state: 'confirmed',
+    note: 'SETTING THE RACK IN PLACE — and only that. It read as an 8-12x dispute against the PRD\'s 16-24 hr '
+      + 'until the mechanic settled it: "that 2 hour is for setting the rack in place." The two figures were '
+      + 'never in conflict, they were describing different scopes, so the PRD number is not a competing answer '
+      + 'to this question and is not recorded as one. What is NOT in here: offloading the rack, getting it into '
+      + 'the building and through the store. That is a crane or a rigging crew, and it belongs in '
+      + 'Subcontractors or Rentals, not in a man-hour unit — the Proposal step already carries crane/rigging as '
+      + 'a pass-through.',
   },
   perWalkInPanel: {
     state: 'disputed',
     note: 'Setting one walk-in panel. The 2026-09-12 review says 0.45 hr; the PRD says 1.5-2 hr — 3-4x apart. '
-      + 'The reviewer\'s figure is the default for the same reason as the rack set: a named estimator over an '
-      + 'unattributed document. Panels multiply fast, so on a box with forty of them the two answers are 18 '
-      + 'man-hours and 60-80.',
+      + 'The reviewer\'s figure is the default because he is a named estimator who bids these and the PRD is '
+      + 'not attributed to anybody. Panels multiply fast, so on a box with forty of them the two answers are 18 '
+      + 'man-hours and 60-80. Worth asking the same question that settled the rack set: what does each figure '
+      + 'cover? A gap that wide is often two people describing different scopes rather than disagreeing.',
   },
   stickLength: {
     state: 'unconfirmed',

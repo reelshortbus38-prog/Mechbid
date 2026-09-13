@@ -14,6 +14,9 @@ rate moved to 0.075 hr/ft once the mechanic who runs the pipe answered the
 question the review left open (see below) — the only unit in this app standing
 on a counted day.
 
+Three pieces of scope that were absent from the app entirely — commissioning,
+setting the rack, setting walk-in panels — were built on the back of it.
+
 Everything else is recorded, not applied. The brazing times are now marked
 *disputed* rather than confirmed, three answers came back in the wrong units and
 cannot be used as given, and two questions were not answered. See
@@ -89,14 +92,15 @@ number. Together they are the only unit in this app resting on a job.
 **Commissioning per rack, 24–48 hr.** The only figure here that two independent
 sources agree on.
 
-**Built 2026-09-13** (`src/steps/scopeUnits.js`). Commissioning, rigging the
-rack, and setting walk-in panels were not under-estimated in this app — they
-were **absent**, so every bid it produced was short by all three. On a two-rack
+**Built 2026-09-13** (`src/steps/scopeUnits.js`). Commissioning the rack,
+setting it in place, and setting walk-in panels were not under-estimated in
+this app — they were **absent**, so every bid it produced was short by all
+three. On a two-rack
 store the commissioning alone is 48–96 man-hours that were charged at nothing.
 
 They reach the job as field-task rows the estimator reads, edits and deletes,
-not as a hidden total: two of the three units are in open dispute, and a number
-he cannot see is a number he cannot defend. Zeroing a unit says "the GC has
+not as a hidden total: one of the three units is still in open dispute, and a
+number he cannot see is a number he cannot defend. Zeroing a unit says "the GC has
 that on this job" and the row stops being generated.
 
 The defaults are the reviewer's figures where they conflict with the PRD —
@@ -106,13 +110,27 @@ both figures are shown on screen:
 | | Reviewer | PRD | Shipped default | Marked |
 |---|---|---|---|---|
 | Commission / rack | 24–48 hr | 24–48 hr | 36 hr | *varies* — both gave a range |
-| Rig & set / rack | 2.0 hr | 16–24 hr | 2.0 hr | **disputed**, 8–12× apart |
+| Set rack in place | 2.0 hr | 16–24 hr | 2.0 hr | **confirmed** — see below |
 | Walk-in panel | 0.45 hr | 1.5–2 hr | 0.45 hr | **disputed**, 3–4× apart |
 
-On the two disputed ones the gap is wide enough that the two sides are probably
-describing different scopes — 2 hours reads like the set once the crane is
-already there and rigged, 16–24 like the whole operation. Same shape as the
-braze joint below.
+**The rack set was never a dispute.** It shipped marked as one, 8–12× apart,
+and the mechanic settled it the same day:
+
+> "That 2 hour is for setting the rack in place."
+
+So the two figures were describing different scopes rather than disagreeing.
+The unit is renamed to say what it covers, and marked confirmed.
+
+That leaves a real gap, stated rather than papered over: **offloading the rack
+and getting it into the building is not in the 2 hours.** It is a crane or a
+rigging crew, which is a subcontract or a rental and not crew hours — both of
+those paths already exist in the app, and the Proposal step already lists
+crane/rigging as a pass-through. No man-hour unit was invented for it, because
+a number nobody has quoted does not belong in a bid.
+
+The walk-in panel is still open, and it is worth asking the same question that
+settled this one: what does each figure cover? A 3–4× gap is often two people
+describing different scopes rather than disagreeing.
 
 ### Cannot be used as given
 
@@ -215,7 +233,10 @@ is leaned on.
 6. ~~Where does commissioning belong?~~ **Built 2026-09-13** as its own line,
    per rack, separate from the per-circuit rack tie. Still worth confirming he
    agrees with that placement.
-7. **Rig & set, and the walk-in panel.** 2.0 hr against 16–24, and 0.45 against
-   1.5–2. Ask the same question as the braze joint: what does his number
-   cover? If 2.0 is the set with the crane already rigged, the two answers may
-   not be in conflict at all.
+7. ~~Rig & set~~ **Answered 2026-09-13** — the 2 hours is setting the rack in
+   place. Not in conflict with the PRD after all; renamed and confirmed.
+8. **The walk-in panel.** 0.45 hr against 1.5–2. Same question again: what does
+   each figure cover?
+9. **Who rigs the rack in?** Not a labor unit — a crane or a rigging crew, so
+   it wants a subcontractor or rental line. Worth knowing whether that is
+   normally the shop's cost or the GC's.

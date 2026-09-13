@@ -295,14 +295,16 @@ describe('saying which units anybody has actually checked', () => {
 
   it('counts what the estimator is standing on', () => {
     const t = unitsConfidence();
-    // Five in open dispute: the three brazing times, the rack set and the
-    // walk-in panel. Three footage rates resting on a counted day. The case
+    // Four in open dispute: the three brazing times and the walk-in panel.
+    // Three footage rates resting on a counted day, and the rack set, which
+    // read as a dispute until the mechanic said what his 2 hours covered. The
+    // case
     // hookup, the fittings count and the rack commissioning marked as varying
     // — the first two because a working estimator refused to put one number on
     // them, the third because both sources gave a 2x range rather than a
     // figure.
-    expect(t.disputed).toBe(5);    // three brazing times, the rack set, the walk-in panel
-    expect(t.confirmed).toBe(3);   // the footage rates, off a counted day
+    expect(t.disputed).toBe(4);    // three brazing times and the walk-in panel
+    expect(t.confirmed).toBe(4);   // three footage rates off a counted day, plus the rack set
     expect(t.varies).toBe(3);
     expect(t.confirmed + t.varies + t.unconfirmed + t.disputed)
       .toBe(Object.keys(UNIT_PROVENANCE).length);
