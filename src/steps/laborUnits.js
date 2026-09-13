@@ -78,11 +78,16 @@ const BRAZE_DISPUTE = 'A working foreman read these as right where they stand. A
   + 'estimate. Nothing has been changed on that: one reading does not settle it, and on a twenty-circuit '
   + 'store the two answers are 341 man-hours and 217. Worth resolving before a bid leans on it.';
 
-const PER_FT_DISPUTE = 'Halved from 0.06/0.09/0.13 on an installing mechanic\'s read that the circuit totals came '
-  + 'out about double. The 2026-09-12 review pushes the other way and from a measured day — 400 ft, three men, '
-  + 'ten hours, so 0.075 hr/ft — which is above even the large figure here. It was given as ONE number with no '
-  + 'pipe size attached, and this table has three, so which row it belongs in is not known. Nothing has been '
-  + 'changed on it.';
+// The per-foot rate is the one number here that is not somebody's opinion, and
+// it took two people to get there. The estimator measured a day; the mechanic
+// who runs the pipe said the size split is not real for the sizes they run,
+// which is what turned a single figure with no bucket attached into a figure
+// for all three.
+const PER_FT_MEASURED = '0.075 hr/ft, from a counted day: 400 ft, three men, ten hours. All three sizes carry '
+  + 'the same number on purpose — for the sizes actually run (1/2"-7/8" liquid, 5/8"-1 5/8" suction) the '
+  + 'mechanic who runs it says "the time is pretty much the same, it\'s the materials that changes the price", '
+  + 'and the part that DOES vary with size, the brazing, is charged separately. One day on one job is not a '
+  + 'body of evidence — but it is a job, which is more than anything else in this table stands on.';
 
 export const UNIT_PROVENANCE = {
   perJointSmall: { state: 'disputed', note: BRAZE_DISPUTE },
@@ -93,19 +98,14 @@ export const UNIT_PROVENANCE = {
     note: 'A working estimator would not put one number on this: "it\'s always different, too many variables." '
       + 'Treated as a placeholder allowance, not an estimate — check it against the cases this job actually has.',
   },
-  // These were halved on an installing mechanic's read that the totals came out
-  // about double. The 2026-09-12 review pushes the other way, and from an
-  // actual day rather than an impression: 400 ft, three men, ten hours — 30
-  // man-hours over 400 ft, so 0.075 hr/ft. That is above even the LARGE figure
-  // standing here, and it was given as one number with no pipe size attached,
-  // while this table has three. Which bucket that day was cannot be guessed:
-  // if it was 7/8" then small is 2.5× low and everything above it moves too.
-  //
-  // So it is disputed rather than changed. A measured day beats an impression
-  // and it still does not say which row it belongs in.
-  perFtSmall:  { state: 'disputed', note: PER_FT_DISPUTE },
-  perFtMed:    { state: 'disputed', note: PER_FT_DISPUTE },
-  perFtLarge:  { state: 'disputed', note: PER_FT_DISPUTE },
+  // Settled, and settled by two people rather than one. The measured day gave
+  // the number; the installing mechanic's read that the size split is not real
+  // for the sizes they run is what said the number applies to all three rows.
+  // Neither answer alone was usable — a day with no pipe size attached could
+  // have belonged to any bucket.
+  perFtSmall:  { state: 'confirmed', note: PER_FT_MEASURED },
+  perFtMed:    { state: 'confirmed', note: PER_FT_MEASURED },
+  perFtLarge:  { state: 'confirmed', note: PER_FT_MEASURED },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: {
     state: 'unconfirmed',

@@ -9,9 +9,15 @@ is the thing that was missing. It is kept verbatim so that a later disagreement
 can be traced to what was actually said rather than to what got typed into a
 default.
 
-**Nothing in the app's numbers was changed on the strength of this.** What
-changed is what the app CLAIMS about them: six units that read as checked or
-merely unchecked now read as disputed. See `src/steps/laborUnits.js`.
+**One number changed, and only after a second person settled it.** The footage
+rate moved to 0.075 hr/ft once the mechanic who runs the pipe answered the
+question the review left open (see below) — the only unit in this app standing
+on a counted day.
+
+Everything else is recorded, not applied. The brazing times are now marked
+*disputed* rather than confirmed, three answers came back in the wrong units and
+cannot be used as given, and two questions were not answered. See
+`src/steps/laborUnits.js`.
 
 ---
 
@@ -57,11 +63,28 @@ merely unchecked now read as disputed. See `src/steps/laborUnits.js`.
 = 0.075 hr/ft. That is a measured day with a method behind it, which is more
 than any footage number in this app has ever had.
 
-It still cannot be applied, for one reason: **it came with no pipe size.** The
-app carries three buckets — small (≤7/8"), med (1⅛–1⅜"), large (≥1⅝") — at
-0.03 / 0.045 / 0.065. A single 0.075 is above all three. If that day was 7/8"
-then small is 2.5× low and every bucket above it moves too; if it was 1⅝" then
-only the top one moves, a little. Those are very different bids.
+It arrived with no pipe size, and the app carries three buckets — small (≤7/8"),
+med (1⅛–1⅜"), large (≥1⅝"). **Resolved 2026-09-13** by the mechanic who runs
+the pipe:
+
+> "For the pipe size on the circuits I think that's just a general rule. The
+> circuits we run are 1/2 liquid to 7/8 liquid and 5/8 suction to 1 5/8
+> suction. The time is pretty much the same it's the materials that changes
+> the price on the bid."
+
+So the number applies to all three buckets, and the size split was not real for
+this shop's range in the first place. That holds together with how the app
+decomposes the work: brazing a bigger joint does take longer and is charged
+separately in `perJoint*`, so what is left in the per-foot unit is hanging and
+routing the line — and a hallway is the same length whatever is going down it.
+
+**Applied.** All three footage rates are now 0.075, marked confirmed, and
+`laborUnits.test.js` pins the equality so a later reader does not "fix" three
+identical numbers back into a spread.
+
+Neither answer alone was usable. A measured day with no size could have
+belonged to any bucket; "the time is the same" with no measurement is not a
+number. Together they are the only unit in this app resting on a job.
 
 **Commissioning per rack, 24–48 hr.** The only figure here that two independent
 sources agree on. The app has no line for it at all, which means every bid it
@@ -103,6 +126,27 @@ case, per night, per circuit?
 
 ---
 
+## Where the hours actually go
+
+Worth having in front of you when reading the dispute below. On a twenty-circuit
+store, at the app's numbers before this review:
+
+| | Man-hours | Share |
+|---|---|---|
+| Joints | 144.5 | **45%** |
+| Footage | 107.5 | 33% |
+| Rack ties | 40.0 | 12% |
+| Cases | 30.0 | 9% |
+
+This matters for one reason. The footage rates were originally halved because
+the circuit totals "read about double" — and the whole cut was taken on
+footage, because the brazing numbers had been checked by a foreman and looked
+right. But joints are the larger contributor, and a second estimator now puts
+them at a seventh of what is standing there.
+
+If the totals really did read double, that is where to look. Halving the
+footage was most likely a correct instinct applied to the wrong line.
+
 ## The dispute that matters most
 
 | | Reviewer | App today | Ratio |
@@ -134,8 +178,8 @@ is leaned on.
 
 ## Still to ask
 
-1. **What pipe size was the 400 ft day?** Single most valuable answer
-   outstanding — it is what turns a measured day into three usable numbers.
+1. ~~What pipe size was the 400 ft day?~~ **Answered 2026-09-13** — the split
+   is not real for the sizes this shop runs. Applied.
 2. **The braze joint, with both figures on the table.** 0.15 hr and 1.1 hr for
    the same joint. Does the 1.1 include purge, cool, check and insulate, and
    the 0.15 only the braze itself? That would explain a good deal of a 7× gap.

@@ -619,6 +619,23 @@ export function saveJob(state) {
     if (Array.isArray(data.uploadedFiles)) {
       data.uploadedFiles = data.uploadedFiles.map(({ previewUrl, ...f }) => f);
     }
+    // ── WHAT WAS BID AT IS WHAT IT STAYS BID AT ──────────────────────────────
+    // state.laborUnits starts undefined, and JSON.stringify DROPS an undefined
+    // property rather than writing null. So a job whose estimator never opened
+    // the units panel was saved with no laborUnits key at all, and every read
+    // of it resolved through `{ ...DEFAULT_LABOR_UNITS, ...(units || {}) }` —
+    // against whatever the defaults happened to be THAT DAY.
+    //
+    // Which means shipping a change to a labor unit silently repriced every
+    // saved bid that had not been customised. Open a job from March to check a
+    // number against the proposal that went to the customer, and the app now
+    // shows different hours than the ones that were quoted, with nothing said.
+    //
+    // Stamping the resolved units at save time freezes each job on the numbers
+    // it was actually bid with. Changing a default then moves NEW jobs only,
+    // which is the rule everywhere else in here: loading a saved bid must never
+    // reprice it.
+    data.laborUnits = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
     jobs[id] = {
       id,
       name: state.projName || 'Untitled',
@@ -1229,12 +1246,34 @@ export function calcFieldTasksTotal(fieldTasks, crew) {
 // dominate, so they're tracked separately from footage. Sizes are bucketed
 // small (≤7/8") / med (1-1/8"–1-3/8") / large (≥1-5/8").
 export const DEFAULT_LABOR_UNITS = {
-  // Running rates, halved from 0.06/0.09/0.13 after an installing mechanic read
-  // the circuit totals as running about double. The brazing times below were
-  // looked at in the same pass and left alone — he said those were about right,
-  // so the whole cut lands here rather than being spread over a number somebody
-  // had already checked. Still nobody's measurement: see UNIT_PROVENANCE.
-  perFtSmall: 0.03, perFtMed: 0.045, perFtLarge: 0.065,  // hrs per ft of run
+  // ── RUNNING RATE: ONE NUMBER, AND IT IS MEASURED ───────────────────────────
+  // 0.075 hr/ft, from a day somebody counted: 400 ft, three men, ten hours —
+  // 30 man-hours over 400 ft. The first figure in this table that rests on a
+  // job rather than on an opinion.
+  //
+  // THE THREE BUCKETS ARE DELIBERATELY EQUAL. They used to read 0.03/0.045/
+  // 0.065, and the mechanic who runs this pipe says the split is not real for
+  // the sizes actually run — 1/2"-7/8" liquid, 5/8"-1 5/8" suction: "the time
+  // is pretty much the same, it's the materials that changes the price." That
+  // holds together with how this file decomposes the work: a bigger joint DOES
+  // take longer and is charged for separately in perJoint*, so what is left in
+  // the per-foot unit is hanging and routing the line, and a hallway is the
+  // same length whatever is going down it.
+  //
+  // So they are equal because they were measured to be, not because somebody
+  // forgot to fill two of them in. They are still three fields, editable per
+  // job, for a shop whose range is wider than this one's. laborUnits.test.js
+  // pins the equality so nobody "corrects" it back into a spread later.
+  //
+  // WHY THIS WENT UP AND NOT DOWN. These were halved on an installing
+  // mechanic's read that the circuit totals came out about double — and the
+  // whole cut was taken here, because the brazing numbers had been checked by
+  // a foreman and looked right. Joints are 45% of this estimate and footage is
+  // 33%. A second estimator now puts a large braze joint at 0.15 hr against the
+  // 1.1 hr still standing. If the totals really did read double, the larger
+  // contributor is where to look — so halving the footage was most likely a
+  // correct instinct applied to the wrong line.
+  perFtSmall: 0.075, perFtMed: 0.075, perFtLarge: 0.075,  // hrs per ft of run
   perJointSmall: 0.4, perJointMed: 0.7, perJointLarge: 1.1, // hrs per braze joint
   perCase: 1.5,      // hrs to hook up a refrigerated case
   perRackTie: 2.0,   // hrs to tie a circuit into the rack
