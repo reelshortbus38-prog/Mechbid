@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import {
-  saveJob, getLastSaveError, deleteJob,
+  saveJob, getLastSaveError, deleteJob, loadAllJobs,
   normalizePipeSize, pipeSizeBucket,
   calcLaborPeriodCost, calcRackTaskCost, calcRackLaborTotal,
   calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate,
@@ -96,16 +96,24 @@ describe('estimateCircuitLabor', () => {
       DEFAULT_LABOR_UNITS,
     );
     expect(perCircuit[0].bucket).toBe('small');
-    expect(totalHours).toBeCloseTo(8.9, 1);
+    // 100 ft x 0.075 + joints + rack tie. Moved when the footage rate went to
+    // the counted day's number; the shape of the arithmetic did not.
+    expect(totalHours).toBeCloseTo(13.4, 1);
   });
 
-  it('carries the cut on the running rates, not on the brazing', () => {
-    // The brazing times were looked at by a working estimator and left alone;
-    // the running rates were halved in the same pass. A later edit that
-    // "tidies" these back into one round set would quietly undo his read.
-    expect(DEFAULT_LABOR_UNITS.perFtSmall).toBe(0.03);
-    expect(DEFAULT_LABOR_UNITS.perFtMed).toBe(0.045);
-    expect(DEFAULT_LABOR_UNITS.perFtLarge).toBe(0.065);
+  it('runs every size at the counted day\'s rate, and leaves brazing alone', () => {
+    // The footage rates are one measured day — 400 ft, three men, ten hours —
+    // and they are equal across the three buckets because the mechanic who
+    // runs this pipe says the time does not change with size over the range
+    // they actually run. See laborUnits.test.js for why that holds together.
+    //
+    // The brazing times are NOT touched by that. They are in open dispute
+    // (0.15 hr against 1.1 hr for a large joint) and nothing has been changed
+    // on them — an app does not get to settle that by picking one. A later
+    // edit that "tidies" either set would quietly overrule somebody.
+    expect(DEFAULT_LABOR_UNITS.perFtSmall).toBe(0.075);
+    expect(DEFAULT_LABOR_UNITS.perFtMed).toBe(0.075);
+    expect(DEFAULT_LABOR_UNITS.perFtLarge).toBe(0.075);
     expect(DEFAULT_LABOR_UNITS.perJointSmall).toBe(0.4);
     expect(DEFAULT_LABOR_UNITS.perJointMed).toBe(0.7);
     expect(DEFAULT_LABOR_UNITS.perJointLarge).toBe(1.1);
@@ -901,5 +909,79 @@ describe('estimateCircuitLabor — an in-floor run is jointed by the coil', () =
     const big = { ...buried, sucHoriz: '2-1/8' };
     const over = estimateCircuitLabor([{ ...big, inFloor: false }], DEFAULT_LABOR_UNITS).totalHours;
     expect(estimateCircuitLabor([big], DEFAULT_LABOR_UNITS).totalHours).toBe(over);
+  });
+});
+
+// ── A SAVED BID DOES NOT MOVE WHEN A DEFAULT CHANGES ────────────────────────
+// state.laborUnits starts undefined, and JSON.stringify DROPS an undefined
+// property rather than writing null. So a job whose estimator never opened the
+// units panel went to disk with no laborUnits key, and every later read
+// resolved it against whatever DEFAULT_LABOR_UNITS happened to be that day.
+//
+// Shipping a change to any labor unit therefore repriced every saved bid that
+// had not been customised — silently. Open a job from March to check a number
+// against the proposal that went to the customer, and the hours are different
+// from the ones that were quoted, with nothing said anywhere.
+describe('saved jobs are frozen on the numbers they were bid with', () => {
+  // Node has no localStorage. A Map standing in for it exercises the real
+  // save path — including the JSON round trip, which is where the units were
+  // being lost.
+  const realLS = globalThis.localStorage;
+  let store;
+  beforeEach(() => {
+    store = new Map();
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: k => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: k => store.delete(k),
+        clear: () => store.clear(),
+      },
+      configurable: true,
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: realLS, configurable: true });
+  });
+
+  it('stamps the labor units onto a job that never touched them', () => {
+    const id = saveJob({ projName: 'Food Lion 2417', mode: 'Commercial Refrigeration' });
+    const saved = loadAllJobs()[id];
+    expect(saved.data.laborUnits).toBeTruthy();
+    expect(saved.data.laborUnits.perFtMed).toBe(DEFAULT_LABOR_UNITS.perFtMed);
+    expect(saved.data.laborUnits.perJointLarge).toBe(DEFAULT_LABOR_UNITS.perJointLarge);
+  });
+
+  it('survives the round trip through JSON, which is where it was being lost', () => {
+    // The actual mechanism of the bug: undefined does not serialise.
+    const id = saveJob({ projName: 'x' });
+    const raw = JSON.parse(localStorage.getItem('coldgauge_jobs_v2') || '{}');
+    expect(Object.keys(raw[id].data.laborUnits).length).toBeGreaterThan(5);
+  });
+
+  it('keeps an estimator’s own numbers rather than overwriting them', () => {
+    const id = saveJob({ projName: 'x', laborUnits: { perFtMed: 0.2, perCase: 9 } });
+    const units = loadAllJobs()[id].data.laborUnits;
+    expect(units.perFtMed).toBe(0.2);
+    expect(units.perCase).toBe(9);
+    // and fills in the ones he never set
+    expect(units.perJointLarge).toBe(DEFAULT_LABOR_UNITS.perJointLarge);
+  });
+
+  it('prices a reopened job off ITS units, not today’s defaults', () => {
+    // The whole point, end to end. A job bid at the old footage rate must
+    // still estimate at the old footage rate after the default moves.
+    const circuits = [{ circuitId: '1', runLength: 400, riserLength: 0, sucHoriz: '1 1/8', cases: 0 }];
+    const id = saveJob({ projName: 'March job', circuits, laborUnits: { ...DEFAULT_LABOR_UNITS, perFtMed: 0.045 } });
+    const reopened = loadAllJobs()[id].data;
+
+    const asBid = estimateCircuitLabor(reopened.circuits, reopened.laborUnits).totalHours;
+    const atTodaysDefaults = estimateCircuitLabor(reopened.circuits, DEFAULT_LABOR_UNITS).totalHours;
+
+    expect(asBid).toBeLessThan(atTodaysDefaults);   // 0.045 vs 0.075 over 400 ft
+    // And the number that matters: it is the OLD one.
+    expect(asBid).toBeCloseTo(
+      estimateCircuitLabor(circuits, { ...DEFAULT_LABOR_UNITS, perFtMed: 0.045 }).totalHours, 6,
+    );
   });
 });

@@ -224,15 +224,20 @@ describe('saying which units anybody has actually checked', () => {
     expect(note).toMatch(/nothing has been changed/i);
   });
 
-  it('says the per-foot rate is disputed and WHY it cannot just be applied', () => {
-    // The review gave one number, 0.075 hr/ft, off a measured day: 400 ft,
-    // three men, ten hours. It is above even the large figure here — and it
-    // came with no pipe size, while this table has three buckets. Which row it
-    // belongs in is not knowable from what was given.
+  it('says the per-foot rate rests on a counted day, and says how it was counted', () => {
+    // The only figure in this table standing on a job rather than an opinion.
+    // The note has to carry the working, because "0.075" on its own is just
+    // another number somebody would have to take on trust.
     const note = provenanceOf('perFtMed').note;
     expect(note).toMatch(/0\.075/);
     expect(note).toMatch(/400 ft/);
-    expect(note).toMatch(/no pipe size|not known/i);
+    expect(note).toMatch(/three men/);
+    expect(note).toMatch(/ten hours/);
+  });
+
+  it('does not oversell one day as a body of evidence', () => {
+    // It is a single job. Better than everything else here and still one day.
+    expect(provenanceOf('perFtSmall').note).toMatch(/one day on one job is not a body of evidence/i);
   });
 
   it('does not claim the fittings count is an estimate either', () => {
@@ -255,9 +260,6 @@ describe('saying which units anybody has actually checked', () => {
     // is "two people checked and disagree". Rounding one to the other loses
     // the only useful thing either state says.
     expect(provenanceOf('perRackTie').state).toBe('unconfirmed');
-    for (const k of ['perFtSmall', 'perFtMed', 'perFtLarge']) {
-      expect(provenanceOf(k).state, k).toBe('disputed');
-    }
   });
 
   it('gives an unknown key the cautious answer, not a blank one', () => {
@@ -273,13 +275,12 @@ describe('saying which units anybody has actually checked', () => {
 
   it('counts what the estimator is standing on', () => {
     const t = unitsConfidence();
-    // Three brazing times and three footage rates in open dispute; the case
-    // hookup and the fittings count marked as varying, because a working
-    // estimator refused to put one number on either. Nothing confirmed any
-    // more — the one thing that was is now contested.
-    expect(t.disputed).toBe(6);
+    // Three brazing times in open dispute; three footage rates resting on a
+    // counted day; the case hookup and the fittings count marked as varying,
+    // because a working estimator refused to put one number on either.
+    expect(t.disputed).toBe(3);    // the brazing times
+    expect(t.confirmed).toBe(3);   // the footage rates, off a counted day
     expect(t.varies).toBe(2);
-    expect(t.confirmed).toBe(0);
     expect(t.confirmed + t.varies + t.unconfirmed + t.disputed)
       .toBe(Object.keys(UNIT_PROVENANCE).length);
   });
@@ -298,5 +299,40 @@ describe('saying which units anybody has actually checked', () => {
     const marks = Object.values(PROVENANCE_MARK);
     expect(new Set(marks).size).toBe(marks.length);
     expect(PROVENANCE_MARK.disputed).toBeTruthy();
+  });
+});
+
+// ── THE THREE FOOTAGE BUCKETS ARE EQUAL ON PURPOSE ──────────────────────────
+describe('the per-foot rate', () => {
+  it('is the same for every size, because that is what was measured', () => {
+    // Not an oversight, and not a placeholder waiting to be filled in. For the
+    // sizes actually run — 1/2"-7/8" liquid, 5/8"-1 5/8" suction — the mechanic
+    // who runs the pipe says the time does not change with the size: "it's the
+    // materials that changes the price on the bid."
+    //
+    // It holds together with how this app splits the work. Brazing a bigger
+    // joint DOES take longer and is charged separately in perJoint*. What is
+    // left in the per-foot unit is hanging and routing the line, and a hallway
+    // is the same length whatever is going down it.
+    //
+    // This test exists so that a later reader who sees three identical numbers
+    // does not "fix" them back into a spread.
+    const { perFtSmall, perFtMed, perFtLarge } = DEFAULT_LABOR_UNITS;
+    expect(perFtSmall).toBe(0.075);
+    expect(perFtMed).toBe(perFtSmall);
+    expect(perFtLarge).toBe(perFtSmall);
+  });
+
+  it('is the counted day and not a rounding of it', () => {
+    // 400 ft, three men, ten hours. 30 man-hours over 400 ft.
+    expect(DEFAULT_LABOR_UNITS.perFtMed).toBeCloseTo((3 * 10) / 400, 6);
+  });
+
+  it('still has three separate fields for a shop with a wider range', () => {
+    // Equal today is not the same as merged forever. A shop running 2-5/8"
+    // headers has a different answer, and it is editable per job.
+    for (const k of ['perFtSmall', 'perFtMed', 'perFtLarge']) {
+      expect(DEFAULT_LABOR_UNITS, k).toHaveProperty(k);
+    }
   });
 });
