@@ -1289,12 +1289,32 @@ export const DEFAULT_LABOR_UNITS = {
   // Not under-estimated before this: absent. Every bid the app produced was
   // short by all three. See steps/scopeUnits.js for how they reach the job.
   //
-  // perRackSet is rigging and standing the RACK, once per rack. perRackTie
-  // above is a circuit landing on it, once per circuit. Different work — the
-  // names are close enough to be worth saying so.
-  perRackCommission: 36,   // hrs to commission one rack — 24-48 from both sources
-  perRackSet: 2.0,         // hrs to rig and set one rack — DISPUTED, see provenance
-  perWalkInPanel: 0.45,    // hrs to set one walk-in panel — DISPUTED, see provenance
+  // The rack set is per rack; perRackTie above is a circuit landing on it, once
+  // per circuit. Different work — the names are close enough to be worth
+  // saying so.
+  perRackCommission: 36,   // man-hrs to commission one rack — 24-48 from both sources
+
+  // ── THE ONE UNIT THAT IS NOT A MAN-HOUR FIGURE ───────────────────────────
+  // Everything else in this library is man-hours. This one arrived as a
+  // DURATION and a crew, and it is stored that way on purpose:
+  //
+  //   "We hire a crane… we hook the crane to the rack and someone in our crew
+  //   gives the crane driver directions and when it's set we unhook and our
+  //   crew continues to move it to where it goes and set it. So that whole
+  //   process takes 2 hours… I'm not sure how many crew workers are in that.
+  //   I'd say four guys like normal."
+  //
+  // Two hours is the clock, not the labor. Four men for two hours is EIGHT
+  // man-hours, and it first went in here as 2 — a quarter of the real figure,
+  // in the direction of under-billing. Keeping the two numbers apart is what
+  // stops that happening again: the duration came from the man who does the
+  // work, the crew count is his estimate of it, and only one of those is worth
+  // trusting to the same degree. Multiply them in one box and the soft half
+  // disappears into the answer.
+  rackSetHrs: 2,           // hours on site for the whole crane operation
+  rackSetCrew: 4,          // men on it — "four guys like normal", his estimate
+
+  perWalkInPanel: 0.45,    // man-hrs to set one walk-in panel — DISPUTED, see provenance
   stickLength: 20,   // ft of hard copper per stick → number of joints
   // ── AND SOFT COPPER DOES NOT COME IN STICKS ───────────────────────────────
   // A line pushed in the floor is soft copper, and soft copper arrives in

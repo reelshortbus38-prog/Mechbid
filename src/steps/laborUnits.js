@@ -106,7 +106,7 @@ export const UNIT_PROVENANCE = {
   perFtSmall:  { state: 'confirmed', note: PER_FT_MEASURED },
   perFtMed:    { state: 'confirmed', note: PER_FT_MEASURED },
   perFtLarge:  { state: 'confirmed', note: PER_FT_MEASURED },
-  perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job. This is a CIRCUIT landing on the rack, one per circuit — not setting the rack itself, which is perRackSet.' },
+  perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job. This is a CIRCUIT landing on the rack, one per circuit — not setting the rack itself, which is rackSetHrs x rackSetCrew.' },
 
   // ── THE THREE THAT WERE NOT IN THE BID AT ALL ─────────────────────────────
   perRackCommission: {
@@ -116,23 +116,40 @@ export const UNIT_PROVENANCE = {
       + 'number — a 2x spread is the honest answer here, and 36 is the middle of it, not a measurement. On a '
       + 'two-rack store this is 48-96 man-hours the app previously did not charge for at all.',
   },
-  perRackSet: {
+  // ── THE RACK SET: A DURATION AND A CREW, NOT A MAN-HOUR FIGURE ────────────
+  // These two are deliberately separate. Multiplying them into one box is how
+  // this went wrong the first time: the 2 was entered as 2 MAN-hours when it
+  // is two hours of clock with a crew standing there for it. Four men for two
+  // hours is eight man-hours — the shipped figure was a quarter of the real
+  // one, in the direction of under-billing.
+  //
+  // They also are not equally well known, which is the second reason to keep
+  // them apart. The duration is from the man who does the work, describing the
+  // operation step by step. The crew count is his estimate of it — "I'd say
+  // four guys like normal" — and he said outright he was not sure. Folding a
+  // guess into a measurement and reporting one number hides which half is soft.
+  rackSetHrs: {
     state: 'confirmed',
-    note: 'SETTING THE RACK IN PLACE — and only that. It read as an 8-12x dispute against the PRD\'s 16-24 hr '
-      + 'until the mechanic settled it: "that 2 hour is for setting the rack in place." The two figures were '
-      + 'never in conflict, they were describing different scopes, so the PRD number is not a competing answer '
-      + 'to this question and is not recorded as one. What is NOT in here: offloading the rack, getting it into '
-      + 'the building and through the store. That is a crane or a rigging crew, and it belongs in '
-      + 'Subcontractors or Rentals, not in a man-hour unit — the Proposal step already carries crane/rigging as '
-      + 'a pass-through.',
+    note: 'Two hours on site for the WHOLE crane operation, described first-hand: the crane arrives and sets '
+      + 'up, the crew hooks on, somebody walks the driver in, they unhook, and the crew moves the rack the '
+      + 'rest of the way and sets it. This is the clock, not the labor — the crew box beside it is what turns '
+      + 'it into man-hours. It reconciles with the PRD\'s 16-24 hr once multiplied out, so the two were never '
+      + 'as far apart as they looked.',
+  },
+  rackSetCrew: {
+    state: 'unconfirmed',
+    note: 'THE SOFT HALF, and it multiplies everything: "I\'m not sure how many crew workers are in that. '
+      + 'I\'d say four guys like normal." Four is his estimate rather than a count, and the rack set costs '
+      + 'whatever this says times the hours beside it — three men instead of four is a quarter off the line. '
+      + 'Worth confirming against one real rack set.',
   },
   perWalkInPanel: {
     state: 'disputed',
     note: 'Setting one walk-in panel. The 2026-09-12 review says 0.45 hr; the PRD says 1.5-2 hr — 3-4x apart. '
       + 'The reviewer\'s figure is the default because he is a named estimator who bids these and the PRD is '
       + 'not attributed to anybody. Panels multiply fast, so on a box with forty of them the two answers are 18 '
-      + 'man-hours and 60-80. Worth asking the same question that settled the rack set: what does each figure '
-      + 'cover? A gap that wide is often two people describing different scopes rather than disagreeing.',
+      + 'man-hours and 60-80. Worth asking the same two questions that settled the rack set: what does each '
+      + 'figure cover, and is it a duration or man-hours? Both of those turned out to matter there.',
   },
   stickLength: {
     state: 'unconfirmed',

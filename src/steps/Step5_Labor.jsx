@@ -12,7 +12,7 @@ import {
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
 } from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
-import { scopeManHours, scopeTasks, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
+import { scopeManHours, scopeTasks, rackSetManHours, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, crewCoverage, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
@@ -607,7 +607,7 @@ function ScopeNotInTakeoff() {
           style={{ width: 56, textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
       </Row>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 10 }}>
         {SCOPE_UNIT_FIELDS.map(f => {
           const p = provenanceOf(f.key);
           const tone = p.state === 'disputed' ? colors.red : p.state === 'varies' ? colors.yellow : colors.textDim;
@@ -627,10 +627,17 @@ function ScopeNotInTakeoff() {
       {/* Set a unit to zero to say "not my scope on this job" — the GC sets the
           panels on plenty of them — and the row stops being generated. */}
       <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
-        Setting the rack in place is not the same as <strong>tying a circuit into it</strong> — that one is per
-        circuit and is already in the takeoff above. Neither is getting it off the truck and into the building:
-        that is a crane or a rigging crew, so it belongs in <strong>Subcontractors or Rentals</strong> rather
-        than in crew hours. Zero a unit to say the GC has it on this job.
+        The rack set is <strong>{units.rackSetHrs || 0} hr on site &times; {units.rackSetCrew || 0} men
+        = {Math.round(rackSetManHours(units) * 10) / 10} man-hours</strong>. Two boxes rather than one because
+        the hours came from the man who does it and the crew count is his estimate — and because a duration
+        typed into a man-hour box is off by the size of the crew.
+        <br />
+        These hours include working with the crane: hooking on, walking the driver in, unhooking, moving it the
+        rest of the way. They do <strong>not</strong> include what the crane costs — that is hired, so it goes
+        in <strong>Rentals</strong> (&ldquo;Crane &mdash; rack set&rdquo;) or Subcontractors.
+        <br />
+        Setting the rack is also not the same as <strong>tying a circuit into it</strong> — that one is per
+        circuit and is already in the takeoff above. Zero a unit to say the GC has it on this job.
         <br />
         <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> {provenanceOf('perRackCommission').note}
         {disputed.length > 0 && (
