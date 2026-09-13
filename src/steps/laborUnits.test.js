@@ -4,6 +4,7 @@ import {
   UNIT_PROVENANCE, PROVENANCE_MARK,
 } from './laborUnits.js';
 import { DEFAULT_LABOR_UNITS, estimateCircuitLabor, calcFieldTaskCost, circuitJoints } from '../state/store.js';
+import { scopeManHours, SCOPE_UNIT_KEYS } from './scopeUnits.js';
 
 describe('man-hours split across a real crew', () => {
   it('keeps men x hrs equal to the man-hours it started with', () => {
@@ -98,11 +99,30 @@ describe('every assumption is a number somebody can change', () => {
     { circuitId: 'F', runLength: 400, riserLength: 0, sucHoriz: '7/8', inFloor: true },
   ];
 
-  it('moves the answer when ANY unit is changed', () => {
+  it('moves the answer when ANY circuit unit is changed', () => {
+    // A unit that changes nothing is a box the estimator can type into that
+    // does not reach the bid.
     const base = estimateCircuitLabor(allBuckets, DEFAULT_LABOR_UNITS).totalHours;
     for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
+      if (SCOPE_UNIT_KEYS.includes(key)) continue;   // priced by scopeManHours, not from circuits
       const bumped = { ...DEFAULT_LABOR_UNITS, [key]: DEFAULT_LABOR_UNITS[key] * 2 };
       expect(estimateCircuitLabor(allBuckets, bumped).totalHours, `${key} does nothing`).not.toBe(base);
+    }
+  });
+
+  it('every unit reaches SOMETHING — no box that only looks connected', () => {
+    // The exemption above is a real division of labor, not a hole. The scope
+    // units price off counts rather than circuits, so they are checked against
+    // the estimator that actually reads them. Between the two, every key in
+    // the library has to move a number somewhere.
+    const counts = { racks: 2, walkInPanels: 20 };
+    const circuitBase = estimateCircuitLabor(allBuckets, DEFAULT_LABOR_UNITS).totalHours;
+    const scopeBase = scopeManHours(counts, DEFAULT_LABOR_UNITS);
+    for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
+      const bumped = { ...DEFAULT_LABOR_UNITS, [key]: DEFAULT_LABOR_UNITS[key] * 2 };
+      const moved = estimateCircuitLabor(allBuckets, bumped).totalHours !== circuitBase
+        || scopeManHours(counts, bumped) !== scopeBase;
+      expect(moved, `${key} reaches neither estimator`).toBe(true);
     }
   });
 
@@ -275,12 +295,15 @@ describe('saying which units anybody has actually checked', () => {
 
   it('counts what the estimator is standing on', () => {
     const t = unitsConfidence();
-    // Three brazing times in open dispute; three footage rates resting on a
-    // counted day; the case hookup and the fittings count marked as varying,
-    // because a working estimator refused to put one number on either.
-    expect(t.disputed).toBe(3);    // the brazing times
+    // Five in open dispute: the three brazing times, the rack set and the
+    // walk-in panel. Three footage rates resting on a counted day. The case
+    // hookup, the fittings count and the rack commissioning marked as varying
+    // — the first two because a working estimator refused to put one number on
+    // them, the third because both sources gave a 2x range rather than a
+    // figure.
+    expect(t.disputed).toBe(5);    // three brazing times, the rack set, the walk-in panel
     expect(t.confirmed).toBe(3);   // the footage rates, off a counted day
-    expect(t.varies).toBe(2);
+    expect(t.varies).toBe(3);
     expect(t.confirmed + t.varies + t.unconfirmed + t.disputed)
       .toBe(Object.keys(UNIT_PROVENANCE).length);
   });
