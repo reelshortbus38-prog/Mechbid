@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { travelCost, travelManHours, calcLaborPeriodCost, calcFlatJobCost } from './store.js';
+import { travelCost, travelManHours, calcLaborPeriodCost, calcFlatJobCost, jobCrewManHours } from './store.js';
 import { TIME_AND_MATERIALS } from '../steps/bidMethod.js';
 
 // ── TRAVEL TIME IS PAID HOURS, NOT A PER DIEM ───────────────────────────────
@@ -118,5 +118,69 @@ describe('travel on a bid letter', () => {
     // The crew still sleeps away from home whichever way the job is priced, so
     // the per diem survives — but the hours, travel among them, do not.
     expect(computeBidTotals(base, 20).laborTotal).toBe(600);
+  });
+});
+
+// ── THE HOURS SIDE OF LABOR ─────────────────────────────────────────────────
+// The cost side was complete and this was not, so nothing could ask whether
+// the crews on a job cover the work the takeoff implies. crewCoverage in
+// steps/bidMethod.js was written for that comparison and had nothing to
+// compare.
+describe('jobCrewManHours', () => {
+  const man = (rate, hrsPerDay, extra = {}) => ({ id: String(Math.random()), rate, hrsPerDay, ...extra });
+
+  it('counts every man-hour a period buys', () => {
+    const state = { laborPeriods: [{ crew: [man(60, 8), man(50, 8)], days: 10 }] };
+    expect(jobCrewManHours(state).work).toBe(160);   // 2 men x 8 hrs x 10 days
+  });
+
+  it('adds the periods up', () => {
+    const state = { laborPeriods: [
+      { crew: [man(60, 8)], days: 5 },
+      { crew: [man(60, 10), man(50, 10)], days: 4 },
+    ] };
+    expect(jobCrewManHours(state).work).toBe(40 + 80);
+  });
+
+  it('uses the standard day for a man with no hours set', () => {
+    // Same default the COST side uses. A second definition here could drift
+    // from it, and then the hours and the money would describe different jobs.
+    expect(jobCrewManHours({ laborPeriods: [{ crew: [{ rate: 60 }], days: 1 }] }).work).toBe(8);
+  });
+
+  it('reads a flat whole-job crew off weeks x days per week', () => {
+    const state = { laborMode: 'flat', flatJob: { crew: [man(60, 8), man(50, 8)], weeks: 2, daysPerWeek: 5 } };
+    expect(jobCrewManHours(state).work).toBe(160);   // 2 men x 8 x 10 days
+  });
+
+  it('defaults a flat job to a five-day week', () => {
+    const state = { laborMode: 'flat', flatJob: { crew: [man(60, 8)], weeks: 1 } };
+    expect(jobCrewManHours(state).work).toBe(40);
+  });
+
+  it('keeps travel OUT of the work hours, and reports it', () => {
+    // An hour in the truck is paid and it is not running pipe. Folding it in
+    // would make a crew that is short look covered.
+    const crew = [man(60, 8, { travels: true }), man(50, 8, { travels: true })];
+    const state = { laborPeriods: [{ crew, days: 10, travelHrs: 8 }] };
+    const h = jobCrewManHours(state);
+    expect(h.work).toBe(160);
+    expect(h.travel).toBe(16);
+    expect(h.total).toBe(176);
+  });
+
+  it('counts travel only for the men who travel', () => {
+    const state = { laborPeriods: [{
+      crew: [man(60, 8, { travels: true }), man(50, 8, { travels: false })],
+      days: 1, travelHrs: 8,
+    }] };
+    expect(jobCrewManHours(state).travel).toBe(8);
+  });
+
+  it('is zero rather than broken on an empty or junk job', () => {
+    expect(jobCrewManHours({}).work).toBe(0);
+    expect(jobCrewManHours(undefined)).toEqual({ work: 0, travel: 0, total: 0 });
+    expect(jobCrewManHours({ laborMode: 'flat', flatJob: {} }).work).toBe(0);
+    expect(jobCrewManHours({ laborPeriods: [{ crew: [], days: 10 }] }).work).toBe(0);
   });
 });
