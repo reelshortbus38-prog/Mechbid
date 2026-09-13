@@ -491,7 +491,12 @@ function CircuitLaborEstimator() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
             {UNIT_FIELDS.map(f => {
               const p = provenanceOf(f.key);
-              const tone = p.state === 'confirmed' ? colors.green : p.state === 'varies' ? colors.yellow : colors.textDim;
+              // Disputed reads RED, not dim. A number two people who do this
+              // work disagree about by 7× is not the same kind of unknown as
+              // one nobody has got to yet, and it must not look like one.
+              const tone = p.state === 'confirmed' ? colors.green
+                : p.state === 'disputed' ? colors.red
+                  : p.state === 'varies' ? colors.yellow : colors.textDim;
               return (
                 <div key={f.key}>
                   <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }} title={p.note}>
@@ -509,7 +514,17 @@ function CircuitLaborEstimator() {
           <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
             <span style={{ color: colors.green, fontWeight: 700 }}>✓</span> checked with a working foreman ·{' '}
             <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> varies too much for one number ·{' '}
-            <span style={{ fontWeight: 700 }}>?</span> not yet checked against a finished job.
+            <span style={{ fontWeight: 700 }}>?</span> not yet checked against a finished job ·{' '}
+            <span style={{ color: colors.red, fontWeight: 700 }}>!</span> two people who do this work disagree.
+            {confidence.disputed > 0 && (
+              <>
+                <br />
+                <strong style={{ color: colors.red }}>
+                  {confidence.disputed} of these {confidence.disputed === 1 ? 'is' : 'are'} in open dispute.
+                </strong>{' '}
+                {provenanceOf('perJointLarge').note}
+              </>
+            )}
             <br />
             {provenanceOf('perCase').note}
             <br />

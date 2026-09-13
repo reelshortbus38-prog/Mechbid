@@ -58,22 +58,54 @@ export function manHoursOf(task) {
 // That gap is the one components/laborHistory.js exists to close, and it closes
 // per shop: record what a job was bid at and what it took, and after a few the
 // units stop being anybody's opinion and start being that shop's measurement.
+// ── AND WHEN TWO PEOPLE WHO DO THE WORK DISAGREE ────────────────────────────
+// 'disputed' is not a worse 'unconfirmed'. Unconfirmed means nobody has
+// checked. Disputed means two qualified people HAVE, and they do not agree —
+// which is strictly more information and strictly less certainty, and the one
+// state that must never be rounded off to either neighbour.
+//
+// It exists because the brazing times were marked ✓ confirmed on one working
+// foreman's read, and a second reviewer — an estimator, on 2026-09-12 — put a
+// large braze joint at 0.15 hr against the 1.1 hr standing here. That is 7×.
+// Joints dominate this estimate, so it is the difference between a 341
+// man-hour bid and a 217 man-hour one on a twenty-circuit store.
+//
+// Neither of them is being overruled by an app, and leaving a ✓ on a figure
+// that is in open dispute would be the app claiming a confidence nobody has.
+// See docs/labor-review-2026-09-12.md for the review as it was given.
+const BRAZE_DISPUTE = 'A working foreman read these as right where they stand. A second reviewer, estimating, '
+  + 'puts a large joint at 0.15 hr against the 1.1 hr here — about 7× apart, and joints dominate this '
+  + 'estimate. Nothing has been changed on that: one reading does not settle it, and on a twenty-circuit '
+  + 'store the two answers are 341 man-hours and 217. Worth resolving before a bid leans on it.';
+
+const PER_FT_DISPUTE = 'Halved from 0.06/0.09/0.13 on an installing mechanic\'s read that the circuit totals came '
+  + 'out about double. The 2026-09-12 review pushes the other way and from a measured day — 400 ft, three men, '
+  + 'ten hours, so 0.075 hr/ft — which is above even the large figure here. It was given as ONE number with no '
+  + 'pipe size attached, and this table has three, so which row it belongs in is not known. Nothing has been '
+  + 'changed on it.';
+
 export const UNIT_PROVENANCE = {
-  perJointSmall: { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
-  perJointMed:   { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
-  perJointLarge: { state: 'confirmed', note: 'Checked with a working foreman — brazing times looked right as they stood.' },
+  perJointSmall: { state: 'disputed', note: BRAZE_DISPUTE },
+  perJointMed:   { state: 'disputed', note: BRAZE_DISPUTE },
+  perJointLarge: { state: 'disputed', note: BRAZE_DISPUTE },
   perCase: {
     state: 'varies',
     note: 'A working estimator would not put one number on this: "it\'s always different, too many variables." '
       + 'Treated as a placeholder allowance, not an estimate — check it against the cases this job actually has.',
   },
-  // Halved on an installing mechanic's read of the totals, not on a measurement. That is
-  // better than the ballpark it replaced and still short of a checked number,
-  // so it stays marked unconfirmed — a cut in the right direction is not the
-  // same as knowing the figure.
-  perFtSmall:  { state: 'unconfirmed', note: 'Halved from 0.06 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
-  perFtMed:    { state: 'unconfirmed', note: 'Halved from 0.09 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
-  perFtLarge:  { state: 'unconfirmed', note: 'Halved from 0.13 — a mechanic who runs this pipe read the circuit totals as about double. Not yet measured against a finished job, or against a bid.' },
+  // These were halved on an installing mechanic's read that the totals came out
+  // about double. The 2026-09-12 review pushes the other way, and from an
+  // actual day rather than an impression: 400 ft, three men, ten hours — 30
+  // man-hours over 400 ft, so 0.075 hr/ft. That is above even the LARGE figure
+  // standing here, and it was given as one number with no pipe size attached,
+  // while this table has three. Which bucket that day was cannot be guessed:
+  // if it was 7/8" then small is 2.5× low and everything above it moves too.
+  //
+  // So it is disputed rather than changed. A measured day beats an impression
+  // and it still does not say which row it belongs in.
+  perFtSmall:  { state: 'disputed', note: PER_FT_DISPUTE },
+  perFtMed:    { state: 'disputed', note: PER_FT_DISPUTE },
+  perFtLarge:  { state: 'disputed', note: PER_FT_DISPUTE },
   perRackTie:  { state: 'unconfirmed', note: 'Not yet checked against a finished job.' },
   stickLength: {
     state: 'unconfirmed',
@@ -110,7 +142,7 @@ export const UNIT_PROVENANCE = {
   },
 };
 
-export const PROVENANCE_MARK = { confirmed: '✓', varies: '~', unconfirmed: '?' };
+export const PROVENANCE_MARK = { confirmed: '✓', varies: '~', unconfirmed: '?', disputed: '!' };
 
 export function provenanceOf(key) {
   return UNIT_PROVENANCE[key] || { state: 'unconfirmed', note: 'Not yet checked against a finished job.' };
@@ -119,7 +151,12 @@ export function provenanceOf(key) {
 // One line for the estimator card: how much of what it just priced is standing
 // on a number nobody has checked.
 export function unitsConfidence(keys = Object.keys(UNIT_PROVENANCE)) {
-  const tally = { confirmed: 0, varies: 0, unconfirmed: 0 };
+  // Every state PROVENANCE_MARK knows about starts at zero. Seeding this from
+  // the marks rather than by hand is what stops a new state landing on an
+  // undefined and tallying NaN — which is what "0 unconfirmed" would look like
+  // on screen, and it would look like good news.
+  const tally = {};
+  for (const state of Object.keys(PROVENANCE_MARK)) tally[state] = 0;
   keys.forEach(k => { tally[provenanceOf(k).state] += 1; });
   return tally;
 }
