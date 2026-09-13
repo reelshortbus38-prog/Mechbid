@@ -994,6 +994,42 @@ export function jobLaborTotal(state) {
     : calcTotalLabor(state?.laborPeriods, o);
 }
 
+// ── HOW MANY MAN-HOURS THE CREWS ACTUALLY BUY ───────────────────────────────
+// The cost side of labor was complete; the HOURS side was not, so nothing could
+// ask the one question a lump-sum bid most needs answered — do the crews on
+// this job cover the work the takeoff implies? (See crewCoverage in
+// steps/bidMethod.js, which was written for this comparison and then had
+// nothing to compare.)
+//
+// Travel is counted but kept SEPARATE. It is paid time and it belongs in the
+// hours somewhere, but an hour in the truck does not run pipe: folding it into
+// the work hours would make a crew that is short look covered.
+//
+// dayHourSplit is what decides how long a crew-day is, including the 8-hour
+// default for a member with no hours set — the same definition the cost side
+// uses, rather than a second one that can drift.
+export function jobCrewManHours(state) {
+  const hoursPerDay = crew => {
+    const { straight, ot } = dayHourSplit(crew, {});
+    return straight + ot;
+  };
+
+  if (state?.laborMode === 'flat') {
+    const f = state.flatJob || {};
+    const days = (parseFloat(f.weeks) || 0) * (parseFloat(f.daysPerWeek) || 5);
+    const work = hoursPerDay(f.crew) * days;
+    const travel = travelManHours(f.crew, f.travelHrs);
+    return { work, travel, total: work + travel };
+  }
+
+  let work = 0, travel = 0;
+  for (const p of state?.laborPeriods || []) {
+    work += hoursPerDay(p.crew) * (parseFloat(p.days) || 0);
+    travel += travelManHours(p.crew, p.travelHrs);
+  }
+  return { work, travel, total: work + travel };
+}
+
 export function jobCrew(state) {
   return state?.laborMode === 'flat'
     ? (state.flatJob?.crew || [])
@@ -1111,9 +1147,16 @@ export function ootBasisComparison(state) {
   };
 }
 
-export function calcMaterialsTotal(lineItems) {
-  return (lineItems || []).reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
-}
+// calcMaterialsTotal stood here, summing lineItems with a parseFloat around
+// each total, and was called from nowhere. Every real reader in the app —
+// bidTotals, the Materials step, the Proposal, the rack and HVAC steps, a dozen
+// places — sums `(i.total || 0)` raw, and that is safe: a total is always the
+// PRODUCT of a qty and a unit cost, and JavaScript multiplication yields a
+// number even when both sides came off an input as strings. So this was not a
+// safer version of the arithmetic used elsewhere. It was a second definition
+// implying a defensiveness the rest does not need, which is how two summing
+// rules drift apart and a proposal goes out with a total nothing else agrees
+// with.
 
 // Residential lineset total — the ONE definition shared by the Materials step
 // display and the bid-total engine. Roll copper prices automatically from the

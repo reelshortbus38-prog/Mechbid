@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, loadCompanyProfile, saveCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, jobCrewManHours, loadCompanyProfile, saveCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
@@ -13,7 +13,7 @@ import {
 } from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
-import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
+import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, crewCoverage, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
 // Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
 // both Commercial Refrigeration and Commercial HVAC, and a rooftop-unit swap
@@ -764,6 +764,23 @@ export default function Step5_Labor({ onNext, onBack }) {
   const bidMethod = resolveBidMethod(state.bidMethod);
   const billed = billedLabor(state.bidMethod);
   const escFit = escalationFit(state.bidMethod, state.escalationPct);
+  // ── DO THE CREWS COVER THE WORK? ──────────────────────────────────────────
+  // crewCoverage was written for exactly this comparison and then had nothing
+  // to compare — the cost side of labor was complete and the HOURS side was
+  // not, so the question was unaskable. Both halves exist now.
+  //
+  // Only where the crew periods ARE the bid. On time & materials the periods
+  // are the schedule and the per diem (the app says so a few lines up), and
+  // holding them against takeoff hours would be comparing two things that are
+  // not being asked to agree.
+  const coverage = billed.periods
+    ? crewCoverage({
+      crewManHours: jobCrewManHours(state).work,
+      takeoffManHours: (state.circuits || []).length
+        ? estimateCircuitLabor(state.circuits, { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) }).totalHours
+        : 0,
+    })
+    : null;
   // Read once per render — cheap, and it must reflect a profile saved on the
   // Proposal step without a reload.
   const shopHasOwnNumbers = hasCompanyDefaults(loadCompanyProfile());
@@ -893,6 +910,26 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* And whether the crews bought above actually cover it. Sits directly
+          under the estimator because that is the number it is checking.
+          Deliberately wide — the takeoff is circuits only, and the crews also
+          demo, set cases, prep the rack and stand the punch list, so bought
+          hours SHOULD exceed it. A smell test, not a rule. */}
+      {coverage && (
+        <Card>
+          <div style={{ fontSize: 11, lineHeight: 1.6,
+            padding: '9px 11px', borderRadius: 6,
+            border: `1px solid ${coverage.level === 'ok' ? colors.border : `${colors.yellow}40`}`,
+            background: coverage.level === 'ok' ? 'transparent' : `${colors.yellow}0D`,
+            color: colors.textDim }}>
+            <strong style={{ color: coverage.level === 'ok' ? colors.textDim : colors.yellow }}>
+              {coverage.level === 'ok' ? 'Crew hours vs takeoff.' : '⚠ Crew hours vs takeoff.'}
+            </strong>{' '}
+            {coverage.note}
+          </div>
+        </Card>
+      )}
 
       {/* And the only thing that will ever confirm those units: what the job
           actually took. Sits directly under the estimator because that is the
@@ -1186,16 +1223,11 @@ export default function Step5_Labor({ onNext, onBack }) {
             </div>
             {/* Flat mode had no overtime inputs at all, which is why a whole-job
                 crew on ten-hour days billed every hour straight. */}
-            {/* Travel is HOURS, at each traveling man's own rate. It used to
-                live inside the out-of-town dollar figure, where it took no
-                rate, showed in no hour count, and could not be told apart from
-                a hotel bill. */}
-            <div>
-              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Travel (hrs/man)</div>
-              <Input type="number" value={period.travelHrs || ''}
-                onChange={e => onUpdate('travelHrs', parseFloat(e.target.value) || 0)}
-                placeholder="0" />
-            </div>
+            {/* A SECOND "Travel (hrs/man)" block stood here — pasted in from the
+                period editor and never adapted, so it still read `period` and
+                `onUpdate`, neither of which exists in this scope. Switching to
+                the whole-job crew threw a ReferenceError and emptied the Labor
+                step. The flat version is already above, on `flat.travelHrs`. */}
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/day)</div>
               <Input type="number" value={flat.otAfterHours || ''}
