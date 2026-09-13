@@ -87,8 +87,32 @@ belonged to any bucket; "the time is the same" with no measurement is not a
 number. Together they are the only unit in this app resting on a job.
 
 **Commissioning per rack, 24–48 hr.** The only figure here that two independent
-sources agree on. The app has no line for it at all, which means every bid it
-has produced is missing it.
+sources agree on.
+
+**Built 2026-09-13** (`src/steps/scopeUnits.js`). Commissioning, rigging the
+rack, and setting walk-in panels were not under-estimated in this app — they
+were **absent**, so every bid it produced was short by all three. On a two-rack
+store the commissioning alone is 48–96 man-hours that were charged at nothing.
+
+They reach the job as field-task rows the estimator reads, edits and deletes,
+not as a hidden total: two of the three units are in open dispute, and a number
+he cannot see is a number he cannot defend. Zeroing a unit says "the GC has
+that on this job" and the row stops being generated.
+
+The defaults are the reviewer's figures where they conflict with the PRD —
+a named estimator who bids these against a document attributed to nobody — and
+both figures are shown on screen:
+
+| | Reviewer | PRD | Shipped default | Marked |
+|---|---|---|---|---|
+| Commission / rack | 24–48 hr | 24–48 hr | 36 hr | *varies* — both gave a range |
+| Rig & set / rack | 2.0 hr | 16–24 hr | 2.0 hr | **disputed**, 8–12× apart |
+| Walk-in panel | 0.45 hr | 1.5–2 hr | 0.45 hr | **disputed**, 3–4× apart |
+
+On the two disputed ones the gap is wide enough that the two sides are probably
+describing different scopes — 2 hours reads like the set once the crane is
+already there and rigged, 16–24 like the whole operation. Same shape as the
+braze joint below.
 
 ### Cannot be used as given
 
@@ -188,4 +212,10 @@ is leaned on.
 4. **Crew efficiency — against what?** If the app's rates are measured days,
    the dial has nothing left to correct.
 5. **Night work case changes: 1.5 hr per what?**
-6. **Where does commissioning belong** — its own line, or inside the rack tie?
+6. ~~Where does commissioning belong?~~ **Built 2026-09-13** as its own line,
+   per rack, separate from the per-circuit rack tie. Still worth confirming he
+   agrees with that placement.
+7. **Rig & set, and the walk-in panel.** 2.0 hr against 16–24, and 0.45 against
+   1.5–2. Ask the same question as the braze joint: what does his number
+   cover? If 2.0 is the set with the crane already rigged, the two answers may
+   not be in conflict at all.

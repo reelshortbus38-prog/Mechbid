@@ -348,6 +348,13 @@ export const initialState = {
   // translate. Two by default; a working estimator's first question about the
   // old output was "who runs 150 feet of copper on their own?"
   circuitCrewSize: 2,
+  // How many racks and walk-in panels this job has. NOT derivable from the
+  // circuit list — a circuit knows which rack it lands on, not how many racks
+  // are being set, and nothing on a redline says how many panels a box has.
+  // Concrete rather than undefined, because an undefined property is dropped
+  // by JSON.stringify and would come back as whatever the default became. See
+  // steps/scopeUnits.js.
+  scopeCounts: { racks: 0, walkInPanels: 0 },
   // ── WHAT A CREW RATE MEANS ─────────────────────────────────────────────────
   // The rate field said only "Rate/hr", and the two things it can be price very
   // differently. On a $200k-material, $378k-labor job at 20% markup:
@@ -1276,7 +1283,18 @@ export const DEFAULT_LABOR_UNITS = {
   perFtSmall: 0.075, perFtMed: 0.075, perFtLarge: 0.075,  // hrs per ft of run
   perJointSmall: 0.4, perJointMed: 0.7, perJointLarge: 1.1, // hrs per braze joint
   perCase: 1.5,      // hrs to hook up a refrigerated case
-  perRackTie: 2.0,   // hrs to tie a circuit into the rack
+  perRackTie: 2.0,   // hrs to tie a CIRCUIT into the rack — one per circuit
+
+  // ── SCOPE THE TAKEOFF NEVER COVERED ──────────────────────────────────────
+  // Not under-estimated before this: absent. Every bid the app produced was
+  // short by all three. See steps/scopeUnits.js for how they reach the job.
+  //
+  // perRackSet is rigging and standing the RACK, once per rack. perRackTie
+  // above is a circuit landing on it, once per circuit. Different work — the
+  // names are close enough to be worth saying so.
+  perRackCommission: 36,   // hrs to commission one rack — 24-48 from both sources
+  perRackSet: 2.0,         // hrs to rig and set one rack — DISPUTED, see provenance
+  perWalkInPanel: 0.45,    // hrs to set one walk-in panel — DISPUTED, see provenance
   stickLength: 20,   // ft of hard copper per stick → number of joints
   // ── AND SOFT COPPER DOES NOT COME IN STICKS ───────────────────────────────
   // A line pushed in the floor is soft copper, and soft copper arrives in

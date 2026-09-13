@@ -93,3 +93,46 @@ describe('the crew coverage card', () => {
     expect(out).toContain('Crew hours vs takeoff');
   });
 });
+
+// ── THE SCOPE THAT WAS NOT IN THE BID AT ALL ────────────────────────────────
+// scopeUnits.test.js covers the arithmetic. This covers the thing that went
+// wrong with crewCoverage — built, tested, and rendered nowhere.
+describe('the scope-not-in-takeoff card', () => {
+  const refrig = extra => html({ mode: 'Commercial Refrigeration', ...extra });
+
+  it('offers the counts even on a job with no circuits typed in yet', () => {
+    // Deliberately NOT inside the circuit estimator, which returns null with
+    // no circuits. A rack still has to be set and commissioned on a job whose
+    // circuits have not been entered, and a card that hides until an unrelated
+    // list is filled in is a card nobody finds.
+    const out = refrig({ circuits: [] });
+    expect(out).toContain('Scope not in the circuit takeoff');
+    expect(out).toContain('Walk-in panels');
+  });
+
+  it('prices the racks once they are counted', () => {
+    const out = refrig({ scopeCounts: { racks: 2, walkInPanels: 0 } });
+    expect(out).toMatch(/76 man-hours/);
+  });
+
+  it('warns that two of the three units are contested', () => {
+    expect(refrig({})).toMatch(/in open dispute/);
+  });
+
+  it('names both figures for the rack set, not just the one it defaults to', () => {
+    const out = refrig({});
+    expect(out).toContain('16-24 hr');
+    expect(out).toContain('2.0 hr');
+  });
+
+  it('keeps the rack TIE and the rack SET apart on screen', () => {
+    // The double-count this pair invites. perRackTie is per circuit and
+    // already in the takeoff; perRackSet is per rack and is not.
+    expect(refrig({})).toMatch(/not the same as/i);
+  });
+
+  it('stays off an HVAC job, which has neither a rack nor a walk-in', () => {
+    const out = html({ mode: 'Commercial HVAC', bidMethod: LUMP_SUM });
+    expect(out).not.toContain('Scope not in the circuit takeoff');
+  });
+});

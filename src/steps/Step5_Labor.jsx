@@ -12,6 +12,7 @@ import {
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
 } from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
+import { scopeManHours, scopeTasks, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, crewCoverage, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
@@ -542,6 +543,108 @@ function CircuitLaborEstimator() {
   );
 }
 
+// ── THE SCOPE THE TAKEOFF NEVER COVERED ──────────────────────────────────────
+// Commissioning the rack, rigging and standing it, setting walk-in panels.
+// None of it was in this app — not under-estimated, ABSENT — so every bid it
+// produced was short by all three. On a two-rack store the commissioning alone
+// is 48-96 man-hours that were being charged at nothing.
+//
+// Deliberately NOT inside CircuitLaborEstimator, which returns null on a job
+// with no circuits entered. A rack still has to be set and commissioned on a
+// job whose circuits have not been typed in yet, and a card that hides itself
+// until an unrelated list is filled in is a card nobody discovers.
+function ScopeNotInTakeoff() {
+  const { state, dispatch } = useStore();
+  const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+  const counts = state.scopeCounts || { racks: 0, walkInPanels: 0 };
+  const crewSize = Math.max(1, parseInt(state.circuitCrewSize, 10) || 2);
+  const crew = jobCrew(state);
+  const rate = avgCrewRate(crew) || 100;
+
+  // Refrigeration only. An HVAC job has neither a rack nor a walk-in box, and
+  // a card asking how many racks it has is worse than no card.
+  if (state.mode !== 'Commercial Refrigeration') return null;
+
+  const hrs = scopeManHours(counts, units);
+  const setCount = (key, val) => dispatch({
+    type: 'SET', key: 'scopeCounts',
+    value: { ...counts, [key]: Math.max(0, Math.round(parseFloat(val) || 0)) },
+  });
+
+  function generate() {
+    const existing = state.fieldTasks || [];
+    const fresh = scopeTasks({
+      counts, units, crewSize, uid, mode: state.mode,
+      existing: forMode(existing, state.mode),
+    });
+    if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
+  }
+
+  const disputed = SCOPE_UNIT_KEYS.filter(k => provenanceOf(k).state === 'disputed');
+
+  return (
+    <Card>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>🏗️ Scope not in the circuit takeoff</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+            {hrs > 0
+              ? <>→ <strong style={{ color: colors.green }}>{Math.round(hrs * 10) / 10} man-hours</strong> · ~{fmt(hrs * rate)} at {fmt(rate)}/hr per man</>
+              : 'Commissioning, rigging the rack and setting walk-in panels. None of this comes off the circuit list.'}
+          </div>
+        </div>
+        {hrs > 0 && <Btn variant="green" size="sm" onClick={generate}>+ Generate Field Tasks</Btn>}
+      </Row>
+
+      <Row style={{ marginTop: 10, alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: colors.textDim }}>Racks</span>
+        <Input type="number" min="0" step="1" value={counts.racks || ''}
+          onChange={e => setCount('racks', e.target.value)} placeholder="0"
+          style={{ width: 56, textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+        <span style={{ fontSize: 11, color: colors.textDim, marginLeft: 8 }}>Walk-in panels</span>
+        <Input type="number" min="0" step="1" value={counts.walkInPanels || ''}
+          onChange={e => setCount('walkInPanels', e.target.value)} placeholder="0"
+          style={{ width: 56, textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+      </Row>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 10 }}>
+        {SCOPE_UNIT_FIELDS.map(f => {
+          const p = provenanceOf(f.key);
+          const tone = p.state === 'disputed' ? colors.red : p.state === 'varies' ? colors.yellow : colors.textDim;
+          return (
+            <div key={f.key}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }} title={p.note}>
+                <span style={{ color: tone, fontWeight: 700 }}>{PROVENANCE_MARK[p.state]}</span> {f.label}
+              </div>
+              <Input type="number" value={units[f.key]} step="0.05"
+                onChange={e => dispatch({ type: 'SET', key: 'laborUnits', value: { ...units, [f.key]: parseFloat(e.target.value) || 0 } })}
+                style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Set a unit to zero to say "not my scope on this job" — the GC sets the
+          panels on plenty of them — and the row stops being generated. */}
+      <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
+        Rigging the rack is not the same as <strong>tying a circuit into it</strong> — that one is per circuit and
+        is already in the takeoff above. Zero a unit to say the GC has it on this job.
+        <br />
+        <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> {provenanceOf('perRackCommission').note}
+        {disputed.length > 0 && (
+          <>
+            <br />
+            <strong style={{ color: colors.red }}>
+              {disputed.length} of these {disputed.length === 1 ? 'is' : 'are'} in open dispute.
+            </strong>{' '}
+            {disputed.map(k => provenanceOf(k).note).join(' ')}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ── CLOSING A JOB OUT ─────────────────────────────────────────────────────────
 // The units this app prices with are opinions until somebody builds a job with
 // them and comes back with the timesheet. Nobody was ever going to do that as a
@@ -925,6 +1028,11 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* And the work that never came off it: commissioning, rigging the rack,
+          setting walk-in panels. Absent from this app until now, so every bid
+          it produced was short by all three. */}
+      <ScopeNotInTakeoff />
 
       {/* And whether the crews bought above actually cover it. Sits directly
           under the estimator because that is the number it is checking.
