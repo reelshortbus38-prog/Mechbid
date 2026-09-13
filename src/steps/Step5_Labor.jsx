@@ -544,7 +544,7 @@ function CircuitLaborEstimator() {
 }
 
 // ── THE SCOPE THE TAKEOFF NEVER COVERED ──────────────────────────────────────
-// Commissioning the rack, rigging and standing it, setting walk-in panels.
+// Commissioning the rack, setting it in place, setting walk-in panels.
 // None of it was in this app — not under-estimated, ABSENT — so every bid it
 // produced was short by all three. On a two-rack store the commissioning alone
 // is 48-96 man-hours that were being charged at nothing.
@@ -590,7 +590,7 @@ function ScopeNotInTakeoff() {
           <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
             {hrs > 0
               ? <>→ <strong style={{ color: colors.green }}>{Math.round(hrs * 10) / 10} man-hours</strong> · ~{fmt(hrs * rate)} at {fmt(rate)}/hr per man</>
-              : 'Commissioning, rigging the rack and setting walk-in panels. None of this comes off the circuit list.'}
+              : 'Commissioning the rack, setting it in place, setting walk-in panels. None of this comes off the circuit list.'}
           </div>
         </div>
         {hrs > 0 && <Btn variant="green" size="sm" onClick={generate}>+ Generate Field Tasks</Btn>}
@@ -627,8 +627,10 @@ function ScopeNotInTakeoff() {
       {/* Set a unit to zero to say "not my scope on this job" — the GC sets the
           panels on plenty of them — and the row stops being generated. */}
       <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
-        Rigging the rack is not the same as <strong>tying a circuit into it</strong> — that one is per circuit and
-        is already in the takeoff above. Zero a unit to say the GC has it on this job.
+        Setting the rack in place is not the same as <strong>tying a circuit into it</strong> — that one is per
+        circuit and is already in the takeoff above. Neither is getting it off the truck and into the building:
+        that is a crane or a rigging crew, so it belongs in <strong>Subcontractors or Rentals</strong> rather
+        than in crew hours. Zero a unit to say the GC has it on this job.
         <br />
         <span style={{ color: colors.yellow, fontWeight: 700 }}>~</span> {provenanceOf('perRackCommission').note}
         {disputed.length > 0 && (
@@ -1029,9 +1031,9 @@ export default function Step5_Labor({ onNext, onBack }) {
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
 
-      {/* And the work that never came off it: commissioning, rigging the rack,
-          setting walk-in panels. Absent from this app until now, so every bid
-          it produced was short by all three. */}
+      {/* And the work that never came off it: commissioning the rack, setting
+          it in place, setting walk-in panels. Absent from this app until now,
+          so every bid it produced was short by all three. */}
       <ScopeNotInTakeoff />
 
       {/* And whether the crews bought above actually cover it. Sits directly

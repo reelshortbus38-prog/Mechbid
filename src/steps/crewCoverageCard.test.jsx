@@ -115,20 +115,26 @@ describe('the scope-not-in-takeoff card', () => {
     expect(out).toMatch(/76 man-hours/);
   });
 
-  it('warns that two of the three units are contested', () => {
+  it('warns that a unit is still contested', () => {
     expect(refrig({})).toMatch(/in open dispute/);
   });
 
-  it('names both figures for the rack set, not just the one it defaults to', () => {
+  it('names both figures for the walk-in panel, not just the one it defaults to', () => {
     const out = refrig({});
-    expect(out).toContain('16-24 hr');
-    expect(out).toContain('2.0 hr');
+    expect(out).toContain('1.5-2 hr');
+    expect(out).toContain('0.45 hr');
   });
 
   it('keeps the rack TIE and the rack SET apart on screen', () => {
     // The double-count this pair invites. perRackTie is per circuit and
     // already in the takeoff; perRackSet is per rack and is not.
     expect(refrig({})).toMatch(/not the same as/i);
+  });
+
+  it('sends the crane somewhere real instead of leaving it out', () => {
+    // Getting the rack off the truck is not in the 2 hours and is not crew
+    // hours at all. Both of those paths already exist in the app.
+    expect(refrig({})).toMatch(/Subcontractors or Rentals/);
   });
 
   it('stays off an HVAC job, which has neither a rack nor a walk-in', () => {

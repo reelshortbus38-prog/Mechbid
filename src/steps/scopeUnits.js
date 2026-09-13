@@ -10,20 +10,29 @@
 //     at 24-48 hr per rack, independently. On a two-rack store that is 48-96
 //     man-hours the app was not charging for, and it is the one figure two
 //     sources agree on.
-//   · Rigging and setting the rack itself.
+//   · Setting the rack itself in place. NOT the rigging that gets it there —
+//     see perRackSet's provenance; a crane is a sub or a rental, not a
+//     man-hour unit.
 //   · Setting walk-in panels.
 //
 // ── WHY THESE ARE TASK ROWS AND NOT A HIDDEN TOTAL ──────────────────────────
 // They land in the field-task list as rows the estimator reads, edits and
 // deletes, the same way the circuit generator works. A number he cannot see is
-// a number he cannot defend, and two of the three below are in open dispute.
+// a number he cannot defend, and one of the three below is still in open
+// dispute.
 //
 // ── AND WHY THEY DO NOT DOUBLE-COUNT ────────────────────────────────────────
 // `perRackTie` in the labor units is a CIRCUIT tying into the rack — one per
-// circuit, already charged by the takeoff. `perRackSet` here is rigging and
-// standing the rack itself, once per rack. Different work, and the names are
-// close enough that this comment is the guard against somebody folding one
-// into the other later.
+// circuit, already charged by the takeoff. `perRackSet` here is standing the
+// rack itself in place, once per rack. Different work, and the names are close
+// enough that this comment is the guard against somebody folding one into the
+// other later.
+//
+// And a third thing that is neither: getting the rack off the truck and into
+// the building. That is a crane or a rigging crew, it is a SUBCONTRACT or a
+// RENTAL rather than crew hours, and both of those paths already exist. It is
+// deliberately not a unit here — inventing a man-hour figure for work the shop
+// buys in would put a number in a bid that nobody has quoted.
 
 import { splitAcrossCrew } from './laborUnits.js';
 
@@ -33,7 +42,7 @@ export const SCOPE_UNIT_KEYS = ['perRackCommission', 'perRackSet', 'perWalkInPan
 
 export const SCOPE_UNIT_FIELDS = [
   { key: 'perRackCommission', label: 'Commission / rack' },
-  { key: 'perRackSet', label: 'Rig & set / rack' },
+  { key: 'perRackSet', label: 'Set rack in place' },
   { key: 'perWalkInPanel', label: 'Walk-in panel' },
 ];
 
@@ -46,10 +55,10 @@ export function scopeLines({ racks = 0, walkInPanels = 0 } = {}, units = {}) {
 
   const rackCount = n(racks);
   for (let i = 1; i <= rackCount; i++) {
-    // Rigging first: it happens first, and a list that reads in the order the
+    // Setting first: it happens first, and a list that reads in the order the
     // work happens is one an estimator can check against a schedule.
     if (u('perRackSet') > 0) {
-      out.push({ kind: 'rackSet', desc: `Rig & set rack ${i}`, manHours: u('perRackSet') });
+      out.push({ kind: 'rackSet', desc: `Set rack ${i} in place`, manHours: u('perRackSet') });
     }
     if (u('perRackCommission') > 0) {
       out.push({ kind: 'rackCommission', desc: `Commission rack ${i}`, manHours: u('perRackCommission') });
