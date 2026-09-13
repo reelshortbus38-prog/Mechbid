@@ -235,17 +235,24 @@ async function pullFromCloud(id) {
 // ── STARTUP ─────────────────────────────────────────────────────────────────
 // One pass to learn what is on disk. Only the metadata is read — the blobs
 // stay where they are until something actually asks for one.
+// The PROMISE is memoised, not just a done flag. A second caller arriving
+// while the first pass is still reading used to get an instant 0 and conclude
+// the device was holding nothing — which is how the catch-up pass, mounting in
+// the same tick as this one, would decide there was nothing to upload and
+// never look again.
 export async function hydrateFileCache() {
-  if (hydrated) return index.size;
-  hydrated = true;
-  const db = await openDb();
-  if (!db) return 0;
-  const all = await tx(db, 'readonly', store => asPromise(store.getAll()));
-  db.close();
-  for (const rec of all || []) {
-    if (rec?.id) index.set(rec.id, { name: rec.name, size: rec.size || 0, savedAt: rec.savedAt || 0 });
-  }
-  return index.size;
+  if (hydrated) return hydrated;
+  hydrated = (async () => {
+    const db = await openDb();
+    if (!db) return 0;
+    const all = await tx(db, 'readonly', store => asPromise(store.getAll()));
+    db.close();
+    for (const rec of all || []) {
+      if (rec?.id) index.set(rec.id, { name: rec.name, size: rec.size || 0, savedAt: rec.savedAt || 0 });
+    }
+    return index.size;
+  })();
+  return hydrated;
 }
 
 // ── HOUSEKEEPING ────────────────────────────────────────────────────────────
@@ -253,6 +260,19 @@ export function cacheUsage() {
   let bytes = 0;
   for (const meta of index.values()) bytes += meta.size || 0;
   return { files: index.size, bytes };
+}
+
+// Everything this device is holding, as [id, { name, size, savedAt }]. The
+// catch-up pass subtracts the bucket's contents from this to find drawings
+// that never made it up — uploaded before signing in, or while the signal was
+// gone. Session-only files are in here too: those are the ones uploaded in
+// THIS sitting, which is exactly the pre-sign-in case.
+export function cachedEntries() {
+  const out = new Map(index);
+  for (const [id, file] of session) {
+    if (!out.has(id)) out.set(id, { name: file?.name || '', size: Number(file?.size) || 0, savedAt: 0 });
+  }
+  return [...out.entries()];
 }
 
 // Which ids have to go to get under the cap, oldest first. Pure, so the policy

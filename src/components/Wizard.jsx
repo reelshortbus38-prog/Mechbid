@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, uid, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON, loadCompanyProfile } from '../state/store.js';
 import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
-import { hydrateFileCache, forgetFiles, setCloudFiles } from '../api/fileCache.js';
-import { uploadFile, downloadFile, removeFiles } from '../lib/fileSync.js';
+import { hydrateFileCache, forgetFiles, setCloudFiles, cachedEntries, loadCachedFile } from '../api/fileCache.js';
+import { uploadFile, downloadFile, removeFiles, listCloudFiles } from '../lib/fileSync.js';
+import { runCatchUp } from '../lib/fileCatchUp.js';
 import { getSupabase } from '../lib/supabase.js';
 import { useAuth } from '../lib/auth.jsx';
 import { syncOnLogin, pushCloudJob, deleteCloudJob } from '../lib/cloudSync.js';
@@ -126,6 +127,42 @@ export default function Wizard() {
       download: id => downloadFile(sb, user.id, id),
     });
     return () => setCloudFiles(null);
+  }, [user?.id]);
+
+  // ── DRAWINGS THAT NEVER WENT UP ───────────────────────────────────────────
+  // A file reached the cloud exactly once: at the moment it was uploaded, and
+  // only if somebody was signed in right then. Build a bid before signing in —
+  // which is the normal way to start one — and its drawings stayed on this
+  // device forever, while the JOB synced happily. The phone then knew the bid
+  // had an M0.1.pdf and offered a View button for a file the bucket had never
+  // held. Same for anything uploaded while the signal was gone in a store.
+  //
+  // So on sign-in, work out what this device holds that the account does not,
+  // and put it up. Behind the estimator's work, one file at a time, and
+  // abandoned the moment he signs out.
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb || !user?.id) return;
+    let active = true;
+    (async () => {
+      // Before asking what this device holds. Without this the pass mounts in
+      // the same tick as hydration and sees only the files uploaded in THIS
+      // sitting — missing every drawing already on disk, which is most of them.
+      await hydrateFileCache().catch(() => {});
+      const inCloud = await listCloudFiles(sb, user.id);
+      if (!active) return;
+      const r = await runCatchUp({
+        cached: cachedEntries(),
+        inCloud,                       // null = could not tell; runCatchUp does nothing
+        load: loadCachedFile,
+        upload: (id, file) => uploadFile(sb, user.id, id, file),
+        shouldStop: () => !active,
+      });
+      if (r.uploaded || r.failed) {
+        console.info(`Drawings caught up: ${r.uploaded} uploaded, ${r.failed} failed, ${r.tooBig} too large.`);
+      }
+    })();
+    return () => { active = false; };
   }, [user?.id]);
 
   // On sign-in (or landing with an existing session on a new device), pull the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filePath, uploadFile, downloadFile, removeFiles, pendingUploads, BUCKET } from './fileSync.js';
+import { filePath, uploadFile, downloadFile, removeFiles, listCloudFiles, BUCKET } from './fileSync.js';
 
 // A stand-in for the Supabase client's storage surface. Records what it was
 // asked to do, so the PATH — which is what the storage policies match on — can
@@ -130,28 +130,65 @@ describe('removeFiles', () => {
   });
 });
 
-describe('pendingUploads — catching up a job built before signing in', () => {
-  const manifest = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+// ── WHAT THE ACCOUNT ALREADY HOLDS ──────────────────────────────────────────
+describe('listCloudFiles', () => {
+  // A storage client whose list() pages, so pagination is exercised rather
+  // than assumed. Names under the owner's folder ARE the upload ids.
+  function listing(pages, { failOn = -1 } = {}) {
+    const calls = [];
+    return {
+      calls,
+      storage: {
+        from: () => ({
+          list: async (path, opts) => {
+            calls.push({ path, ...opts });
+            const page = Math.floor(opts.offset / opts.limit);
+            if (page === failOn) return { data: null, error: { message: 'boom' } };
+            return { data: (pages[page] || []).map(name => ({ name })), error: null };
+          },
+        }),
+      },
+    };
+  }
 
-  it('names what the account does not have yet', () => {
-    expect(pendingUploads(manifest, ['a'])).toEqual(['b', 'c']);
-    expect(pendingUploads(manifest, new Set(['a', 'c']))).toEqual(['b']);
+  it('reads the ids out of the owner’s own folder', async () => {
+    const sb = listing([['a', 'b']]);
+    expect([...await listCloudFiles(sb, 'user-1')]).toEqual(['a', 'b']);
+    expect(sb.calls[0].path).toBe('user-1');
   });
 
-  it('is everything when nothing has been uploaded', () => {
-    expect(pendingUploads(manifest, [])).toEqual(['a', 'b', 'c']);
+  it('pages, because an estimator with thirty jobs is past one page', async () => {
+    // A short read does not fail loudly — it silently re-uploads plan sets
+    // that were already there.
+    const sb = listing([['a', 'b'], ['c']]);
+    expect([...await listCloudFiles(sb, 'u', { pageSize: 2 })]).toEqual(['a', 'b', 'c']);
   });
 
-  it('is empty when the account already has it all', () => {
-    expect(pendingUploads(manifest, ['a', 'b', 'c'])).toEqual([]);
+  it('stops at the last full page rather than asking forever', async () => {
+    const sb = listing([['a', 'b'], []]);
+    await listCloudFiles(sb, 'u', { pageSize: 2 });
+    expect(sb.calls.length).toBe(2);
   });
 
-  it('ignores rows with no id rather than uploading nothing under a blank path', () => {
-    expect(pendingUploads([{ id: '' }, null, { id: 'z' }], [])).toEqual(['z']);
+  it('is null — not empty — when the listing fails', async () => {
+    // THE DISTINCTION THAT MATTERS. An empty Set means "the cloud has none of
+    // these, send them all". A failed read means "I could not tell." Confusing
+    // the two pushes a 40 MB set over cell service for nothing.
+    expect(await listCloudFiles(listing([[]], { failOn: 0 }), 'u')).toBe(null);
   });
 
-  it('is empty rather than broken on a job with no files', () => {
-    expect(pendingUploads([], [])).toEqual([]);
-    expect(pendingUploads(undefined, undefined)).toEqual([]);
+  it('is null when a LATER page fails, not a short list', async () => {
+    const sb = listing([['a', 'b'], ['c', 'd']], { failOn: 1 });
+    expect(await listCloudFiles(sb, 'u', { pageSize: 2 })).toBe(null);
+  });
+
+  it('is null when the client throws outright', async () => {
+    expect(await listCloudFiles({ storage: { from() { throw new Error('offline'); } } }, 'u')).toBe(null);
+  });
+
+  it('is empty without a client or a user, which is not a failure', async () => {
+    // Nobody signed in: there is genuinely nothing up there for this device.
+    expect([...await listCloudFiles(null, 'u')]).toEqual([]);
+    expect([...await listCloudFiles(listing([[]]), '')]).toEqual([]);
   });
 });
