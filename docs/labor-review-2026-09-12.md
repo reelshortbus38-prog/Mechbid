@@ -109,28 +109,57 @@ both figures are shown on screen:
 
 | | Reviewer | PRD | Shipped default | Marked |
 |---|---|---|---|---|
-| Commission / rack | 24–48 hr | 24–48 hr | 36 hr | *varies* — both gave a range |
-| Set rack in place | 2.0 hr | 16–24 hr | 2.0 hr | **confirmed** — see below |
-| Walk-in panel | 0.45 hr | 1.5–2 hr | 0.45 hr | **disputed**, 3–4× apart |
+| Commission / rack | 24–48 hr | 24–48 hr | 36 man-hrs | *varies* — both gave a range |
+| Set rack — hrs on site | 2.0 hr | — | 2 hr | **confirmed** |
+| Set rack — men | — | — | 4 | *unconfirmed* — his estimate |
+| → rack set, man-hours | | 16–24 hr | **8 man-hrs** | |
+| Walk-in panel | 0.45 hr | 1.5–2 hr | 0.45 man-hrs | **disputed**, 3–4× apart |
 
-**The rack set was never a dispute.** It shipped marked as one, 8–12× apart,
-and the mechanic settled it the same day:
+### The rack set took two corrections
+
+It shipped first as **disputed**, 8–12× apart from the PRD. Then as
+**confirmed at 2.0 man-hours** on this:
 
 > "That 2 hour is for setting the rack in place."
 
-So the two figures were describing different scopes rather than disagreeing.
-The unit is renamed to say what it covers, and marked confirmed.
+Both of those were wrong, and the second one was wrong in the direction of
+under-billing. The full description settled it:
 
-That leaves a real gap, stated rather than papered over: **offloading the rack
-and getting it into the building is not in the 2 hours.** It is a crane or a
-rigging crew, which is a subcontract or a rental and not crew hours — both of
-those paths already exist in the app, and the Proposal step already lists
-crane/rigging as a pass-through. No man-hour unit was invented for it, because
-a number nobody has quoted does not belong in a bid.
+> "Generally we hire a crane and he comes and we tell him where we need to get
+> the rack to then he sets up and we hook the crane to the rack and someone in
+> our crew gives crane driver directions and when it's set we unhook from crane
+> and our crew continues to move it to where it goes and set it. So that whole
+> process takes 2 hours… I'm not sure how many crew workers are in that. I'd
+> say four guys like normal."
 
-The walk-in panel is still open, and it is worth asking the same question that
-settled this one: what does each figure cover? A 3–4× gap is often two people
-describing different scopes rather than disagreeing.
+Two hours is **the clock, not the labor**. Four men standing there for two
+hours is **8 man-hours**. Entered as 2, the app was charging a quarter of it.
+
+So it is now stored as two numbers rather than one — a duration and a crew —
+for two reasons:
+
+1. **A duration typed into a man-hour box is off by the size of the crew.** One
+   box hides that entirely; two boxes make the arithmetic visible, and the card
+   shows it worked out.
+2. **The two halves are not equally well known.** The duration is first-hand
+   and step by step. The crew count is "I'd say four guys like normal" — his
+   own estimate, and he said outright he wasn't sure. Multiplied into one
+   figure, the soft half disappears into the answer. Marked separately, the
+   hours are confirmed and the crew is unconfirmed, and the crew is the one
+   that multiplies everything.
+
+And it reconciles with the PRD: 8 against 16–24 is 2–3×, not 8–12×. Still a
+gap, and no longer a different conversation.
+
+**The crane cost is not in these hours.** The crew hours include *working with*
+the crane — hooking on, walking the driver in, unhooking, moving it the rest of
+the way. What the crane charges is hired. That had no line anywhere, so
+"Crane — rack set" is now in the common rentals list. No man-hour unit was
+invented for it: a number nobody has quoted does not belong in a bid.
+
+The walk-in panel is still open, and it is worth asking the same two questions
+that settled this one: what does each figure cover, and **is it a duration or
+man-hours?** Both turned out to matter here.
 
 ### Cannot be used as given
 
@@ -235,8 +264,9 @@ is leaned on.
    agrees with that placement.
 7. ~~Rig & set~~ **Answered 2026-09-13** — the 2 hours is setting the rack in
    place. Not in conflict with the PRD after all; renamed and confirmed.
-8. **The walk-in panel.** 0.45 hr against 1.5–2. Same question again: what does
-   each figure cover?
-9. **Who rigs the rack in?** Not a labor unit — a crane or a rigging crew, so
-   it wants a subcontractor or rental line. Worth knowing whether that is
-   normally the shop's cost or the GC's.
+8. **The walk-in panel.** 0.45 hr against 1.5–2. Ask both questions: what does
+   each figure cover, and is it a duration or man-hours?
+9. **Confirm the rack-set crew.** Four is an estimate and it multiplies the
+   whole line — three men instead of four is a quarter off it.
+10. **Is the crane the shop's cost or the GC's?** The rental line now exists;
+    whether it belongs on your bid is a different question.

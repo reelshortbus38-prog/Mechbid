@@ -83,6 +83,10 @@ export const COMMON_RENTALS = [
   { desc: 'Scissor lift — 19\'', unit: 'week' },
   { desc: 'Scissor lift — 26\'', unit: 'week' },
   { desc: 'Boom / articulating lift', unit: 'week' },
+  // The rack does not walk in. A crane comes, sets up, and swings it — the
+  // crew hours for hooking on and walking it in are in the labor units; this
+  // is what the crane itself costs, and it had no line anywhere.
+  { desc: 'Crane — rack set', unit: 'day' },
   { desc: 'Forklift / telehandler', unit: 'week' },
   { desc: 'Reefer trailer — product holding', unit: 'week' },
   { desc: 'Spot coolers / portable refrigeration', unit: 'week' },

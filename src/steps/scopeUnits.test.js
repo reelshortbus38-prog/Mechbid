@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scopeLines, scopeManHours, scopeTasks, SCOPE_UNIT_KEYS, SCOPE_UNIT_FIELDS } from './scopeUnits.js';
+import { scopeLines, scopeManHours, scopeTasks, rackSetManHours, SCOPE_UNIT_KEYS, SCOPE_UNIT_FIELDS } from './scopeUnits.js';
 import { DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { provenanceOf } from './laborUnits.js';
 
@@ -44,7 +44,7 @@ describe('scopeLines', () => {
   it('drops a line whose unit has been zeroed rather than billing nothing', () => {
     // Zeroing a unit is how an estimator says "not my scope on this job" —
     // GC sets the panels, say. A zero-hour row in the list would be noise.
-    const lines = scopeLines({ racks: 1, walkInPanels: 10 }, { ...U, perRackSet: 0, perWalkInPanel: 0 });
+    const lines = scopeLines({ racks: 1, walkInPanels: 10 }, { ...U, rackSetHrs: 0, perWalkInPanel: 0 });
     expect(lines.map(l => l.kind)).toEqual(['rackCommission']);
   });
 
@@ -58,7 +58,7 @@ describe('scopeManHours', () => {
   it('adds up what the takeoff was missing', () => {
     // A two-rack store with thirty panels, at the shipped units.
     const hrs = scopeManHours({ racks: 2, walkInPanels: 30 }, U);
-    expect(hrs).toBeCloseTo(2 * (36 + 2.0) + 30 * 0.45, 6);
+    expect(hrs).toBeCloseTo(2 * (36 + 8) + 30 * 0.45, 6);   // 8 = 2 hr x 4 men
   });
 
   it('is zero on a job with none of it', () => {
@@ -79,7 +79,7 @@ describe('scopeTasks', () => {
     // The units are MAN-hours. Emitting 36 as men:1 says one person
     // commissions a rack over four and a half days, which nobody does.
     const [set] = scopeTasks({ counts: { racks: 1 }, units: U, crewSize: 2, uid });
-    expect(set.men * set.hrs).toBeCloseTo(2.0, 1);
+    expect(set.men * set.hrs).toBeCloseTo(8, 1);
     const commission = scopeTasks({ counts: { racks: 1 }, units: U, crewSize: 2, uid })[1];
     expect(commission.men).toBe(2);
     expect(commission.men * commission.hrs).toBeCloseTo(36, 1);
@@ -149,24 +149,44 @@ describe('the scope units', () => {
     expect(provenanceOf('perWalkInPanel').note).toMatch(/named estimator/i);
   });
 
-  it('the rack SET was never a dispute — the two sides meant different things', () => {
-    // It read as 8-12x apart against the PRD's 16-24 hr until the mechanic
-    // settled it: "that 2 hour is for setting the rack in place." So the PRD
-    // figure is not a competing answer to this question, and recording it as
-    // one would manufacture a disagreement that does not exist.
-    expect(provenanceOf('perRackSet').state).toBe('confirmed');
-    expect(provenanceOf('perRackSet').note).toMatch(/setting the rack in place/i);
-    expect(provenanceOf('perRackSet').note).toMatch(/never in conflict/i);
+  it('keeps the rack-set duration and crew as SEPARATE numbers', () => {
+    // The whole reason this is two boxes. Two hours is the clock; the crew is
+    // what turns it into labor. Multiplied into one box it went in as 2
+    // man-hours — a quarter of the real figure, in the direction of
+    // under-billing — and nothing about the single number said which half was
+    // wrong.
+    expect(DEFAULT_LABOR_UNITS.rackSetHrs).toBe(2);
+    expect(DEFAULT_LABOR_UNITS.rackSetCrew).toBe(4);
+    expect(rackSetManHours(DEFAULT_LABOR_UNITS)).toBe(8);
   });
 
-  it('says where the crane goes, rather than leaving a silent hole', () => {
-    // Offloading the rack and getting it into the building is real work and is
-    // NOT in the 2 hours. It is bought in, so it belongs in subs or rentals —
-    // and inventing a man-hour unit for it would put a number in a bid that
-    // nobody has quoted.
-    const note = provenanceOf('perRackSet').note;
-    expect(note).toMatch(/offloading/i);
-    expect(note).toMatch(/Subcontractors or Rentals/);
+  it('rates the duration and the crew count differently, because they are', () => {
+    // The duration is first-hand, step by step. The crew count is "I'd say
+    // four guys like normal" — his own estimate, and he said he was not sure.
+    // Reporting one confidence for their product would hide the soft half.
+    expect(provenanceOf('rackSetHrs').state).toBe('confirmed');
+    expect(provenanceOf('rackSetCrew').state).toBe('unconfirmed');
+    expect(provenanceOf('rackSetCrew').note).toMatch(/not sure how many/i);
+  });
+
+  it('says the crew count multiplies everything', () => {
+    // It is the one soft number with a multiplier attached to it.
+    expect(provenanceOf('rackSetCrew').note).toMatch(/multiplies everything/i);
+  });
+
+  it('says the crane hours are IN and the crane cost is not', () => {
+    // The crew works with the crane — hooking on, walking the driver in. That
+    // is in these hours. What the crane charges is hired, and no man-hour unit
+    // was invented for it.
+    expect(provenanceOf('rackSetHrs').note).toMatch(/whole crane operation/i);
+    expect(provenanceOf('rackSetHrs').note).toMatch(/clock, not the labor/i);
+  });
+
+  it('moves with the crew count, not just the hours', () => {
+    const three = rackSetManHours({ ...DEFAULT_LABOR_UNITS, rackSetCrew: 3 });
+    expect(three).toBe(6);
+    expect(rackSetManHours({ rackSetHrs: 0, rackSetCrew: 4 })).toBe(0);
+    expect(rackSetManHours({})).toBe(0);
   });
 
   it('marks commissioning as varying, because both sources gave a RANGE', () => {
@@ -183,6 +203,6 @@ describe('the scope units', () => {
     // one into the other is the double-count this pair invites.
     expect(provenanceOf('perRackTie').note).toMatch(/not setting the rack itself/i);
     expect(DEFAULT_LABOR_UNITS.perRackTie).not.toBe(undefined);
-    expect(DEFAULT_LABOR_UNITS.perRackSet).not.toBe(undefined);
+    expect(DEFAULT_LABOR_UNITS.rackSetHrs).not.toBe(undefined);
   });
 });

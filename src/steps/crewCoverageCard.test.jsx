@@ -111,8 +111,9 @@ describe('the scope-not-in-takeoff card', () => {
   });
 
   it('prices the racks once they are counted', () => {
+    // 2 racks x (36 commission + 8 set) = 88 man-hours.
     const out = refrig({ scopeCounts: { racks: 2, walkInPanels: 0 } });
-    expect(out).toMatch(/76 man-hours/);
+    expect(out).toMatch(/88 man-hours/);
   });
 
   it('warns that a unit is still contested', () => {
@@ -131,10 +132,21 @@ describe('the scope-not-in-takeoff card', () => {
     expect(refrig({})).toMatch(/not the same as/i);
   });
 
-  it('sends the crane somewhere real instead of leaving it out', () => {
-    // Getting the rack off the truck is not in the 2 hours and is not crew
-    // hours at all. Both of those paths already exist in the app.
-    expect(refrig({})).toMatch(/Subcontractors or Rentals/);
+  it('sends the crane COST somewhere real, while keeping the crew hours', () => {
+    // The crew hours include working with the crane. What the crane charges is
+    // hired, and that line now exists in Rentals.
+    const out = refrig({});
+    expect(out).toMatch(/Rentals/);
+    expect(out).toMatch(/Crane/);
+  });
+
+  it('shows the rack-set arithmetic rather than just its answer', () => {
+    // A duration typed into a man-hour box is off by the size of the crew.
+    // Showing the working is what makes that visible.
+    const out = refrig({});
+    expect(out).toMatch(/2 hr on site/);
+    expect(out).toMatch(/4 men/);
+    expect(out).toMatch(/8 man-hours/);
   });
 
   it('stays off an HVAC job, which has neither a rack nor a walk-in', () => {
