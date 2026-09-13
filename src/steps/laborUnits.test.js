@@ -201,10 +201,38 @@ describe('saying which units anybody has actually checked', () => {
     }
   });
 
-  it('marks the brazing times as confirmed — those were checked', () => {
+  it('marks the brazing times DISPUTED, because two people who do this disagree', () => {
+    // These were 'confirmed' on one working foreman's read. The 2026-09-12
+    // review put a large joint at 0.15 hr against the 1.1 hr standing here —
+    // about 7x. Joints dominate the estimate, so on a twenty-circuit store
+    // that is 341 man-hours against 217.
+    //
+    // Leaving a checkmark on a figure in open dispute is the app claiming a
+    // confidence nobody has.
     for (const k of ['perJointSmall', 'perJointMed', 'perJointLarge']) {
-      expect(provenanceOf(k).state, k).toBe('confirmed');
+      expect(provenanceOf(k).state, k).toBe('disputed');
+      expect(provenanceOf(k).note, k).toMatch(/0\.15 hr/);
+      expect(provenanceOf(k).note, k).toMatch(/1\.1 hr/);
     }
+  });
+
+  it('names BOTH readings, so neither person is quietly overruled', () => {
+    // A dispute reported as a single number is not a dispute, it is a decision
+    // taken by an app that is not qualified to take it.
+    const note = provenanceOf('perJointLarge').note;
+    expect(note).toMatch(/foreman/i);
+    expect(note).toMatch(/nothing has been changed/i);
+  });
+
+  it('says the per-foot rate is disputed and WHY it cannot just be applied', () => {
+    // The review gave one number, 0.075 hr/ft, off a measured day: 400 ft,
+    // three men, ten hours. It is above even the large figure here — and it
+    // came with no pipe size, while this table has three buckets. Which row it
+    // belongs in is not knowable from what was given.
+    const note = provenanceOf('perFtMed').note;
+    expect(note).toMatch(/0\.075/);
+    expect(note).toMatch(/400 ft/);
+    expect(note).toMatch(/no pipe size|not known/i);
   });
 
   it('does not claim the fittings count is an estimate either', () => {
@@ -222,9 +250,13 @@ describe('saying which units anybody has actually checked', () => {
     expect(provenanceOf('perCase').note).toMatch(/too many variables/i);
   });
 
-  it('leaves the footage rates honestly unconfirmed', () => {
-    for (const k of ['perFtSmall', 'perFtMed', 'perFtLarge', 'perRackTie']) {
-      expect(provenanceOf(k).state, k).toBe('unconfirmed');
+  it('leaves the rack tie honestly unconfirmed — nobody has looked at it', () => {
+    // The distinction that matters: unconfirmed is "nobody checked", disputed
+    // is "two people checked and disagree". Rounding one to the other loses
+    // the only useful thing either state says.
+    expect(provenanceOf('perRackTie').state).toBe('unconfirmed');
+    for (const k of ['perFtSmall', 'perFtMed', 'perFtLarge']) {
+      expect(provenanceOf(k).state, k).toBe('disputed');
     }
   });
 
@@ -241,11 +273,30 @@ describe('saying which units anybody has actually checked', () => {
 
   it('counts what the estimator is standing on', () => {
     const t = unitsConfidence();
-    // Three brazing times confirmed; the case hookup and the fittings count
-    // both marked as varying, because a working estimator refused to put one
-    // number on either.
-    expect(t.confirmed).toBe(3);
+    // Three brazing times and three footage rates in open dispute; the case
+    // hookup and the fittings count marked as varying, because a working
+    // estimator refused to put one number on either. Nothing confirmed any
+    // more — the one thing that was is now contested.
+    expect(t.disputed).toBe(6);
     expect(t.varies).toBe(2);
-    expect(t.confirmed + t.varies + t.unconfirmed).toBe(Object.keys(UNIT_PROVENANCE).length);
+    expect(t.confirmed).toBe(0);
+    expect(t.confirmed + t.varies + t.unconfirmed + t.disputed)
+      .toBe(Object.keys(UNIT_PROVENANCE).length);
+  });
+
+  it('counts a new state instead of tallying NaN onto the screen', () => {
+    // The tally used to be a hand-written object of three keys. A state it did
+    // not know about landed on undefined and came out NaN — which renders as
+    // nothing, and reads as good news.
+    const t = unitsConfidence();
+    for (const state of Object.keys(PROVENANCE_MARK)) {
+      expect(Number.isFinite(t[state]), state).toBe(true);
+    }
+  });
+
+  it('gives disputed its own mark, distinct from every other state', () => {
+    const marks = Object.values(PROVENANCE_MARK);
+    expect(new Set(marks).size).toBe(marks.length);
+    expect(PROVENANCE_MARK.disputed).toBeTruthy();
   });
 });
