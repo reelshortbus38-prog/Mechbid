@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseDuctDesc, gaugeForRect, ductPurchase, ductServiceOf, GALV_LB_SQFT, isLinearDevice, linearDeviceFt } from './ductwork.js';
+import { ductAccessories, ductAccessoryDesc, DEFAULT_DUCT_ACCESSORY_PCT } from './ductwork.js';
 
 // Guards the feet → purchase-unit conversion: rectangular sheet metal is
 // bought by the POUND (fabricated), spiral by the foot in 10' joints, flex
@@ -303,5 +304,68 @@ describe('telling a linear device face from a duct size', () => {
     expect(unusable).toHaveLength(1);
     expect(lines).toHaveLength(1);
     expect(lines[0].desc).toMatch(/Galvanized rectangular duct/);
+  });
+});
+
+// ── WHAT HOLDS THE DUCT UP ──────────────────────────────────────────────────
+// ductPurchase buys metal, insulation and flex. Nothing in this app bought a
+// single piece of hanger strap — while the hydronic side has carried a
+// fittings-and-hangers allowance since it was written. Every duct bid was
+// metal with nothing to hang it from.
+describe('ductAccessories', () => {
+  const duct = (qty, unitCost) => ({ dgen: true, gen: 'duct', qty, unitCost });
+
+  it('takes a percentage of the duct material', () => {
+    const r = ductAccessories([duct(1000, 4.5), duct(200, 9)], 10);
+    expect(r.total).toBe(4500 + 1800);
+    expect(r.allowance).toBe(630);
+  });
+
+  it('counts only what the duct calculator generated', () => {
+    // A hand-typed grille, a condensate line and the HYDRONIC allowance's own
+    // lot line are all in hvacParts too. Pulling any of them in would be the
+    // double-count this file is careful about.
+    const parts = [
+      duct(1000, 4.5),
+      { desc: 'Ceiling diffuser', qty: 20, unitCost: 55 },
+      { dgen: true, gen: 'hydronic', qty: 1, unitCost: 2400 },
+      { desc: 'Condensate trap & drain (PVC)', qty: 1, unitCost: 80 },
+    ];
+    expect(ductAccessories(parts, 10).total).toBe(4500);
+  });
+
+  it('is far below the hydronic allowance, on purpose', () => {
+    // Pipe fittings are a large fraction of pipe cost; hanger strap against
+    // fabricated sheet metal is a small one. Copying 40% across would have
+    // been the easy mistake.
+    expect(DEFAULT_DUCT_ACCESSORY_PCT).toBeLessThan(20);
+    expect(DEFAULT_DUCT_ACCESSORY_PCT).toBeGreaterThan(0);
+  });
+
+  it('is zero on a job with no duct rather than a stray lot line', () => {
+    expect(ductAccessories([], 10)).toEqual({ total: 0, pct: 10, allowance: 0 });
+    expect(ductAccessories(undefined, 10).allowance).toBe(0);
+    expect(ductAccessories([{ desc: 'Grille', qty: 4, unitCost: 45 }], 10).allowance).toBe(0);
+  });
+
+  it('adds nothing when the percentage is zeroed or junk', () => {
+    // Zero is how an estimator says "my duct price already carries this".
+    expect(ductAccessories([duct(1000, 4.5)], 0).allowance).toBe(0);
+    expect(ductAccessories([duct(1000, 4.5)], -5).allowance).toBe(0);
+    expect(ductAccessories([duct(1000, 4.5)], 'x').allowance).toBe(0);
+  });
+
+  it('is zero while the duct is still unpriced, rather than guessing', () => {
+    // A percentage of nothing is nothing. The card says so rather than adding
+    // a $0 lot line that looks handled.
+    expect(ductAccessories([duct(1000, 0)], 10).allowance).toBe(0);
+  });
+
+  it('names what is in it and what is not, because both cause double-counts', () => {
+    const desc = ductAccessoryDesc(12);
+    expect(desc).toContain('12%');
+    expect(desc).toMatch(/hangers, supports & sealant/i);
+    expect(desc).toMatch(/cleats and corners are in the fabricated price/i);
+    expect(desc).toMatch(/dampers are counted separately/i);
   });
 });
