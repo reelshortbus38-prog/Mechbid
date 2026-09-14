@@ -5,7 +5,7 @@ import { markEdited } from '../components/manualEdits.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
-import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
+import { parseDuctDesc, ductPurchase, ductAccessories, ductAccessoryDesc, DEFAULT_DUCT_ACCESSORY_PCT } from '../components/ductwork.js';
 import { isHydronicService, pipeDescSize } from '../components/pipePricing.js';
 import { hydronicValveLines, countHydronicEquipment, HOSE_KIT } from '../components/hydronicValves.js';
 import { parseFlowList, sizeMix, mixVsSingle, sizingNote } from '../components/hydronicSizing.js';
@@ -458,6 +458,71 @@ function MiscParts() {
 // job are big enough to price individually, and burying them in a percentage
 // would both understate them and hide them.
 export const DEFAULT_HYDRONIC_FITTINGS_PCT = 40;
+
+// ── WHAT HOLDS THE DUCT UP ───────────────────────────────────────────────────
+// The duct calculator buys metal, insulation and flex. Nothing bought a single
+// piece of hanger strap. The hydronic card below has had a fittings-and-hangers
+// allowance since it was written — on exactly the reasoning that footage alone
+// under-buys a system — and duct had no equivalent, so every duct bid this app
+// produced was sheet metal with nothing to hang it from.
+function DuctAccessoriesCalculator() {
+  const { state, dispatch } = useStore();
+  const parts = state.hvacParts || [];
+  const pct = Number(state.rates?.ductAccessoryPct ?? DEFAULT_DUCT_ACCESSORY_PCT);
+  const [added, setAdded] = useState(false);
+
+  const { total, allowance } = ductAccessories(parts, pct);
+  // No duct on this job at all — say nothing rather than show an empty card.
+  const hasDuct = parts.some(p => p.dgen && p.gen === 'duct');
+  if (!hasDuct) return null;
+
+  function addAllowance() {
+    const line = {
+      id: uid(), dgen: true, gen: 'ductacc',
+      desc: ductAccessoryDesc(pct),
+      qty: 1, unit: 'lot', unitCost: allowance, total: allowance,
+    };
+    dispatch({ type: 'SET', key: 'hvacParts',
+      value: [...parts.filter(p => !(p.dgen && p.gen === 'ductacc')), line] });
+    setAdded(true);
+  }
+
+  return (
+    <Card style={{ background: colors.surface }}>
+      <SLabel>🪝 Duct Hangers &amp; Sealant Allowance</SLabel>
+      <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 10 }}>
+        Hanger strap and all-thread, trapeze angle, anchors and beam clamps, duct sealant and UL181 tape —
+        none of which the duct takeoff buys. Added as one lot against the <strong>generated duct material</strong>.
+        <br />
+        <span style={{ color: colors.yellow }}>Cleats, S-slips and corners are NOT in it</span> — those are shop
+        work and already inside the per-pound fabricated price. Fire and smoke dampers are not either; they are
+        scheduled devices with their own counts.
+        <br />
+        Ten percent is an allowance in the right region, not a measurement — long straight trunks on a low deck
+        run under it, and a hundred short drops in a tight ceiling run over. It is well below the hydronic 40%
+        because hanger strap against fabricated sheet metal is a small fraction, where pipe fittings are a large one.
+      </div>
+      <Row style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: colors.textDim }}>% of duct material</span>
+        <Input type="number" value={pct}
+          onChange={e => { dispatch({ type: 'SET_RATES_MISC', key: 'ductAccessoryPct', value: parseFloat(e.target.value) || 0 }); setAdded(false); }}
+          style={{ width: 70, textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+        <span style={{ fontSize: 12, color: colors.textDim }}>
+          of {fmt(total)} duct material = <strong style={{ color: colors.green }}>{fmt(allowance)}</strong>
+        </span>
+        <Btn variant="green" size="sm" onClick={addAllowance} disabled={!(allowance > 0)}>
+          {added ? '✓ Added' : '+ Add Allowance'}
+        </Btn>
+      </Row>
+      {!(total > 0) && (
+        <div style={{ fontSize: 11, color: colors.yellow, marginTop: 8, lineHeight: 1.6 }}>
+          The duct lines are still at $0, so a percentage of them is $0. Price the duct first — an allowance
+          added now would read as handled and carry nothing.
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function HydronicFittingsCalculator() {
   const { state, dispatch } = useStore();
@@ -1005,6 +1070,8 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
       {/* Duct footage → pounds / joints / rolls (only shows when duct lines exist) */}
       <DuctCalculator />
+      {/* Straight after the duct takeoff, because it prices off it. */}
+      <DuctAccessoriesCalculator />
       <HydronicFittingsCalculator />
       <HydronicValveCalculator />
 

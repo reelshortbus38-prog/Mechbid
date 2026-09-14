@@ -238,3 +238,49 @@ export function ductPurchase(runs, opts = {}) {
 
   return { lines, rectByGauge, spiralByDia, flexFt, wrapSqft, unusable };
 }
+
+// ── WHAT HOLDS THE DUCT UP, AND WHAT SEALS IT ───────────────────────────────
+// ductPurchase buys metal: rectangular by the pound, spiral by the foot, flex
+// by the box, wrap by the roll. None of that is what keeps a trunk off the
+// deck or stops it leaking.
+//
+// The hydronic side of this app has carried a fittings-joints-and-hangers
+// allowance since it was written — a percentage of pipe material, added as one
+// lot, on the reasoning that "footage alone under-buys piping." Duct has the
+// same problem and had no equivalent at all, so every duct bid this app
+// produced was metal and insulation with nothing to hang it from.
+//
+// WHAT IS IN THE ALLOWANCE: hanger strap and all-thread, angle iron trapeze,
+// anchors and beam clamps, duct sealant and UL181 tape.
+//
+// WHAT IS NOT: drive cleats, S-slips and corners. Those are shop work and they
+// are inside the per-pound fabricated price the duct lines already carry —
+// adding them here would be the double-count this whole file is careful about.
+// Fire and smoke dampers are not in it either; those are scheduled devices
+// with their own counts, not an allowance.
+//
+// THE PERCENTAGE IS AN ALLOWANCE, NOT A MEASUREMENT. It is deliberately far
+// below the hydronic side's 40%: pipe fittings are a large fraction of pipe
+// cost, while hanger strap against fabricated sheet metal is a small one. Ten
+// percent is a starting point in the right region and nothing more — a job
+// with long straight trunks on a low deck runs under it, and one with hundreds
+// of short drops in a tight ceiling runs over.
+export const DEFAULT_DUCT_ACCESSORY_PCT = 10;
+
+// → { total, allowance, pct } — the duct material found and what the allowance
+// on it comes to. Pure, so the policy is testable without a store.
+export function ductAccessories(parts = [], pct = DEFAULT_DUCT_ACCESSORY_PCT) {
+  const p = Math.max(0, Number(pct) || 0);
+  // Only the lines the duct calculator generated. A hand-typed grille or a
+  // condensate line is not duct material, and the hydronic allowance's own
+  // lot line must never end up inside this one.
+  const total = (parts || [])
+    .filter(x => x && x.dgen && x.gen === 'duct')
+    .reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.unitCost) || 0), 0);
+  return { total, pct: p, allowance: Math.round(total * p / 100) };
+}
+
+export function ductAccessoryDesc(pct = DEFAULT_DUCT_ACCESSORY_PCT) {
+  return `Duct hangers, supports & sealant — ${pct}% of duct material `
+    + '(cleats and corners are in the fabricated price; dampers are counted separately)';
+}
