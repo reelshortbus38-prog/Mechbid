@@ -240,6 +240,46 @@ export function mixVsSingle(mix, priceBySize, singleSize) {
   };
 }
 
+// ── GETTING THE FLOWS IN ─────────────────────────────────────────────────────
+// This whole module sized nothing for as long as it existed, for one banal
+// reason: there was no way to tell it the flows. hydronicValveLines has always
+// accepted a pre-sized `terminalMix` — the comment there says "when the flows
+// are known" — and nothing ever knew them, so every job fell through to one
+// hand-picked size applied to every terminal, which is the exact failure the
+// header of this file was written about.
+//
+// A schedule reads "eight panels at 2 GPM, twelve at 4, six at 9", so that is
+// what this parses. COUNT FIRST, then flow — "8 @ 2" is eight terminals of
+// 2 GPM each, not two of eight. Getting that backwards silently sizes the job
+// wrong rather than failing, so the card says which way round it goes and this
+// is tested both ways.
+//
+// A bare number is one terminal at that flow, because somebody with three
+// panels will type "2, 4, 9" and mean exactly that.
+//
+// → [{ gpm, count }], skipping anything it cannot read rather than guessing.
+export function parseFlowList(text) {
+  const out = [];
+  for (const chunk of String(text || '').split(/[,\n;]+/)) {
+    const t = chunk.trim();
+    if (!t) continue;
+    // "8 @ 2", "8 x 2", "8 at 2 gpm" — count, separator, flow.
+    const pair = t.match(/^(\d+(?:\.\d+)?)\s*(?:@|x|\*|at)\s*(\d+(?:\.\d+)?)/i);
+    if (pair) {
+      const count = Math.floor(Number(pair[1]));
+      const gpm = Number(pair[2]);
+      if (count > 0 && gpm > 0) out.push({ gpm, count });
+      continue;
+    }
+    const solo = t.match(/^(\d+(?:\.\d+)?)/);
+    if (solo) {
+      const gpm = Number(solo[1]);
+      if (gpm > 0) out.push({ gpm, count: 1 });
+    }
+  }
+  return out;
+}
+
 export function sizingNote(target = DEFAULT_FRICTION_TARGET) {
   return `Sized at ${target} ft per 100 ft of friction — constant-friction, which is what hydronic `
     + 'schedules do. Velocity rises with size on purpose; it is the friction that is held. '

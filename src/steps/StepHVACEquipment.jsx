@@ -7,7 +7,8 @@ import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase } from '../components/ductwork.js';
 import { isHydronicService, pipeDescSize } from '../components/pipePricing.js';
-import { hydronicValveLines, countHydronicEquipment } from '../components/hydronicValves.js';
+import { hydronicValveLines, countHydronicEquipment, HOSE_KIT } from '../components/hydronicValves.js';
+import { parseFlowList, sizeMix, mixVsSingle, sizingNote } from '../components/hydronicSizing.js';
 import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import { PURCHASE_UNITS, unitFor, rowUnit } from '../components/purchaseUnits.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
@@ -548,6 +549,18 @@ function HydronicValveCalculator() {
   const [airVents, setAirVents] = useState(0);
   const [drains, setDrains] = useState(0);
   const [added, setAdded] = useState(false);
+  // ── SIZING THE TERMINALS FROM THEIR FLOWS ────────────────────────────────
+  // hydronicValveLines has accepted a pre-sized `terminalMix` since it was
+  // written — "when the flows are known" — and nothing has ever known them.
+  // So every hydronic job fell through to the single hand-picked size above,
+  // applied to every terminal on the job. A hose kit roughly doubles every
+  // size and a half, so on a job that genuinely mixes, that is not a rounding
+  // error. components/hydronicSizing.js has sized these correctly the whole
+  // time and was wired to nothing.
+  // Persisted, not useState: this is read off the schedule and it sizes every
+  // hose kit on the job. Losing it on a reload means re-reading the drawing.
+  const flowText = state.hydronicFlows || '';
+  const setFlowText = v => dispatch({ type: 'SET', key: 'hydronicFlows', value: v });
 
   // Mains and branches worth isolating — the sizes the takeoff actually found,
   // two valves each (supply and return) as a starting count.
@@ -557,8 +570,16 @@ function HydronicValveCalculator() {
 
   if (pipeLines.length === 0 && counted.terminals === 0) return null;
 
+  // Flows typed as a schedule reads them — "8 @ 2, 12 @ 4, 6 @ 9" — count
+  // first. Empty means no schedule to hand, and the card behaves exactly as it
+  // did before any of this existed.
+  const flows = parseFlowList(flowText);
+  const mix = flows.length ? sizeMix(flows) : null;
+  const vsSingle = mix ? mixVsSingle(mix, HOSE_KIT, terminalSize) : null;
+
   const lines = hydronicValveLines({
     terminals: Number(terminals) || 0, terminalSize, terminalMode, controlValves,
+    terminalMix: mix ? mix.sizes : undefined,
     pumps: Number(pumps) || 0, pumpSize, branches,
     airVents: Number(airVents) || 0, drains: Number(drains) || 0,
   });
@@ -611,6 +632,47 @@ function HydronicValveCalculator() {
           </Select>
         </div>
       </Row>
+
+      {/* ── SIZE THEM FROM THE SCHEDULE INSTEAD OF PICKING ONE ──────────────
+          The drawing usually says to: "SIZE HOSE KIT PER HYDRONIC HOSE KIT PIPE
+          SIZING SCHEDULE FOR GPM LISTED FOR PANEL(S) ON PLANS" is an
+          instruction to look the size up from the flow, which makes it a
+          takeoff step. Leave it blank and everything above behaves as it
+          always has. */}
+      <div style={{ marginBottom: 12, padding: '10px 12px', background: colors.card2, borderRadius: 6, border: `1px solid ${colors.border}` }}>
+        <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>
+          Terminal flows from the schedule — <strong>count first</strong>, e.g. <code>8 @ 2, 12 @ 4, 6 @ 9</code>{' '}
+          (eight terminals at 2 GPM each). Leave blank to use the single size above for all of them.
+        </div>
+        <Input type="text" value={flowText} onChange={e => { setFlowText(e.target.value); setAdded(false); }}
+          placeholder="8 @ 2, 12 @ 4, 6 @ 9" style={{ width: '100%', fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+
+        {mix && (
+          <div style={{ marginTop: 10, fontSize: 11, lineHeight: 1.6, color: colors.textDim }}>
+            <div>
+              <strong style={{ color: colors.green }}>{mix.total} terminal{mix.total === 1 ? '' : 's'}</strong>
+              {' → '}
+              {mix.sizes.map(x => `${x.count} × ${x.label}`).join(' · ')}
+            </div>
+            {mix.unsized.length > 0 && (
+              <div style={{ color: colors.yellow, marginTop: 4 }}>
+                ⚠ {mix.unsized.reduce((s, u) => s + u.count, 0)} past the end of the table
+                ({mix.unsized.map(u => `${u.count} at ${u.gpm} GPM`).join(', ')}) — sized by hand, not by this.
+              </div>
+            )}
+            {vsSingle && vsSingle.deltaPct !== null && Math.abs(vsSingle.deltaPct) >= 1 && (
+              <div style={{ marginTop: 4 }}>
+                Hose kits sized this way come to <strong>{fmt(vsSingle.sizedTotal)}</strong>, against{' '}
+                {fmt(vsSingle.singleTotal)} for {mix.total} at one size —{' '}
+                <strong style={{ color: vsSingle.deltaPct > 0 ? colors.yellow : colors.green }}>
+                  {vsSingle.deltaPct > 0 ? '+' : ''}{vsSingle.deltaPct}%
+                </strong>.
+              </div>
+            )}
+            <div style={{ marginTop: 4, opacity: 0.85 }}>{sizingNote()}</div>
+          </div>
+        )}
+      </div>
 
       <Row style={{ gap: 14, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
