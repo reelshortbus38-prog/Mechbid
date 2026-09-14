@@ -72,3 +72,86 @@ describe('the duct hangers and sealant allowance', () => {
     expect(out).toContain('$450');
   });
 });
+
+// ── AND THE LABOR, WHICH DID NOT EXIST ──────────────────────────────────────
+// A full HVAC takeoff produced a materials bid and not one labor hour. These
+// render the real Labor step, because "it has tests" was true of the hydronic
+// sizing engine the whole time it was unreachable.
+import Step5_Labor from './Step5_Labor.jsx';
+
+const labor = extra => renderToStaticMarkup(
+  <AuthProvider>
+    <StateProvider initial={{ ...initialState, mode: 'Commercial HVAC', ...extra }}>
+      <Step5_Labor onNext={noop} onBack={noop} />
+    </StateProvider>
+  </AuthProvider>,
+);
+
+const RTUS = {
+  hvacEquipment: [
+    { id: 'e1', tag: 'RTU-1', type: 'RTU', tons: 5, qty: 1 },
+    { id: 'e2', tag: 'RTU-2', type: 'RTU', tons: 10, qty: 1 },
+  ],
+};
+
+describe('the HVAC labor estimator', () => {
+  it('is on the screen at all', () => {
+    // It was not. Every hour on an HVAC job was hand-typed as crew days.
+    expect(labor(RTUS)).toMatch(/HVAC Labor Estimator/);
+  });
+
+  it('derives a line per unit off the schedule', () => {
+    const out = labor(RTUS);
+    expect(out).toContain('Set RTU-1');
+    expect(out).toContain('Set RTU-2');
+  });
+
+  it('gives startup its own line, never folded into the set', () => {
+    // The one thing every published source agreed on.
+    expect(labor(RTUS)).toMatch(/Startup &amp; check|Startup & check/);
+  });
+
+  it('warns in plain words that nobody in the trade has read the numbers', () => {
+    // These came off the web. Every other figure in this app came from a
+    // working mechanic or an estimator, and the difference has to be visible.
+    const out = labor(RTUS);
+    expect(out).toMatch(/Nobody who bids or installs HVAC has looked at any of these/);
+  });
+
+  it('says the crane and test &amp; balance are NOT in the hours', () => {
+    // Both are bought in. Inventing man-hours for work the shop subcontracts
+    // would put a number in a bid nobody has quoted.
+    const out = labor(RTUS);
+    expect(out).toMatch(/Subcontractors or Rentals/);
+    expect(out).toMatch(/balancing contractor/);
+  });
+
+  it('flags a unit the straight-line model reads low on', () => {
+    const out = labor({ hvacEquipment: [{ id: 'e1', tag: 'RTU-9', type: 'RTU', tons: 40, qty: 1 }] });
+    expect(out).toMatch(/over 25 tons/);
+    expect(out).toMatch(/reads LOW/);
+  });
+
+  it('stays silent on a job with no HVAC equipment or duct', () => {
+    expect(labor({ hvacEquipment: [] })).not.toMatch(/HVAC Labor Estimator/);
+  });
+
+  it('stays off a refrigeration job entirely', () => {
+    const out = renderToStaticMarkup(
+      <AuthProvider>
+        <StateProvider initial={{ ...initialState, mode: 'Commercial Refrigeration' }}>
+          <Step5_Labor onNext={noop} onBack={noop} />
+        </StateProvider>
+      </AuthProvider>,
+    );
+    expect(out).not.toMatch(/HVAC Labor Estimator/);
+  });
+
+  it('counts duct by the pound off the takeoff', () => {
+    const out = labor({
+      hvacParts: [ductPart('Galvanized rectangular duct, 24 ga — fabricated', 2000, 4.5)],
+    });
+    expect(out).toMatch(/Hang and connect ductwork/);
+    expect(out).toContain('2,000 lb');
+  });
+});

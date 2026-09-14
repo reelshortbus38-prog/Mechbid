@@ -186,10 +186,68 @@ export const UNIT_PROVENANCE = {
   },
 };
 
+// ── AND THE HVAC UNITS, WHICH STAND ON SOMETHING WEAKER AGAIN ───────────────
+// Every refrigeration figure here came from somebody who does the work. The
+// HVAC ones came off the open web in September 2026 — published industry
+// ranges, no name attached, nobody who bids or installs this having looked at
+// them. That is a real difference in kind, not degree, and 'unconfirmed' is
+// the most any of them can honestly carry until the HVAC bidder reads them.
+const WEB_SOURCED = 'Read off published industry sources in September 2026, not from anyone who bids or installs '
+  + 'this work and not from a finished job. A starting point so the app produces SOMETHING for an HVAC takeoff '
+  + 'instead of nothing — every hour on an HVAC job used to be hand-typed. Expect it to move once somebody who '
+  + 'bids these looks at it.';
+
+export const HVAC_PROVENANCE = {
+  rtuSetHrsBase: {
+    state: 'unconfirmed',
+    note: `${WEB_SOURCED} The sources gave "8 to 16 hours for a two-person crew" for a 5-10 ton rooftop, `
+      + 'excluding crane time. That is a DURATION with a crew beside it, which is why the hours and the men are '
+      + 'separate boxes — the rack set was entered as man-hours once already, at a quarter of its real value.',
+  },
+  rtuSetHrsPerTon: {
+    state: 'unconfirmed',
+    note: `${WEB_SOURCED} Base plus per-ton, because a 3-ton swap is not three-fifths of a 5-ton: there is a `
+      + 'fixed cost to getting there, opening the roof and making the connections every unit needs. Linear, and '
+      + 'the sources say labor climbs faster than tonnage above about 25 tons — so it UNDER-reads on big units, '
+      + 'and the card says so rather than pretending.',
+  },
+  rtuSetCrew: {
+    state: 'unconfirmed',
+    note: 'Two, which is what every source found described. It multiplies the whole unit-set line, so it is the '
+      + 'one to check first on a shop that sends three.',
+  },
+  curbAdapterHrs: {
+    state: 'unconfirmed',
+    note: `${WEB_SOURCED} No source gave a figure for this separately — it is a reasoned allowance for a new `
+      + 'unit that does not match the old curb, not a published number.',
+  },
+  ductHrsPerLb: {
+    state: 'unconfirmed',
+    note: `${WEB_SOURCED} Sheet metal is the one thing here quoted as a true MAN-hour rate — per man, per pound `
+      + '— so it carries no crew multiplier. Published figures ran from about 44 lb/hr (0.023 hr/lb) down to '
+      + 'roughly 22 sq ft/hr installed, which at 24 gauge is nearer 0.04. This sits between them. It counts the '
+      + 'RECTANGULAR duct only, because that is what the takeoff weighs; spiral and flex are bought by the foot '
+      + 'and by the box and are not in the pound count.',
+  },
+  startupHrsPerUnit: {
+    state: 'unconfirmed',
+    note: 'THE WEAKEST NUMBER IN THIS APP. No source gave hours for startup at all — they agree only that it '
+      + 'must be its own line and never folded into the install, which is the part worth having. Four hours is '
+      + 'a placeholder standing in for a real figure, and it is here so the line EXISTS to be corrected rather '
+      + 'than being silently absent the way rack commissioning was.',
+  },
+  startupCrew: {
+    state: 'unconfirmed',
+    note: 'One, on the reasoning that startup is a tech with a gauge set rather than a crew. Unchecked.',
+  },
+};
+
 export const PROVENANCE_MARK = { confirmed: '✓', varies: '~', unconfirmed: '?', disputed: '!' };
 
 export function provenanceOf(key) {
-  return UNIT_PROVENANCE[key] || { state: 'unconfirmed', note: 'Not yet checked against a finished job.' };
+  return UNIT_PROVENANCE[key]
+    || HVAC_PROVENANCE[key]
+    || { state: 'unconfirmed', note: 'Not yet checked against a finished job.' };
 }
 
 // One line for the estimator card: how much of what it just priced is standing

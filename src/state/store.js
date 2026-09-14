@@ -1320,6 +1320,26 @@ export const DEFAULT_LABOR_UNITS = {
   rackSetCrew: 4,          // men on it — "four guys like normal", his estimate
 
   perWalkInPanel: 0.45,    // man-hrs to set one walk-in panel — DISPUTED, see provenance
+
+  // ── COMMERCIAL HVAC ───────────────────────────────────────────────────────
+  // This app derived NO labor for an HVAC job at all — every hour was typed by
+  // hand as crew days, so a full takeoff produced a materials bid and not one
+  // labor hour. These are the first figures that change that, and they stand on
+  // weaker ground than anything above: published industry ranges read off the
+  // open web, not a mechanic and not an estimator. Every one is marked
+  // unconfirmed. See steps/hvacLaborUnits.js for the arithmetic and the
+  // sources, and HVAC_PROVENANCE in steps/laborUnits.js for what each rests on.
+  //
+  // Base plus per-ton, because a 3-ton swap is not three-fifths of a 5-ton:
+  // there is a fixed cost to getting there, opening the roof and making the
+  // connections every unit needs whatever its size.
+  rtuSetHrsBase: 4,        // hrs ON SITE before tonnage — a duration, not man-hrs
+  rtuSetHrsPerTon: 1.2,    // ...and per ton on top
+  rtuSetCrew: 2,           // "a two-person crew", in every source found
+  curbAdapterHrs: 2,       // extra hrs when the new unit does not match the old curb
+  ductHrsPerLb: 0.035,     // MAN-hrs per lb installed — sheet metal is quoted per man
+  startupHrsPerUnit: 4,    // the weakest number in this app; no source gave hours
+  startupCrew: 1,
   stickLength: 20,   // ft of hard copper per stick → number of joints
   // ── AND SOFT COPPER DOES NOT COME IN STICKS ───────────────────────────────
   // A line pushed in the floor is soft copper, and soft copper arrives in
