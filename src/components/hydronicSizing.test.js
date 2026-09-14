@@ -3,7 +3,9 @@ import {
   C_FACTOR, DEFAULT_FRICTION_TARGET, TYPE_L_ID, NOMINAL_SIZES, MIN_SIZE,
   frictionPer100, flowAtFriction, sizeForFlow, sizingTable, sizeMix, mixVsSingle,
   sizeLabel, sizingNote,
+  parseFlowList, sizeMix, mixVsSingle,
 } from './hydronicSizing.js';
+import { hydronicValveLines, HOSE_KIT } from './hydronicValves.js';
 import { HOSE_KIT } from './hydronicValves.js';
 
 // The HYDRONIC HOSE KIT PIPE SIZING SCHEDULE off the Edmonds SD College Place
@@ -415,5 +417,111 @@ describe('convention vs friction', () => {
     ]);
     expect(m.sizes.map(s => s.dia)).toEqual([0.5, 0.75]);
     expect(m.total).toBe(10);
+  });
+});
+
+// ── GETTING THE FLOWS IN ────────────────────────────────────────────────────
+// The reason this module sized nothing for as long as it existed. hydronicValveLines
+// has always accepted a pre-sized terminalMix; nothing ever produced one,
+// because there was no way to tell the app the flows.
+describe('parseFlowList', () => {
+  it('reads a schedule the way somebody says it out loud', () => {
+    // "eight panels at 2 GPM, twelve at 4, six at 9"
+    expect(parseFlowList('8 @ 2, 12 @ 4, 6 @ 9')).toEqual([
+      { gpm: 2, count: 8 }, { gpm: 4, count: 12 }, { gpm: 9, count: 6 },
+    ]);
+  });
+
+  it('puts the COUNT first, not the flow', () => {
+    // The one that silently sizes a whole job wrong rather than failing.
+    // "8 @ 2" is eight terminals of 2 GPM, never two of 8.
+    const [row] = parseFlowList('8 @ 2');
+    expect(row.count).toBe(8);
+    expect(row.gpm).toBe(2);
+  });
+
+  it('takes the separators people actually type', () => {
+    for (const sep of ['@', 'x', '*', 'at', 'AT']) {
+      expect(parseFlowList(`4 ${sep} 3`), sep).toEqual([{ gpm: 3, count: 4 }]);
+    }
+  });
+
+  it('treats a bare number as one terminal at that flow', () => {
+    // Somebody with three panels types "2, 4, 9" and means exactly that.
+    expect(parseFlowList('2, 4, 9')).toEqual([
+      { gpm: 2, count: 1 }, { gpm: 4, count: 1 }, { gpm: 9, count: 1 },
+    ]);
+  });
+
+  it('splits on newlines as well as commas', () => {
+    expect(parseFlowList('8 @ 2\n12 @ 4')).toHaveLength(2);
+    expect(parseFlowList('8 @ 2; 12 @ 4')).toHaveLength(2);
+  });
+
+  it('ignores trailing units rather than choking on them', () => {
+    expect(parseFlowList('8 at 2 gpm')).toEqual([{ gpm: 2, count: 8 }]);
+    expect(parseFlowList('2.5 GPM')).toEqual([{ gpm: 2.5, count: 1 }]);
+  });
+
+  it('takes fractional flows, because schedules have them', () => {
+    expect(parseFlowList('3 @ 1.4')).toEqual([{ gpm: 1.4, count: 3 }]);
+  });
+
+  it('skips what it cannot read instead of inventing a terminal', () => {
+    // A row it guesses at is a hose kit somebody pays for.
+    expect(parseFlowList('8 @ 2, see schedule, 6 @ 9')).toEqual([
+      { gpm: 2, count: 8 }, { gpm: 9, count: 6 },
+    ]);
+    expect(parseFlowList('0 @ 4')).toEqual([]);
+    expect(parseFlowList('8 @ 0')).toEqual([]);
+  });
+
+  it('is empty rather than broken on nothing at all', () => {
+    expect(parseFlowList('')).toEqual([]);
+    expect(parseFlowList(null)).toEqual([]);
+    expect(parseFlowList(undefined)).toEqual([]);
+    expect(parseFlowList('   ,  , ')).toEqual([]);
+  });
+});
+
+// ── AND THE WHOLE POINT, END TO END ─────────────────────────────────────────
+describe('a typed schedule becomes a priced mix', () => {
+  it('sizes a mixed job into counts per size', () => {
+    const mix = sizeMix(parseFlowList('8 @ 2, 12 @ 4, 6 @ 9'));
+    expect(mix.total).toBe(26);
+    expect(mix.sizes.length).toBeGreaterThan(1);   // the job genuinely mixes
+    for (const s of mix.sizes) expect(s.dia).toBeGreaterThan(0);
+  });
+
+  it('shows what one hand-picked size would have cost instead', () => {
+    // The argument for doing this at all. A hose kit roughly doubles every
+    // size and a half, so folding a mixed job to one size is not a rounding
+    // error — and until now that is what every hydronic bid did.
+    const mix = sizeMix(parseFlowList('8 @ 2, 12 @ 4, 6 @ 9'));
+    const cmp = mixVsSingle(mix, HOSE_KIT, 0.75);
+    expect(cmp).not.toBe(null);
+    expect(cmp.sizedTotal).toBeGreaterThan(0);
+    expect(cmp.singleTotal).toBeGreaterThan(0);
+    expect(cmp.sizedTotal).not.toBe(cmp.singleTotal);
+    expect(typeof cmp.deltaPct).toBe('number');
+  });
+
+  it('hands hydronicValveLines a mix it already knew how to take', () => {
+    // terminalMix was built for this and had never once been passed.
+    const mix = sizeMix(parseFlowList('8 @ 2, 6 @ 9'));
+    const lines = hydronicValveLines({ terminalMix: mix.sizes, terminalMode: 'hosekit' });
+    const kits = lines.filter(l => String(l.key).startsWith('hosekit'));
+    expect(kits.length).toBe(mix.sizes.length);
+    expect(kits.reduce((s, l) => s + l.qty, 0)).toBe(14);
+    // Different sizes must price differently, or none of this was worth doing.
+    expect(new Set(kits.map(l => l.defaultPrice)).size).toBeGreaterThan(1);
+  });
+
+  it('falls back to the single hand-picked size when no flows are given', () => {
+    // Nothing about this change may break the job that has no schedule.
+    const lines = hydronicValveLines({ terminals: 10, terminalSize: 0.75, terminalMode: 'hosekit' });
+    const kits = lines.filter(l => String(l.key).startsWith('hosekit'));
+    expect(kits).toHaveLength(1);
+    expect(kits[0].qty).toBe(10);
   });
 });

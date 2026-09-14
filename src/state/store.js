@@ -355,6 +355,11 @@ export const initialState = {
   // by JSON.stringify and would come back as whatever the default became. See
   // steps/scopeUnits.js.
   scopeCounts: { racks: 0, walkInPanels: 0 },
+  // Terminal flows read off the hydronic schedule — "8 @ 2, 12 @ 4, 6 @ 9".
+  // TAKEOFF DATA, not a UI toggle: it came off the drawing, it sizes every
+  // hose kit on the job, and it was living in useState where it died on every
+  // reload. See components/hydronicSizing.js.
+  hydronicFlows: '',
   // ── WHAT A CREW RATE MEANS ─────────────────────────────────────────────────
   // The rate field said only "Rate/hr", and the two things it can be price very
   // differently. On a $200k-material, $378k-labor job at 20% markup:
