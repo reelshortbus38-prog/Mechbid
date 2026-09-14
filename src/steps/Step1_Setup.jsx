@@ -121,11 +121,10 @@ export default function Step1_Setup({ onNext }) {
     setFileStatuses(prev => ({ ...prev, ...newStatuses }));
   }
 
-  function removeFile(id) {
-    delete fileObjects.current[id];
-    dispatch({ type: 'SET', key: 'uploadedFiles', value: state.uploadedFiles.filter(f => f.id !== id) });
-    setFileStatuses(prev => { const s = { ...prev }; delete s[id]; return s; });
-  }
+  // removeFile lived here and was called from NOWHERE. The button an estimator
+  // actually presses is in components/FileViewer.jsx, which has its own. This
+  // one cleaned up fileObjects and fileStatuses that the live path never
+  // touched, which is how a dead copy of a function reads as coverage.
 
   // ── ANALYZE: builds a list of pending items for human review.
   // NOTHING here touches circuits/rackTasks/fieldTasks/rackParts/projName directly anymore.

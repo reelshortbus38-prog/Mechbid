@@ -1,9 +1,13 @@
-import { loadCachedFile, hasCachedFile } from '../api/fileCache.js';
+import { loadCachedFile, hasCachedFile, forgetFiles } from '../api/fileCache.js';
+import { removeFiles } from '../lib/fileSync.js';
+import { getSupabase } from '../lib/supabase.js';
+import { withoutFile, removalNote } from '../steps/fileCleanup.js';
 import { useAuth } from '../lib/auth.jsx';
 import { cloudSyncNote } from '../steps/uploadLimits.js';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Card, SLabel, Btn } from './UI.jsx';
+import { useState } from 'react';
 
 function fileIcon(type) {
   if (type === 'image') return '🖼️';
@@ -55,11 +59,43 @@ export function FileList({ fileStatuses = {} }) {
   const { state, dispatch } = useStore();
   const { user } = useAuth();
   const files = (state.uploadedFiles || []).filter(f => f.mode === state.mode);
+  // Before the early return — a hook after a conditional return is a crash on
+  // the render where the list empties.
+  const [note, setNote] = useState('');
 
   if (files.length === 0) return null;
 
+  // ── REMOVING A FILE, AND EVERYTHING THAT CAME OUT OF IT ──────────────────
+  // This dropped one row from uploadedFiles and nothing else. Three things
+  // were left behind, and every one of them is the same bug the job-delete
+  // path already fixes:
+  //
+  //   · FACTS. The cross-sheet ledger went on comparing a live drawing
+  //     against a document that had been deleted. On a re-issue — remove
+  //     M0.1.pdf, upload M0.1 REV B.pdf — both revisions sat in the ledger
+  //     disagreeing with each other, and the app reported a conflict it had
+  //     invented out of its own bookkeeping.
+  //   · FLAGS. "SOW.pdf requires night work", about a file nobody can open.
+  //   · THE BYTES. The blob stayed in IndexedDB against the 300 MB cache
+  //     ceiling, and in the storage bucket against the 1 GB free tier, with
+  //     nothing left in the job that could ever reach either again.
+  //
+  // What is NOT removed is anything the estimator accepted into the takeoff.
+  // See steps/fileCleanup.js.
   function removeFile(id) {
-    dispatch({ type: 'SET', key: 'uploadedFiles', value: state.uploadedFiles.filter(f => f.id !== id) });
+    const gone = (state.uploadedFiles || []).find(f => f.id === id);
+    const cleaned = withoutFile(state, gone?.name || '');
+    dispatch({ type: 'MERGE', payload: {
+      uploadedFiles: state.uploadedFiles.filter(f => f.id !== id),
+      jobFacts: cleaned.jobFacts,
+      flags: cleaned.flags,
+    } });
+    forgetFiles([id]).catch(() => {});
+    const sb = getSupabase();
+    if (sb && user?.id) removeFiles(sb, user.id, [id]).catch(() => {});
+    // Said out loud. Warnings leaving the screen should be something he
+    // watched happen, not something he later cannot find.
+    setNote(removalNote(gone?.name || '', cleaned.dropped));
   }
 
   function statusBadge(id) {
@@ -72,6 +108,15 @@ export function FileList({ fileStatuses = {} }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {note && (
+        <div style={{
+          fontSize: 11, lineHeight: 1.6, color: colors.textDim,
+          background: `${colors.yellow}0D`, border: `1px solid ${colors.yellow}40`,
+          borderRadius: 6, padding: '7px 9px',
+        }}>
+          {note}
+        </div>
+      )}
       {files.map(f => (
         <div
           key={f.id}
