@@ -13,6 +13,8 @@ import {
 } from '../components/laborHistory.js';
 import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
 import { scopeManHours, scopeTasks, rackSetManHours, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
+import { hvacLaborLines, HVAC_UNIT_FIELDS, LINEAR_TONS_LIMIT } from './hvacLaborUnits.js';
+import { splitAcrossCrew as splitCrew } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, crewCoverage, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
@@ -654,6 +656,128 @@ function ScopeNotInTakeoff() {
   );
 }
 
+// ── HVAC LABOR, WHICH DID NOT EXIST ──────────────────────────────────────────
+// The refrigeration side derives hours from the circuit list. Commercial HVAC
+// derived nothing at all — a full takeoff of equipment, duct and air devices
+// produced a materials bid and not one labor hour, and every hour on the job
+// was hand-typed as crew days.
+//
+// These figures came off published industry sources, not off anybody who bids
+// or installs this work, and the card says so in those words. They are a
+// starting point so the app produces SOMETHING to argue with.
+function HvacLaborEstimator() {
+  const { state, dispatch } = useStore();
+  const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+  const crewSize = Math.max(1, parseInt(state.circuitCrewSize, 10) || 2);
+  const crew = jobCrew(state);
+  const rate = avgCrewRate(crew) || 100;
+
+  if (state.mode !== 'Commercial HVAC') return null;
+
+  const equipment = state.hvacEquipment || [];
+  const parts = state.hvacParts || [];
+  // Pounds the duct takeoff weighed. RECTANGULAR only — spiral is bought by
+  // the foot and flex by the box, and neither is in a pound figure.
+  const ductLbs = parts
+    .filter(p => p.dgen && p.gen === 'duct' && String(p.unit || '') === 'lb')
+    .reduce((s, p) => s + (Number(p.qty) || 0), 0);
+  const curbAdapters = parts
+    .filter(p => /curb adapter/i.test(String(p.desc || '')))
+    .reduce((s, p) => s + (Number(p.qty) || 0), 0);
+
+  const est = hvacLaborLines({ equipment, ductLbs, curbAdapters }, units);
+  if (!est.lines.length) return null;
+
+  const setUnit = (key, val) => dispatch({
+    type: 'SET', key: 'laborUnits', value: { ...units, [key]: parseFloat(val) || 0 },
+  });
+
+  function generate() {
+    const existing = state.fieldTasks || [];
+    const have = new Set(forMode(existing, state.mode).map(t => String(t.desc || '').trim()));
+    const fresh = est.lines.filter(l => !have.has(l.desc)).map(l => {
+      const rounded = Math.round(l.manHours * 10) / 10;
+      const { men, hrs } = splitCrew(rounded, crewSize);
+      return {
+        id: uid(), desc: l.desc, men, hrs,
+        notes: `Derived from the HVAC takeoff — ${rounded} man-hours over ${men} ${men === 1 ? 'man' : 'men'}`,
+        crewAssignment: {}, mode: state.mode,
+      };
+    });
+    if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
+  }
+
+  return (
+    <Card style={{ background: colors.greenFaint, border: `1px solid ${colors.green}40` }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <SLabel style={{ margin: 0 }}>🌀 HVAC Labor Estimator (from the takeoff)</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+            <strong style={{ color: colors.green }}>{Math.round(est.manHours * 10) / 10} man-hours</strong>
+            {' · ~'}{fmt(est.manHours * rate)} at {fmt(rate)}/hr per man
+          </div>
+        </div>
+        <Btn variant="green" size="sm" onClick={generate}>+ Generate Field Tasks</Btn>
+      </Row>
+
+      <div style={{ marginTop: 10, fontSize: 11, color: colors.textDim, lineHeight: 1.7 }}>
+        {est.lines.map(l => (
+          <div key={l.desc}>
+            {l.desc} — <strong>{Math.round(l.manHours * 10) / 10}</strong> man-hrs
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 12 }}>
+        {HVAC_UNIT_FIELDS.map(f => {
+          const p = provenanceOf(f.key);
+          return (
+            <div key={f.key}>
+              <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }} title={p.note}>
+                <span style={{ fontWeight: 700 }}>{PROVENANCE_MARK[p.state]}</span> {f.label}
+              </div>
+              <Input type="number" value={units[f.key]} step="0.005"
+                onChange={e => setUnit(f.key, e.target.value)}
+                style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
+        <strong style={{ color: colors.yellow }}>
+          ⚠ Nobody who bids or installs HVAC has looked at any of these numbers.
+        </strong>{' '}
+        They came off published industry sources, which is weaker ground than every figure on the refrigeration
+        side — those came from a working mechanic and an estimator. Treat this as something to argue with, not
+        something to send out.
+        <br />
+        The unit-set boxes are <strong>hours on site</strong> and <strong>men</strong>, kept apart on purpose:
+        every published figure is a duration with a crew beside it, and a duration typed into a man-hour box is
+        wrong by the size of the crew. Duct is the exception — sheet metal is quoted per man per pound, so it
+        carries no crew.
+        <br />
+        Duct hours count the <strong>rectangular</strong> pounds only. Spiral is bought by the foot and flex by
+        the box; neither is in a pound figure, so their hanging is not in this number.
+        <br />
+        <strong>Not in here at all:</strong> the crane, and test &amp; balance. Both are bought in — TAB is
+        normally a balancing contractor's scope — so they belong in <strong>Subcontractors or Rentals</strong>.
+        No man-hour figure was invented for work the shop does not do.
+        {est.overLimit.length > 0 && (
+          <>
+            <br />
+            <strong style={{ color: colors.yellow }}>
+              ⚠ {est.overLimit.join(', ')} {est.overLimit.length === 1 ? 'is' : 'are'} over {LINEAR_TONS_LIMIT} tons.
+            </strong>{' '}
+            Labor climbs faster than tonnage above that — bigger curbs, heavier rigging, more involved
+            electrical — and this model is straight-line, so it reads LOW on those units.
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ── CLOSING A JOB OUT ─────────────────────────────────────────────────────────
 // The units this app prices with are opinions until somebody builds a job with
 // them and comes back with the timesheet. Nobody was ever going to do that as a
@@ -1037,6 +1161,9 @@ export default function Step5_Labor({ onNext, onBack }) {
 
       {/* Derive labor from the circuit takeoff */}
       <CircuitLaborEstimator />
+
+      {/* The HVAC equivalent, which did not exist at all until now. */}
+      <HvacLaborEstimator />
 
       {/* And the work that never came off it: commissioning the rack, setting
           it in place, setting walk-in panels. Absent from this app until now,

@@ -5,6 +5,7 @@ import {
 } from './laborUnits.js';
 import { DEFAULT_LABOR_UNITS, estimateCircuitLabor, calcFieldTaskCost, circuitJoints } from '../state/store.js';
 import { scopeManHours, SCOPE_UNIT_KEYS } from './scopeUnits.js';
+import { hvacManHours, HVAC_UNIT_KEYS } from './hvacLaborUnits.js';
 
 describe('man-hours split across a real crew', () => {
   it('keeps men x hrs equal to the man-hours it started with', () => {
@@ -104,25 +105,33 @@ describe('every assumption is a number somebody can change', () => {
     // does not reach the bid.
     const base = estimateCircuitLabor(allBuckets, DEFAULT_LABOR_UNITS).totalHours;
     for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
-      if (SCOPE_UNIT_KEYS.includes(key)) continue;   // priced by scopeManHours, not from circuits
+      // Priced by their own estimators, not from circuits.
+      if (SCOPE_UNIT_KEYS.includes(key) || HVAC_UNIT_KEYS.includes(key)) continue;
       const bumped = { ...DEFAULT_LABOR_UNITS, [key]: DEFAULT_LABOR_UNITS[key] * 2 };
       expect(estimateCircuitLabor(allBuckets, bumped).totalHours, `${key} does nothing`).not.toBe(base);
     }
   });
 
   it('every unit reaches SOMETHING — no box that only looks connected', () => {
-    // The exemption above is a real division of labor, not a hole. The scope
-    // units price off counts rather than circuits, so they are checked against
-    // the estimator that actually reads them. Between the two, every key in
-    // the library has to move a number somewhere.
+    // The exemptions above are a real division of labor, not a hole. There are
+    // three estimators now — circuits, refrigeration scope, and HVAC — and
+    // every key in the library has to move a number in ONE of them. A unit
+    // that reaches none is a box an estimator can type into that never
+    // touches a bid.
     const counts = { racks: 2, walkInPanels: 20 };
+    const hvacJob = {
+      equipment: [{ tag: 'RTU-1', type: 'RTU', tons: 10, qty: 1 }],
+      ductLbs: 2000, curbAdapters: 2,
+    };
     const circuitBase = estimateCircuitLabor(allBuckets, DEFAULT_LABOR_UNITS).totalHours;
     const scopeBase = scopeManHours(counts, DEFAULT_LABOR_UNITS);
+    const hvacBase = hvacManHours(hvacJob, DEFAULT_LABOR_UNITS);
     for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
       const bumped = { ...DEFAULT_LABOR_UNITS, [key]: DEFAULT_LABOR_UNITS[key] * 2 };
       const moved = estimateCircuitLabor(allBuckets, bumped).totalHours !== circuitBase
-        || scopeManHours(counts, bumped) !== scopeBase;
-      expect(moved, `${key} reaches neither estimator`).toBe(true);
+        || scopeManHours(counts, bumped) !== scopeBase
+        || hvacManHours(hvacJob, bumped) !== hvacBase;
+      expect(moved, `${key} reaches no estimator at all`).toBe(true);
     }
   });
 
@@ -216,8 +225,11 @@ describe('saying which units anybody has actually checked', () => {
   it('covers every unit the library ships', () => {
     // A unit with no provenance entry would render as unmarked, which reads as
     // confirmed. Silence is the one answer this must never give.
+    // Via provenanceOf, not UNIT_PROVENANCE directly: the HVAC units live in
+    // their own table because they stand on a different kind of evidence, and
+    // the lookup is what every caller actually uses.
     for (const key of Object.keys(DEFAULT_LABOR_UNITS)) {
-      expect(UNIT_PROVENANCE, key).toHaveProperty(key);
+      expect(provenanceOf(key).note, key).toBeTruthy();
     }
   });
 
