@@ -2,6 +2,8 @@ import { pipeDefaultPrice } from '../components/pipePricing.js';
 import { touchShopKey } from '../lib/shopSync.js';
 import { createContext, useContext, useReducer } from 'react';
 import { ootIsItemised, ootBreakdown } from '../components/outOfTown.js';
+// Pure, imports nothing — no cycle back into this file.
+import { DEFAULT_CONDITION_PCT } from '../steps/conditionFactor.js';
 
 // ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
 // Starting-point contractor prices so a new job computes without hand-entering
@@ -353,6 +355,15 @@ export const initialState = {
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
+  // ── WHAT CONDITIONS THE UNITS DESCRIBE, AND WHAT THIS JOB IS ─────────────
+  // Both undefined, and the pair of them is the safety interlock on the only
+  // multiplier in this app. `unitsBasis` is a shop fact — the conditions your
+  // labor units were measured under — and there is deliberately no default,
+  // because assuming one is how a live-store slowdown gets charged twice. See
+  // steps/conditionFactor.js; unset means the hours are used as they stand.
+  unitsBasis: undefined,
+  jobConditions: undefined,
+  conditionPct: undefined,
   // How many men go on one circuit. NOT part of the cost arithmetic — the units
   // are man-hours and stay man-hours. This only decides whether a generated
   // task is written down as one man for 24 hours or three men for 8, which is
@@ -660,6 +671,14 @@ export function saveJob(state) {
     // which is the rule everywhere else in here: loading a saved bid must never
     // reprice it.
     data.laborUnits = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+    // Same reasoning for the condition factors, and the stakes are higher: a
+    // percentage typed into the shop profile next month would otherwise reach
+    // back and re-multiply a bid that was sent last spring. The basis is
+    // stamped as null rather than left off, so a job saved before anybody set
+    // one stays unadjusted forever instead of picking up a basis later.
+    data.unitsBasis = state.unitsBasis || null;
+    data.jobConditions = state.jobConditions || null;
+    data.conditionPct = { ...DEFAULT_CONDITION_PCT, ...(state.conditionPct || {}) };
     jobs[id] = {
       id,
       name: state.projName || 'Untitled',

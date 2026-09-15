@@ -174,6 +174,33 @@ describe('numbers a shop must be able to store once', () => {
     }
   });
 
+  // The basis is a property of where the shop's numbers CAME FROM, so it has
+  // to follow the shop. A shop that re-answers "what were my units measured
+  // on?" per job would eventually answer it wrong, and the wrong answer here
+  // is the double-count.
+  it('lets a shop keep what its labor units were measured on', () => {
+    expect(COMPANY_DEFAULT_KEYS).toContain('unitsBasis');
+    expect(COMPANY_DEFAULT_KEYS).toContain('conditionPct');
+    const out = captureCompanyDefaults({ unitsBasis: 'closed', conditionPct: { live: 18 } }, []);
+    expect(out.unitsBasis).toBe('closed');
+    expect(out.conditionPct).toEqual({ live: 18 });
+  });
+
+  it('seeds them into a new job, and says so on the settings card', () => {
+    const patch = companyDefaultPatch({ unitsBasis: 'live', conditionPct: { live: 18 } }, {});
+    expect(patch.unitsBasis).toBe('live');
+    expect(patch.conditionPct).toEqual({ live: 18 });
+    expect(describeCompanyDefaults({ unitsBasis: 'live' }).join(' '))
+      .toMatch(/measured on live-store remodel work/i);
+  });
+
+  // The job's OWN conditions are not a shop fact — the next store may be live
+  // when the last one was not — so they must not ride the profile.
+  it('does not carry this job\'s conditions to the next job', () => {
+    expect(COMPANY_DEFAULT_KEYS).not.toContain('jobConditions');
+    expect(captureCompanyDefaults({ jobConditions: 'live' }, []).jobConditions).toBeUndefined();
+  });
+
   it('ships a night premium in the job state for periods to seed from', () => {
     expect(initialState.nightPremium).toBe(1.5);
   });

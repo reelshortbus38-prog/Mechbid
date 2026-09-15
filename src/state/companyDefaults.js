@@ -55,6 +55,14 @@ export const COMPANY_DEFAULT_KEYS = [
   // One object holding every unit — refrigeration, the scope lines and HVAC —
   // so all of them travel together and none has to be captured separately.
   'laborUnits',
+  // ── THE BASELINE THE UNITS ARE MEASURED AGAINST ──────────────────────────
+  // What conditions this shop's labor units describe, and what this shop
+  // reckons each harder condition costs. Both belong here rather than on the
+  // job for the same reason `laborUnits` does: they are a property of where
+  // the numbers came from, not of the store being bid. The job supplies only
+  // its own conditions, and the app prices the difference — see
+  // steps/conditionFactor.js.
+  'unitsBasis', 'conditionPct',
   // Standing scope fence and conditions of bid.
   'exclusions', 'proposalTerms', 'bidValidDays',
   'preferredSupplier',
@@ -210,6 +218,12 @@ export function describeCompanyDefaults(profile = {}) {
   if (isSet(profile.bondPct) && profile.bondPct > 0) out.push(`${profile.bondPct}% bond`);
   if (isSet(profile.ootBasis)) out.push(`per diem per ${profile.ootBasis === 'person' ? 'person' : 'crew'}`);
   if (isSet(profile.manHoursRate)) out.push(`$${profile.manHoursRate}/man-hr on residential`);
+  // Said as "measured on", not as a condition setting, because that is what it
+  // means and the difference is the whole safety of the feature.
+  if (isSet(profile.unitsBasis)) {
+    const words = { new: 'ground-up', closed: 'closed-store remodel', live: 'live-store remodel' };
+    out.push(`labor units measured on ${words[profile.unitsBasis] || profile.unitsBasis} work`);
+  }
   const r = profile.rates || {};
   if (isSet(r.wasteFactor)) out.push(`${r.wasteFactor}% waste`);
   if (isSet(r.hydronicFittingsPct)) out.push(`${r.hydronicFittingsPct}% hydronic fittings`);

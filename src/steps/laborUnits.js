@@ -32,6 +32,39 @@ export function manHoursOf(task) {
   return (Number(task?.men) || 0) * (Number(task?.hrs) || 0);
 }
 
+// ── THE ROW THAT ACTUALLY REACHES THE BID ───────────────────────────────────
+// Lifted out of the Generate button in Step5_Labor.jsx, and the reason is a
+// mistake made three times in this repo already: a render test can prove a
+// number is DRAWN on a card and cannot prove that the button produces it. The
+// suite stayed green with the hydronic sizing wiring deleted, with the
+// residential summary row wrong, and with the price-import supplier dropped,
+// because every one of those tests was looking at the screen instead of at the
+// thing that ships. The condition factor has to reach these rows or it is
+// decoration, so the row-building is a function now and the test calls it.
+export function circuitTaskRow(pc = {}, {
+  crewSize = 2, multiplier = 1, mode = '', basisLabel = '', jobLabel = '', mintId = () => '',
+} = {}) {
+  const m = Number(multiplier);
+  const mult = Number.isFinite(m) && m > 0 ? m : 1;
+  const base = Math.max(0, Number(pc.hours) || 0);
+  const manHours = Math.round(base * mult * 10) / 10;
+  const { men, hrs } = splitAcrossCrew(manHours, crewSize);
+  const adjusted = Math.abs(mult - 1) >= 0.0005;
+  return {
+    id: mintId(),
+    desc: `Run & connect ${pc.circuitId || '?'}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft || 0}ft)`,
+    men, hrs,
+    // "Auto-estimated" is load-bearing: countGeneratedTasks in laborMethod.js
+    // reads it to tell a generated row from one somebody typed.
+    notes: `Auto-estimated — ${manHours} man-hours over ${men} ${men === 1 ? 'man' : 'men'}`
+      + (adjusted
+        ? `; ${base} at unit rates ×${mult.toFixed(3)} for ${jobLabel} conditions against ${basisLabel} units`
+        : ''),
+    crewAssignment: {},
+    mode,
+  };
+}
+
 // ── WHICH OF THESE NUMBERS ANYBODY HAS ACTUALLY CHECKED, AND BY WHOM ────────
 // The app's other numbers are checked against a document you can point at. The
 // labor units were not — they were my ballparks. Marking which have since been

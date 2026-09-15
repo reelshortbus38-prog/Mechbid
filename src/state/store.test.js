@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { conditionAdjustment, jobConditionsOf, unitsBasisOf } from '../steps/conditionFactor.js';
 import {
   saveJob, getLastSaveError, deleteJob, loadAllJobs,
   normalizePipeSize, pipeSizeBucket,
@@ -983,5 +984,59 @@ describe('saved jobs are frozen on the numbers they were bid with', () => {
     expect(asBid).toBeCloseTo(
       estimateCircuitLabor(circuits, { ...DEFAULT_LABOR_UNITS, perFtMed: 0.045 }).totalHours, 6,
     );
+  });
+
+  // ── AND THE SAME FOR THE CONDITION FACTOR ─────────────────────────────────
+  // Higher stakes than the units, because this one is a percentage on the whole
+  // takeoff. A factor typed into the shop profile in November must not reach
+  // back and re-multiply a bid that was sent in March.
+  it('stamps the condition basis and factors, including when nobody set them', () => {
+    const id = saveJob({ projName: 'Food Lion 2417' });
+    const saved = loadAllJobs()[id].data;
+    // Written as null, not left off — an absent key would be filled in by
+    // whatever the shop profile says the next time the job is opened.
+    expect(saved.unitsBasis).toBe(null);
+    expect(saved.jobConditions).toBe(null);
+    expect(saved.conditionPct).toEqual({ new: 0, closed: 0, live: 0 });
+    const raw = JSON.parse(localStorage.getItem('coldgauge_jobs_v2') || '{}');
+    expect('unitsBasis' in raw[id].data).toBe(true);
+    expect('conditionPct' in raw[id].data).toBe(true);
+  });
+
+  it('keeps the factors a job was actually bid with', () => {
+    const id = saveJob({
+      projName: 'x', unitsBasis: 'closed', jobConditions: 'live', conditionPct: { live: 18 },
+    });
+    const saved = loadAllJobs()[id].data;
+    expect(saved.unitsBasis).toBe('closed');
+    expect(saved.jobConditions).toBe('live');
+    expect(saved.conditionPct.live).toBe(18);
+    expect(saved.conditionPct.closed).toBe(0);
+  });
+
+  it('reprices nothing when a factor arrives after the bid went out', () => {
+    // The end-to-end version. A job saved before the shop set any factor
+    // estimates the same hours afterwards, because its own basis is null.
+    const circuits = [{ circuitId: '1', runLength: 400, riserLength: 0, sucHoriz: '1 1/8', cases: 0 }];
+    const id = saveJob({ projName: 'March job', circuits });
+    const reopened = loadAllJobs()[id].data;
+    const base = estimateCircuitLabor(reopened.circuits, reopened.laborUnits).totalHours;
+
+    const asBid = conditionAdjustment({
+      hours: base,
+      jobConditions: jobConditionsOf(reopened),
+      unitsBasis: unitsBasisOf(reopened),
+      pct: reopened.conditionPct,
+    });
+    expect(asBid.multiplier).toBe(1);
+    expect(asBid.adjustedHours).toBe(base);
+
+    // ...while a shop that has since set a 25% live-store factor prices a NEW
+    // job at more. Same circuits, same units — the difference is the factor,
+    // and it reaches new work only.
+    const fresh = conditionAdjustment({
+      hours: base, jobConditions: 'live', unitsBasis: 'new', pct: { new: 0, closed: 10, live: 25 },
+    });
+    expect(fresh.adjustedHours).toBeGreaterThan(base);
   });
 });

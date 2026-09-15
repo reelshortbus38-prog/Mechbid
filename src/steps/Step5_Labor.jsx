@@ -11,11 +11,15 @@ import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
 } from '../components/laborHistory.js';
-import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence, CIRCUIT_UNIT_FIELDS } from './laborUnits.js';
+import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence, CIRCUIT_UNIT_FIELDS, circuitTaskRow } from './laborUnits.js';
 import { scopeManHours, scopeTasks, rackSetManHours, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
 import { hvacLaborLines, HVAC_UNIT_FIELDS, LINEAR_TONS_LIMIT } from './hvacLaborUnits.js';
 import { splitAcrossCrew as splitCrew } from './laborUnits.js';
 import { laborDoubleCount, countGeneratedTasks, unitReliability } from './laborMethod.js';
+import {
+  CONDITIONS, DEFAULT_CONDITION_PCT, MCAA_JOINT_OCCUPANCY,
+  conditionAdjustment, jobConditionsOf, unitsBasisOf, conditionShort,
+} from './conditionFactor.js';
 import { resolveBidMethod, billedLabor, METHOD_LABEL, METHOD_BLURB, MATERIALS_NOTE, escalationFit, crewCoverage, LUMP_SUM, TIME_AND_MATERIALS, UNSET } from './bidMethod.js';
 
 // Period-name chips and preset crews are TRADE-SPECIFIC — this step serves
@@ -358,6 +362,24 @@ function FieldTasksSection() {
   );
 }
 
+// ── WHAT THE TAKEOFF COMES TO, AS THE BID CARRIES IT ────────────────────────
+// Unit build-up with the job-condition factor already in. Every reader of the
+// takeoff goes through here, because the coverage check below holds a crew
+// against these hours — and holding it against the unadjusted figure while the
+// generated tasks carry the adjusted one would report a shortfall that is only
+// the two call sites disagreeing.
+export function takeoffManHours(state = {}) {
+  const circuits = state.circuits || [];
+  if (!circuits.length) return 0;
+  const units = { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) };
+  return conditionAdjustment({
+    hours: estimateCircuitLabor(circuits, units).totalHours,
+    jobConditions: jobConditionsOf(state),
+    unitsBasis: unitsBasisOf(state),
+    pct: state.conditionPct,
+  }).adjustedHours;
+}
+
 // ── CIRCUIT LABOR ESTIMATOR ─────────────────────────────────────────────────
 // Derives man-hours from the circuit list using the labor-unit library, so
 // labor starts from a consistent takeoff instead of a blank guess. The estimate
@@ -365,6 +387,7 @@ function FieldTasksSection() {
 function CircuitLaborEstimator() {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
+  const [condOpen, setCondOpen] = useState(false);
   const circuits = state.circuits || [];
   if (circuits.length === 0) return null;
 
@@ -372,7 +395,18 @@ function CircuitLaborEstimator() {
   const crew = jobCrew(state);
   const rate = avgCrewRate(crew) || 100;
   const est = estimateCircuitLabor(circuits, units);
-  const cost = est.totalHours * rate;
+  // The only multiplier in this app, and it prices the DIFFERENCE between the
+  // conditions these units were measured under and the conditions of this job.
+  // Ships inert: no basis set means multiplier 1 and the hours pass straight
+  // through. See steps/conditionFactor.js for why it cannot be an absolute.
+  const adj = conditionAdjustment({
+    hours: est.totalHours,
+    jobConditions: jobConditionsOf(state),
+    unitsBasis: unitsBasisOf(state),
+    pct: state.conditionPct,
+  });
+  const hours = adj.adjustedHours;
+  const cost = hours * rate;
   // How many men go on a circuit. Not an hour rate — it never enters the
   // arithmetic, only how the man-hours are written down. Stored per job so it
   // rides the save and the sync like every other assumption.
@@ -389,22 +423,18 @@ function CircuitLaborEstimator() {
     const have = new Set(forMode(existing, state.mode).map(t => idOf(t.desc)).filter(Boolean));
     const fresh = est.perCircuit
       .filter(pc => !have.has(pc.circuitId))
-      .map(pc => {
-        // The units produce MAN-hours. Emitting them as `men: 1` said one
-        // person runs 150 ft of copper over three days, which nobody does —
-        // and the natural correction (typing 4 into Men) billed four times the
-        // labor instead of splitting it. Split it here so the row is true and
-        // the total is untouched.
-        const { men, hrs } = splitAcrossCrew(pc.hours, crewSize);
-        return {
-          id: uid(),
-          desc: `Run & connect ${pc.circuitId}${pc.application ? ` — ${pc.application}` : ''} (${pc.ft}ft)`,
-          men, hrs,
-          notes: `Auto-estimated — ${pc.hours} man-hours over ${men} ${men === 1 ? 'man' : 'men'}`,
-          crewAssignment: {},
-          mode: state.mode,
-        };
-      });
+      // The units produce MAN-hours, and the condition factor has to reach
+      // these rows rather than stopping at the headline. Both live in
+      // circuitTaskRow so the thing that ships can be tested — see the comment
+      // on it in laborUnits.js.
+      .map(pc => circuitTaskRow(pc, {
+        crewSize,
+        multiplier: adj.multiplier,
+        mode: state.mode,
+        basisLabel: conditionShort(adj.basisKey).toLowerCase(),
+        jobLabel: conditionShort(adj.jobKey).toLowerCase(),
+        mintId: uid,
+      }));
     if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
   }
 
@@ -419,7 +449,11 @@ function CircuitLaborEstimator() {
         <div>
           <SLabel style={{ margin: 0 }}>⚙️ Labor Estimator (from circuits)</SLabel>
           <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
-            {circuits.length} circuit{circuits.length !== 1 ? 's' : ''} → <strong style={{ color: colors.green }}>{est.totalHours} man-hours</strong> · ~{fmt(cost)} at {fmt(rate)}/hr per man
+            {circuits.length} circuit{circuits.length !== 1 ? 's' : ''} →{' '}
+            {adj.applies && (
+              <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{est.totalHours}</span>
+            )}{adj.applies ? ' ' : ''}
+            <strong style={{ color: colors.green }}>{hours} man-hours</strong> · ~{fmt(cost)} at {fmt(rate)}/hr per man
           </div>
         </div>
         <Btn variant="green" size="sm" onClick={generateFieldTasks}>+ Generate Field Tasks</Btn>
@@ -448,6 +482,124 @@ function CircuitLaborEstimator() {
           {reliability.level === 'better' ? '✓' : '~'}
         </strong>{' '}
         {reliability.note}
+      </div>
+
+      {/* ── JOB CONDITIONS ────────────────────────────────────────────────────
+          The note above has been telling estimators for months that a remodel
+          runs differently and doing nothing about it. This is the something,
+          and the reason it took this shape rather than a single ×1.3 box is at
+          the top of conditionFactor.js: the per-foot rate is a MEASURED day, so
+          whatever conditions that day had are already inside it. A factor is
+          only meaningful as the difference between two sets of conditions.
+          Equal conditions come out at ×1.000 and the hours are untouched. */}
+      <div style={{ marginTop: 10, fontSize: 11, color: colors.textDim, lineHeight: 1.6,
+        padding: '8px 10px', borderRadius: 6,
+        border: `1px solid ${adj.applies ? colors.green : colors.border}`,
+        background: adj.applies ? `${colors.green}0D` : 'transparent' }}>
+        <div onClick={() => setCondOpen(o => !o)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+          <strong style={{ color: adj.applies ? colors.green : colors.textDim }}>
+            {condOpen ? '▲' : '▼'} Job conditions
+          </strong>{' '}
+          {adj.applies
+            ? <strong style={{ color: colors.green }}>×{adj.multiplier.toFixed(3)}</strong>
+            : <span>— no adjustment</span>}
+        </div>
+        <div style={{ marginTop: 6 }}>{adj.note}</div>
+
+        {condOpen && (
+          <>
+            {/* The shop's half. Deliberately first, and deliberately without a
+                default: this is the question the whole feature hangs on, and
+                the app guessing it is the double-count. */}
+            <div style={{ marginTop: 12, fontWeight: 700, color: colors.text }}>
+              My labor units were measured on:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 6 }}>
+              {CONDITIONS.map(c => {
+                const on = state.unitsBasis === c.key;
+                return (
+                  <div key={c.key} title={c.note}
+                    onClick={() => dispatch({ type: 'SET', key: 'unitsBasis', value: on ? undefined : c.key })}
+                    style={{
+                      border: `2px solid ${on ? colors.green : colors.border}`,
+                      background: on ? colors.greenFaint : colors.card2,
+                      color: on ? colors.green : colors.text,
+                      borderRadius: 8, padding: '8px 6px', cursor: 'pointer', textAlign: 'center',
+                      fontSize: 11, fontWeight: 700,
+                    }}>{c.short}</div>
+                );
+              })}
+            </div>
+            {!state.unitsBasis && (
+              <div style={{ marginTop: 6, color: colors.yellow }}>
+                Until this is answered nothing is multiplied. That is the safe default, not a nag —
+                the app will not scale hours by a factor whose baseline it has had to guess.
+              </div>
+            )}
+
+            {/* The job's half. Seeded from the project type already on the job,
+                but never seeded to "live store" — that is the expensive rung
+                and nobody should land on it without saying so. */}
+            <div style={{ marginTop: 12, fontWeight: 700, color: colors.text }}>This job is:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 6 }}>
+              {CONDITIONS.map(c => {
+                const on = jobConditionsOf(state) === c.key;
+                return (
+                  <div key={c.key} title={c.note}
+                    onClick={() => dispatch({ type: 'SET', key: 'jobConditions', value: c.key })}
+                    style={{
+                      border: `2px solid ${on ? colors.green : colors.border}`,
+                      background: on ? colors.greenFaint : colors.card2,
+                      color: on ? colors.green : colors.text,
+                      borderRadius: 8, padding: '8px 6px', cursor: 'pointer', textAlign: 'center',
+                      fontSize: 11, fontWeight: 700,
+                    }}>{c.short}</div>
+                );
+              })}
+            </div>
+
+            {/* What each rung costs, over a clean ground-up run. Ground-up is
+                the zero point and has no box, because it is what the other two
+                are measured against rather than a rung with its own factor. */}
+            <div style={{ marginTop: 12, fontWeight: 700, color: colors.text }}>
+              What each one costs you, over a clean ground-up run:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
+              {CONDITIONS.filter(c => c.key !== 'new').map(c => (
+                <div key={c.key}>
+                  <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>{c.short} — % slower</div>
+                  <Input type="number" step="1"
+                    value={{ ...DEFAULT_CONDITION_PCT, ...(state.conditionPct || {}) }[c.key]}
+                    onChange={e => dispatch({
+                      type: 'SET', key: 'conditionPct',
+                      value: {
+                        ...DEFAULT_CONDITION_PCT, ...(state.conditionPct || {}),
+                        [c.key]: parseFloat(e.target.value) || 0,
+                      },
+                    })}
+                    style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }} />
+                </div>
+              ))}
+            </div>
+
+            {/* A starting point, named and sourced, and NOT a default. The one
+                figure the review gave came back in flat hours — which cannot
+                scale with the size of a store — and gave the live store and the
+                closed store the same number, when the whole reason that pair
+                exists is that they differ. */}
+            <div style={{ marginTop: 10 }}>
+              <strong style={{ color: colors.textDim }}>?</strong>{' '}
+              These ship at zero because nobody has given this app a figure it could use. If you have
+              nothing of your own yet: the MCAA labor factors — the standard reference for this in
+              mechanical contracting — put working in a facility occupied by others at{' '}
+              <strong>{MCAA_JOINT_OCCUPANCY.minor}%</strong> minor,{' '}
+              <strong>{MCAA_JOINT_OCCUPANCY.average}%</strong> average and{' '}
+              <strong>{MCAA_JOINT_OCCUPANCY.severe}%</strong> severe, measured the same way this card
+              does — against the conditions the bid assumed, not against nothing. Your own finished
+              jobs beat all of it.
+            </div>
+          </>
+        )}
       </div>
 
       {/* The fittings count is the one number in here that cannot be worked out
@@ -804,7 +956,7 @@ function CloseOutCard() {
     const bidHrs = parseFloat(bid) || 0;
     if (!est || (act <= 0 && bidHrs <= 0)) return;
     persist([...rows, {
-      ...recordFromEstimate(state, est),
+      ...recordFromEstimate(state, est, jobConditionsOf(state)),
       actHours: act, bidHours: bidHrs, outsideHours: parseFloat(outside) || 0,
     }]);
     setHours(''); setBid(''); setOutside('');
@@ -907,7 +1059,9 @@ function CloseOutCard() {
                   <span style={{ color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
                     {r.circuits} ckt · {r.ft} ft · {r.cases} case{r.cases === 1 ? '' : 's'}
                   </span>
-                  <span style={{ color: colors.textDim }}>{r.projectType}</span>
+                  <span style={{ color: colors.textDim }}>
+                    {r.projectType}{r.conditions ? ` · ${conditionShort(r.conditions).toLowerCase()}` : ''}
+                  </span>
                   <span style={{ fontFamily: "'DM Mono', monospace" }}>
                     {r.estHours} → {recordBasis(r) === 'bid'
                       ? `${r.bidHours} bid`
@@ -1023,9 +1177,7 @@ export default function Step5_Labor({ onNext, onBack }) {
   const coverage = billed.periods
     ? crewCoverage({
       crewManHours: jobCrewManHours(state).work,
-      takeoffManHours: (state.circuits || []).length
-        ? estimateCircuitLabor(state.circuits, { ...DEFAULT_LABOR_UNITS, ...(state.laborUnits || {}) }).totalHours
-        : 0,
+      takeoffManHours: takeoffManHours(state),
     })
     : null;
   // Read once per render — cheap, and it must reflect a profile saved on the
