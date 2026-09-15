@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { travelCost, travelManHours, calcLaborPeriodCost, calcFlatJobCost, jobCrewManHours } from './store.js';
+import {
+  travelCost, travelManHours, calcLaborPeriodCost, calcFlatJobCost, jobCrewManHours,
+  calcManHoursCost, jobLaborTotal, jobCrew, jobOOTTotal, otReview, calcFieldTaskCost,
+} from './store.js';
 import { TIME_AND_MATERIALS } from '../steps/bidMethod.js';
 
 // ── TRAVEL TIME IS PAID HOURS, NOT A PER DIEM ───────────────────────────────
@@ -182,5 +185,74 @@ describe('jobCrewManHours', () => {
     expect(jobCrewManHours(undefined)).toEqual({ work: 0, travel: 0, total: 0 });
     expect(jobCrewManHours({ laborMode: 'flat', flatJob: {} }).work).toBe(0);
     expect(jobCrewManHours({ laborPeriods: [{ crew: [], days: 10 }] }).work).toBe(0);
+  });
+});
+
+// ── MAN-HOURS AND MATERIAL, WHICH IS HOW RESIDENTIAL IS BID ─────────────────
+// "Generally for residential HVAC the job is bid in man hours and material."
+// The app made you construct a crew and a day count to say "sixteen hours",
+// which is the app asking a question the trade does not ask.
+//
+// A THIRD MODE rather than another box: crew periods and a flat whole-job crew
+// already compete for the same total and the bid engine picks one. A third
+// input beside them would be the double-count this app keeps removing.
+describe('man-hours mode', () => {
+  const job = (hours, rate) => ({ laborMode: 'manhours', manHoursJob: { hours, rate } });
+
+  it('is hours times rate and nothing else', () => {
+    expect(calcManHoursCost({ hours: 16, rate: 95 }).total).toBe(1520);
+    expect(jobLaborTotal(job(16, 95))).toBe(1520);
+  });
+
+  it('carries the same fields as the other two modes', () => {
+    // Callers do `total - oot` and read `.labor`. A missing field is NaN in a
+    // bid, not a zero.
+    const r = calcManHoursCost({ hours: 10, rate: 100 });
+    expect(r).toMatchObject({ hours: 10, rate: 100, labor: 1000, travel: 0, oot: 0, total: 1000 });
+  });
+
+  it('reports the hours straight back, with nothing to derive', () => {
+    expect(jobCrewManHours(job(16, 95))).toEqual({ work: 16, travel: 0, total: 16 });
+  });
+
+  it('carries no per diem, because it exists for a local changeout', () => {
+    // A travelling job uses periods or a flat crew; both have the out-of-town
+    // fields on them.
+    expect(jobOOTTotal(job(16, 95))).toBe(0);
+  });
+
+  it('hands tasks a crew at the entered rate rather than the fallback', () => {
+    // Rack and field tasks cost themselves at avgCrewRate(jobCrew). Without a
+    // synthetic member they would quietly cost at the $100 fallback instead of
+    // the shop's own rate.
+    const crew = jobCrew(job(16, 95));
+    expect(crew).toHaveLength(1);
+    expect(crew[0].rate).toBe(95);
+    expect(calcFieldTaskCost({ men: 2, hrs: 4 }, crew)).toBe(2 * 4 * 95);
+  });
+
+  it('gives no crew at all when no rate has been set', () => {
+    // Better than a member at $0, which would silently cost every task at
+    // nothing.
+    expect(jobCrew(job(16, 0))).toEqual([]);
+  });
+
+  it('says nothing about overtime, because there is no shift to have one', () => {
+    expect(otReview(job(40, 95))).toBe(null);
+  });
+
+  it('is zero rather than broken on a blank or junk entry', () => {
+    expect(jobLaborTotal(job(0, 0))).toBe(0);
+    expect(jobLaborTotal({ laborMode: 'manhours' })).toBe(0);
+    expect(calcManHoursCost().total).toBe(0);
+    expect(calcManHoursCost({ hours: -5, rate: 'x' }).total).toBe(0);
+  });
+
+  it('leaves the other two modes exactly as they were', () => {
+    // Nothing about adding a mode may move a job that is not in it.
+    const periods = { laborPeriods: [{ crew: [{ rate: 60, hrsPerDay: 8 }], days: 10 }] };
+    expect(jobLaborTotal(periods)).toBe(60 * 8 * 10);
+    const flat = { laborMode: 'flat', flatJob: { crew: [{ rate: 60, hrsPerDay: 8 }], weeks: 1, daysPerWeek: 5 } };
+    expect(jobLaborTotal(flat)).toBe(60 * 8 * 5);
   });
 });

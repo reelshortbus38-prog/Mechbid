@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
 import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
-import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcResLinesetTotal, defaultHardwarePrice, circuitCases, softCopperAvailable, SOFT_COPPER_MAX, DEFAULT_LABOR_UNITS } from '../state/store.js';
+import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcManHoursCost, jobLaborTotal, calcResLinesetTotal, defaultHardwarePrice, circuitCases, softCopperAvailable, SOFT_COPPER_MAX, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import GlycolCalc from '../components/GlycolCalc.jsx';
@@ -235,8 +235,25 @@ function ResidentialEquipment({ onNext, onBack }) {
   const linesetTotal = calcResLinesetTotal(state);
   const rollCopperTotal = linesetType === 'roll' ? linesetTotal : 0;
 
-  // Labor
+  // ── LABOR: MAN-HOURS FIRST ────────────────────────────────────────────────
+  // "Generally for residential HVAC the job is bid in man hours and material."
+  // A changeout is sixteen hours and a piece of equipment. Building a two-man
+  // crew and a day count to say that is the app asking a question the trade
+  // does not ask.
+  //
+  // A job that has never been told otherwise defaults to man-hours. A job with
+  // periods already on it keeps them — nothing here may reprice a bid that has
+  // already gone out.
   const laborPeriods = state.laborPeriods || [];
+  const mhMode = state.laborMode === 'manhours'
+    || (!state.laborMode && laborPeriods.length === 0)
+    || (state.laborMode === 'periods' && laborPeriods.length === 0 && !state.jobId);
+  const mh = state.manHoursJob || { hours: 0, rate: 0 };
+  const mhCost = calcManHoursCost(mh);
+  const setMh = (key, val) => dispatch({
+    type: 'MERGE',
+    payload: { laborMode: 'manhours', manHoursJob: { ...mh, [key]: parseFloat(val) || 0 } },
+  });
 
   function addLaborPeriod(name = '') {
     dispatch({
@@ -252,7 +269,11 @@ function ResidentialEquipment({ onNext, onBack }) {
   const equipTotal = equipment.reduce((s,e) => s+(e.cost||0), 0);
   const partsTotal = parts.reduce((s,p) => s+(p.total||0), 0);
   const markupPct = state.markupPct || 20;
-  const laborTotal = calcTotalLabor(laborPeriods, ootOpts(state));
+  // MODE-AWARE, like the bid engine. This read the periods directly, so the
+  // moment a job was in man-hours mode the summary's Labor row said $0 while
+  // the bid total underneath it carried the real figure. Same class of bug as
+  // the one the comment below is about: two places computing the same money.
+  const laborTotal = jobLaborTotal(state);
   // One engine for the money: this preview previously did its own flat-markup
   // math (no tax, no split equipment markup), so its "Total Bid" could disagree
   // with the Proposal step's number for the same job.
@@ -456,22 +477,60 @@ function ResidentialEquipment({ onNext, onBack }) {
         <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
             <SLabel>Labor</SLabel>
-            <div style={{ fontSize: 12, color: colors.textDim }}>Add technician time for installation & startup</div>
+            <div style={{ fontSize: 12, color: colors.textDim }}>
+              {mhMode ? 'Man-hours and your rate' : 'Technician time by period'}
+            </div>
           </div>
-          <Btn variant="green" size="sm" onClick={() => addLaborPeriod()}>+ Add Period</Btn>
+          {!mhMode && <Btn variant="green" size="sm" onClick={() => addLaborPeriod()}>+ Add Period</Btn>}
         </Row>
 
-        {/* Quick-add buttons when empty */}
-        {laborPeriods.length === 0 && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            {RES_LABOR_PERIOD_NAMES.map(name => (
-              <Btn key={name} variant="surface" size="sm" onClick={() => addLaborPeriod(name)}>+ {name}</Btn>
-            ))}
-          </div>
-        )}
-
-        {laborPeriods.length === 0 ? (
-          <Card><EmptyState icon="👷" title="No labor added yet" subtitle="Add installation time, startup, or service calls" /></Card>
+        {mhMode ? (
+          <Card>
+            <Row style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ minWidth: 110 }}>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Man-hours</div>
+                <Input type="number" value={mh.hours || ''} onChange={e => setMh('hours', e.target.value)}
+                  placeholder="16" style={{ fontFamily: "'DM Mono', monospace" }} />
+              </div>
+              <div style={{ minWidth: 110 }}>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Your rate ($/man-hr)</div>
+                <Input type="number" value={mh.rate || ''} onChange={e => setMh('rate', e.target.value)}
+                  placeholder="95" style={{ fontFamily: "'DM Mono', monospace" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Labor</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: colors.orange }}>
+                  {fmt(mhCost.total)}
+                </div>
+              </div>
+            </Row>
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 10, lineHeight: 1.6 }}>
+              Two men for a day is <strong>16</strong>, not 1 × 8. The rate is yours — no two shops charge the
+              same, and nothing here assumes one.
+              <br />
+              A residential changeout is a local job, so this mode carries no per diem and no overtime split. If
+              this one needs either, switch to periods.
+            </div>
+            <Row style={{ marginTop: 10 }}>
+              <Btn variant="surface" size="sm"
+                onClick={() => { dispatch({ type: 'SET', key: 'laborMode', value: 'periods' }); addLaborPeriod(); }}>
+                Use crew periods instead
+              </Btn>
+            </Row>
+          </Card>
+        ) : laborPeriods.length === 0 ? (
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              {RES_LABOR_PERIOD_NAMES.map(name => (
+                <Btn key={name} variant="surface" size="sm" onClick={() => addLaborPeriod(name)}>+ {name}</Btn>
+              ))}
+              <Btn variant="surface" size="sm"
+                onClick={() => dispatch({ type: 'SET', key: 'laborMode', value: 'manhours' })}>
+                Back to man-hours
+              </Btn>
+            </div>
+            <Card><EmptyState icon="👷" title="No labor added yet" subtitle="Add installation time, startup, or service calls" /></Card>
+          </>
         ) : (
           laborPeriods.map(period => (
             <ResLaborPeriodCard
