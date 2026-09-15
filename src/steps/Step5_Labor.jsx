@@ -11,7 +11,7 @@ import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
 } from '../components/laborHistory.js';
-import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence } from './laborUnits.js';
+import { splitAcrossCrew, provenanceOf, PROVENANCE_MARK, unitsConfidence, CIRCUIT_UNIT_FIELDS } from './laborUnits.js';
 import { scopeManHours, scopeTasks, rackSetManHours, SCOPE_UNIT_FIELDS, SCOPE_UNIT_KEYS } from './scopeUnits.js';
 import { hvacLaborLines, HVAC_UNIT_FIELDS, LINEAR_TONS_LIMIT } from './hvacLaborUnits.js';
 import { splitAcrossCrew as splitCrew } from './laborUnits.js';
@@ -408,13 +408,9 @@ function CircuitLaborEstimator() {
     if (fresh.length) dispatch({ type: 'SET', key: 'fieldTasks', value: [...existing, ...fresh] });
   }
 
-  const UNIT_FIELDS = [
-    { key: 'perFtSmall', label: 'Run/ft ≤7/8"' }, { key: 'perFtMed', label: 'Run/ft 1⅛–1⅜"' }, { key: 'perFtLarge', label: 'Run/ft ≥1⅝"' },
-    { key: 'perJointSmall', label: 'Joint ≤7/8"' }, { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' }, { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
-    { key: 'perCase', label: 'Case hookup' }, { key: 'perRackTie', label: 'Rack tie-in' }, { key: 'stickLength', label: 'Stick len (ft)' },
-    { key: 'jointsPerCircuit', label: 'Fittings/circuit' }, { key: 'jointsPerRiser', label: 'Fittings/riser' },
-    { key: 'clusterFactor', label: 'Bunched joint ×' },
-  ];
+  // Moved to laborUnits.js so the guard can read them — every unit in the
+  // library has to have a box, and coilLength did not.
+  const UNIT_FIELDS = CIRCUIT_UNIT_FIELDS;
   const confidence = unitsConfidence(UNIT_FIELDS.map(f => f.key));
 
   return (
