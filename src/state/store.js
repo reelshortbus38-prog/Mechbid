@@ -327,6 +327,18 @@ export const initialState = {
   // (rack prep, case-move nights, startup...). 'flat': one crew for the whole
   // job length — "4 guys for 27 weeks" — the way many shops actually bid it.
   laborMode: 'periods',
+  // ── THE THIRD WAY TO PRICE LABOR ──────────────────────────────────────────
+  // "Generally for residential HVAC the job is bid in man hours and material."
+  // A changeout is sixteen man-hours and a piece of equipment, and making
+  // somebody construct a two-man crew and a day count to express that is the
+  // app asking a question the trade does not ask.
+  //
+  // A THIRD MODE rather than a second input, on purpose: crew periods and a
+  // flat whole-job crew already compete for the same total, and the bid engine
+  // picks ONE. Adding man-hours as another box beside them would be the
+  // double-count this app keeps having to remove. Exactly one mode reaches the
+  // bid, by construction.
+  manHoursJob: { hours: 0, rate: 0 },
   flatJob: { crew: [], weeks: 0, daysPerWeek: 5, ootPerDay: 0 },
   // Out-of-town expense. `outOfTown: false` zeroes it for an in-town job
   // without wiping the per-day figure, so a similar travelling job can be
@@ -1016,8 +1028,25 @@ export function calcFlatJobCost(flat, opts = {}) {
 // Labor total INCLUDES out-of-town — the bid engine backs it out again to show
 // it as its own category. Both halves must therefore read the same basis, or
 // `labor = laborTotal - oot` silently understates labor by the difference.
+// Man-hours x rate, and nothing else. No crew to build, no days to divide by,
+// no overtime multiplier — a residential changeout does not have phases. A
+// shop that needs any of that switches modes.
+//
+// The shape matches calcLaborPeriodCost and calcFlatJobCost so every caller
+// downstream reads the same fields: labor, travel, oot, total. Travel and
+// out-of-town are zero here rather than absent, because a caller that does
+// `total - oot` must get the right answer and not NaN.
+export function calcManHoursCost(mh) {
+  const m = mh || {};
+  const hours = Math.max(0, parseFloat(m.hours) || 0);
+  const rate = Math.max(0, parseFloat(m.rate) || 0);
+  const labor = hours * rate;
+  return { hours, rate, labor, travel: 0, oot: 0, total: labor };
+}
+
 export function jobLaborTotal(state) {
   const o = ootOpts(state);
+  if (state?.laborMode === 'manhours') return calcManHoursCost(state.manHoursJob).total;
   return state?.laborMode === 'flat'
     ? calcFlatJobCost(state.flatJob, o).total
     : calcTotalLabor(state?.laborPeriods, o);
@@ -1043,6 +1072,12 @@ export function jobCrewManHours(state) {
     return straight + ot;
   };
 
+  // In man-hours mode the hours ARE the input. Nothing to derive.
+  if (state?.laborMode === 'manhours') {
+    const work = calcManHoursCost(state.manHoursJob).hours;
+    return { work, travel: 0, total: work };
+  }
+
   if (state?.laborMode === 'flat') {
     const f = state.flatJob || {};
     const days = (parseFloat(f.weeks) || 0) * (parseFloat(f.daysPerWeek) || 5);
@@ -1060,6 +1095,15 @@ export function jobCrewManHours(state) {
 }
 
 export function jobCrew(state) {
+  // A crew of one at the entered rate. Rack and field tasks cost themselves as
+  // men x hrs x avgCrewRate(jobCrew), and in man-hours mode the rate IS the
+  // average — so handing back a synthetic member keeps every downstream costing
+  // path working unchanged instead of quietly costing tasks at the $100
+  // fallback.
+  if (state?.laborMode === 'manhours') {
+    const { rate } = calcManHoursCost(state?.manHoursJob);
+    return rate > 0 ? [{ id: 'manhours', role: 'Technician', rate, hrsPerDay: STANDARD_DAY_HOURS }] : [];
+  }
   return state?.laborMode === 'flat'
     ? (state.flatJob?.crew || [])
     : primaryCrew(state?.laborPeriods);
@@ -1069,6 +1113,10 @@ export function jobCrew(state) {
 // letters require OOT broken out as its own category, separate from labor.
 export function jobOOTTotal(state) {
   const o = ootOpts(state);
+  // Man-hours mode carries no per diem: it exists for a residential changeout,
+  // which is a local job. A travelling job uses periods or a flat crew, both of
+  // which have the out-of-town fields on them.
+  if (state?.laborMode === 'manhours') return 0;
   if (state?.laborMode === 'flat') return calcFlatJobCost(state?.flatJob, o).oot;
   return (state?.laborPeriods || []).reduce((s, p) => s + calcLaborPeriodCost(p, o).oot, 0);
 }
@@ -1088,6 +1136,10 @@ export function jobOOTTotal(state) {
 // A period stores total days with no calendar, so its week is unknown unless
 // daysPerWeek was set on it. Unknown is reported as unknown rather than guessed.
 export function otReview(state) {
+  // Man-hours mode has no crew, no days and no shift length — there is nothing
+  // here to have an opinion about. Silence is the right answer, not a warning
+  // computed off an empty crew.
+  if (state?.laborMode === 'manhours') return null;
   const flat = state?.laborMode === 'flat';
   const units = flat ? [state?.flatJob || {}] : (state?.laborPeriods || []);
 
