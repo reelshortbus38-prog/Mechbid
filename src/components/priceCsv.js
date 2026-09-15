@@ -188,7 +188,24 @@ export function rowsToEntries(rows = [], header) {
 // ── MERGING ─────────────────────────────────────────────────────────────────
 // Matched on part number first, then on description — the same order
 // findPriceMatch uses, so an import lands where a lookup would look.
-const keyOf = e => (e.partId || '').trim().toLowerCase() || ('desc:' + (e.desc || '').trim().toLowerCase());
+//
+// ── AND ON THE SUPPLIER, WHICH IT NEVER WAS ─────────────────────────────────
+// "Contractors should definitely be able to add their catalog or catalogs from
+// suppliers so they have their price on materials."
+//
+// CATALOGS, plural. The book was one flat list keyed by part number, so a
+// second catalog did not sit beside the first — it OVERWROTE it, row by row,
+// wherever the two houses stock the same part. A shop that imported Ferguson
+// after Bond lost every Bond price that overlapped and never saw it happen.
+//
+// The supplier is now part of the key, so the same part from two houses is two
+// rows. An entry with no supplier keys exactly as it always did, which is what
+// every book already on a device looks like — those merge among themselves
+// unchanged.
+export const bookSupplier = e => String(e?.supplier || '').trim().toLowerCase();
+
+const bareKey = e => (e.partId || '').trim().toLowerCase() || ('desc:' + (e.desc || '').trim().toLowerCase());
+const keyOf = e => `${bookSupplier(e)}|${bareKey(e)}`;
 
 // → { merged, added, updated, unchanged, conflicts }
 //
@@ -196,7 +213,12 @@ const keyOf = e => (e.partId || '').trim().toLowerCase() || ('desc:' + (e.desc |
 // something; this app has already shipped a bug where a per-box price met a
 // footage quantity and multiplied 25×. When the catalog says one unit and the
 // book says another, one of them is wrong and a computer cannot tell which.
-export function mergeIntoBook(existing = [], incoming = [], { updatePrices = true } = {}) {
+export function mergeIntoBook(existing = [], incoming = [], { updatePrices = true, supplier = '' } = {}) {
+  // Stamp the whole incoming catalog with whose it is BEFORE keying, so a
+  // Ferguson import can never land on a Bond row.
+  const name = String(supplier || '').trim();
+  const stamped = (incoming || []).map(e => (name ? { ...e, supplier: name } : e));
+
   const byKey = new Map();
   for (const e of existing || []) byKey.set(keyOf(e), e);
 
@@ -206,7 +228,7 @@ export function mergeIntoBook(existing = [], incoming = [], { updatePrices = tru
   const conflicts = [];
   let unchanged = 0;
 
-  for (const inc of incoming || []) {
+  for (const inc of stamped) {
     const key = keyOf(inc);
     const found = byKey.get(key);
     if (!found) {
@@ -219,12 +241,22 @@ export function mergeIntoBook(existing = [], incoming = [], { updatePrices = tru
     const oldUnit = (found.unit || '').trim().toLowerCase();
     const newUnit = (inc.unit || '').trim().toLowerCase();
     if (oldUnit && newUnit && oldUnit !== newUnit) {
-      conflicts.push({ desc: found.desc, partId: found.partId, was: oldUnit, now: newUnit, price: inc.price, oldPrice: found.price });
+      // The supplier rides along only when there is one, so a book with no
+      // catalogs in it reports exactly what it always did.
+      conflicts.push({
+        desc: found.desc, partId: found.partId, was: oldUnit, now: newUnit,
+        price: inc.price, oldPrice: found.price,
+        ...(found.supplier ? { supplier: found.supplier } : {}),
+      });
       continue;
     }
     if (!updatePrices) { unchanged++; continue; }
     if (Number(found.price) === Number(inc.price)) { unchanged++; continue; }
-    updated.push({ desc: found.desc, partId: found.partId, from: Number(found.price) || 0, to: inc.price });
+    updated.push({
+      desc: found.desc, partId: found.partId,
+      from: Number(found.price) || 0, to: inc.price,
+      ...(found.supplier ? { supplier: found.supplier } : {}),
+    });
     const i = merged.indexOf(found);
     // An empty unit on the book takes the catalog's — that is new information,
     // not a disagreement.
@@ -243,4 +275,36 @@ export function importSummary(result) {
   if (r.unchanged) bits.push(`${r.unchanged} already matched`);
   if (r.conflicts?.length) bits.push(`${r.conflicts.length} held back`);
   return bits.join(' · ') || 'nothing to import';
+}
+
+// ── ONE CALL FROM A FILE TO A PROPOSED MERGE ────────────────────────────────
+// The import screen read the file, parsed it, turned rows into entries and
+// merged — four steps inside a FileReader callback, which is a place no test
+// can reach. So dropping the supplier on the way through went unnoticed by
+// every test in the repo: the pieces were all covered and the wiring between
+// them was not.
+//
+// Pure, and the component is now one call.
+//
+// → { ok, entries, skipped, supplier, result } or { ok: false, error }
+export function preparePriceImport(existing, text, supplier = '') {
+  let parsed;
+  try {
+    parsed = rowsToEntries(parseCsv(String(text || '')));
+  } catch {
+    return { ok: false, error: 'Could not read that file as a price list.' };
+  }
+  const { entries: incoming, skipped } = parsed;
+  if (!incoming.length) {
+    const why = (skipped || []).map(s => s.reason).join(', ');
+    return { ok: false, error: why ? `Nothing to import — ${why}.` : 'Nothing to import from that file.' };
+  }
+  const name = String(supplier || '').trim();
+  return {
+    ok: true,
+    entries: incoming,
+    skipped,
+    supplier: name,
+    result: mergeIntoBook(existing, incoming, { supplier: name }),
+  };
 }
