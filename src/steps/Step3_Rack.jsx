@@ -46,7 +46,11 @@ export default function Step3_Rack({ onNext, onBack }) {
   }
 
   function updateRackTask(id, field, value) {
-    dispatch({ type: 'UPDATE_RACK_TASK', id, updates: { [field]: field === 'hrs' ? parseFloat(value) || 0 : value } });
+    // Men is a number too, and was being stored as whatever the input gave —
+    // the string '0' where hrs got a real 0. Two spellings of the same answer
+    // is how a zero survives one check and fails the next.
+    const numeric = field === 'hrs' || field === 'men';
+    dispatch({ type: 'UPDATE_RACK_TASK', id, updates: { [field]: numeric ? parseFloat(value) || 0 : value } });
   }
 
   // Editing a description saves what's typed (prefix-free) and, for legacy
@@ -260,7 +264,11 @@ export default function Step3_Rack({ onNext, onBack }) {
                                 <TblArea value={taskDisplayDesc(t)} onChange={e => updateRackTaskDesc(t, e.target.value)} placeholder="Task description" />
                               </td>
                               <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
-                                <TblInput type="number" value={t.men || 1} onChange={e => updateRackTask(t.id, 'men', e.target.value)} style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
+                                {/* ?? not ||, so a zero the estimator typed stays
+                                    on screen as a zero. `t.men || 1` redisplayed
+                                    it as 1 — the app overwriting an answer it had
+                                    just been given. */}
+                                <TblInput type="number" value={t.men ?? 1} onChange={e => updateRackTask(t.id, 'men', e.target.value)} style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
                               </td>
                               <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
                                 <TblInput type="number" value={t.hrs} onChange={e => updateRackTask(t.id, 'hrs', e.target.value)} style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />

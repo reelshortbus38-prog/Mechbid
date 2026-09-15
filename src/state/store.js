@@ -4,6 +4,9 @@ import { createContext, useContext, useReducer } from 'react';
 import { ootIsItemised, ootBreakdown } from '../components/outOfTown.js';
 // Pure, imports nothing — no cycle back into this file.
 import { DEFAULT_CONDITION_PCT } from '../steps/conditionFactor.js';
+// Pure and dependency-free, like the above — the men-vs-zero rule lives with
+// the man-hour library rather than being written twice in here.
+import { manHoursOf } from '../steps/laborUnits.js';
 
 // ── DEFAULT MATERIAL PRICING ────────────────────────────────────────────────────
 // Starting-point contractor prices so a new job computes without hand-entering
@@ -1304,7 +1307,9 @@ export function calcRackTaskCost(task, crew) {
     }, 0);
   }
   const rate = avgCrewRate(list) || FALLBACK_MANHOUR_RATE;
-  return (parseFloat(task.men) || 1) * (parseFloat(task.hrs) || 0) * rate;
+  // A rack task that names nobody is one man; a rack task set to ZERO men is
+  // the GC's, and used to be billed as one anyway. See taskMen.
+  return manHoursOf(task, 1) * rate;
 }
 
 export function calcRackLaborTotal(rackTasks, crew) {
@@ -1315,7 +1320,10 @@ export function calcRackLaborTotal(rackTasks, crew) {
 // no crew is set. Mirrors what the Labor step's Field Work table displays.
 export function calcFieldTaskCost(task, crew) {
   const rate = avgCrewRate(crew) || FALLBACK_MANHOUR_RATE;
-  return (parseFloat(task.men) || 0) * (parseFloat(task.hrs) || 0) * rate;
+  // Unset stays 0 here, deliberately: every path that creates a field task
+  // writes men: 1, so a row without one is not a row somebody forgot to crew —
+  // and moving this to 1 would reprice saved bids to no one's benefit.
+  return manHoursOf(task, 0) * rate;
 }
 
 export function calcFieldTasksTotal(fieldTasks, crew) {

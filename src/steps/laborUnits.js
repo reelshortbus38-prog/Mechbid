@@ -27,9 +27,36 @@ export function splitAcrossCrew(manHours, crewSize) {
   return { men, hrs, manHours: Math.round(men * hrs * 100) / 100 };
 }
 
+// ── HOW MANY MEN IS THIS ROW, AND IS ZERO AN ANSWER? ─────────────────────────
+// It is, and the app could not hear it.
+//
+// `parseFloat(task.men) || 1` reads a blank box as one man, which is right —
+// the hours in this library are man-hours, one person for one hour, so a row
+// with hours and nobody named is one man. What it ALSO does is read an explicit
+// 0 as one man, because 0 is falsy and `||` cannot tell "nobody typed anything"
+// from "somebody typed nothing".
+//
+// On a rack task that is not academic. Zeroing the crew is how an estimator
+// says the GC has that one — the same gesture the scope units already honour —
+// and the Men box accepted the 0, displayed the 0, and the bid charged for a
+// man anyway. Eight hours at a hundred dollars is eight hundred dollars of
+// labor the estimator had explicitly taken out, added back silently, with the
+// screen agreeing with him and the total not.
+//
+// Same shape as the saved-units bug: a falsy value mistaken for a missing one.
+// The rule has to be written once, where both costing functions can reach it.
+export function taskMen(task, whenUnset = 0) {
+  const raw = task?.men;
+  if (raw === undefined || raw === null || raw === '') return whenUnset;
+  const n = Number(raw);
+  // Not a number at all is not an answer either — fall back rather than bill 0.
+  if (!Number.isFinite(n)) return whenUnset;
+  return Math.max(0, n);
+}
+
 // What a field-task row actually represents, whoever typed it.
-export function manHoursOf(task) {
-  return (Number(task?.men) || 0) * (Number(task?.hrs) || 0);
+export function manHoursOf(task, whenUnset = 0) {
+  return taskMen(task, whenUnset) * (Number(task?.hrs) || 0);
 }
 
 // ── THE ROW THAT ACTUALLY REACHES THE BID ───────────────────────────────────
