@@ -701,6 +701,12 @@ export default function Step1_Setup({ onNext }) {
                   + res.markedNoCopper.map(c => c.application || c.circuitId).join('; ')
                   + '. Check whether these carry new cases to set and connect.',
                 source: fileMeta.name,
+                // The rows this is about, as a FIELD. The sentence above names
+                // the APPLICATION where it has one ("Dairy 4-door"), which is
+                // what an estimator wants to read and is not what column 1 of
+                // the BPR says — so the IDs are carried separately rather than
+                // recovered from the prose. See components/flagSource.js.
+                circuits: res.markedNoCopper.map(c => c.circuitId).filter(Boolean),
               });
             }
             if ((res.coilOnly || []).length) {
@@ -710,6 +716,7 @@ export default function Step1_Setup({ onNext }) {
                   + res.coilOnly.map(c => c.application || c.circuitId).join(', ')
                   + '. The coil and the labor to set it are still scope.',
                 source: fileMeta.name,
+                circuits: res.coilOnly.map(c => c.circuitId).filter(Boolean),
               });
             }
             if (res.summary) newResults.push(`   → ${res.summary}`);

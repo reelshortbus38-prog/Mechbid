@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flagPage, flagFile, flagVerifyTarget } from './flagSource.js';
+import { flagPage, flagFile, flagVerifyTarget, flagCircuits, flagScheduleTarget } from './flagSource.js';
 import { dedupeFlags } from './flagDedupe.js';
 import { resolveCoverageFlags } from './flagCoverage.js';
 import { triageFlags } from './flagTriage.js';
@@ -128,5 +128,119 @@ describe('a refrigeration redline flag can open its sheet', () => {
     const flag = { type: 'warn', source: 'Store plan.pdf', page: 5, text: 'PROVIDE NEW CASE END.' };
     expect(flagPage(dedupeFlags([flag])[0])).toBe(5);
     expect(flagPage(triageFlags([flag]).actionable[0] || triageFlags([flag]).scope[0])).toBe(5);
+  });
+});
+
+// ── A REWORDED FINDING MUST NOT KEEP THE WRONG SHEET ─────────────────────────
+// mergeNearDuplicates takes the LONGER wording when the model re-words the same
+// note from sheet to sheet, and it used to take the wording alone. A flag first
+// seen on page 4 and reworded at greater length on page 9 ended up with page 9's
+// text and page 4's page number, so "Show me on page 4" opened a sheet that says
+// nothing of the kind — and the red mark, which searches the text layer for the
+// flag's own words, had nothing to find.
+
+describe('the wording and the sheet stay the same sighting', () => {
+  const loaded = () => true;
+  const short = 'Circuit B11 line size is unreadable on this sheet and could not be measured';
+  const long = 'Circuit B11 line size is unreadable on this sheet and could not be measured from the drawing';
+
+  it('takes the page of whichever wording it kept', () => {
+    const [out] = dedupeFlags([
+      { type: 'warn', source: 'plans.pdf', page: 4, text: short },
+      { type: 'warn', source: 'plans.pdf', page: 9, text: long },
+    ]);
+    expect(out.text).toBe(long);
+    expect(flagVerifyTarget(out, loaded)).toEqual({ file: 'plans.pdf', page: 9 });
+  });
+
+  it('leaves the page alone when the first wording is the fuller one', () => {
+    const [out] = dedupeFlags([
+      { type: 'warn', source: 'plans.pdf', page: 4, text: long },
+      { type: 'warn', source: 'plans.pdf', page: 9, text: short },
+    ]);
+    expect(out.text).toBe(long);
+    expect(flagPage(out)).toBe(4);
+  });
+
+  it('takes the document too, when the rewrite came off another file', () => {
+    const [out] = dedupeFlags([
+      { type: 'warn', source: 'sheet A.pdf', page: 4, text: short },
+      { type: 'warn', source: 'sheet B.pdf', page: 9, text: long },
+    ]);
+    expect(flagVerifyTarget(out, loaded)).toEqual({ file: 'sheet B.pdf', page: 9 });
+    // ...and both documents are still listed, because the note is on both.
+    expect(out.sources).toEqual(['sheet A.pdf', 'sheet B.pdf']);
+  });
+
+  it('still counts both sightings', () => {
+    const [out] = dedupeFlags([
+      { type: 'warn', source: 'plans.pdf', page: 4, text: short },
+      { type: 'warn', source: 'plans.pdf', page: 9, text: long },
+    ]);
+    expect(out.count).toBe(2);
+  });
+});
+
+// ── THE SCHEDULE IS THE OTHER HALF OF THE SAME QUESTION ──────────────────────
+// Refrigeration has two documents and only the print has pages. The flags off
+// the BPR — "these circuits are marked as changed but have NO new line sizes"
+// — are about a ROW, so they never carried a page and never offered a button,
+// and checking one meant opening the spreadsheet somewhere else and scrolling
+// a sixty-row legend.
+
+describe('a BPR flag can open its row', () => {
+  const loaded = () => true;
+  const flag = {
+    type: 'warn', source: 'Legend 2417.xlsx',
+    text: '3 circuit(s) are marked as changed but have NO new line sizes — Dairy 4-door; Meat Prep. '
+      + 'Check whether these carry new cases to set and connect.',
+    circuits: ['B11', 'C6'],
+  };
+
+  it('offers the schedule target', () => {
+    expect(flagScheduleTarget(flag, loaded))
+      .toEqual({ file: 'Legend 2417.xlsx', circuits: ['B11', 'C6'] });
+  });
+
+  it('normalises and de-duplicates the ids', () => {
+    expect(flagCircuits({ circuits: [' b11 ', 'B11', 'c6', '', null] })).toEqual(['B11', 'C6']);
+  });
+
+  // The IDs are carried as a field because the SENTENCE names the application
+  // ("Dairy 4-door"), which is not what column 1 of the BPR says. Recovering
+  // them from the prose would find nothing here, or the wrong thing.
+  it('does not try to read the circuits out of the wording', () => {
+    const { circuits, ...noField } = flag;
+    expect(flagCircuits(noField)).toEqual([]);
+    expect(flagScheduleTarget(noField, loaded)).toBe(null);
+  });
+
+  it('offers nothing when the workbook is no longer on the device', () => {
+    expect(flagScheduleTarget(flag, () => false)).toBe(null);
+  });
+
+  it('offers nothing for an app-raised flag, which has no document', () => {
+    expect(flagScheduleTarget({ source: 'System', circuits: ['B11'] }, loaded)).toBe(null);
+  });
+
+  it('survives dedupe, coverage resolution and triage', () => {
+    expect(flagScheduleTarget(dedupeFlags([flag])[0], loaded)).toBeTruthy();
+    expect(flagScheduleTarget(resolveCoverageFlags([flag], [])[0], loaded)).toBeTruthy();
+    const t = triageFlags([flag]);
+    const seen = [...t.actionable, ...(t.scope || []), ...(t.diagnostics || [])];
+    expect(seen.some(f => flagScheduleTarget(f, loaded))).toBe(true);
+  });
+
+  it('keeps the page and the schedule apart — a flag is offered the document it is about', () => {
+    // A page flag gets no schedule button, and a row flag gets no page button.
+    const page = { source: 'plans.pdf', page: 7, text: 'Page 7: verify duct size' };
+    expect(flagScheduleTarget(page, loaded)).toBe(null);
+    expect(flagVerifyTarget(flag, loaded)).toBe(null);
+  });
+
+  it('survives the save and reload a job goes through', () => {
+    const back = JSON.parse(JSON.stringify(dedupeFlags([flag])))[0];
+    expect(flagScheduleTarget(back, loaded))
+      .toEqual({ file: 'Legend 2417.xlsx', circuits: ['B11', 'C6'] });
   });
 });

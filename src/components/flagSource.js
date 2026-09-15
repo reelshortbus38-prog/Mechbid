@@ -46,3 +46,43 @@ export function flagVerifyTarget(flag, available = () => false) {
   if (!file || !page || !available(file)) return null;
   return { file, page };
 }
+
+// ── THE OTHER DOCUMENT A REFRIGERATION FLAG IS ABOUT ─────────────────────────
+// Everything above assumes the evidence is a PAGE. On the HVAC side it always
+// is — the flags come off plan sheets. Refrigeration has two documents and only
+// one of them has pages:
+//
+//   THE PRINT — the redline set. Pages, and `page` covers it.
+//   THE SCHEDULE — the BPR / legend, which is a SPREADSHEET. Its flags are
+//   about a row: "3 circuit(s) are marked as changed but have NO new line
+//   sizes… B11; C6". There is no page number to carry and never was, so the
+//   verify button simply never appeared on half of the refrigeration flags.
+//
+// A row's address on a BPR is its circuit ID — column 1, and the thing the
+// flag already names in prose. Same rule as the page: it has to be a FIELD.
+// Scraping IDs back out of the sentence would mean guessing which capital-
+// letter-plus-digit token is a circuit and which is a case number or a store
+// number, and a button that opens the wrong row is the failure this whole file
+// exists to avoid.
+export function flagCircuits(flag) {
+  const raw = (typeof flag === 'object' && flag?.circuits) || [];
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const c of raw) {
+    const id = String(c || '').trim().toUpperCase();
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+// Can this flag be verified against a schedule the app still holds?
+// Deliberately separate from the page target rather than folded into it: a
+// flag could in principle carry both, and the estimator should be offered the
+// document the finding is actually about rather than whichever the code
+// checked first.
+export function flagScheduleTarget(flag, available = () => false) {
+  const file = flagFile(flag);
+  const circuits = flagCircuits(flag);
+  if (!file || !circuits.length || !available(file)) return null;
+  return { file, circuits };
+}
