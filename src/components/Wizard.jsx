@@ -249,7 +249,9 @@ export default function Wizard() {
     // app's generic defaults. Seeding happens on a NEW job only: loading a
     // saved bid must never reprice it, because what was quoted was quoted.
     const profile = loadCompanyProfile();
-    const patch = companyDefaultPatch(profile);
+    // The app's own rate table goes in as the base, so a shop that stored only
+    // its waste factor does not arrive with an empty copper price list.
+    const patch = companyDefaultPatch(profile, state.rates);
     if (Object.keys(patch).length) dispatch({ type: 'MERGE', payload: patch });
     const crew = companyCrew(profile, uid);
     if (crew.length) {

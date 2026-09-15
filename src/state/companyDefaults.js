@@ -52,6 +52,8 @@ export const COMPANY_DEFAULT_KEYS = [
   // the shop, not about this store.
   'ootRates',
   // The shop's own labor productivity, once it has been tuned against a job.
+  // One object holding every unit — refrigeration, the scope lines and HVAC —
+  // so all of them travel together and none has to be captured separately.
   'laborUnits',
   // Standing scope fence and conditions of bid.
   'exclusions', 'proposalTerms', 'bidValidDays',
@@ -62,6 +64,43 @@ export const COMPANY_DEFAULT_KEYS = [
 // and it seeds differently — into whichever labor mode the job uses.
 export const CREW_KEY = 'standardCrew';
 
+// What the shop bills a man-hour at on a residential job — the single most
+// obviously per-shop number in the app: "no contractor charges the same rate."
+// It shipped as a per-job box and was re-typed on every changeout.
+//
+// Kept OUT of COMPANY_DEFAULT_KEYS deliberately: those are keys that map
+// one-to-one onto a job field, and a test holds them to it. This one maps into
+// manHoursJob.rate, so it is handled explicitly the way the crew is.
+export const MANHOUR_RATE_KEY = 'manHoursRate';
+
+// ── THE PART OF `rates` THE SHOP OWNS ────────────────────────────────────────
+// state.rates was left out of the shop profile entirely, and it is three
+// different kinds of thing wearing one name:
+//
+//   MARKET PRICES — cu, insul, hpPipeMultiplier. These belong to the day, not
+//   to the shop. Copper moved by a factor of three the last time this app's
+//   table was refreshed, and seeding a new bid with whatever last month's job
+//   was priced at would be worse than the generic table, not better. NOT
+//   captured.
+//
+//   THE SHOP'S PRACTICE — how much waste they buy, what they carry for
+//   fittings, what they add on a fitting. Those do not change job to job, and
+//   they were being re-typed on every bid or left at a number that came from
+//   nobody. Captured.
+//
+//   A CHAIN'S SPEC — hangerSpacingFt is 6 because that is the Food Lion
+//   standard. It belongs to the job in front of you, not to the shop. NOT
+//   captured.
+//
+// Splitting them is the whole point: a shop keeps its practice and prices its
+// copper today.
+export const COMPANY_RATE_KEYS = [
+  'wasteFactor',
+  'fittingsMode', 'fittingsPct', 'fittingsMarkupPct',
+  'hydronicFittingsPct',
+  'ductAccessoryPct',
+];
+
 const isSet = v => v !== undefined && v !== null && v !== '';
 
 // Pull the shop-level settings out of a job that has been set up correctly.
@@ -71,6 +110,17 @@ export function captureCompanyDefaults(state = {}, crew = []) {
   for (const k of COMPANY_DEFAULT_KEYS) {
     if (isSet(state[k])) out[k] = state[k];
   }
+  // The rate off whichever labor mode this job used, so a residential job set
+  // up correctly hands the shop its rate without a second button.
+  if (isSet(state.manHoursJob?.rate) && Number(state.manHoursJob.rate) > 0) {
+    out.manHoursRate = Number(state.manHoursJob.rate);
+  }
+  // Only the practice half of `rates` — see COMPANY_RATE_KEYS.
+  const rates = {};
+  for (const k of COMPANY_RATE_KEYS) {
+    if (isSet(state.rates?.[k])) rates[k] = state.rates[k];
+  }
+  if (Object.keys(rates).length) out.rates = rates;
   // Roles and rates carry; ids do not — a new job mints its own.
   const list = (crew || []).filter(m => m && isSet(m.role));
   if (list.length) {
@@ -86,16 +136,49 @@ export function captureCompanyDefaults(state = {}, crew = []) {
 
 // Seed a NEW job. Returns only the keys that should be dispatched, so a caller
 // can apply them without knowing which are set.
-export function companyDefaultPatch(profile = {}) {
+export function companyDefaultPatch(profile = {}, baseRates = {}) {
   const patch = {};
   for (const k of COMPANY_DEFAULT_KEYS) {
     if (isSet(profile[k])) patch[k] = profile[k];
+  }
+  // Rates MERGE onto the app's table rather than replacing it. The shop stored
+  // its practice only; the copper prices have to come from the current table,
+  // or a saved waste factor would arrive carrying an empty price list with it.
+  if (profile.rates && Object.keys(profile.rates).length) {
+    patch.rates = { ...baseRates, ...profile.rates };
+  }
+  // The stored rate seeds the man-hours box; the hours are always this job's.
+  if (isSet(profile.manHoursRate) && Number(profile.manHoursRate) > 0) {
+    patch.manHoursJob = { hours: 0, rate: Number(profile.manHoursRate) };
   }
   return patch;
 }
 
 export function hasCompanyDefaults(profile = {}) {
-  return COMPANY_DEFAULT_KEYS.some(k => isSet(profile[k])) || (profile[CREW_KEY] || []).length > 0;
+  return COMPANY_DEFAULT_KEYS.some(k => isSet(profile[k]))
+    || (profile[CREW_KEY] || []).length > 0
+    || Object.keys(profile.rates || {}).length > 0;
+}
+
+// ── HOW MANY OF THESE ARE ACTUALLY YOURS ─────────────────────────────────────
+// "Unconfirmed" has been true of nearly every labor unit for months, so it has
+// stopped being read. The question a contractor can act on is narrower and
+// sharper: is this MY number yet, or am I still running on the one that
+// shipped? That is answerable, it changes as they work, and it points at
+// something to do.
+//
+// → { mine, total, still } counted against the app's shipped defaults.
+export function unitsOwnership(profile = {}, shipped = {}) {
+  const keys = Object.keys(shipped || {});
+  const stored = profile?.laborUnits || {};
+  let mine = 0;
+  for (const k of keys) {
+    // Set, and different from what shipped. A shop that deliberately types the
+    // same number the app shipped has still not told us anything we did not
+    // already assume, and counting it as theirs would overstate the ownership.
+    if (isSet(stored[k]) && Number(stored[k]) !== Number(shipped[k])) mine += 1;
+  }
+  return { mine, total: keys.length, still: keys.length - mine };
 }
 
 // The stored crew, with fresh ids. Takes the id minter so this file stays pure.
@@ -126,6 +209,24 @@ export function describeCompanyDefaults(profile = {}) {
   if (isSet(profile.materialsTaxPct) && profile.materialsTaxPct > 0) out.push(`${profile.materialsTaxPct}% tax`);
   if (isSet(profile.bondPct) && profile.bondPct > 0) out.push(`${profile.bondPct}% bond`);
   if (isSet(profile.ootBasis)) out.push(`per diem per ${profile.ootBasis === 'person' ? 'person' : 'crew'}`);
-  if (isSet(profile.laborUnits)) out.push('tuned labor units');
+  if (isSet(profile.manHoursRate)) out.push(`$${profile.manHoursRate}/man-hr on residential`);
+  const r = profile.rates || {};
+  if (isSet(r.wasteFactor)) out.push(`${r.wasteFactor}% waste`);
+  if (isSet(r.hydronicFittingsPct)) out.push(`${r.hydronicFittingsPct}% hydronic fittings`);
+  if (isSet(r.ductAccessoryPct)) out.push(`${r.ductAccessoryPct}% duct hangers`);
   return out;
+}
+
+// One line for the settings card: how much of the labor library is the shop's
+// own. Said as a count rather than a mark, because a count changes as they work
+// and points at something to do.
+export function ownershipNote(profile = {}, shipped = {}) {
+  const { mine, total, still } = unitsOwnership(profile, shipped);
+  if (!total) return null;
+  if (!mine) {
+    return `All ${total} labor units are still the ones this app shipped. They are a starting point, not `
+      + 'your numbers — set the ones you know and save them here.';
+  }
+  if (!still) return `All ${total} labor units are yours.`;
+  return `${mine} of ${total} labor units are yours; ${still} are still the ones this app shipped.`;
 }
