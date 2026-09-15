@@ -245,15 +245,32 @@ Neither reading is being overruled by an app. Both are recorded, the units are
 marked disputed on screen in red, and the estimator is told before the number
 is leaned on.
 
+### Closed 2026-09-15, without being resolved
+
+> "We don't bid by braze joint and then numbers from the other source is a good
+> default. As long as the options are there to be edited it's ok."
+
+So this stops being a question anyone is chasing. The shop does not price a
+bid joint by joint, which is why a 7× spread on a per-joint figure can sit
+there without blocking anything — the derived estimate is a cross-check for
+them, not the bid they send.
+
+**The `disputed` mark stays.** It is still true, and it is still the most
+useful thing the app can say about that number: two people who do this work
+read it seven times apart. A shop that DOES bid by the joint — and the app is
+meant for shops that are not this one — needs to see that before leaning on it.
+
+What changed is only that nobody is waiting on an answer.
+
 ---
 
 ## Still to ask
 
 1. ~~What pipe size was the 400 ft day?~~ **Answered 2026-09-13** — the split
    is not real for the sizes this shop runs. Applied.
-2. **The braze joint, with both figures on the table.** 0.15 hr and 1.1 hr for
-   the same joint. Does the 1.1 include purge, cool, check and insulate, and
-   the 0.15 only the braze itself? That would explain a good deal of a 7× gap.
+2. ~~The braze joint~~ **Closed 2026-09-15** — "we don't bid by braze joint."
+   Not resolved, but no longer a question anyone is chasing. The units stay
+   marked disputed for the shops that do.
 3. **The three multipliers, re-asked as multipliers.** Live vs closed store,
    as a × on the whole job.
 4. **Crew efficiency — against what?** If the app's rates are measured days,

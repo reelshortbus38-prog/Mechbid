@@ -242,6 +242,37 @@ export const HVAC_PROVENANCE = {
   },
 };
 
+// ── EVERY UNIT NEEDS A BOX ───────────────────────────────────────────────────
+// "As long as the options are there to be edited it's ok." Said three separate
+// ways across three conversations, which makes it the requirement rather than a
+// preference — and it was not quite true. `coilLength` reached the bid (it is
+// what decides how many joints an in-floor run has, because soft copper comes
+// in a 50 ft coil rather than a 20 ft stick) and had no box anywhere. A number
+// that moves a bid and cannot be corrected is the one thing this app must not
+// have.
+//
+// These live here rather than inside the component so the guard in
+// laborUnits.test.js can read them: every key in DEFAULT_LABOR_UNITS has to
+// appear in exactly one of the three field lists.
+export const CIRCUIT_UNIT_FIELDS = [
+  { key: 'perFtSmall', label: 'Run/ft ≤7/8"' },
+  { key: 'perFtMed', label: 'Run/ft 1⅛–1⅜"' },
+  { key: 'perFtLarge', label: 'Run/ft ≥1⅝"' },
+  { key: 'perJointSmall', label: 'Joint ≤7/8"' },
+  { key: 'perJointMed', label: 'Joint 1⅛–1⅜"' },
+  { key: 'perJointLarge', label: 'Joint ≥1⅝"' },
+  { key: 'perCase', label: 'Case hookup' },
+  { key: 'perRackTie', label: 'Rack tie-in' },
+  { key: 'stickLength', label: 'Stick len (ft)' },
+  // Soft copper comes in a coil, not a stick, so an in-floor run is jointed by
+  // the coil length instead. 400 ft in the floor is eight joints at 50 ft and
+  // twenty at 20 ft — the difference is real and it was not editable.
+  { key: 'coilLength', label: 'Coil len (ft, in-floor)' },
+  { key: 'jointsPerCircuit', label: 'Fittings/circuit' },
+  { key: 'jointsPerRiser', label: 'Fittings/riser' },
+  { key: 'clusterFactor', label: 'Bunched joint ×' },
+];
+
 export const PROVENANCE_MARK = { confirmed: '✓', varies: '~', unconfirmed: '?', disputed: '!' };
 
 export function provenanceOf(key) {

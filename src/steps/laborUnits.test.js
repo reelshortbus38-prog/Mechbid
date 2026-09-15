@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   splitAcrossCrew, manHoursOf, provenanceOf, unitsConfidence,
-  UNIT_PROVENANCE, PROVENANCE_MARK,
+  UNIT_PROVENANCE, PROVENANCE_MARK, CIRCUIT_UNIT_FIELDS,
 } from './laborUnits.js';
 import { DEFAULT_LABOR_UNITS, estimateCircuitLabor, calcFieldTaskCost, circuitJoints } from '../state/store.js';
-import { scopeManHours, SCOPE_UNIT_KEYS } from './scopeUnits.js';
-import { hvacManHours, HVAC_UNIT_KEYS } from './hvacLaborUnits.js';
+import { scopeManHours, SCOPE_UNIT_KEYS, SCOPE_UNIT_FIELDS } from './scopeUnits.js';
+import { hvacManHours, HVAC_UNIT_KEYS, HVAC_UNIT_FIELDS } from './hvacLaborUnits.js';
 
 describe('man-hours split across a real crew', () => {
   it('keeps men x hrs equal to the man-hours it started with', () => {
@@ -370,6 +370,48 @@ describe('the per-foot rate', () => {
     // headers has a different answer, and it is editable per job.
     for (const k of ['perFtSmall', 'perFtMed', 'perFtLarge']) {
       expect(DEFAULT_LABOR_UNITS, k).toHaveProperty(k);
+    }
+  });
+});
+
+// ── EVERY UNIT NEEDS A BOX ──────────────────────────────────────────────────
+// "As long as the options are there to be edited it's ok." Said three separate
+// ways across three conversations, which makes it the requirement rather than a
+// preference — and it was not quite true when it was checked.
+describe('nothing reaches a bid that cannot be corrected', () => {
+  const fields = [...CIRCUIT_UNIT_FIELDS, ...SCOPE_UNIT_FIELDS, ...HVAC_UNIT_FIELDS];
+  const editable = new Set(fields.map(f => f.key));
+
+  it('gives every unit in the library a box on some screen', () => {
+    // coilLength failed this. It decides how many joints an in-floor run has —
+    // soft copper comes in a 50 ft coil, not a 20 ft stick, so 400 ft in the
+    // floor is eight joints rather than twenty — and there was nowhere to
+    // change it. A number that moves a bid and cannot be corrected is the one
+    // thing this app must not have.
+    const missing = Object.keys(DEFAULT_LABOR_UNITS).filter(k => !editable.has(k));
+    expect(missing, `no box anywhere for: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('gives it exactly one box, not two that disagree', () => {
+    // The same key on two cards is two inputs writing one value, and whichever
+    // renders second wins. Confusing at best.
+    const seen = new Map();
+    for (const f of fields) seen.set(f.key, (seen.get(f.key) || 0) + 1);
+    const dupes = [...seen.entries()].filter(([, n]) => n > 1).map(([k]) => k);
+    expect(dupes, `on more than one card: ${dupes.join(', ')}`).toEqual([]);
+  });
+
+  it('offers no box for a unit that does not exist', () => {
+    // The mirror failure: an input bound to a key nothing reads, which an
+    // estimator can type into all day with no effect on the bid.
+    const orphans = fields.map(f => f.key).filter(k => !(k in DEFAULT_LABOR_UNITS));
+    expect(orphans, `box with no unit behind it: ${orphans.join(', ')}`).toEqual([]);
+  });
+
+  it('labels every box, because an unlabelled number is not editable in practice', () => {
+    for (const f of fields) {
+      expect(f.label, f.key).toBeTruthy();
+      expect(String(f.label).length, f.key).toBeGreaterThan(2);
     }
   });
 });
