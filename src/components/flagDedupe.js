@@ -93,7 +93,24 @@ export function mergeNearDuplicates(flags = []) {
     (flag.sources || []).forEach(s => { if (!hit.sources.includes(s)) hit.sources.push(s); });
     if (flag.type === 'warn' && hit.type !== 'warn') hit.type = 'warn';
     // Keep the fuller wording — a rewrite often drops a clause.
-    if (String(flag.text || '').length > String(hit.text || '').length) hit.text = flag.text;
+    //
+    // ── AND THE SHEET HAS TO COME WITH IT ─────────────────────────────────
+    // This used to swap the TEXT alone. The model rewords the same finding
+    // from sheet to sheet, so a flag first seen on page 4 and reworded at
+    // greater length on page 9 ended up carrying page 9's wording and page 4's
+    // page number. "Show me on page 4" then opened a sheet that says nothing
+    // of the kind, and the red mark — which searches the text layer for the
+    // flag's own words — found nothing to box.
+    //
+    // A wrong sheet is worse than no button: an estimator who taps it once and
+    // lands in the wrong place stops tapping it on the one that mattered. The
+    // wording and the location are one sighting, so they move together.
+    if (String(flag.text || '').length > String(hit.text || '').length) {
+      hit.text = flag.text;
+      if (flag.page) hit.page = flag.page;
+      if (flag.source) hit.source = flag.source;
+      if (flag.circuits?.length) hit.circuits = flag.circuits;
+    }
   }
   return out;
 }

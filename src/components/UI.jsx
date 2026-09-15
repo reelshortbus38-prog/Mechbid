@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { colors, btn, slabel, inp, card } from '../styles/theme.js';
-import { flagVerifyTarget } from './flagSource.js';
+import { flagVerifyTarget, flagScheduleTarget } from './flagSource.js';
 import { hasCachedFile, fileIdFor } from '../api/fileCache.js';
 import { SheetPeek } from './SheetPeek.jsx';
+import { SchedulePeek } from './SchedulePeek.jsx';
 
 export function Btn({ children, onClick, variant = 'green', size = 'md', disabled, style, ...props }) {
   const sizes = { sm: { padding: '6px 12px', fontSize: 11 }, md: { padding: '10px 18px', fontSize: 13 }, lg: { padding: '13px 24px', fontSize: 15 } };
@@ -136,7 +137,13 @@ export function Flag({ flag }) {
   // Resolved through this job's own file list: a flag knows a filename, the
   // bytes are keyed by upload id, and going via the job is what stops one
   // bid's drawing appearing under another's flag.
-  const target = flagVerifyTarget(flag, name => hasCachedFile(fileIdFor(uploadedFiles, name)));
+  const [rows, setRows] = useState(null);
+  const held = name => hasCachedFile(fileIdFor(uploadedFiles, name));
+  const target = flagVerifyTarget(flag, held);
+  // The schedule is the refrigeration half of the same question. A BPR flag
+  // names a circuit rather than a page, so it gets its own target and its own
+  // viewer — see flagSource.js.
+  const sched = flagScheduleTarget(flag, held);
   const styles = {
     error: { bg: 'rgba(239,68,68,0.08)', border: colors.red, icon: '❌', color: colors.red },
     warn:  { bg: 'rgba(234,179,8,0.08)', border: colors.yellow, icon: '⚠️', color: colors.yellow },
@@ -169,8 +176,19 @@ export function Flag({ flag }) {
             }}
           >📐 Show me on page {target.page}</button>
         )}
+        {sched && (
+          <button
+            onClick={() => setRows(sched)}
+            style={{
+              marginTop: 6, marginLeft: target ? 6 : 0, background: 'transparent', color: colors.blue,
+              border: `1px solid ${colors.blue}66`, borderRadius: 6,
+              padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}
+          >📊 Show me on the schedule</button>
+        )}
       </div>
       {peek && <SheetPeek fileName={peek.file} page={peek.page} flagText={flag.text} onClose={() => setPeek(null)} />}
+      {rows && <SchedulePeek fileName={rows.file} circuits={rows.circuits} flagText={flag.text} onClose={() => setRows(null)} />}
     </div>
   );
 }
