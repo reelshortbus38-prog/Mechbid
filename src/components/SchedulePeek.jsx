@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { loadCachedFile, fileIdFor } from '../api/fileCache.js';
-import { scheduleView } from './scheduleRows.js';
+import { scheduleView, workbookView } from './scheduleRows.js';
 
 // ── SCHEDULE PEEK ────────────────────────────────────────────────────────────
 // SheetPeek's opposite number. That one opens the PRINT at the page a flag is
@@ -45,14 +45,18 @@ export function SchedulePeek({ fileName, circuits = [], flagText = '', onClose }
           grid: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', blankrows: true }),
         }));
         if (cancelled) return;
-        const view = scheduleView(sheets, circuits);
+        // No circuits means the flag is about the sheet, not a row — the
+        // workbook opens at the top of its fullest tab with nothing marked.
+        const view = circuits.length ? scheduleView(sheets, circuits) : workbookView(sheets);
         setState(view
           ? { status: 'ready', view }
           : {
             status: 'error',
-            message: `Could not find ${circuits.join(', ')} in this workbook. The flag names ${circuits.length === 1 ? 'a circuit' : 'circuits'} `
-              + 'that is not in the circuit-ID column of any tab — the schedule may have been edited since it was analyzed, '
-              + 'or the row is on a file that was not uploaded.',
+            message: circuits.length
+              ? `Could not find ${circuits.join(', ')} in this workbook. The flag names ${circuits.length === 1 ? 'a circuit' : 'circuits'} `
+                + 'that is not in the circuit-ID column of any tab — the schedule may have been edited since it was analyzed, '
+                + 'or the row is on a file that was not uploaded.'
+              : 'That workbook has no readable sheets.',
           });
       } catch (e) {
         if (!cancelled) setState({ status: 'error', message: e?.message || 'Could not open that schedule.' });
@@ -75,9 +79,16 @@ export function SchedulePeek({ fileName, circuits = [], flagText = '', onClose }
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column', padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexShrink: 0 }}>
         <div style={{ fontSize: 12, color: colors.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {circuits.join(', ')}
+          {circuits.length ? circuits.join(', ') : 'Schedule'}
           <span style={{ color: colors.textDim, fontWeight: 400, marginLeft: 8 }}>{fileName}</span>
-          {view && (
+          {view && (view.wholeSheet ? (
+            // Nothing is marked, and that has to be said. A table with no red
+            // in it otherwise reads as "checked, nothing wrong" when what it
+            // actually means is that this flag has no single row to point at.
+            <span style={{ color: colors.yellow, fontWeight: 400, marginLeft: 8 }}>
+              · tab “{view.sheetName}” · nothing marked — this flag is about the sheet, not one row
+            </span>
+          ) : (
             <span style={{ color: '#ff2d55', fontWeight: 400, marginLeft: 8 }}>
               · tab “{view.sheetName}” · {view.hits.length} row{view.hits.length === 1 ? '' : 's'} marked
               {view.missing.length > 0 && (
@@ -86,7 +97,7 @@ export function SchedulePeek({ fileName, circuits = [], flagText = '', onClose }
                 </span>
               )}
             </span>
-          )}
+          ))}
         </div>
         <button
           onClick={onClose}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../state/store.js';
 import { colors, btn, slabel, inp, card } from '../styles/theme.js';
-import { flagVerifyTarget, flagScheduleTarget } from './flagSource.js';
+import { flagVerifyTarget, flagScheduleTarget, flagWorkbookTarget } from './flagSource.js';
 import { hasCachedFile, fileIdFor } from '../api/fileCache.js';
 import { SheetPeek } from './SheetPeek.jsx';
 import { SchedulePeek } from './SchedulePeek.jsx';
@@ -144,6 +144,13 @@ export function Flag({ flag }) {
   // names a circuit rather than a page, so it gets its own target and its own
   // viewer — see flagSource.js.
   const sched = flagScheduleTarget(flag, held);
+  // A BPR finding with no row to point at — three highlight colours on the
+  // sheet, rows with no readable circuit ID. Different button, different word:
+  // this one promises the document, not a row.
+  const isWorkbook = name => ['excel', 'xls'].includes(
+    (uploadedFiles.find(f => f?.name === name) || {}).type,
+  );
+  const book = flagWorkbookTarget(flag, held, isWorkbook);
   const styles = {
     error: { bg: 'rgba(239,68,68,0.08)', border: colors.red, icon: '❌', color: colors.red },
     warn:  { bg: 'rgba(234,179,8,0.08)', border: colors.yellow, icon: '⚠️', color: colors.yellow },
@@ -185,6 +192,16 @@ export function Flag({ flag }) {
               padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
             }}
           >📊 Show me on the schedule</button>
+        )}
+        {book && (
+          <button
+            onClick={() => setRows({ file: book.file, circuits: [] })}
+            style={{
+              marginTop: 6, background: 'transparent', color: colors.textDim,
+              border: `1px solid ${colors.border}`, borderRadius: 6,
+              padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}
+          >📊 Open the schedule</button>
         )}
       </div>
       {peek && <SheetPeek fileName={peek.file} page={peek.page} flagText={flag.text} onClose={() => setPeek(null)} />}

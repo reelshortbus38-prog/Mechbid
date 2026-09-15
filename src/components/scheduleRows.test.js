@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   findCircuitRows, headerRowIndex, rowWindow, usedColumns, scheduleView,
+  workbookView,
 } from './scheduleRows.js';
 
 // A BPR as SheetJS hands it over: rows of cells, a title block on top, a
@@ -166,5 +167,53 @@ describe('scheduleView', () => {
     expect(scheduleView(sheets, ['Z99'])).toBe(null);
     expect(scheduleView([], ['B11'])).toBe(null);
     expect(scheduleView(null, ['B11'])).toBe(null);
+  });
+});
+
+// ── THE FLAGS WITH NO ROW TO POINT AT ────────────────────────────────────────
+// "This BPR uses three different highlight colours", "four rows looked like
+// circuits but had no readable ID" — the last one cannot name a row by
+// definition, because the ID is the thing that was missing. They still say go
+// and check the schedule.
+describe('workbookView', () => {
+  const sheets = [
+    { name: 'Notes', grid: [['see legend'], [], []] },
+    { name: 'Rack B', grid: GRID },
+  ];
+
+  it('opens the tab with the most in it, not the first', () => {
+    expect(workbookView(sheets).sheetName).toBe('Rack B');
+  });
+
+  it('marks nothing, and says so', () => {
+    const v = workbookView(sheets);
+    expect(v.hits).toEqual([]);
+    expect(v.hitRows.size).toBe(0);
+    expect(v.wholeSheet).toBe(true);
+  });
+
+  it('still finds the header, so the columns are labelled', () => {
+    const v = workbookView(sheets);
+    expect(v.headerIdx).toBe(3);
+    expect(v.from).toBe(4);
+    expect(v.columns.length).toBeGreaterThan(0);
+  });
+
+  it('starts at the top when there is no header to skip', () => {
+    const v = workbookView([{ name: 'X', grid: [['B11', '7/8'], ['B12', '7/8']] }]);
+    expect(v.headerIdx).toBe(null);
+    expect(v.from).toBe(0);
+  });
+
+  it('never runs past the end of a short sheet', () => {
+    const v = workbookView([{ name: 'X', grid: [['B11']] }]);
+    expect(v.to).toBe(0);
+    expect(v.from).toBeLessThanOrEqual(v.to);
+  });
+
+  it('is null for a workbook with nothing in it', () => {
+    expect(workbookView([])).toBe(null);
+    expect(workbookView([{ name: 'Empty', grid: [[], ['', '']] }])).toBe(null);
+    expect(workbookView(null)).toBe(null);
   });
 });
