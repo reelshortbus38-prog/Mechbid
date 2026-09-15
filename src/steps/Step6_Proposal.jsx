@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal, jobCrew } from '../state/store.js';
-import { captureCompanyDefaults, describeCompanyDefaults, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
+import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLinesetTotal, jobCrew, DEFAULT_LABOR_UNITS } from '../state/store.js';
+import { captureCompanyDefaults, describeCompanyDefaults, ownershipNote, unitsOwnership, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
 import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin, escalationExposure, escalationClause } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Row, Input, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
@@ -38,6 +38,8 @@ function CompanyRatesCard({ company, onChange }) {
   const [saved, setSaved] = useState(false);
   const stored = describeCompanyDefaults(company);
   const crew = jobCrew(state);
+  const owned = ownershipNote(company, DEFAULT_LABOR_UNITS);
+  const mineAll = unitsOwnership(company, DEFAULT_LABOR_UNITS).still === 0;
 
   function saveDefaults() {
     const next = { ...company, ...captureCompanyDefaults(state, crew) };
@@ -77,6 +79,24 @@ function CompanyRatesCard({ company, onChange }) {
           </>
         )}
       </div>
+      {/* ── IS THIS MY NUMBER YET? ───────────────────────────────────────────
+          "Unconfirmed" has been true of nearly every labor unit for months, so
+          it has stopped being read. This is narrower, it changes as the shop
+          works, and it points at something to do. */}
+      {owned && (
+        <div style={{
+          fontSize: 11, lineHeight: 1.6, marginTop: 10, padding: '8px 10px', borderRadius: 6,
+          color: colors.textDim,
+          border: `1px solid ${mineAll ? `${colors.green}40` : `${colors.yellow}40`}`,
+          background: mineAll ? `${colors.green}0D` : `${colors.yellow}0D`,
+        }}>
+          <strong style={{ color: mineAll ? colors.green : colors.yellow }}>
+            {mineAll ? '✓' : '~'}
+          </strong>{' '}
+          {owned}
+        </div>
+      )}
+
       <Row style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <Btn variant={saved ? 'ghost' : 'green'} size="sm" onClick={saveDefaults}>
           {saved ? '✓ Saved — click again to update' : 'Save this job\'s rates as my defaults'}
