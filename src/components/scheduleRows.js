@@ -119,3 +119,39 @@ export function scheduleView(sheets = [], circuits = [], pad = 4) {
   }
   return null;
 }
+
+// ── AND WHEN THERE IS NO ROW TO POINT AT ─────────────────────────────────────
+// A flag about the sheet as a whole — three highlight colours on one BPR, rows
+// that had no readable circuit ID — still wants the workbook open. It gets the
+// tab with the most in it, from the top, with nothing marked.
+//
+// Nothing marked is the important part. The view says so out loud rather than
+// letting a red-free table read as "checked, all clear".
+export function workbookView(sheets = [], pad = 24) {
+  let best = null, bestRows = 0;
+  for (const sheet of sheets || []) {
+    const grid = sheet?.grid || [];
+    const filled = grid.filter(r => Array.isArray(r) && r.some(c => cell(c) !== '')).length;
+    if (filled > bestRows) { bestRows = filled; best = sheet; }
+  }
+  if (!best) return null;
+  const grid = best.grid || [];
+  const to = Math.min(Math.max(0, grid.length - 1), pad);
+  const headerIdx = headerRowIndex(grid, to);
+  const from = Number.isFinite(headerIdx) && headerIdx !== null ? headerIdx + 1 : 0;
+  return {
+    sheetName: best.name || '',
+    grid,
+    hits: [],
+    hitRows: new Set(),
+    from: Math.min(from, to),
+    to,
+    headerIdx,
+    columns: usedColumns(grid, Math.min(from, to), to, headerIdx),
+    found: [],
+    missing: [],
+    // What this view is NOT. Read by the header line so the absence of red is
+    // never mistaken for a clean result.
+    wholeSheet: true,
+  };
+}

@@ -86,3 +86,35 @@ export function flagScheduleTarget(flag, available = () => false) {
   if (!file || !circuits.length || !available(file)) return null;
   return { file, circuits };
 }
+
+// ── AND THE FLAGS THAT ARE ABOUT THE WHOLE SHEET ─────────────────────────────
+// Some BPR findings have no row to point at, and never will: "this sheet uses
+// three different highlight colours", "a sheet plainly full of circuits
+// produced none", "four rows looked like circuits but had no readable ID". The
+// last one cannot name a row by definition — the ID is the thing that was
+// missing.
+//
+// Those still say go and check the schedule, and on an iPad that still means
+// leaving the app and finding the file. Opening the workbook is worth doing.
+//
+// It is a DIFFERENT button with a different word, because the rule at the top
+// of this file still holds. "Show me on the schedule" promises a row and must
+// deliver one; "Open the schedule" promises the document. An unspecific place
+// is not the same thing as a wrong one — but an estimator has to be able to
+// tell from the button which he is about to get, or the specific one stops
+// being trusted.
+//
+// Only on warnings and errors. An info flag reporting what was read is not
+// asking anybody to go and look, and a button on every line is the same as a
+// button on none.
+// isWorkbook: (fileName) => boolean — only the caller knows the upload's type.
+export function flagWorkbookTarget(flag, available = () => false, isWorkbook = () => false) {
+  const file = flagFile(flag);
+  if (!file || !available(file) || !isWorkbook(file)) return null;
+  // The specific button wins. Never both — two buttons onto the same document
+  // is a choice nobody wants to make.
+  if (flagCircuits(flag).length) return null;
+  const type = String((typeof flag === 'object' && flag?.type) || '');
+  if (type !== 'warn' && type !== 'error') return null;
+  return { file };
+}
