@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { uid, fmt, fmtDec } from '../state/store.js';
+import { uid, fmt, fmtDec, useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
 import {
@@ -7,7 +7,7 @@ import {
   addCustomSupplier, removeCustomSupplier,
 } from './suppliers.js';
 import { touchShopKey } from '../lib/shopSync.js';
-import { toCsv, parseCsv, rowsToEntries, mergeIntoBook, importSummary } from './priceCsv.js';
+import { toCsv, preparePriceImport, importSummary } from './priceCsv.js';
 import { webStorage } from '../state/webStorage.js';
 
 // ── SUPPLIER DEFAULT (global, shared across jobs — same pattern as the price book) ──
@@ -63,16 +63,21 @@ export function savePriceBook(entries) {
 // Returns the best match for a given description/partId, or null if nothing matches.
 // Priority: exact part# match > exact description match > fuzzy description substring match.
 // This is intentionally conservative — it's used to SUGGEST a fill, never to silently apply one.
-export function findPriceMatch(entries, { desc = '', partId = '' }) {
-  if (!entries || entries.length === 0) return null;
-  const normDesc = desc.trim().toLowerCase();
-  const normPartId = partId.trim().toLowerCase();
-
+//
+// ── AND NOW, WHOSE PRICE IT IS ──────────────────────────────────────────────
+// The book can hold the same part from several houses. The job names the one
+// being bought from, so that house's price is looked for FIRST — and when only
+// another house has it, the price is still offered and the answer SAYS SO.
+//
+// Saying so is the whole point. Silently handing over Bond's number on a job
+// being bought from Ferguson is the app inventing a price; refusing to show it
+// at all leaves an estimator with a blank where a real figure exists. Neither
+// is right, and labelling it is.
+function scan(entries, normDesc, normPartId) {
   if (normPartId) {
     const exactPart = entries.find(e => e.partId && e.partId.trim().toLowerCase() === normPartId);
     if (exactPart) return { entry: exactPart, confidence: 'exact' };
   }
-
   if (!normDesc) return null;
 
   const exactDesc = entries.find(e => e.desc && e.desc.trim().toLowerCase() === normDesc);
@@ -88,8 +93,35 @@ export function findPriceMatch(entries, { desc = '', partId = '' }) {
     });
     if (fuzzy) return { entry: fuzzy, confidence: 'fuzzy' };
   }
-
   return null;
+}
+
+export function findPriceMatch(entries, { desc = '', partId = '', supplier = '' } = {}) {
+  if (!entries || entries.length === 0) return null;
+  const normDesc = desc.trim().toLowerCase();
+  const normPartId = partId.trim().toLowerCase();
+  const want = String(supplier || '').trim().toLowerCase();
+
+  // Three passes, narrowest first. A book with no suppliers in it — which is
+  // every book already on a device — falls straight through to the last one and
+  // behaves exactly as it always has.
+  if (want) {
+    const mine = entries.filter(e => String(e.supplier || '').trim().toLowerCase() === want);
+    const hit = scan(mine, normDesc, normPartId);
+    if (hit) return hit;
+
+    // The shop's own entries, typed by hand and belonging to no catalog. Those
+    // are the estimator's own numbers and outrank another house's.
+    const unassigned = entries.filter(e => !String(e.supplier || '').trim());
+    const own = scan(unassigned, normDesc, normPartId);
+    if (own) return own;
+
+    const other = scan(entries, normDesc, normPartId);
+    if (other) return { ...other, fromSupplier: other.entry.supplier || '' };
+    return null;
+  }
+
+  return scan(entries, normDesc, normPartId);
 }
 
 // ── SUPPLIER SWITCHER ──────────────────────────────────────────────────────────
@@ -234,25 +266,36 @@ export function SupplierSwitcher({ value, onChange, compact = false }) {
 // Drop this next to any description/part# input. Pass the current desc/partId and
 // a callback that receives the matched price. Renders nothing if there's no match.
 export function PriceMatchChip({ desc, partId, onFill }) {
+  const { state } = useStore();
   const entries = loadPriceBook();
-  const match = findPriceMatch(entries, { desc, partId });
+  // The house this job is buying from. Its price is looked for first.
+  const supplier = state?.preferredSupplier || '';
+  const match = findPriceMatch(entries, { desc, partId, supplier });
   if (!match) return null;
 
-  const isExact = match.confidence === 'exact';
+  // Only another house had it. The price is still worth offering — a blank
+  // where a real figure exists helps nobody — but it is labelled, because
+  // handing over Bond's number on a Ferguson job without saying so is the app
+  // inventing a price.
+  const borrowed = !!match.fromSupplier;
+  const isExact = match.confidence === 'exact' && !borrowed;
+  const tone = borrowed ? colors.yellow : isExact ? colors.green : colors.textDim;
   return (
     <button
       onClick={() => onFill(match.entry.price)}
-      title={`${match.entry.desc}${match.entry.partId ? ' · ' + match.entry.partId : ''}`}
+      title={borrowed
+        ? `${match.fromSupplier}'s price — this job is buying from ${supplier}. ${match.entry.desc}`
+        : `${match.entry.desc}${match.entry.partId ? ' · ' + match.entry.partId : ''}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
-        background: isExact ? colors.greenFaint : colors.surface,
-        border: `1px solid ${isExact ? colors.green : colors.border}`,
-        color: isExact ? colors.green : colors.textDim,
+        background: borrowed ? `${colors.yellow}14` : isExact ? colors.greenFaint : colors.surface,
+        border: `1px solid ${borrowed ? colors.yellow : isExact ? colors.green : colors.border}`,
+        color: tone,
         borderRadius: 6, padding: '3px 8px', fontSize: 10, fontWeight: 700,
         cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
       }}
     >
-      📖 {fmt(match.entry.price)}
+      📖 {fmt(match.entry.price)}{borrowed ? ` · ${match.fromSupplier}` : ''}
     </button>
   );
 }
@@ -265,6 +308,10 @@ export default function PriceBookModal({ onClose }) {
   const [search, setSearch] = useState('');
   const [pending, setPending] = useState(null);
   const [importErr, setImportErr] = useState('');
+  // Which house the file being imported belongs to. Blank is allowed and means
+  // "my own numbers, no catalog" — which is what every entry in an existing
+  // book is.
+  const [importSupplier, setImportSupplier] = useState(loadDefaultSupplier());
   const fileRef = useRef(null);
 
   function persist(next) {
@@ -305,18 +352,12 @@ export default function PriceBookModal({ onClose }) {
     const reader = new FileReader();
     reader.onerror = () => setImportErr('Could not read that file.');
     reader.onload = () => {
-      try {
-        const { entries: incoming, skipped } = rowsToEntries(parseCsv(String(reader.result || '')));
-        if (!incoming.length) {
-          const why = skipped.map(s => s.reason).join(', ');
-          setImportErr(why ? `Nothing to import — ${why}.` : 'Nothing to import from that file.');
-          setPending(null);
-          return;
-        }
-        setPending({ name: file.name, skipped, result: mergeIntoBook(entries, incoming) });
-      } catch (e) {
-        setImportErr('Could not read that file as a price list.');
-      }
+      // Every step of this used to live inside this callback, where no test can
+      // reach it — which is how the supplier could have been dropped on the way
+      // through with the whole suite still green. See preparePriceImport.
+      const r = preparePriceImport(entries, reader.result, importSupplier);
+      if (!r.ok) { setImportErr(r.error); setPending(null); return; }
+      setPending({ name: file.name, skipped: r.skipped, supplier: r.supplier, result: r.result });
     };
     reader.readAsText(file);
   }
@@ -363,9 +404,15 @@ export default function PriceBookModal({ onClose }) {
               placeholder="Search description or part #..."
               style={{ flex: 1, minWidth: 180 }}
             />
-            <Row style={{ gap: 8 }}>
+            <Row style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <Btn variant="ghost" size="sm" onClick={addEntry}>+ Add Entry</Btn>
               <Btn variant="surface" size="sm" onClick={exportCSV}>📥 Export CSV</Btn>
+              {/* ── WHOSE CATALOG ─────────────────────────────────────────────
+                  Picked BEFORE the file, because it decides where every row
+                  lands. Without it a second import overwrote the first wherever
+                  two houses stock the same part. */}
+              <span style={{ fontSize: 11, color: colors.textDim }}>Import as</span>
+              <SupplierSwitcher value={importSupplier} onChange={setImportSupplier} compact />
               <Btn variant="surface" size="sm" onClick={() => fileRef.current?.click()}>📤 Import CSV</Btn>
               <input
                 ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }}
@@ -390,11 +437,23 @@ export default function PriceBookModal({ onClose }) {
           <div style={{ margin: '10px 20px 0', padding: '12px 14px', borderRadius: 6,
             background: colors.panel, border: `1px solid ${colors.border}` }}>
             <Row style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-              <strong style={{ fontSize: 13 }}>{pending.name}</strong>
+              <strong style={{ fontSize: 13 }}>
+                {pending.name}
+                {pending.supplier && (
+                  <span style={{ fontWeight: 400, color: colors.textDim }}> → {pending.supplier}</span>
+                )}
+              </strong>
               <span style={{ fontSize: 11.5, color: colors.textDim, fontFamily: "'DM Mono', monospace" }}>
                 {importSummary(pending.result)}
               </span>
             </Row>
+
+            {pending.supplier && (
+              <div style={{ fontSize: 11.5, color: colors.textDim, marginTop: 6, lineHeight: 1.6 }}>
+                Landing as <strong>{pending.supplier}</strong>&rsquo;s prices. Another house&rsquo;s rows for the
+                same parts are untouched — a job buying from them still gets their number.
+              </div>
+            )}
 
             {pending.result.updated.length > 0 && (
               <div style={{ marginTop: 8, maxHeight: 150, overflowY: 'auto' }}>
