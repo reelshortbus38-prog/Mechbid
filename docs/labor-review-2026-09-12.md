@@ -185,6 +185,52 @@ An efficiency dial is only meaningful against BOOK rates — published units tha
 assume ideal conditions. It is meaningless against a rate measured on a real
 job, and the app's rates are heading toward the latter.
 
+#### Built 2026-09-15, as the thing the answers were reaching for
+
+> "We don't use multipliers so if you think it should be an option then make it
+> one."
+
+So it is an option, and it ships off. `src/steps/conditionFactor.js`.
+
+The answers above could not be used **as given** and the instinct behind them
+was right: a remodel does not run like a clean job, and the app has been saying
+so on screen for months (`unitReliability`) while doing nothing about it.
+
+What makes it safe is that the factor is not an absolute. It is a **ratio
+between two sets of conditions** — the ones the shop's units were measured
+under, and the ones on the job being bid:
+
+| Units measured on | Job being bid | Factor |
+|---|---|---|
+| Live store | Live store | ×1.000 — already in the units |
+| Closed remodel | Live store | 1.25 / 1.10, **not** 1.25 |
+| Live store | Ground-up | **below one** — those units are too slow for this job |
+
+Equal conditions come out at exactly ×1.000, so the double-count is impossible
+by construction rather than something the estimator has to remember. That third
+row is the half nobody builds, and it is the direction this shop would actually
+be wrong in if the 400 ft day turns out to have been a remodel.
+
+**The app does not know what that day's conditions were, and it does not
+guess.** With no basis set nothing is multiplied, and the card says why. That
+is the one question this feature needs answered, and it is now asked on screen
+rather than assumed in a default.
+
+**Every factor ships at zero.** Nobody has given this app a usable one. For a
+shop with nothing of its own yet the card names the published starting point —
+MCAA's joint-occupancy factor, 5% minor / 12% average / 20% severe — as a
+suggestion, not a default. Worth noting that MCAA measures the same way: those
+percentages are productivity lost *against the conditions the bid assumed*, not
+against nothing. A factor with no stated baseline is not a number.
+
+One consequence worth recording: **labor history still stores the RAW unit
+estimate**, not the adjusted one. Record the adjusted figure and the ratio tunes
+the units by the factor too — which walks the condition into the units, and then
+the factor multiplies on top of units that already contain it. The same
+double-count, arriving a year later by the back door. The job's conditions are
+recorded alongside instead, which is what would eventually let a shop derive its
+own factor from its own finished jobs rather than borrowing a published one.
+
 **Two non-answers.** "Where does commissioning belong?" came back "N/A" and
 "which way does the efficiency dial run?" came back "Possible". Both still need
 asking.
@@ -272,9 +318,16 @@ What changed is only that nobody is waiting on an answer.
    Not resolved, but no longer a question anyone is chasing. The units stay
    marked disputed for the shops that do.
 3. **The three multipliers, re-asked as multipliers.** Live vs closed store,
-   as a × on the whole job.
-4. **Crew efficiency — against what?** If the app's rates are measured days,
-   the dial has nothing left to correct.
+   as a × on the whole job. The structure now exists to hold the answer
+   (2026-09-15) and every factor in it is zero until somebody gives one.
+4. ~~**Crew efficiency — against what?**~~ **Answered by building it
+   2026-09-15.** Against the conditions your own units were measured under.
+   That is the only baseline that exists, it is a question the shop can
+   actually answer, and it is now the first thing the card asks.
+4a. **What conditions was the 400 ft day?** Live store, closed store, or an
+   empty building. This is the new open question and it is the one the
+   condition factor hangs on — a factor applied over units that already contain
+   the slowdown charges it twice. Unanswered, nothing is multiplied.
 5. **Night work case changes: 1.5 hr per what?**
 6. ~~Where does commissioning belong?~~ **Built 2026-09-13** as its own line,
    per rack, separate from the per-circuit rack tie. Still worth confirming he

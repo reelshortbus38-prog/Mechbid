@@ -90,14 +90,21 @@ export function saveLaborHistory(records) {
 // be argued with later — an estimator looking at 1.4x wants to know whether
 // that job was forty circuits or four.
 export function newLaborRecord({
-  id, name = '', date = '', projectType = 'remodel', mode = '',
+  id, name = '', date = '', projectType = 'remodel', conditions = null, mode = '',
   estHours = 0, bidHours = 0, actHours = 0, outsideHours = 0,
   circuits = 0, ft = 0, joints = 0, cases = 0, notes = '',
 } = {}) {
   return {
     id: id || `lh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     name, date: date || new Date().toISOString().slice(0, 10),
-    projectType, mode,
+    projectType,
+    // Which rung of the conditions ladder this job was — null on every record
+    // written before the ladder existed, and on any job whose estimator never
+    // set it. Recorded rather than applied: it is what lets a shop eventually
+    // derive its own factor from its own finished jobs instead of borrowing a
+    // published one.
+    conditions: conditions || null,
+    mode,
     estHours: Math.max(0, Number(estHours) || 0),
     bidHours: Math.max(0, Number(bidHours) || 0),
     actHours: Math.max(0, Number(actHours) || 0),
@@ -113,11 +120,25 @@ export function newLaborRecord({
 // The fingerprint of the job currently on screen, ready to be closed out.
 // Pulled from the estimate rather than re-derived, so what gets recorded is
 // exactly what was priced.
-export function recordFromEstimate(state = {}, est = {}) {
+//
+// ── AND estHours IS THE RAW UNIT ESTIMATE, ON PURPOSE ───────────────────────
+// If a job-condition factor was applied (steps/conditionFactor.js) the bid
+// carried MORE hours than this. That is deliberate and it must stay that way.
+//
+// This file exists to tune the labor units against finished jobs. Record the
+// adjusted figure and the ratio tunes the units by the factor as well — which
+// walks the condition into the units themselves, and then the factor multiplies
+// on top of units that already contain it. That is the exact double-count the
+// factor was built to be incapable of, arriving a year later by the back door.
+//
+// So: the units are measured against what the units predicted, and the
+// conditions of the job are recorded alongside rather than folded in.
+export function recordFromEstimate(state = {}, est = {}, conditions = null) {
   const per = est.perCircuit || [];
   return newLaborRecord({
     name: state.projName || '',
     projectType: state.projectType || 'remodel',
+    conditions,
     mode: state.mode || '',
     estHours: Number(est.totalHours) || 0,
     circuits: per.length,
