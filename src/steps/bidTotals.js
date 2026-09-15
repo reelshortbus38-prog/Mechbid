@@ -2,6 +2,7 @@ import { jobLaborTotal, jobCrew, jobOOTTotal, calcRackLaborTotal, calcFieldTasks
 import { forMode, REFRIGERATION, RESIDENTIAL_HVAC } from '../state/tradeScope.js';
 import { billedLabor } from './bidMethod.js';
 import { rentalsBase } from '../components/rentals.js';
+import { pctOr } from '../state/numberField.js';
 
 // Pure bid-total computation — no React, so it's unit-testable in isolation.
 // INVARIANT (guarded by bidTotals.test.js): the returned `total` always equals
@@ -243,7 +244,9 @@ export function marginAnalysis(state, totals) {
   const grossProfit = sell - cost;
   // The share of cost the material markup never touches.
   const unmarked = (t.laborMarkupAmt > 0 ? 0 : laborCost) + (t.subsBase || 0);
-  const m = parseFloat(state?.markupPct) || 0;
+  // The same default the bid itself uses. Reporting 0% while the job is
+  // priced at 20% is the margin card disagreeing with the money.
+  const m = pctOr(state?.markupPct, 20);
   return {
     cost, sell, grossProfit,
     effectiveMarginPct: Math.round((grossProfit / sell) * 1000) / 10,

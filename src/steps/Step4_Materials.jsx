@@ -19,6 +19,7 @@ import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPri
 import { estimateRefrigerantLbs, REFRIGERANTS } from '../components/refrigerant.js';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
+import { pctOr, fieldValue, fieldNumber } from '../state/numberField.js';
 
 // Reaches the loop-system sizes the rate table does, so a header fitting can be
 // picked at all.
@@ -268,7 +269,10 @@ function ResidentialEquipment({ onNext, onBack }) {
 
   const equipTotal = equipment.reduce((s,e) => s+(e.cost||0), 0);
   const partsTotal = parts.reduce((s,p) => s+(p.total||0), 0);
-  const markupPct = state.markupPct || 20;
+  // pctOr, not `|| 20`: a shop bidding at cost plus a fee types 0 here and
+  // the Materials step used to price it at 20% while the Proposal step
+  // priced the same job at 0. See state/numberField.js.
+  const markupPct = pctOr(state.markupPct, 20);
   // MODE-AWARE, like the bid engine. This read the periods directly, so the
   // moment a job was in man-hours mode the summary's Labor row said $0 while
   // the bid total underneath it carried the real figure. Same class of bug as
@@ -549,7 +553,7 @@ function ResidentialEquipment({ onNext, onBack }) {
         <Row style={{ gap: 10, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Materials Markup %</div>
-            <Input type="number" value={markupPct} onChange={e => dispatch({ type: 'SET', key: 'markupPct', value: parseFloat(e.target.value)||20 })} style={{ fontFamily: "'DM Mono', monospace" }} />
+            <Input type="number" value={fieldValue(state.markupPct)} onChange={e => dispatch({ type: 'SET', key: 'markupPct', value: fieldNumber(e.target.value) })} style={{ fontFamily: "'DM Mono', monospace" }} />
           </div>
         </Row>
         {[
@@ -874,7 +878,7 @@ function SupplyHouseList() {
 
   function autoFill() {
     const items = [];
-    const wasteFactor = 1+((state.rates?.wasteFactor||10)/100);
+    const wasteFactor = 1+(pctOr(state.rates?.wasteFactor, 10)/100);
     // Same bucketing as the Bid Materials generator — each line size gets its
     // OWN geometry. The old version added the full run+riser to every size,
     // so a 20 ft suction riser was ordered at 295 ft on a 275 ft circuit.
@@ -1001,7 +1005,7 @@ export default function Step4_Materials({ onNext, onBack }) {
   function generateMaterials() {
     const items = [];
     const rates = state.rates || {};
-    const wasteFactor = 1+((rates.wasteFactor||10)/100);
+    const wasteFactor = 1+(pctOr(rates.wasteFactor, 10)/100);
     // Support spacing is a SPEC, not a constant. 6 ft is what Food Lion calls
     // for and is the most common, but it changes by chain and by job — and it
     // sets the saddle count, so it has to be reachable without editing code.
@@ -1113,7 +1117,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     // ── Fittings — either a flat % allowance, or nothing (manual entry via picker) ──
     const fittingsMode = rates.fittingsMode || 'percentage';
     if (fittingsMode === 'percentage') {
-      const fittingsPct=rates.fittingsMarkupPct||25;
+      const fittingsPct=pctOr(rates.fittingsMarkupPct, 25);
       const fittingsAmt=Math.round(copperTotal*fittingsPct/100);
       items.push({id:uid(),section:'Fittings',desc:`Fittings Allowance (${fittingsPct}% of copper)`,qty:1,unit:'lot',unitCost:fittingsAmt,total:fittingsAmt,isFittingsAllowance:true});
     }
@@ -1315,7 +1319,7 @@ export default function Step4_Materials({ onNext, onBack }) {
 
   // One-line summary shown when the rates panel is collapsed, so the settings
   // are still visible at a glance without taking over the screen.
-  const ratesSummary = `${fittingsMode === 'percentage' ? `${state.rates?.fittingsMarkupPct||25}% fittings` : 'Itemized fittings'} · ${state.rates?.wasteFactor||10}% waste · ${state.markupPct||20}% markup`;
+  const ratesSummary = `${fittingsMode === 'percentage' ? `${pctOr(state.rates?.fittingsMarkupPct, 25)}% fittings` : 'Itemized fittings'} · ${pctOr(state.rates?.wasteFactor, 10)}% waste · ${pctOr(state.markupPct, 20)}% markup`;
 
   const systemType = state.systemType || 'HFC';
 
@@ -1390,7 +1394,11 @@ const PIPE_SIZE_LIST=['1/4','3/8','1/2','5/8','7/8','1-1/8','1-3/8','1-5/8','2-1
 const INSUL_CATEGORIES = ['medSuction', 'lowSuction', 'lowLiquid']
   .map(key => ({ key, label: INSUL_CATEGORY_LABEL[key] }));
 
-function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, updateCopperRate, updateInsulRate }) {
+// Exported so the rate BOXES can be rendered open and asserted on. A summary
+// line saying "0% markup" is not the same claim as the input showing 0, and a
+// test that could not reach the box let `value={state.markupPct || 20}` back in
+// with the suite still green.
+export function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, updateCopperRate, updateInsulRate }) {
   const [openInsulCat, setOpenInsulCat] = useState(null);
 
   return (
@@ -1512,7 +1520,7 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
             {fittingsMode === 'percentage' && (
               <div style={{ flex:1, minWidth:120 }}>
                 <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Fittings Allowance (%)</div>
-                <Input type="number" value={state.rates?.fittingsMarkupPct||25} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:parseFloat(e.target.value)||25})} style={{ fontFamily:"'DM Mono',monospace" }} />
+                <Input type="number" value={fieldValue(state.rates?.fittingsMarkupPct)} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'fittingsMarkupPct',value:fieldNumber(e.target.value)})} style={{ fontFamily:"'DM Mono',monospace" }} />
               </div>
             )}
             {state.systemType === 'CO2' && (
@@ -1525,7 +1533,7 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
             )}
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Waste Factor (%)</div>
-              <Input type="number" value={state.rates?.wasteFactor||10} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:parseFloat(e.target.value)||10})} style={{ fontFamily:"'DM Mono',monospace" }} />
+              <Input type="number" value={fieldValue(state.rates?.wasteFactor)} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'wasteFactor',value:fieldNumber(e.target.value)})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Stub (ft each)</div>
@@ -1557,7 +1565,7 @@ function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsMode, up
             </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Materials Markup (%)</div>
-              <Input type="number" value={state.markupPct||20} onChange={e=>dispatch({type:'SET',key:'markupPct',value:parseFloat(e.target.value)||20})} style={{ fontFamily:"'DM Mono',monospace" }} />
+              <Input type="number" value={fieldValue(state.markupPct)} onChange={e=>dispatch({type:'SET',key:'markupPct',value:fieldNumber(e.target.value)})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
           </Row>
           <Row style={{ gap:20, flexWrap:'wrap', marginTop:12 }}>

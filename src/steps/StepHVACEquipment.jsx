@@ -12,6 +12,7 @@ import { parseFlowList, sizeMix, mixVsSingle, sizingNote } from '../components/h
 import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import { PURCHASE_UNITS, unitFor, rowUnit } from '../components/purchaseUnits.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
+import { pctOr, fieldNumber } from '../state/numberField.js';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -948,7 +949,7 @@ export default function StepHVACEquipment({ onNext, onBack }) {
 
   const equipTotal = equipment.reduce((s, e) => s + (e.cost || 0), 0);
   const partsTotal = parts.reduce((s, p) => s + (p.total || 0), 0);
-  const markupPct = state.markupPct || 20;
+  const markupPct = pctOr(state.markupPct, 20);
   const markupBase = equipTotal + partsTotal;
   const markupAmt = markupBase * (markupPct / 100);
 
@@ -1091,7 +1092,7 @@ export default function StepHVACEquipment({ onNext, onBack }) {
               <Input
                 type="number"
                 value={markupPct}
-                onChange={e => dispatch({ type: 'SET', key: 'markupPct', value: parseFloat(e.target.value) || 20 })}
+                onChange={e => dispatch({ type: 'SET', key: 'markupPct', value: fieldNumber(e.target.value) })}
                 style={{ width: 65, fontFamily: "'DM Mono', monospace", textAlign: 'center' }}
               />
             </div>
