@@ -358,6 +358,10 @@ export const initialState = {
   // Editable labor-unit assumptions for deriving hours from circuits (see
   // estimateCircuitLabor / DEFAULT_LABOR_UNITS). Undefined falls back to defaults.
   laborUnits: undefined,
+  // Pit and conduit plan reads, held between analysis and the accept merge.
+  // See components/pitConduit.js — they route the circuit list rather than
+  // adding tasks, so they cannot be applied until the whole takeoff is known.
+  pitConduitReads: undefined,
   // ── WHAT CONDITIONS THE UNITS DESCRIBE, AND WHAT THIS JOB IS ─────────────
   // Both undefined, and the pair of them is the safety interlock on the only
   // multiplier in this app. `unitsBasis` is a shop fact — the conditions your
