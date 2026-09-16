@@ -93,8 +93,10 @@ export const ROUTING = [
     key: 'belowSlabReuse', inFloor: true, newCopper: true,
     label: 'Existing below-slab conduit — reused',
     note: 'New copper pulled through conduit that is already in the ground. Soft coil, no hangers, '
-      + 'and no slab work — but pulling a line through an existing sleeve is its own job, and it is '
-      + 'not the same hours as a clean open run.',
+      + 'and no slab work — but THE OLD LINE HAS TO COME OUT FIRST, which a clean run does not. '
+      + 'The mechanic who does it puts that at a little longer and not much, so there is no separate '
+      + 'unit for it: a number nobody has measured would be worse than the per-foot rate you already '
+      + 'have. If your crews find it slower, the per-foot rates are editable per job.',
   },
   {
     key: 'belowSlabAbandon', inFloor: true, newCopper: false,
@@ -153,20 +155,35 @@ export function inFloorFor(key) {
     return r ? r.inFloor : null;
 }
 
-// ── ACCESS PITS ──────────────────────────────────────────────────────────────
-// Scope with no line anywhere in this app. Four legend categories, two of them
-// work. Deliberately carries NO hours: nobody has quoted this app a figure for
-// filling a pit or cutting a new one, and a number nobody has given is not a
-// number. They arrive as named, counted rows the estimator prices — or zeroes,
-// which says the GC has it.
+// ── ACCESS PITS ARE THE GC'S ─────────────────────────────────────────────────
+// This shipped first as scope rows at zero hours, on the reasoning that nobody
+// had quoted the app a figure for filling a pit. The installing mechanic
+// settled it outright: "that is always on the gc."
+//
+// So the answer is not a cheaper number, it is a different KIND of line. Pit
+// work does not belong in the labor at all — it belongs on the EXCLUSIONS,
+// where the customer reads it.
+//
+// That is a better outcome than a zero-hour task, and not only because it is
+// correct. A task at zero is invisible: it costs nothing, it prints nothing,
+// and if the GC later says the pits were the RC's there is nothing in the bid
+// that says otherwise. An exclusion is a scope fence with a number on it —
+// "3 existing access pits to be filled, by others" — and it is the line that
+// protects the bid in that argument.
+//
+// The counts are still read and still reported, because knowing the sheet has
+// three pits on it is worth having even when none of them is your work.
+//
+// ALWAYS is this shop's always. A contractor who does carry pit work deletes
+// the exclusion on the Proposal step and adds a task, which needs no new
+// machinery — the exclusions list is plain editable text.
 export const PITS = [
   {
     key: 'fill', work: true,
     label: 'Existing access pit — fill with 2500 PSI concrete',
-    note: 'Filling a pit that is being taken out of service. Usually the GC\'s concrete, '
-      + 'often the RC\'s coordination — check the general notes on the sheet before pricing or excluding it.',
+    note: 'Filling a pit being taken out of service. The GC\'s concrete.',
   },
-  { key: 'new', work: true, label: 'New access pit', note: 'Cutting a new pit. Same question: whose scope?' },
+  { key: 'new', work: true, label: 'New access pit', note: 'Cutting a new pit. Also the GC\'s.' },
   { key: 'remain', work: false, label: 'Existing access pit — to remain', note: 'No work. Counted so the sheet reconciles.' },
   { key: 'existing', work: false, label: 'Existing access pit', note: 'Shown for context. No work.' },
 ];
@@ -203,8 +220,7 @@ export function classifyPit(phrase) {
   return null;
 }
 
-// Counted pits → rows for the scope list. Only the ones that are work, and
-// every one at zero hours, because this app has no figure for them.
+// Counted pits → the work ones, for the exclusion and the flag.
 export function pitScopeLines(counts = {}) {
   const out = [];
   for (const pit of PITS) {
@@ -215,15 +231,27 @@ export function pitScopeLines(counts = {}) {
       key: pit.key,
       count: n,
       desc: `${pit.label} — ${n} ${n === 1 ? 'pit' : 'pits'}`,
-      hrs: 0,
       note: pit.note,
-      // Said on the row, not only in a comment. An hours box at zero that the
-      // estimator has not been told about reads as "free", and this is the one
-      // thing on the sheet the app cannot price for him.
-      needsPrice: true,
+      // No hours field at all. A zero would invite somebody to fill it in on a
+      // line that is not this trade's work in the first place.
+      byOthers: true,
     });
   }
   return out;
+}
+
+// The exclusion this sheet earns, as one sentence for the proposal. Null when
+// the sheet showed no pit work, because an exclusion for something that is not
+// on the drawings is noise on a bid.
+export function pitExclusion(counts = {}) {
+  const lines = pitScopeLines(counts);
+  if (!lines.length) return null;
+  const bits = lines.map(l => {
+    const what = l.key === 'fill' ? 'filled with concrete' : 'cut';
+    return `${l.count} access pit${l.count === 1 ? '' : 's'} to be ${what}`;
+  });
+  return `Access pit work is not included — ${bits.join(' and ')} per the refrigeration pit and conduit `
+    + 'plan. Cutting, filling and patching the slab, and the concrete, are by the general contractor.';
 }
 
 // What was counted but is NOT work, so the sheet reconciles and the estimator
@@ -345,6 +373,9 @@ export function applyPitConduitRead(circuits = [], parsed = {}) {
     pitCounts: counts,
     pitLines: pitScopeLines(counts),
     pitsNotPriced: pitsNotPriced(counts),
+    // The sentence for the proposal's exclusions list. Null when the sheet
+    // showed no pit work.
+    exclusion: pitExclusion(counts),
     unplaced,
     unreadableLegend: unreadable,
     // Notes that assign work between trades. Not interpreted — deciding whose
@@ -379,10 +410,11 @@ export function pitConduitFlags(result = {}, fileName = '') {
 
   if (pitLines.length) {
     flags.push({
-      type: 'warn', source: src,
-      text: `${pitLines.map(l => l.desc).join(' · ')}. This app has no hours for pit work — nobody has quoted it one — `
-        + 'so these are on the scope list at zero until you price them. Zero them deliberately if the GC has the slab, '
-        + 'and check the general notes on the sheet: who cuts it, who patches it, who supplies the concrete.',
+      type: 'info', source: src,
+      text: `${pitLines.map(l => l.desc).join(' · ')}. Not priced: pit work is the general contractor's — cutting, `
+        + 'filling and patching the slab, and the concrete. An exclusion saying so has been added to the proposal, '
+        + 'which is the line that settles it if the GC says otherwise later. Delete it on the Proposal step if your '
+        + 'shop does carry this work, and add it as a task.',
     });
   }
 
@@ -421,4 +453,26 @@ export function pitConduitFlags(result = {}, fileName = '') {
 
   flags.push({ type: 'info', source: src, text: DIAGRAMMATIC_NOTE });
   return flags;
+}
+
+// ── EVERY PIT READ ON THE JOB, APPLIED ───────────────────────────────────────
+// Lifted out of the accept merge in Step1_Setup.jsx for the reason that keeps
+// recurring in this repo: the pure part had tests and the WIRING did not, so
+// sending the pit work back to the task list left the whole suite green.
+//
+// Several sheets can carry pit reads — a set with a pit plan per phase — so
+// they fold in order, each one routing the list the last one produced.
+export function applyPitReads(circuits = [], reads = []) {
+  let routed = circuits || [];
+  const flags = [];
+  const exclusions = [];
+  for (const read of reads || []) {
+    const result = applyPitConduitRead(routed, read);
+    routed = result.circuits;
+    flags.push(...pitConduitFlags(result, read?.fileName || ''));
+    // Two sheets showing the same pit scope must not put the sentence on the
+    // proposal twice.
+    if (result.exclusion && !exclusions.includes(result.exclusion)) exclusions.push(result.exclusion);
+  }
+  return { circuits: routed, flags, exclusions };
 }

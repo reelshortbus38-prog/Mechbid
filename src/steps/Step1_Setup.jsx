@@ -18,7 +18,7 @@ import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content 
 import { rescuedEdits, applyRescued } from '../components/manualEdits.js';
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
-import { applyPitConduitRead, pitConduitFlags } from '../components/pitConduit.js';
+import { applyPitReads } from '../components/pitConduit.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote, cfmNote } from '../components/sheetOverlap.js';
@@ -1337,21 +1337,13 @@ export default function Step1_Setup({ onNext }) {
     // files are read in the same batch. The routing sets `inFloor`, which
     // changes the joint count, the hangers and hard-vs-soft copper — so every
     // change it makes is reported as a flag rather than applied quietly.
-    const allCircuits = [...state.circuits, ...newCircuits];
-    let routedCircuits = allCircuits;
-    const pitFlags = [];
-    for (const read of state.pitConduitReads || []) {
-      const result = applyPitConduitRead(routedCircuits, read);
-      routedCircuits = result.circuits;
-      pitFlags.push(...pitConduitFlags(result, read.fileName || ''));
-      for (const line of result.pitLines) {
-        newFieldTasks.push({
-          id: uid(), desc: line.desc, men: 1, hrs: 0,
-          notes: `From the pit & conduit plan — ${line.note} This app has no hours for it; price it or zero it.`,
-          crewAssignment: {},
-        });
-      }
-    }
+    // Pit work is the GC's — "that is always on the gc" — so it lands on the
+    // EXCLUSIONS rather than the task list. A task at zero hours is invisible:
+    // it costs nothing, prints nothing, and settles no argument about whose
+    // scope the slab was. An exclusion is on the proposal.
+    const {
+      circuits: routedCircuits, flags: pitFlags, exclusions: pitExclusions,
+    } = applyPitReads([...state.circuits, ...newCircuits], state.pitConduitReads);
 
     dispatch({ type: 'MERGE', payload: {
       circuits: routedCircuits,
@@ -1365,6 +1357,9 @@ export default function Step1_Setup({ onNext }) {
       // else recognises them as one task.
       rcSchedule: dedupeSchedule([...(state.rcSchedule || []), ...newScheduleItems]),
       flags: dedupeFlags([...(state.flags || []), ...stampMode([...newNotes, ...pitFlags], state.mode)]),
+      ...(pitExclusions.length
+        ? { exclusions: [...(state.exclusions || []), ...pitExclusions.filter(x => !(state.exclusions || []).includes(x))] }
+        : {}),
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),
       ...(storeNumber && !state.storeNumber ? { storeNumber } : {}),
