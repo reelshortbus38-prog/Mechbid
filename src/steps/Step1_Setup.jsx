@@ -18,6 +18,7 @@ import { extractRackWorkSections, extractPartsList, normalizeDesc, isCO2Content 
 import { rescuedEdits, applyRescued } from '../components/manualEdits.js';
 import { mapHvacType } from '../components/hvacTypes.js';
 import { partitionHvacEquipment, isTerminalUnit } from '../components/hvacEquip.js';
+import { applyPitConduitRead, pitConduitFlags } from '../components/pitConduit.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote, cfmNote } from '../components/sheetOverlap.js';
@@ -135,6 +136,11 @@ export default function Step1_Setup({ onNext }) {
     setAnalyzing(true);
     const newResults = [];
     const flags = [];
+    // Pit and conduit reads, held until the accept merge. They change the
+    // CIRCUIT LIST rather than adding tasks, and the circuits they apply to
+    // usually arrive in the same batch from a different file (the BPR), so
+    // applying them here would route half a takeoff.
+    const pitReads = [];
     const pending = []; // { id, kind, sourceType, fileName, data, status }
     const equipmentImports = []; // HVAC equipment parsed from a schedule
     const hvacEquipCollected = []; // raw HVAC units {e, fileName, drawing}, mapped after all files (see mapCollectedEquipment)
@@ -1019,6 +1025,10 @@ export default function Step1_Setup({ onNext }) {
             }
           });
 
+          // A pit and conduit plan read (see components/pitConduit.js). Held
+          // for the accept merge rather than applied now.
+          (parsed.pitConduit || []).forEach(r => pitReads.push({ ...r, fileName: fileMeta.name }));
+
           // Flags — informational, pass through directly. On an HFC job, the
           // CO₂ addendum's own flags (K65, gas cooler, charge tables…) are
           // dropped and rolled into the one summary flag below.
@@ -1122,6 +1132,8 @@ export default function Step1_Setup({ onNext }) {
         [...state.flags, ...stampMode(flags, state.mode)],
         [...hvacEquipCollected.map(x => x.e), ...(state.hvacEquipment || [])],
       )),
+      // Carried to the accept step, where the whole circuit list is known.
+      ...(pitReads.length ? { pitConduitReads: [...(state.pitConduitReads || []), ...pitReads] } : {}),
       // Key dates — pre-con from the ERF or the schedule's pre-con line, job
       // length from the ERF, RC night-work start from the schedule.
       // DETERMINISTIC reads (regex/grouped-schedule scans, ERF date cells)
@@ -1320,8 +1332,29 @@ export default function Step1_Setup({ onNext }) {
       }
     });
 
+    // ── THE PIT PLAN APPLIES TO THE WHOLE TAKEOFF ─────────────────────────
+    // Only here, because the circuits it routes come off the BPR and both
+    // files are read in the same batch. The routing sets `inFloor`, which
+    // changes the joint count, the hangers and hard-vs-soft copper — so every
+    // change it makes is reported as a flag rather than applied quietly.
+    const allCircuits = [...state.circuits, ...newCircuits];
+    let routedCircuits = allCircuits;
+    const pitFlags = [];
+    for (const read of state.pitConduitReads || []) {
+      const result = applyPitConduitRead(routedCircuits, read);
+      routedCircuits = result.circuits;
+      pitFlags.push(...pitConduitFlags(result, read.fileName || ''));
+      for (const line of result.pitLines) {
+        newFieldTasks.push({
+          id: uid(), desc: line.desc, men: 1, hrs: 0,
+          notes: `From the pit & conduit plan — ${line.note} This app has no hours for it; price it or zero it.`,
+          crewAssignment: {},
+        });
+      }
+    }
+
     dispatch({ type: 'MERGE', payload: {
-      circuits: [...state.circuits, ...newCircuits],
+      circuits: routedCircuits,
       rackTasks: [...state.rackTasks, ...newRackTasks],
       fieldTasks: [...(state.fieldTasks || []), ...stampMode(newFieldTasks, state.mode)],
       rackParts: [...state.rackParts, ...newRackParts],
@@ -1331,7 +1364,7 @@ export default function Step1_Setup({ onNext }) {
       // find the same night, and they label the date differently, so nothing
       // else recognises them as one task.
       rcSchedule: dedupeSchedule([...(state.rcSchedule || []), ...newScheduleItems]),
-      flags: dedupeFlags([...(state.flags || []), ...stampMode(newNotes, state.mode)]),
+      flags: dedupeFlags([...(state.flags || []), ...stampMode([...newNotes, ...pitFlags], state.mode)]),
       ...(projName && !state.projName ? { projName } : {}),
       ...(projAddr && !state.projAddr ? { projAddr } : {}),
       ...(storeNumber && !state.storeNumber ? { storeNumber } : {}),

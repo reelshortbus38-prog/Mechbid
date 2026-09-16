@@ -16,6 +16,7 @@ import { cleanSize, cleanService, hasEvidence } from './runEvidence.js';
 import { unitTagRe } from '../components/hvacEquip.js';
 import { countScopeShapedLines, countScheduleShapedLines, textExtractionSanity } from './textSanity.js';
 import { HVAC_TEXT_MAX_PAGES, HVAC_VISION_MAX_SHEETS } from './pdfRender.js';
+import { sheetPromptFor } from '../components/pitConduit.js';
 
 // Pull the answer text out of either response shape (Anthropic content blocks
 // or OpenAI choices). NEVER assume content[0] is the text block — Sonnet 5
@@ -150,6 +151,55 @@ Return ONLY valid JSON, no markdown:
 // model to fill in numbers it can't see is how you get confident-sounding wrong
 // data, which is exactly what the review screen is supposed to catch — but it's
 // better not to generate it in the first place.
+// ── READING A PIT AND CONDUIT PLAN ──────────────────────────────────────────
+// callClaudeVisionRedline looks for coloured callout boxes with leader lines,
+// because that is what a redline is. A pit and conduit plan has almost none —
+// its content is a SYMBOL LEGEND and the line types drawn on the floor plan.
+// Run through the redline prompt it comes back with zero field tasks, and the
+// estimator is told a sheet dense with routing had nothing on it.
+//
+// What this sheet uniquely answers is which circuits run BELOW THE SLAB, which
+// is the `inFloor` box on the Circuits step — off by default, set by hand or
+// not at all, and worth about $9,000 of joints across twenty circuits before
+// the hangers nobody needs and the wrong copper. See components/pitConduit.js.
+//
+// It does NOT answer how far anything runs. Sheets in this class say so
+// themselves ("ALL REFRIGERATION PIPING RUNS ARE SHOWN DIAGRAMMATIC"), and the
+// prompt is written to refuse lengths rather than to be trusted not to give
+// them.
+export async function callClaudeVisionPitConduit(base64Image, fileName, pageNum, totalPages, tile = null) {
+  try {
+    const pageContext = totalPages > 1 ? ` This is page ${pageNum} of ${totalPages} in a multi-sheet drawing set.` : '';
+    const tileContext = tile && tile.tilesOnPage > 1
+      ? ` This image is section ${tile.tileNum} of ${tile.tilesOnPage} cropped from a large sheet — it shows only part of the page. Report only what is fully legible in this crop; another section covers the rest.`
+      : '';
+    const prompt = `You are an expert commercial refrigeration estimator reading a REFRIGERATION PIT AND CONDUIT PLAN.${pageContext}${tileContext}
+
+This is NOT a redline. There are usually no coloured callout boxes. The content of this sheet is its SYMBOL LEGEND plus the line types and hatch patterns drawn on the floor plan, and your job is to report what the legend defines and which circuits are drawn in each category.
+
+STEP 1 — TRANSCRIBE THE SYMBOL LEGEND VERBATIM. Every entry, exactly as written. Typical entries read like "EXISTING ACCESS PIT TO BE FILLED WITH 2500 PSI CONCRETE", "EXISTING BELOW SLAB REFRIGERANT CONDUIT TO BE REUSED", "NEW OVERHEAD REFRIGERANT PIPING". Do not paraphrase, normalise or merge them.
+
+STEP 2 — ROUTING PER CIRCUIT. For each refrigeration circuit ID you can read on the plan (A5, B11, C6 and so on), say which legend line type its run is drawn in. Read each ID character by character — B11 and B1 are different circuits. If a circuit's line type is ambiguous, or the leader is unclear, or the line changes type partway and you cannot tell which dominates, OMIT that circuit entirely. A circuit reported in the wrong category is worse than one not reported: it silently changes how the pipe is priced.
+
+STEP 3 — COUNT THE ACCESS PITS by legend category. Count only symbols you can positively identify. If you are not confident in a count, give the count you are sure of and say so in notes.
+
+STEP 4 — GENERAL NOTES. Transcribe any numbered general note that assigns work between trades — who cuts the slab, who patches it, who supplies the concrete, who is responsible for coordination. These decide whether the pit work is on this bid at all.
+
+NEVER REPORT A LENGTH. Do not measure, scale, estimate or infer any run length, pipe length or dimension from this drawing, even where a scale bar and dimension strings are printed on it. This sheet class states that the piping runs are diagrammatic and that the refrigeration contractor is to field verify. Leave lengths out entirely — they come from the BPR, not from here. Dimension strings that are printed on the sheet may be transcribed into notes verbatim as annotations, but never as a circuit length.
+
+Do not invent pipe sizes. Report a size only where one is explicitly and legibly written on the sheet.
+
+Read the title block only if you are confident character for character: store name, store number, address, drawing number, sheet title. A wrong address is worse than a missing one.
+
+Return ONLY valid JSON, no markdown, no commentary:
+{"documentType":"pit_conduit_plan","storeName":"","storeNumber":"","address":"","drawingNumber":"","sheetTitle":"","legend":["verbatim legend entry"],"routing":[{"circuitId":"","legendText":"the verbatim legend line this circuit is drawn in","notes":""}],"pitCounts":[{"legendText":"verbatim legend line","count":0}],"generalNotes":["verbatim note that assigns work between trades"],"flags":[{"type":"info|warn","text":""}],"summary":"one sentence describing what this page covers"}`;
+
+    return await sheetVisionFetch(prompt, base64Image, tile);
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 export async function callClaudeVisionRedline(base64Image, fileName, pageNum, totalPages, tile = null) {
   try {
     const pageContext = totalPages > 1 ? ` This is page ${pageNum} of ${totalPages} in a multi-sheet drawing set.` : '';
@@ -196,33 +246,51 @@ Return ONLY valid JSON, no markdown, no commentary:
     // most relevant property here. Note the Anthropic-specific image content
     // block shape: {type:"image", source:{type:"base64", media_type, data}},
     // not OpenRouter's {type:"image_url", image_url:{url:"data:..."}}.
-    const res = await apiFetch('/api/claude-direct', {
-      method: 'POST',
-      signal: AbortSignal.timeout(70_000),
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        crossCheck: !tile || tile.tileNum === 1,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
-            { type: 'text', text: prompt }
-          ]
-        }]
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      return { text: null, error: String(err?.error || `server error ${res.status}`) };
-    }
-    const data = await res.json();
-    const text = pickText(data);
-    return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
+    return await sheetVisionFetch(prompt, base64Image, tile);
   } catch (e) {
     console.warn('Redline vision error:', e.message);
     return { text: null, error: e.name === 'TimeoutError' ? 'request timed out' : e.message };
   }
+}
+
+// ── ONE CALL SITE FOR EVERY SHEET PROMPT ────────────────────────────────────
+// The redline read and the pit-and-conduit read differ ONLY in their prompt.
+// Copying the fetch for the second one would be two places to keep the timeout,
+// the cross-check rule and the Anthropic image block shape in step, and they
+// would drift.
+//
+// Routed through Anthropic directly (api/claude-direct.js) rather than
+// OpenRouter — this is the call site where hallucination already caused real
+// problems (fabricated address, blended circuit IDs), and Claude's lower
+// hallucination rate on financially-consequential extraction is the most
+// relevant property here. Note the Anthropic-specific image content block
+// shape: {type:"image", source:{type:"base64", media_type, data}}, not
+// OpenRouter's {type:"image_url", image_url:{url:"data:..."}}.
+async function sheetVisionFetch(prompt, base64Image, tile = null) {
+  const res = await apiFetch('/api/claude-direct', {
+    method: 'POST',
+    signal: AbortSignal.timeout(70_000),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      // The second opinion is worth its cost once per sheet, not once per tile.
+      crossCheck: !tile || tile.tileNum === 1,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    return { text: null, error: String(err?.error || `server error ${res.status}`) };
+  }
+  const data = await res.json();
+  const text = pickText(data);
+  return text ? { text, second: data.secondOpinion || null, fallbackModel: data.fallbackModel || null } : { text: null, error: 'empty AI response' };
 }
 
 // Renders every page of a PDF and runs each through the redline-aware vision
@@ -281,6 +349,13 @@ export async function analyzeRedlinePdf(file, fileName) {
   };
   const seenTask = new Set();
   const summarizedPages = new Set();
+  // Page text, kept so the vision loop below can pick a prompt by sheet class.
+  const textByPageNum = {};
+  // Pit and conduit reads, per page. Not folded into fieldTasks: this sheet
+  // changes the CIRCUIT LIST rather than adding tasks, and the caller applies
+  // it deterministically (components/pitConduit.js) rather than trusting the
+  // model with the arithmetic.
+  merged.pitConduit = [];
 
   // Shared merge: fold one parsed page/tile result into `merged`, deduping
   // callouts (text layer + overlapping vision tiles can re-read the same box).
@@ -301,6 +376,9 @@ export async function analyzeRedlinePdf(file, fileName) {
     // pageNum; flags did not, so nothing on the refrigeration side could offer
     // a "show me on the page" button even though the page was right here.
     (parsed.flags || []).forEach(f => merged.flags.push(pageNum ? { ...f, page: pageNum } : f));
+    if (parsed.documentType === 'pit_conduit_plan') {
+      merged.pitConduit.push({ page: pageNum, ...parsed });
+    }
     if (parsed.summary && !summarizedPages.has(pageNum)) {
       summarizedPages.add(pageNum);
       merged.pageSummaries.push(`Page ${pageNum}: ${parsed.summary}`);
@@ -313,6 +391,7 @@ export async function analyzeRedlinePdf(file, fileName) {
     const res = await extractPdfPagesText(file);
     textPages = res.pages;
     totalPages = res.totalPages;
+    for (const tp of textPages) textByPageNum[tp.pageNum] = tp.text || '';
   } catch (e) {
     // If text extraction throws, fall through to vision for every page.
     merged.flags.push({ type: 'info', text: `Text layer unavailable (${e.message}) — read as scanned image`, source: fileName });
@@ -354,7 +433,15 @@ export async function analyzeRedlinePdf(file, fileName) {
     for (const { pageNum, tileNum = 1, tilesOnPage = 1, base64 } of pages) {
       if (!visionAll && !visionPageNums.includes(pageNum)) continue;
       const tileLabel = tilesOnPage > 1 ? `Page ${pageNum} (section ${tileNum}/${tilesOnPage})` : `Page ${pageNum}`;
-      const { vres, parsed, error } = await visionPassWithRetry(() => callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage }));
+      // ── WHICH PROMPT THIS SHEET NEEDS ──────────────────────────────────
+      // A pit and conduit plan has no callout boxes, so the redline prompt
+      // returns nothing from a sheet dense with routing. Decided off the text
+      // layer where there is one — the title block and legend are usually
+      // vector text even on a set whose drawings are scanned.
+      const pitPlan = sheetPromptFor(textByPageNum[pageNum] || '') === 'pitConduit';
+      const { vres, parsed, error } = await visionPassWithRetry(() => (pitPlan
+        ? callClaudeVisionPitConduit(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage })
+        : callClaudeVisionRedline(base64, fileName, pageNum, totalPages, { tileNum, tilesOnPage })));
       if (!parsed) {
         merged.flags.push({ type: 'warn', text: `${tileLabel}: could not be analyzed (${error})`, source: fileName });
         continue;
