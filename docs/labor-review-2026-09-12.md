@@ -310,6 +310,69 @@ What changed is only that nobody is waiting on an answer.
 
 ---
 
+## The pit & conduit plan — answered 2026-09-16
+
+From a photograph of Food Lion **#0047, Asheboro** — "REFRIGERATION PIT AND
+CONDUIT PLAN". A sheet class the app could not read at all: the redline prompt
+looks for coloured callout boxes, and this drawing's content is a symbol legend.
+It came back as an empty page.
+
+Two questions went back to the installing mechanic, and both were answered.
+
+### Reused below-slab conduit — no separate unit
+
+> "It may take a little longer using old conduit because of having to pull the
+> old out but I don't think it's that much. Probably not worth building anything
+> separate for."
+
+**Agreed, and nothing was built.** The tempting move with a half-answer like that
+is to invent a small multiplier. There is no measurement behind "not that much",
+so a unit would be a guess with a decimal point on it — the same mistake the
+crew-efficiency answer would have been.
+
+What the estimator gets instead is the **step he might not know about**: the old
+line has to come out first, which a clean run does not. That is knowledge, and
+it cost nothing to record. The per-foot rates stay editable for a shop whose
+crews find it slower.
+
+The part that *does* move money on a reused run is that it is still a FLOOR run
+— soft coil at 50 ft between joints, no hangers — and that is applied.
+
+### Access pits — always the GC's
+
+> "That is always on the gc."
+
+This shipped first as scope rows at zero hours, on the reasoning that nobody had
+quoted the app a figure for filling a pit. That was the wrong shape, not just the
+wrong number.
+
+**Pit work is now an EXCLUSION, not a task.** A task at zero hours is invisible:
+it costs nothing, it prints nothing, and if the GC later says the pits were the
+RC's there is nothing in the bid that says otherwise. An exclusion is a scope
+fence with a count on it — "3 existing access pits to be filled, by others" —
+and it is the line that settles that argument.
+
+The counts are still read and reported. Knowing the sheet has three pits on it is
+worth having even when none of them is your work.
+
+*Always* is this shop's always. A contractor who does carry pit work deletes the
+exclusion on the Proposal step and adds a task — no new machinery, because the
+exclusions list is plain editable text.
+
+### And what the sheet cannot say
+
+> "ALL REFRIGERATION PIPING RUNS ARE SHOWN DIAGRAMMATIC. REFRIGERATION
+> CONTRACTOR TO FIELD VERIFY."
+
+Routing off this sheet is evidence. A length scaled off it is not. The prompt
+refuses lengths outright rather than being trusted not to give them.
+
+**Still unverified:** what the model actually returns from a real pit plan. The
+classification, the application and the flags are tested; the read is not, and
+cannot be until one is run through.
+
+---
+
 ## Still to ask
 
 1. ~~What pipe size was the 400 ft day?~~ **Answered 2026-09-13** — the split

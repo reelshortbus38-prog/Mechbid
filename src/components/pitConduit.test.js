@@ -3,7 +3,7 @@ import {
   isPitConduitPlan, classifyRouting, classifyPit, inFloorFor, routingOf,
   ROUTING, ROUTING_KEYS, PITS, PIT_KEYS,
   pitScopeLines, pitsNotPriced, applyRouting, routingSummary, DIAGRAMMATIC_NOTE,
-  applyPitConduitRead, pitConduitFlags, sheetPromptFor,
+  applyPitConduitRead, pitConduitFlags, sheetPromptFor, pitExclusion, applyPitReads,
 } from './pitConduit.js';
 import { estimateCircuitLabor, DEFAULT_LABOR_UNITS, jointSpacingFt } from '../state/store.js';
 
@@ -198,14 +198,31 @@ describe('access pits', () => {
     expect(lines[1].desc).toContain('1 pit');
   });
 
-  // Nobody has quoted this app a figure for filling a pit, and a number nobody
-  // has given is not a number.
-  it('carries no hours, and says the estimator has to price it', () => {
+  // "That is always on the gc." So pit work has no hours field at all — a zero
+  // would invite somebody to fill it in on a line that is not this trade's
+  // work in the first place.
+  it('has no hours field, and says it is by others', () => {
     for (const line of pitScopeLines({ fill: 3, new: 1 })) {
-      expect(line.hrs).toBe(0);
-      expect(line.needsPrice).toBe(true);
-      expect(line.note).toMatch(/scope|GC|notes/i);
+      expect(line.hrs).toBeUndefined();
+      expect(line.byOthers).toBe(true);
+      expect(line.note).toMatch(/GC/i);
     }
+  });
+
+  // An exclusion is what protects the bid if the GC later says the pits were
+  // the RC's. A zero-hour task settles nothing: it costs nothing and prints
+  // nothing.
+  it('earns an exclusion for the proposal, naming the counts', () => {
+    const x = pitExclusion({ fill: 3, new: 1 });
+    expect(x).toMatch(/not included/i);
+    expect(x).toMatch(/3 access pits to be filled with concrete/);
+    expect(x).toMatch(/1 access pit to be cut/);
+    expect(x).toMatch(/general contractor/i);
+  });
+
+  it('writes no exclusion when the sheet showed no pit work', () => {
+    expect(pitExclusion({})).toBe(null);
+    expect(pitExclusion({ remain: 5 })).toBe(null);
   });
 
   it('counts the ones that are not work so the sheet reconciles', () => {
@@ -280,12 +297,17 @@ describe('applyPitConduitRead', () => {
     expect(out.changed.map(c => c.circuitId).sort()).toEqual(['A5', 'B11', 'C6']);
   });
 
-  it('counts the pits and turns the work ones into rows at zero hours', () => {
+  it('counts the pits and turns the work ones into an exclusion, not a task', () => {
     const out = applyPitConduitRead(circuits, parsed);
     expect(out.pitCounts).toEqual({ fill: 3, new: 2, remain: 5 });
     expect(out.pitLines.map(l => l.key)).toEqual(['fill', 'new']);
-    expect(out.pitLines.every(l => l.hrs === 0)).toBe(true);
+    expect(out.pitLines.every(l => l.byOthers === true)).toBe(true);
+    expect(out.exclusion).toMatch(/3 access pits to be filled with concrete/);
     expect(out.pitsNotPriced).toEqual([{ key: 'remain', count: 5, label: 'Existing access pit — to remain' }]);
+  });
+
+  it('carries no exclusion when the sheet showed no pit work', () => {
+    expect(applyPitConduitRead(circuits, { legend: LEGEND }).exclusion).toBe(null);
   });
 
   it('keeps the trade-split notes verbatim rather than deciding whose scope it is', () => {
@@ -355,13 +377,16 @@ describe('pitConduitFlags', () => {
     expect(f.circuits).toEqual(['B11']);
   });
 
-  it('says the pit rows are unpriced and why', () => {
+  it('says the pits are the GC\'s and that an exclusion was written', () => {
     const f = flagsFor({
       legend: LEGEND,
       pitCounts: [{ legendText: 'NEW ACCESS PIT', count: 2 }],
     }).find(x => /pit/i.test(x.text));
-    expect(f.text).toMatch(/no hours for pit work/i);
-    expect(f.text).toMatch(/nobody has quoted/i);
+    expect(f.type).toBe('info');
+    expect(f.text).toMatch(/general contractor/i);
+    expect(f.text).toMatch(/exclusion/i);
+    // ...and the way out for a shop that DOES carry it.
+    expect(f.text).toMatch(/Proposal step/);
   });
 
   it('always says the sheet is diagrammatic, even on a read that changed nothing', () => {
@@ -400,5 +425,105 @@ describe('sheetPromptFor', () => {
   // would lose the callouts that are the whole point of a redline.
   it('defaults to redline when there is no text to judge by', () => {
     expect(sheetPromptFor(undefined)).toBe('redline');
+  });
+});
+
+// ── THE REUSED-CONDUIT ANSWER ────────────────────────────────────────────────
+// "It may take a little longer using old conduit because of having to pull the
+// old out but I don't think it's that much. Probably not worth building
+// anything separate for."
+//
+// Agreed, and the reason it is worth a test rather than only a decision: the
+// tempting thing to do with a half-answer like that is to invent a small
+// multiplier for it. There is no measurement behind "not that much", so a unit
+// would be a guess with a decimal point on it. What the estimator gets instead
+// is the STEP he might not know about — the old line has to come out — and the
+// per-foot rates he already has, which are editable.
+describe('reused conduit carries the knowledge, not an invented number', () => {
+  it('tells the estimator the old line has to come out first', () => {
+    const note = routingOf('belowSlabReuse').note;
+    expect(note).toMatch(/OLD LINE HAS TO COME OUT/i);
+  });
+
+  it('says why there is no separate unit for it', () => {
+    const note = routingOf('belowSlabReuse').note;
+    expect(note).toMatch(/no separate unit/i);
+    expect(note).toMatch(/nobody has measured/i);
+    expect(note).toMatch(/editable per job/i);
+  });
+
+  it('prices the same per foot as any other floor run — no hidden factor', () => {
+    const c = { circuitId: 'B11', runLength: 400, riserLength: 20, sucHoriz: '7/8', cases: 2 };
+    const reuse = applyRouting([c], { B11: 'belowSlabReuse' }).circuits;
+    const fresh = applyRouting([c], { B11: 'belowSlabNew' }).circuits;
+    expect(estimateCircuitLabor(reuse, DEFAULT_LABOR_UNITS).totalHours)
+      .toBe(estimateCircuitLabor(fresh, DEFAULT_LABOR_UNITS).totalHours);
+  });
+
+  it('still routes it into the floor, which is the part that DOES change the money', () => {
+    expect(inFloorFor('belowSlabReuse')).toBe(true);
+  });
+});
+
+// ── THE WHOLE ACCEPT PATH ────────────────────────────────────────────────────
+// Lifted out of Step1_Setup.jsx because the pure part had tests and the WIRING
+// did not: sending the pit work back to the task list left the whole suite
+// green. Fifth time in this repo.
+describe('applyPitReads', () => {
+  const circuits = [
+    { circuitId: 'B11', runLength: 400, sucHoriz: '7/8' },
+    { circuitId: 'A5', runLength: 150, sucHoriz: '7/8' },
+  ];
+  const read = (fileName, extra = {}) => ({
+    fileName, legend: LEGEND,
+    routing: [{ circuitId: 'B11', legendText: 'NEW BELOW SLAB REFRIGERANT CONDUIT' }],
+    pitCounts: [{ legendText: 'NEW ACCESS PIT', count: 2 }],
+    ...extra,
+  });
+
+  it('routes the circuits, raises the flags and writes the exclusion', () => {
+    const out = applyPitReads(circuits, [read('PL.02.pdf')]);
+    expect(out.circuits.find(c => c.circuitId === 'B11').inFloor).toBe(true);
+    expect(out.flags.length).toBeGreaterThan(0);
+    expect(out.exclusions).toHaveLength(1);
+    expect(out.exclusions[0]).toMatch(/2 access pits to be cut/);
+  });
+
+  it('folds several sheets in order, each routing what the last produced', () => {
+    const second = read('PL.03.pdf', {
+      routing: [{ circuitId: 'A5', legendText: 'NEW OVERHEAD REFRIGERANT PIPING' }],
+      pitCounts: [],
+    });
+    const out = applyPitReads(circuits, [read('PL.02.pdf'), second]);
+    expect(out.circuits.find(c => c.circuitId === 'B11').inFloor).toBe(true);
+    // Not `toBe(false)`: applyRouting leaves a circuit alone when it already
+    // agrees, so one that was never in the floor stays untouched rather than
+    // being rewritten to an explicit false. Same meaning everywhere it is read.
+    expect(out.circuits.find(c => c.circuitId === 'A5').inFloor).toBeFalsy();
+  });
+
+  it('routes a circuit OUT of the floor when a later sheet says overhead', () => {
+    // The case that does need a write: the box was on and the sheet says no.
+    const started = [{ circuitId: 'A5', runLength: 150, sucHoriz: '7/8', inFloor: true }];
+    const out = applyPitReads(started, [read('PL.03.pdf', {
+      routing: [{ circuitId: 'A5', legendText: 'NEW OVERHEAD REFRIGERANT PIPING' }], pitCounts: [],
+    })]);
+    expect(out.circuits[0].inFloor).toBe(false);
+  });
+
+  it('does not put the same exclusion on the proposal twice', () => {
+    const out = applyPitReads(circuits, [read('PL.02.pdf'), read('PL.03.pdf')]);
+    expect(out.exclusions).toHaveLength(1);
+  });
+
+  it('writes no exclusion when no sheet showed pit work', () => {
+    const out = applyPitReads(circuits, [read('PL.02.pdf', { pitCounts: [] })]);
+    expect(out.exclusions).toEqual([]);
+  });
+
+  it('is a no-op with no reads', () => {
+    expect(applyPitReads(circuits, []).circuits).toEqual(circuits);
+    expect(applyPitReads(circuits, undefined).exclusions).toEqual([]);
+    expect(applyPitReads(null, null).circuits).toEqual([]);
   });
 });
