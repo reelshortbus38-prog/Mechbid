@@ -52,6 +52,29 @@ async function callAnthropic({ messages, system, max_tokens }) {
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
+
+// ── ROUTING CUSTOMER DOCUMENTS ──────────────────────────────────────────────
+// OpenRouter's default for `data_collection` is "allow", which its own docs
+// define as: "allow providers which store user data non-transiently and may
+// train on it."
+//
+// What travels on these calls is the contents of a customer's construction
+// drawings — frequently confidential to an owner, architect or engineer, and
+// uploaded by a contractor who was trusted with them. The privacy policy tells
+// them "we do not use your uploaded documents or job data to train AI models",
+// and a reader takes that to mean nobody does. Leaving the default in place
+// made that read of it untrue.
+//
+//   data_collection: 'deny'  — route only to providers that do not collect it
+//   zdr: true                — and only to endpoints with zero data retention
+//
+// THIS CAN COST US THE CALL, AND THAT IS THE RIGHT TRADE. If no compliant
+// endpoint exists for the model, the request fails and the caller falls back —
+// the second opinion is best-effort by design and returning null is a path that
+// already works. A cross-check we lose is a quality feature degraded. A drawing
+// trained on is somebody else's confidential document, and it cannot be undone.
+const OR_PRIVACY = { data_collection: 'deny', zdr: true };
+
 async function callOpenRouter({ messages, system, max_tokens, temperature }) {
   const orMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -62,7 +85,7 @@ async function callOpenRouter({ messages, system, max_tokens, temperature }) {
       'HTTP-Referer': 'https://coldgauge.com',
       'X-Title': 'Coldgauge'
     },
-    body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages })
+    body: JSON.stringify({ model: 'openai/gpt-4o', max_tokens, temperature, messages: orMessages, provider: OR_PRIVACY })
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `OpenRouter error ${response.status}`);

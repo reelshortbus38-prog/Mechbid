@@ -75,11 +75,24 @@ describe('terms cover what a paid SaaS actually needs', () => {
     expect(t).toMatch(/Bids you submit are yours/i);
   });
 
-  it('discloses auto-renewal, cancellation and refunds — what Stripe requires', () => {
-    expect(t).toMatch(/RENEW AUTOMATICALLY/);
-    expect(t).toMatch(/cancel at any time/i);
-    expect(t).toMatch(/non-refundable/i);
-    expect(t).toMatch(/30 days’ notice/);
+  // ── THIS TEST USED TO PIN A FALSEHOOD IN PLACE ─────────────────────────
+  // It asserted "RENEW AUTOMATICALLY", "non-refundable" and "30 days' notice"
+  // — the disclosures a real Stripe subscription needs. There is no Stripe
+  // integration in this app and never has been. So the terms described
+  // auto-renewing billing to people who would never be charged, and the test
+  // made sure they kept doing it.
+  //
+  // Written for the app as it is meant to become, which is exactly how a legal
+  // document drifts. The check now runs the other way: no billing language
+  // while there is no billing. See legalTruth.test.js, which ties the claim to
+  // whether the code actually integrates a payment processor, so this flips
+  // back automatically on the day one is wired up.
+  it('describes no billing, because there is none', () => {
+    expect(t).not.toMatch(/RENEW AUTOMATICALLY/);
+    expect(t).not.toMatch(/billed in advance/i);
+    expect(t).toMatch(/free while it is in testing/i);
+    expect(t).toMatch(/nothing renews/i);
+    expect(t).toMatch(/told before anything is charged/i);
   });
 
   it('caps liability at fees paid, which is the clause that matters here', () => {
@@ -119,7 +132,10 @@ describe('privacy covers what this app actually does', () => {
   });
 
   it('names every sub-processor, not just the AI ones', () => {
-    for (const name of ['Vercel', 'Supabase', 'Stripe']) expect(p).toMatch(new RegExp(name));
+    // Stripe was on this list and is not integrated. legalTruth.test.js now
+    // checks both directions against the code itself rather than a list
+    // somebody has to remember to update.
+    for (const name of ['Vercel', 'Supabase']) expect(p).toMatch(new RegExp(name));
   });
 
   it('is honest that job data lives in browser storage and can be lost', () => {
@@ -143,8 +159,22 @@ describe('privacy covers what this app actually does', () => {
     expect(p).toMatch(/without undue delay/i);
   });
 
-  it('never says the full card number is stored', () => {
-    expect(p).toMatch(/never the full number/i);
+  it('says no payment details are taken at all, which is stronger', () => {
+    expect(p).toMatch(/WE TAKE NO PAYMENT DETAILS/);
+    expect(p).not.toMatch(/last four digits/i);
+  });
+
+  // The claim that mattered most in the 2026-09-20 audit. "We do not train on
+  // it" was true of us and silent about the route — and OpenRouter's default
+  // is data_collection "allow", which its own docs define as providers that
+  // "store user data non-transiently and may train on it."
+  it('says what happens at the AI provider, not just what we do not do', () => {
+    expect(p).toMatch(/do not retain or train on what is sent/i);
+    expect(p).toMatch(/fail rather than fall back/i);
+  });
+
+  it('still leaves the disclosure decision with the contractor', () => {
+    expect(p).toMatch(/a promise you made to them, not one we can make for you/i);
   });
 });
 
