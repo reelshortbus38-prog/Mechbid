@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { privacySections, termsSections } from './legalText.js';
+import { privacySections, termsSections, LEGAL_COMPLETE_TITLE, LEGAL_COMPLETE_BODY } from './legalText.js';
 
 // ── THE POLICY HAS TO BE TRUE OF THE CODE ────────────────────────────────────
 // A privacy policy is the one document in this repo that can be wrong without
@@ -188,5 +188,60 @@ describe('what the policy says about where things are stored', () => {
   it('warns that local storage can lose a job', () => {
     expect(privacyText()).toMatch(/local storage/i);
     expect(privacyText()).toMatch(/clearing site data|private window/i);
+  });
+});
+
+// ── A STATUS LINE THAT READS AS A TO-DO IS A TO-DO ───────────────────────────
+// The settings card said "✓ These policies are filled in and ready to publish",
+// and the owner — having just filled in the four fields — reasonably asked what
+// he still had to publish. Nothing. There is no publish step.
+//
+// Tested here as exported COPY rather than through the component, because the
+// component renders collapsed: it is the footer link, and the panel opens on a
+// tap that renderToStaticMarkup cannot perform. A render test of it asserted
+// the bad wording was absent and passed because NONE of the wording was in the
+// DOM — the fifth time in this repo a check has passed for the wrong reason,
+// and the second time within the same fix.
+describe('the legal banner describes a state, not a chore', () => {
+  it('does not imply a publish step that does not exist', () => {
+    expect(LEGAL_COMPLETE_TITLE + LEGAL_COMPLETE_BODY).not.toMatch(/ready to publish/i);
+  });
+
+  it('says the policies are already live', () => {
+    expect(LEGAL_COMPLETE_TITLE).toMatch(/already live/i);
+    expect(LEGAL_COMPLETE_BODY).toMatch(/nothing here needs publishing/i);
+  });
+
+  it('sends nobody to a checkout, because there is no checkout', () => {
+    if (codeMentions('stripe').length) return;
+    expect(LEGAL_COMPLETE_TITLE + LEGAL_COMPLETE_BODY).not.toMatch(/checkout/i);
+  });
+
+  it('does not ask for a signup link that TermsGate already enforces', () => {
+    expect(LEGAL_COMPLETE_BODY).not.toMatch(/link this page from your signup/i);
+    expect(LEGAL_COMPLETE_BODY).toMatch(/TermsGate/);
+  });
+
+  // The claim above has to stay true of the code.
+  it('is telling the truth about TermsGate wrapping the app', () => {
+    const app = files.find(f => f.path.endsWith('App.jsx'));
+    expect(app, 'App.jsx not found').toBeTruthy();
+    expect(app.text, 'the banner claims TermsGate gates the app; App.jsx does not use it')
+      .toMatch(/<TermsGate>/);
+  });
+
+  // Counting, not matching. The first version of this asserted the file
+  // MENTIONS each constant — and mentioning it is what the import line does,
+  // so replacing the usage with a hardcoded string left the test green. Two
+  // occurrences means imported AND used; one means imported and abandoned.
+  it('is the copy the component actually renders', () => {
+    const legal = files.find(f => f.path.endsWith('components/Legal.jsx'));
+    for (const name of ['LEGAL_COMPLETE_TITLE', 'LEGAL_COMPLETE_BODY']) {
+      const uses = (legal.text.match(new RegExp(name, 'g')) || []).length;
+      expect(uses, `${name} is imported into Legal.jsx but never used`).toBeGreaterThan(1);
+    }
+    // ...and no hardcoded banner copy sitting alongside it.
+    expect(legal.text, 'Legal.jsx hardcodes banner copy instead of using the export')
+      .not.toMatch(/'✓ These policies/);
   });
 });

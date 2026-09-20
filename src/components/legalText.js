@@ -86,6 +86,27 @@ export function legalReady(profile = {}) {
   return legalGaps(profile).length === 0;
 }
 
+// ── THE LINE THE SETTINGS CARD SHOWS WHEN ALL FOUR FIELDS ARE IN ────────────
+// It describes a STATE, and the wording matters more than it looks.
+//
+// It used to read "✓ These policies are filled in and ready to publish", and
+// the owner — having just filled in the four fields — reasonably asked what he
+// still had to publish. Nothing. There is no publish step: the policies render
+// straight from the profile, and TermsGate puts them in front of every user
+// before the app opens.
+//
+// "Ready to publish" describes a state and sounds like an instruction, and to
+// somebody working down a checklist, sounding like an instruction wins.
+//
+// The sentence under it then asked for two things: link this page from your
+// SIGNUP — already enforced, TermsGate wraps the whole app — and from your
+// CHECKOUT, which does not exist. The same Stripe-era leftover as the
+// subscribers wording, in the one place a person is most likely to act on it.
+export const LEGAL_COMPLETE_TITLE = '✓ These policies are complete, and already live';
+export const LEGAL_COMPLETE_BODY = 'Nothing here needs publishing — this IS the page, and TermsGate already '
+  + 'puts it in front of everyone before they can use the app. Worth reading once so you know what you are '
+  + 'standing behind.';
+
 export const LAST_UPDATED = '2026-09-20';
 
 export function termsSections(profile = {}) {

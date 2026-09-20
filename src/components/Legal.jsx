@@ -4,6 +4,7 @@ import { loadCompanyProfile, saveCompanyProfile } from '../state/store.js';
 import { loadAcceptance, acceptedOn } from './termsAcceptance.js';
 import {
   termsSections, privacySections, LEGAL_FIELDS, legalGaps, legalReady, LAST_UPDATED,
+  LEGAL_COMPLETE_TITLE, LEGAL_COMPLETE_BODY,
 } from './legalText.js';
 
 // ── TERMS + PRIVACY ──────────────────────────────────────────────────────────
@@ -48,13 +49,13 @@ function FillIn({ profile, onChange }) {
         <strong style={{ color: gaps.length ? colors.yellow : colors.green }}>
           {gaps.length
             ? `⚠ ${gaps.length} detail${gaps.length === 1 ? '' : 's'} still to fill in`
-            : '✓ These policies are filled in and ready to publish'}
+            : LEGAL_COMPLETE_TITLE}
         </strong>
         <span style={{ float: 'right', color: colors.textDim }}>{open ? '▲' : '▼'}</span>
         <br />
         {gaps.length
           ? 'The wording below is complete. These four facts are the only things it cannot know, and until they are set the page shows them in brackets.'
-          : 'Everything below carries your details. Review the wording, then link this page from your signup and checkout.'}
+          : LEGAL_COMPLETE_BODY}
       </div>
       {open && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 10 }}>
