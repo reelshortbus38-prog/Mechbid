@@ -65,8 +65,8 @@ export const LEGAL_PLACEHOLDERS = {
 export const LEGAL_FIELDS = [
   { k: 'company', label: 'Legal entity name', ph: 'Acme Refrigeration LLC', why: 'Named as the operator in both documents.' },
   { k: 'state', label: 'Governing law (state)', ph: 'Virginia', why: 'Whose law applies and where disputes are heard.' },
-  { k: 'contact', label: 'Contact email', ph: 'support@yourcompany.com', why: 'Required for privacy requests, and by Stripe.' },
-  { k: 'address', label: 'Mailing address', ph: '123 Main St, City, ST 00000', why: 'Required by Stripe and by most app stores.' },
+  { k: 'contact', label: 'Contact email', ph: 'support@yourcompany.com', why: 'Required for privacy requests — it is the address a user writes to for their data.' },
+  { k: 'address', label: 'Mailing address', ph: '123 Main St, City, ST 00000', why: 'Required on a published privacy policy so users know who holds their data.' },
 ];
 
 const fill = (profile, k) => {
@@ -86,7 +86,7 @@ export function legalReady(profile = {}) {
   return legalGaps(profile).length === 0;
 }
 
-export const LAST_UPDATED = '2026-08-21';
+export const LAST_UPDATED = '2026-09-20';
 
 export function termsSections(profile = {}) {
   const CO = fill(profile, 'company');
@@ -127,17 +127,15 @@ export function termsSections(profile = {}) {
 
     ['Processing by third parties',
       'To extract takeoff data, the contents of documents you upload are transmitted to third-party AI '
-      + 'providers for processing, and other providers host the Service, store your data and process payments. '
+      + 'providers for processing, and other providers host the Service and store your data. '
       + 'They are listed in the Privacy Policy. Do not upload material you are not permitted to disclose to a '
       + 'third-party processor.'],
 
-    ['Subscriptions, billing and cancellation',
-      'Paid plans are billed in advance through Stripe on a recurring basis and RENEW AUTOMATICALLY until '
-      + 'cancelled. You may cancel at any time from your account or by contacting ' + EM + '; cancellation takes '
-      + 'effect at the end of the current billing period and you keep access until then. Fees already paid are '
-      + 'non-refundable except where required by law or where we choose to make an exception. We may change '
-      + 'pricing with at least 30 days’ notice before it applies to your next renewal. You are responsible for '
-      + 'applicable taxes.'],
+    ['What this costs',
+      'Nothing. Coldgauge is free while it is in testing. There is no payment processor connected to it, no card '
+      + 'details are taken, and nothing renews — there is no billing to cancel. '
+      + 'If paid plans are introduced later, the terms for them will be published here and you will be told '
+      + 'before anything is charged. Continuing to use a free account will never by itself start a subscription.'],
 
     ['Acceptable use',
       'Do not: upload content you lack the right to share; attempt to access another account or our systems '
@@ -209,9 +207,10 @@ export function privacySections(profile = {}) {
       'ACCOUNT DETAILS you give us — name, email, company name, and your login credentials. '
       + 'CONTENT YOU UPLOAD — drawings, specifications, schedules, bid letters and any other documents, plus the '
       + 'job data you create from them: takeoffs, pricing, labor, proposals. '
-      + 'PAYMENT DETAILS are handled by Stripe; we receive a subscription status and the last four digits of a '
-      + 'card, never the full number. '
-      + 'BASIC USAGE DATA needed to operate and secure the Service, such as log and error information.'],
+      + 'BASIC USAGE DATA needed to operate and secure the Service, such as log and error information. '
+      + 'WE TAKE NO PAYMENT DETAILS. Coldgauge is free while it is in testing, there is no payment processor '
+      + 'connected to it, and no card information reaches us or anybody on our behalf. If that changes this '
+      + 'policy will be updated before it does, not after.'],
 
     ['Where your job data actually lives',
       'Jobs you create are stored in your browser’s local storage on the device you are using, and are synced '
@@ -222,14 +221,18 @@ export function privacySections(profile = {}) {
     ['Documents are sent to AI providers for processing',
       'This is the disclosure that matters most. To read a drawing and produce a takeoff, the contents of the '
       + 'documents you upload are transmitted to third-party AI providers — Anthropic, and OpenAI via OpenRouter '
-      + '— which process them and return extraction results. Do not upload material you are not permitted to '
-      + 'disclose to a third-party processor. Construction documents are frequently confidential to an owner, '
-      + 'architect or engineer.'],
+      + '— which process them and return extraction results. Requests are configured to route only to providers '
+      + 'that do not store or train on what is sent, and to fail rather than fall back to one that would; a '
+      + 'request that cannot be routed that way simply does not happen. '
+      + 'Even so: do not upload material you are not permitted to disclose to a third-party processor. '
+      + 'Construction documents are frequently confidential to an owner, architect or engineer, and that is a '
+      + 'promise you made to them, not one we can make for you.'],
 
     ['Service providers we use',
-      'AI processing: Anthropic; OpenAI via OpenRouter. Hosting: Vercel. Database and authentication: Supabase. '
-      + 'Payments: Stripe. Each processes data only to provide its part of the Service, under its own terms. We '
-      + 'will update this list when it changes.'],
+      'AI processing: Anthropic; OpenAI via OpenRouter. Hosting: Vercel. Database, authentication and document '
+      + 'storage: Supabase. That is the whole list — there is no payment processor, no analytics service and no '
+      + 'advertising network. Each of these processes data only to provide its part of the Service, under its '
+      + 'own terms, and we will update this list when it changes.'],
 
     ['How we use your data',
       'To operate the Service and produce your estimates; to keep your saved jobs and sync them across your '
@@ -238,8 +241,10 @@ export function privacySections(profile = {}) {
 
     ['What we do not do',
       'We do not sell or rent your personal information. We do not share your bid documents or pricing with '
-      + 'other users. We do not use your uploaded documents or job data to train AI models. We do not use your '
-      + 'data to bid against you.'],
+      + 'other users. We do not use your uploaded documents or job data to train AI models, and we ask the AI '
+      + 'providers not to either: every request we route through OpenRouter carries an explicit instruction to '
+      + 'use only providers that do not retain or train on what is sent, and to fail rather than fall back to '
+      + 'one that would. We do not use your data to bid against you.'],
 
     ['Retention and deletion',
       'We keep your account data while your account is active. Delete a job in the app and it is removed from '
