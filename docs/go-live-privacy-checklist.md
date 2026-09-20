@@ -391,7 +391,20 @@ exactly two, and both are safe to expose:
 2. Confirm **no** variable name starting with `VITE_` contains a service-role
    key. If one does, rename it so it does not start with `VITE_`, and redeploy.
 
-**Prove it:**
+**Prove it — the cause, which is what an iPad can see:**
+
+Vercel → Settings → Environment Variables, and read the NAMES. Only these two
+should begin with `VITE_`:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Everything else in that list — service-role key, API keys, anything — is fine
+so long as it does not start with `VITE_`. Vite inlines `VITE_`-prefixed
+variables and nothing else, so a key that is not named that way cannot reach the
+bundle. No build required, and the whole check is reading a column of names.
+
+**Prove it — the effect, if you are at a machine with the repo:**
 
 ```bash
 npm run build
@@ -400,6 +413,10 @@ grep -r "service_role" dist/ ; echo "exit: $?"
 
 `exit: 1` and no output → correct, the key is not in the bundle.
 Any match → **stop and fix it before deploying.**
+
+Both are worth doing eventually. The name check is the one that gets done,
+because it can be done from the device this app is actually used on — and a
+check that needs a laptop is a check that waits for one.
 
 ---
 
