@@ -259,6 +259,44 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 - `400` or `403` — **correct**, the object is not readable without a real user.
 - `200` — the file came back to an anonymous caller. **Go back to Steps 1 and 3.**
 
+### Reading what is configured (the fast check)
+
+The REST test above proves what actually HAPPENS, which is the thing that
+matters. This one shows what is CONFIGURED, which is faster and says where to
+look when the REST test comes back wrong.
+
+The SQL Editor is the right place for this and the wrong place for the test
+above — see the next section. Reading the catalog is not reading your data.
+
+```sql
+select c.relname                                            as table_name,
+       case when c.relrowsecurity then 'ON' else 'OFF' end  as rls,
+       coalesce(p.policyname, '(NO POLICY)')                as policy,
+       coalesce(p.cmd, '-')                                 as cmd,
+       coalesce(p.qual, '-')                                as using_expression
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+left join pg_policies p
+  on p.tablename = c.relname and p.schemaname = n.nspname
+where (n.nspname = 'public'  and c.relname in ('jobs', 'shop_settings'))
+   or (n.nspname = 'storage' and c.relname = 'objects')
+order by c.relname, p.policyname;
+```
+
+Reading it:
+
+- `rls` must be **ON** for `jobs` and `shop_settings`. OFF on either means every
+  contractor's bids and pricing are readable by any signed-in user.
+- `(NO POLICY)` against a table whose RLS is ON means the app cannot read its
+  own rows either. Safe, and broken.
+- Every `using_expression` must carry an ownership test — `auth.uid() = user_id`
+  on the tables, `(storage.foldername(name))[1] = auth.uid()::text` on storage.
+
+> Order by column NAMES, not positions. `order by 1, 3` is the natural thing to
+> write and it breaks the moment the select list is edited — PostgreSQL rejects
+> a position that no longer exists, and the error reads like a problem with the
+> data rather than with the query.
+
 ### Where NOT to test this
 
 **The Supabase SQL Editor.** Queries there run as a privileged role that
