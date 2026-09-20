@@ -328,6 +328,38 @@ Note the asymmetry while reading the results: on an UPDATE policy a missing
 `with_check` is harmless — PostgreSQL falls back to the USING expression. On an
 INSERT policy there is no USING to fall back to.
 
+### Which clause applies to which command
+
+Both catalog queries return `(NONE)` in places, and only some of those are
+holes. PostgreSQL allows each clause on only some commands, so a blank is
+usually the database telling you that clause does not exist for that command —
+not that somebody forgot it.
+
+| cmd | `qual` (USING) | `with_check` | A blank means |
+|---|---|---|---|
+| SELECT | required | not allowed | blank `with_check` is correct |
+| INSERT | not allowed | required | blank `qual` is correct |
+| UPDATE | required | optional | blank `with_check` falls back to USING |
+| DELETE | required | not allowed | blank `with_check` is correct |
+
+So a complete, correct setup shows the ownership test in **four** places per
+table: SELECT/UPDATE/DELETE under `qual`, INSERT under `with_check`, with UPDATE
+carrying it in both if whoever wrote it was being thorough.
+
+The only genuine holes are a blank where the table above says *required*, or an
+expression that is present but carries no ownership test.
+
+### A public bucket bypasses all of it
+
+Worth saying next to the storage policy, because the two look like they cover
+the same ground and do not. A public bucket serves its objects through a URL
+that does not go through `storage.objects` policies at all — that is what
+"public" means.
+
+So a perfectly written `own job files — read` policy protects nothing if the
+bucket toggle is on. Step 1 is not made redundant by Step 3, and no amount of
+policy review substitutes for looking at that switch.
+
 ### Where NOT to test this
 
 **The Supabase SQL Editor.** Queries there run as a privileged role that
