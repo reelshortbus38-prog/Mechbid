@@ -15,6 +15,8 @@ import { ESTIMATOR_WARNING, DEFAULT_PROPOSAL_TERMS, basisOfBid, basisComplete } 
 import { auditFlags, contradictedTerms, riskSummary } from '../components/riskAudit.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { checkBidReadiness } from '../components/bidReadiness.js';
+import { selfCheck, bidDiagnostic } from '../components/bidSelfCheck.js';
+import { pctOr } from '../state/numberField.js';
 import { BRAND_HEAD, BRAND_TAIL } from '../components/brand.js';
 
 // Standing estimate disclaimer printed on every proposal. An estimating tool
@@ -480,6 +482,71 @@ function MarkupAndSubs() {
 //
 // It prices nothing and changes nothing. It quotes the sentence and leaves the
 // judgement where it belongs.
+// ── SEND THIS BACK ───────────────────────────────────────────────────────────
+// Nobody has run a real job through this app end to end, and the two ways to
+// close that — an estimator with a spare afternoon, or contractors trying it —
+// are both outside anyone's control. This is the third way: one button that
+// produces something worth reading about a real bid.
+//
+// It carries NO customer identity. Not politeness — a diagnostic with a store
+// name on it is one the estimator has to read carefully before sending, which
+// means most of the time he will not send it at all. Numbers and structure
+// only, and it says so on its own first two lines so nobody has to take that
+// on trust.
+export function DiagnosticCard() {
+  const [copied, setCopied] = useState(false);
+  const { state } = useStore();
+  const profile = loadCompanyProfile();
+  // Priced off the ACTIVE scenario, which is what the proposal prints. Taking
+  // totals as a prop would let this card describe a different bid than the one
+  // on screen — the exact class of disagreement it exists to catch.
+  const scenario = state.scenarios?.[state.scenarios?.active];
+  const totals = computeBidTotals(state, pctOr(scenario?.markupPct ?? state.markupPct, 20));
+  const check = selfCheck(state, totals, { profile, shipped: DEFAULT_LABOR_UNITS });
+  const tone = check.blockers ? colors.red : check.warnings ? colors.yellow : colors.green;
+
+  const copy = async () => {
+    const text = bidDiagnostic(state, totals, { profile, shipped: DEFAULT_LABOR_UNITS });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // A clipboard that refuses (an iPad without focus, a locked-down browser)
+      // must not leave the estimator with nothing. Showing the text is a worse
+      // experience and a working one.
+      window.prompt('Copy this and send it:', text);
+    }
+  };
+
+  return (
+    <Card style={{ borderColor: `${tone}55` }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <SLabel style={{ margin: 0 }}>🩺 Does this bid agree with itself?</SLabel>
+        <Btn size="sm" variant="ghost" onClick={copy}>
+          {copied ? '✓ Copied' : '📋 Copy diagnostic'}
+        </Btn>
+      </Row>
+      <div style={{ fontSize: 12, color: tone, marginTop: 8, lineHeight: 1.6 }}>{check.verdict}</div>
+      {check.findings.map(f => (
+        <div key={f.key} style={{ marginTop: 10, fontSize: 11, lineHeight: 1.6, color: colors.textDim }}>
+          <strong style={{
+            color: f.severity === 'blocker' ? colors.red : f.severity === 'warn' ? colors.yellow : colors.textDim,
+          }}>
+            {f.severity === 'blocker' ? '❌' : f.severity === 'warn' ? '⚠️' : 'ℹ️'} {f.title}
+          </strong>
+          <div style={{ marginTop: 3 }}>{f.detail}</div>
+        </div>
+      ))}
+      <div style={{ marginTop: 12, fontSize: 10, color: colors.textDim, lineHeight: 1.6 }}>
+        The copy carries structure and arithmetic only — no store name, address, contractor, circuit IDs or file
+        names — so it is safe to paste into an email or a message. It checks that nothing in this bid contradicts
+        anything else. It cannot tell you the hours are right.
+      </div>
+    </Card>
+  );
+}
+
 export function RiskAuditCard({ flags, terms }) {
   const findings = auditFlags(flags || [], triageFlags);
   if (!findings.length) return null;
@@ -568,6 +635,7 @@ function TaxAndExclusions() {
   return (
     <>
     <RiskAuditCard flags={state.flags} terms={terms} />
+    <DiagnosticCard />
     <Card>
       <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <SLabel style={{ margin: 0 }}>Tax, Bond, Permits & Exclusions</SLabel>
