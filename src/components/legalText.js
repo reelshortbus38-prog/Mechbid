@@ -177,8 +177,8 @@ export function termsSections(profile = {}) {
       + 'sections survive termination.'],
 
     ['Changes to these Terms',
-      'We may update these Terms. Material changes will be posted here with a revised date and, for active '
-      + 'subscribers, notified by email before taking effect. Continuing to use the Service after that means you '
+      'We may update these Terms. Material changes will be posted here with a revised date and emailed to '
+      + 'everyone with an account before they take effect. Continuing to use the Service after that means you '
       + 'accept the change.'],
 
     ['Governing law and disputes',
@@ -236,7 +236,7 @@ export function privacySections(profile = {}) {
 
     ['How we use your data',
       'To operate the Service and produce your estimates; to keep your saved jobs and sync them across your '
-      + 'devices; to process subscriptions and prevent fraud; to provide support you ask for; to diagnose faults '
+      + 'devices; to keep accounts secure and prevent abuse; to provide support you ask for; to diagnose faults '
       + 'and improve reliability; and to comply with law.'],
 
     ['What we do not do',
@@ -277,7 +277,8 @@ export function privacySections(profile = {}) {
 
     ['Changes to this policy',
       'We will post changes here and update the date below. Material changes affecting how we use your data will '
-      + 'be notified to active subscribers by email.'],
+      + 'be emailed to everyone with an account before they take effect — not only to paying customers, of which '
+      + 'there are currently none.'],
 
     ['Contact', `Privacy questions and requests: ${EM}.`],
   ];
