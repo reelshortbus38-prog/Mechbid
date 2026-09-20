@@ -1,101 +1,281 @@
-# Go-live privacy checklist
+# Privacy: what to do before anyone else uploads a drawing
 
-What the code guarantees, what it cannot, and what has to be checked by hand
-before strangers upload other people's drawings.
+A runbook, not a reading list. Every step says where to click, what to paste,
+and how to prove it worked.
 
 Written 2026-09-20, before opening Coldgauge to outside testers.
 
----
-
-## The distinction that organises this
-
-The privacy policy makes promises. Some of them the **code** keeps, and those
-are now held by tests that fail if anybody changes the code without changing
-the policy. Others depend on **settings in a dashboard** that no test in this
-repo can see.
-
-The second list is short and it is the dangerous one, because everything looks
-fine from the outside either way.
+**Roughly 45 minutes.** Steps 1–4 are the ones that matter; 5–7 are cleanup.
 
 ---
 
-## Held by tests — no action needed
+## The thing to understand first
+
+The policy makes promises. Some are kept by **code**, and tests now fail if
+anyone changes the code without changing the policy. The rest depend on
+**settings in the Supabase dashboard** that no test in this repo can see.
+
+That second set is the dangerous one, because **the app looks and behaves
+identically whether those settings are right or wrong.** Nothing is slow,
+nothing errors, no page looks different. A public bucket serves files exactly
+as fast as a private one.
+
+So none of this can be checked by using the app. It has to be checked directly.
+
+---
+
+## Step 1 — Is the storage bucket private? (5 min)
+
+This is the one that would hurt most. Every plan set anyone uploads lives in a
+bucket called `job-files`. If it is public, **anyone on the internet who can
+guess a URL can read every drawing in it** — and the paths are guessable, they
+are just `userId/uploadId`.
+
+**Do this:**
+
+1. Supabase dashboard → **Storage** (left sidebar)
+2. Find the bucket `job-files`
+3. Look at the bucket name. If there is a **"Public"** badge next to it, that is
+   the problem. Click the bucket → the **⋮** menu → **Edit bucket** → turn
+   **Public bucket** OFF → Save.
+
+**Prove it:**
+
+1. Upload a file to any job in the app while signed in
+2. Supabase → Storage → `job-files` → click into your user-id folder → click
+   the file → **Copy URL**
+3. Open a **private / incognito window** and paste that URL
+
+- Loads the file → **the bucket is public. Stop and fix it.**
+- Shows an error or JSON saying unauthorized → correct.
+
+> Do not test this in your normal browser window. You are signed in there, so it
+> will load either way and tell you nothing.
+
+---
+
+## Step 2 — Turn on Row Level Security (10 min)
+
+Your jobs sync to two Postgres tables: **`jobs`** and **`shop_settings`**.
+Without RLS, **any signed-in user can read every row in those tables** —
+everyone's bids, everyone's pricing, everyone's labor rates.
+
+There is a trap here worth knowing: writing a policy does nothing if RLS is not
+*enabled* on the table. A table with RLS **off** ignores policies completely. A
+table with RLS **on** and no policy denies everyone, which is safe but breaks
+the app. You need both.
+
+**Do this:**
+
+Supabase dashboard → **SQL Editor** → New query → paste the whole thing → Run.
+
+```sql
+-- Turn RLS on. Without this the policies below are decorative.
+alter table public.jobs          enable row level security;
+alter table public.shop_settings enable row level security;
+
+-- A user can see and change their own rows, and nobody else's.
+-- Dropping first makes this safe to run twice.
+drop policy if exists "own jobs" on public.jobs;
+create policy "own jobs" on public.jobs
+  for all
+  using      (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "own shop settings" on public.shop_settings;
+create policy "own shop settings" on public.shop_settings
+  for all
+  using      (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+```
+
+> **If that errors** with something about comparing `uuid` and `text`, your
+> `user_id` column is text rather than uuid. Use `auth.uid()::text = user_id`
+> in all four places instead.
+
+**Prove it:**
+
+Supabase → **Table Editor** → look at the table list. Each table shows its RLS
+state. Both `jobs` and `shop_settings` should now say RLS is enabled, with no
+red "unrestricted" warning.
+
+Then the real test — see Step 4.
+
+---
+
+## Step 3 — Lock the storage paths (5 min)
+
+Making the bucket private (Step 1) stops the public internet. It does **not**
+stop one signed-in contractor from reading another's drawings. That needs a
+policy on the storage objects.
+
+Every path the app writes starts with the owner's user id —
+`filePath()` in `src/lib/fileSync.js` builds `userId/uploadId` — so the rule is
+"the first folder must be you."
+
+**Do this:** SQL Editor → New query → Run.
+
+```sql
+drop policy if exists "own job files" on storage.objects;
+create policy "own job files" on storage.objects
+  for all
+  using (
+    bucket_id = 'job-files'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  )
+  with check (
+    bucket_id = 'job-files'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+```
+
+`storage.foldername(name)` splits the path into folders; `[1]` is the first one.
+So this reads: you may touch an object in `job-files` only when the first folder
+of its path is your own user id.
+
+---
+
+## Step 4 — Prove it, the only way that proves anything (15 min)
+
+This is the step people skip, and the one that matters.
+
+**First, a warning about the obvious test.** Signing in as a second account and
+checking that you cannot see the first account's jobs **proves nothing**. The
+app asks the database only for its own rows — `pullCloudJobs` in
+`src/lib/cloudSync.js` runs `.eq('user_id', userId)` — so account B would see
+nothing whether RLS is on or off. That test passes either way.
+
+The real test is to ask the database for *everything*, the way somebody
+poking at it would.
+
+### The one-command test
+
+Your **anon key is public.** It ships in the browser bundle, which is correct
+and by design — RLS is what makes it safe. So the honest question is: what does
+that public key get you on its own?
+
+Get the two values from Vercel → Settings → Environment Variables:
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Then, in a terminal:
+
+```bash
+URL="https://YOUR-PROJECT.supabase.co"
+ANON="your-anon-key"
+
+echo "--- jobs ---"
+curl -s "$URL/rest/v1/jobs?select=id,user_id,name" \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
+
+echo; echo "--- shop_settings ---"
+curl -s "$URL/rest/v1/shop_settings?select=user_id" \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
+```
+
+**Read the result:**
+
+- `[]` — an empty list. **Correct.** RLS is on and the public key alone gets
+  nothing.
+- A JSON error mentioning permission or the relation not existing — also fine.
+- **Any rows at all** — RLS is off or the policy is wrong. Everything in those
+  tables is readable by anyone who opens your site and reads the key out of it.
+  **Go back to Step 2.** Do not launch.
+
+Run this again any time you add a table.
+
+### And the same for a file
+
+While you are there, test storage the same way. Take any real object path from
+Supabase → Storage (it looks like `a1b2c3.../f9e8d7...`) and:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  "$URL/storage/v1/object/job-files/PASTE-PATH-HERE" \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
+```
+
+- `400` or `403` — **correct**, the object is not readable without a real user.
+- `200` — the file came back to an anonymous caller. **Go back to Steps 1 and 3.**
+
+### Write down that you did it
+
+Date it and keep it somewhere. It is the only evidence that what your privacy
+policy tells contractors is actually true of your database.
+
+---
+
+## Step 5 — Keep the service-role key out of the browser (5 min)
+
+The service-role key **bypasses RLS entirely**. If it ever reaches the browser
+bundle, every step above becomes decorative.
+
+Only variables starting with `VITE_` are exposed to the browser. The app uses
+exactly two, and both are safe to expose:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+**Do this:**
+
+1. Vercel → your project → Settings → Environment Variables
+2. Confirm **no** variable name starting with `VITE_` contains a service-role
+   key. If one does, rename it so it does not start with `VITE_`, and redeploy.
+
+**Prove it:**
+
+```bash
+npm run build
+grep -r "service_role" dist/ ; echo "exit: $?"
+```
+
+`exit: 1` and no output → correct, the key is not in the bundle.
+Any match → **stop and fix it before deploying.**
+
+---
+
+## Step 6 — Fill in the legal profile (5 min)
+
+The policy currently renders with placeholders where your company details go. A
+privacy policy that says "Acme Refrigeration" and has no real contact address is
+not a privacy policy — and the contact address is where people write to have
+their data deleted, which is a right you are promising them.
+
+In the app: **Proposal step → Terms · Privacy**. Fill in every field until the
+⚠ marker next to it disappears. You need:
+
+- Company name
+- Contact email (this is the address privacy requests go to — it has to be one
+  you actually read)
+- Mailing address
+
+---
+
+## Step 7 — Decide what happens when the beta ends (5 min)
+
+Say it in the Reddit post and be done with it. Something like:
+
+> It's free, there's no billing and nothing renews. Your files are stored in my
+> Supabase project and only your account can read them. Email me and I'll delete
+> your account and everything in it. If I ever shut this down I'll give notice
+> and let you export first.
+
+Silence on this is what makes contractors suspicious, and they are right to be.
+
+---
+
+## Already handled — no action needed
+
+These are held by tests that fail if the code and the policy drift apart:
 
 | Promise | Held by |
 |---|---|
 | No AI provider retains or trains on uploaded documents | `api/providerPrivacy.test.js` — every OpenRouter call must send `data_collection: 'deny'` and `zdr: true` |
 | Every processor the code calls is named in the policy | `src/components/legalTruth.test.js` |
 | No processor is named that the code does not call | same |
-| No billing is described while no payment processor exists | same |
+| No billing described while no payment processor exists | same |
 | The diagnostic export carries no customer identity | `src/components/bidSelfCheck.test.js` |
 
-These fail loudly on a change. They are not the problem.
-
 ---
 
-## NOT held by anything — check these by hand
-
-### 1. The storage bucket must be private
-
-`src/lib/fileSync.js` says the `job-files` bucket is private and that paths are
-scoped per user. **The code cannot enforce either.** Both are Supabase settings.
-
-If the bucket is public, every plan set anyone uploads is readable by anyone who
-can guess a URL, and the paths are predictable (`userId/uploadId`).
-
-- [ ] Supabase → Storage → `job-files` → **Public bucket is OFF**
-- [ ] A storage policy exists restricting `SELECT` to `auth.uid()::text = (storage.foldername(name))[1]`
-- [ ] The same restriction on `INSERT`, `UPDATE` and `DELETE`
-- [ ] Verified by signing in as a second test account and trying to read the
-      first account's path directly. It must fail. *Reading your own file
-      successfully proves nothing.*
-
-### 2. Row Level Security on every table
-
-Jobs sync to Postgres. Without RLS, any authenticated user can read every row
-in the table, including other contractors' bids and pricing.
-
-- [ ] RLS **enabled** on the jobs table (enabling it is separate from writing a policy — a table with RLS on and no policy denies everyone, which is safe; a table with RLS off ignores policies entirely, which is not)
-- [ ] Same for the shop-settings table
-- [ ] Verified with a second account, as above
-
-### 3. The service-role key must not be in the browser
-
-Only `VITE_`-prefixed variables reach the client bundle. The service-role key
-bypasses RLS completely.
-
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` is **not** prefixed `VITE_` in Vercel
-- [ ] `grep -r "service_role" dist/` after a build returns nothing
-- [ ] The anon key is the only Supabase key in the client
-
-### 4. OpenRouter account-level data policy
-
-The per-request `data_collection: 'deny'` is now sent on every call. OpenRouter
-also has an account-level privacy setting.
-
-- [ ] Account setting matches the per-request one, so the two cannot disagree
-- [ ] Confirm the model actually used (`openai/gpt-4o`) still has a compliant
-      endpoint — if it does not, the cross-check silently stops returning a
-      second opinion. **That is the designed behaviour and it is the right
-      trade,** but it is worth knowing it happened rather than assuming the
-      cross-check is running.
-
-### 5. Deletion actually deletes
-
-The policy says "delete a job in the app and it is removed from your account."
-
-- [ ] Delete a job that has uploaded files, then check Supabase Storage — the
-      objects should be gone, not orphaned
-- [ ] Confirm on a second device that the tombstone propagates
-
----
-
-## What the policy says, and what it deliberately does not
-
-The policy tells contractors that documents go to AI providers, and that
-requests are routed only to providers that do not retain or train on them.
-
-It then says this, and the wording is deliberate:
+## What the policy deliberately does not promise
 
 > Even so: do not upload material you are not permitted to disclose to a
 > third-party processor. Construction documents are frequently confidential to
@@ -103,19 +283,5 @@ It then says this, and the wording is deliberate:
 > not one we can make for you.
 
 A contractor's NDA with a GC is not something this app can satisfy on his
-behalf. Routing carefully reduces the risk; it does not transfer the obligation.
-Saying so plainly is better for him than a reassuring sentence that would leave
-him thinking it had been handled.
-
----
-
-## Before the Reddit post
-
-- [ ] Every box above ticked
-- [ ] The legal profile fields filled in — `legalGaps()` returns empty, so the
-      policy names a real company, a real contact address and a real mailing
-      address. A privacy policy with placeholder contact details is not a
-      privacy policy.
-- [ ] Decide what happens to beta testers' data when the beta ends, and say it
-      in the post. "I will delete everything on request, and here is the address
-      to write to" is enough; silence is not.
+behalf. Careful routing reduces the risk; it does not transfer the obligation.
+Saying so plainly leaves him better off than a reassuring sentence would.
