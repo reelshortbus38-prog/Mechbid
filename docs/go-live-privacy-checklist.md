@@ -181,6 +181,32 @@ curl -s "$URL/rest/v1/shop_settings?select=user_id" \
 
 Run this again any time you add a table.
 
+### From an iPad, with no terminal
+
+Coldgauge is used on an iPad, so this has to be doable on one. Supabase accepts
+the key as a URL parameter as well as a header — its own error message says so
+("No `apikey` request header or url param was found") — so the same test is a
+URL you paste into Safari.
+
+Build it from the same two values:
+
+```
+https://YOUR-PROJECT.supabase.co/rest/v1/jobs?select=id,user_id,name&apikey=YOUR-ANON-KEY
+```
+
+Open it in Safari. Same reading as above:
+
+- `[]` — correct.
+- Any rows — RLS is off or the policy is wrong. Do not launch.
+
+Repeat with `shop_settings` in place of `jobs`.
+
+> Keys in URLs end up in browser history and server logs, which is normally a
+> reason not to do this. It does not apply here: the anon key is already public
+> by design — it ships inside the JavaScript of your own site, where anyone can
+> read it. Putting it in a URL exposes nothing that is not already exposed. Do
+> NOT do this with the service-role key, ever.
+
 ### And the same for a file
 
 While you are there, test storage the same way. Take any real object path from
@@ -194,6 +220,13 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 - `400` or `403` — **correct**, the object is not readable without a real user.
 - `200` — the file came back to an anonymous caller. **Go back to Steps 1 and 3.**
+
+### Where NOT to test this
+
+**The Supabase SQL Editor.** Queries there run as a privileged role that
+**bypasses RLS entirely**, so `select * from jobs` will happily return every row
+whether your policies are right or wrong. It is the most natural place to look
+and it is the one place that cannot answer the question.
 
 ### Write down that you did it
 
