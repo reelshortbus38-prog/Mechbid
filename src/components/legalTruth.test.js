@@ -129,6 +129,48 @@ describe('what the documents say about money', () => {
     expect(privacyText()).not.toMatch(/last four digits/i);
   });
 
+  // ── THE MISS THIS TEST DID NOT CATCH ──────────────────────────────────────
+  // The checks above were written from the phrases I happened to remember —
+  // "RENEW AUTOMATICALLY", "billed in advance", "last four digits" — and all
+  // three passed while THREE other sentences still described a paying customer
+  // base that does not exist:
+  //
+  //   "to process subscriptions and prevent fraud"        (how we use your data)
+  //   "notified to active subscribers by email"           (changes to this policy)
+  //   "for active subscribers, notified by email"         (changes to these Terms)
+  //
+  // Found by the owner reading the rendered page, which is the one review
+  // method none of this replaces.
+  //
+  // The last two were worse than untidy. A promise to notify "active
+  // subscribers" of a material privacy change is a promise owed to nobody
+  // while nobody subscribes — so every beta tester was told, in writing, that
+  // the terms of what happens to their drawings could change without them
+  // hearing about it.
+  //
+  // So the rule is not a list of phrases now. It is: while no payment
+  // processor exists, these documents may not address a SUBSCRIBER, because
+  // there is no such person. "Subscription" is still allowed — the sentence
+  // saying one will never start by itself is worth keeping and says the
+  // opposite thing.
+  it('addresses no subscriber, because there are none', () => {
+    if (codeMentions('stripe').length) return;
+    expect(bothText(), 'the documents address a class of user that does not exist')
+      .not.toMatch(/subscriber/i);
+  });
+
+  it('owes its change notices to everyone with an account', () => {
+    if (codeMentions('stripe').length) return;
+    // The commitment has to reach the people actually using it.
+    expect(privacyText()).toMatch(/emailed to everyone with an account/i);
+    expect(termsText()).toMatch(/emailed to\s+'?\s*\+?\s*'?everyone with an account|emailed to everyone with an account/i);
+  });
+
+  it('lists no billing purpose among the reasons it holds data', () => {
+    if (codeMentions('stripe').length) return;
+    expect(privacyText()).not.toMatch(/process subscriptions/i);
+  });
+
   it('says plainly that it is free and nothing renews', () => {
     if (codeMentions('stripe').length) return;
     expect(termsText()).toMatch(/free while it is in testing/i);
