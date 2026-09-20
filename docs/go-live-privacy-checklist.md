@@ -297,6 +297,37 @@ Reading it:
 > a position that no longer exists, and the error reads like a problem with the
 > data rather than with the query.
 
+### A NULL on the INSERT policies is expected, and is not the whole story
+
+Running the query above returns `qual = NULL` for every INSERT policy, on every
+table. That looks like a missing rule and is not one.
+
+`qual` is the **USING** expression, which decides *which existing rows you may
+see or touch*. An INSERT has no existing row to test, so PostgreSQL does not
+allow USING on an INSERT policy at all — its rule lives in a different column,
+**`with_check`**, which decides *what you are allowed to write*.
+
+So the first query genuinely cannot see the INSERT rule. Run this one as well:
+
+```sql
+select tablename, policyname, cmd,
+       coalesce(with_check, '(NONE)') as with_check
+from pg_policies
+where tablename in ('jobs', 'shop_settings')
+order by tablename, cmd;
+```
+
+`(NONE)` against an INSERT policy is the real hole, and it is a specific one:
+a signed-in contractor could write rows carrying somebody ELSE's `user_id` —
+inserting jobs into another shop's account. Reading is protected by the SELECT
+policy either way, so nothing leaks; but another shop's job list grows rows they
+did not create, and the tombstone logic in `cloudSync.js` would sync them down
+to every device on that account.
+
+Note the asymmetry while reading the results: on an UPDATE policy a missing
+`with_check` is harmless — PostgreSQL falls back to the USING expression. On an
+INSERT policy there is no USING to fall back to.
+
 ### Where NOT to test this
 
 **The Supabase SQL Editor.** Queries there run as a privileged role that
