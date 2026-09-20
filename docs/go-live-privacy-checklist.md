@@ -133,6 +133,33 @@ create policy "own job files" on storage.objects
 So this reads: you may touch an object in `job-files` only when the first folder
 of its path is your own user id.
 
+### If policies already exist, read the expression and not just the role
+
+A bucket can show four healthy-looking policies and still be wrong. The column
+the dashboard shows you is **APPLIED TO**, and `authenticated` there only means
+"any signed-in user" — it does not mean "the user who owns the file."
+
+So a policy named `own job files — read`, applied to `authenticated`, whose body
+is merely:
+
+```sql
+bucket_id = 'job-files'
+```
+
+lets every contractor who signs up read every other contractor's drawings. It
+looks identical in the list to the correct one. Open each policy and confirm the
+body contains the ownership test:
+
+```sql
+auth.uid()::text = (storage.foldername(name))[1]
+```
+
+Four separate policies split by command (SELECT / INSERT / UPDATE / DELETE) are
+fine — arguably better than the single `for all` above, since each can be
+tightened independently. What matters is that every one of them carries that
+line.
+
+
 ---
 
 ## Step 4 — Prove it, the only way that proves anything (15 min)
@@ -154,8 +181,19 @@ Your **anon key is public.** It ships in the browser bundle, which is correct
 and by design — RLS is what makes it safe. So the honest question is: what does
 that public key get you on its own?
 
-Get the two values from Vercel → Settings → Environment Variables:
-`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Then, in a terminal:
+**Where the two values are.** Not in this document — a placeholder that looks
+pasteable will get pasted, and `your-project.supabase.co` resolves to nothing,
+which reads as "the test failed" when it means "the test never ran."
+
+- **Project URL** — Supabase → ⚙️ Settings → Data API → *Project URL*, which has
+  a copy button. Or read it off the dashboard address bar: the URL is
+  `supabase.com/dashboard/project/<ref>`, and your API host is
+  `https://<ref>.supabase.co`.
+- **Anon key** — Supabase → ⚙️ Settings → API Keys → the one labelled `anon`
+  `public`. Vercel's `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` hold the
+  same two values if you are already there.
+
+Then, in a terminal:
 
 ```bash
 URL="https://YOUR-PROJECT.supabase.co"
