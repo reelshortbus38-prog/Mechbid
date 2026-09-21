@@ -275,6 +275,10 @@ export function caseHookupLines({
   stubFt = DEFAULT_STUB_FT,
   caseFt = DEFAULT_CASE_FT, drainSize = DEFAULT_DRAIN_SIZE,
   setsTxv = false, insulate = true, endFittings = true,
+  // The circuit's temperature, because the drop is insulated at it. Defaults
+  // to medium, which is what the bid charged for every drop before this
+  // existed — so an omission costs the old answer, not a new wrong one.
+  tempType = 'medium',
 } = {}) {
   const n = Math.max(0, Math.round(Number(cases) || 0));
   if (n === 0) return [];
@@ -295,7 +299,7 @@ export function caseHookupLines({
     lines.push({
       section: 'Case Hookups', desc: `${sucDrop} Case drops — suction`, qty: Math.ceil(n * stub), unit: 'ft',
       notes: `${n} case(s) × ${stub} ft — down to the case, reduced at the case to ${stubSuc || 'the case stub'}${riserNote}`,
-      pipeSize: sucDrop,
+      pipeSize: sucDrop, material: 'copper',
     });
   }
   if (stub > 0 && liqSize) {
@@ -303,14 +307,26 @@ export function caseHookupLines({
       section: 'Case Hookups', desc: `${liqSize} Case drops — liquid`, qty: Math.ceil(n * stub), unit: 'ft',
       // Liquid never changes size on the drop, however far it falls.
       notes: `${n} case(s) × ${stub} ft — run size down to the case, reduced at the case to ${stubLiq || 'the case stub'}`,
-      pipeSize: liqSize,
+      pipeSize: liqSize, material: 'copper',
     });
   }
   if (insulate && stub > 0 && sucDrop) {
     lines.push({
-      section: 'Case Hookups', desc: `${sucDrop} Case drop insulation`, qty: Math.ceil(n * stub), unit: 'ft',
+      // ── THE TEMPERATURE IS IN THE NAME BECAUSE IT IS IN THE PRICE ───────
+      // The note below has always said the drop is insulated at the circuit
+      // temperature. The bid charged 3/4" medium-temp wall for all of them —
+      // a low-temp drop takes 1" wall, which on 1-1/8 is $4.78 a foot against
+      // $2.83.
+      //
+      // It also has to be in the DESCRIPTION, because the caller merges these
+      // lines by description. Without it a low-temp and a medium-temp drop at
+      // the same size collapse into one line and one of the two prices wins.
+      section: 'Case Hookups',
+      desc: `${sucDrop} Case drop insulation — ${tempType === 'low' ? 'Low Temp' : 'Med Temp'}`,
+      qty: Math.ceil(n * stub), unit: 'ft',
       notes: 'the drop is insulated at the circuit temperature, same as the run it came off',
-      pipeSize: sucDrop,
+      pipeSize: sucDrop, material: 'insulation',
+      insulCategory: tempType === 'low' ? 'lowSuction' : 'medSuction',
     });
   }
 
@@ -320,6 +336,7 @@ export function caseHookupLines({
   if (drain > 0) {
     lines.push({
       section: 'Case Hookups', desc: `${drainSize} PVC case drain — runs the case to the hub below`, qty: Math.ceil(n * drain), unit: 'ft',
+      material: 'pvc',
       notes: `${n} case(s) × ${drain} ft — a hub under each case, so this is the CASE LENGTH, not a walk across the floor`,
     });
     lines.push({

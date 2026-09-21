@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
 import {
   casesFromApplication, caseHookupLines,
   DEFAULT_STUB_FT, DEFAULT_CASE_FT, LINEUP_POSITIONS,
@@ -427,5 +428,117 @@ describe('spareRiserPlan', () => {
   it('says what the number is built from', () => {
     expect(spareRiserPlan(job, 2, norm).basis)
       .toBe('2 spare drop(s) × 20 ft — a whole 20 ft stick per drop, at the size this job runs most');
+  });
+});
+
+// ── THE CASE DROPS WERE FREE ─────────────────────────────────────────────────
+// Spotted on a live bid — Case Hookups, on screen:
+//
+//   1-3/8 Case drops — suction     25 ft   $0.00
+//   5/8 Case drops — liquid        40 ft   $0.00
+//   1-3/8 Case drop insulation     25 ft   $3.40   ← priced, right beside them
+//
+// The pricer matched on the DESCRIPTION:
+//
+//   } else if (l.pipeSize && /stubs$/.test(l.desc)) {
+//
+// These lines read "… stubs" when that was written. They read "… Case drops —
+// suction" now, so the branch matched nothing and every case drop on every bid
+// priced at $0. The insulation on the same drop was fine because ITS name
+// still ended the way its regex expected.
+//
+// About $880 of copper on one store, and it would have been every store.
+//
+// So the lines say what they ARE, and the pricer keys off that. A description
+// can be reworded without unpricing anything.
+const DROP = { cases: 8, sucSize: '1-1/8"', liqSize: '1/2"' };
+
+describe('every line says what it is made of', () => {
+  const lines = caseHookupLines({ ...DROP, cases: 6, setsTxv: true });
+
+  it('tags the copper as copper', () => {
+    for (const re of [/Case drops — suction/, /Case drops — liquid/]) {
+      const l = lines.find(x => re.test(x.desc));
+      expect(l, String(re)).toBeTruthy();
+      expect(l.material, l.desc).toBe('copper');
+    }
+  });
+
+  it('tags the insulation as insulation', () => {
+    expect(lines.find(l => /Case drop insulation/.test(l.desc)).material).toBe('insulation');
+  });
+
+  it('tags the drain as PVC, which is priced by hand', () => {
+    expect(lines.find(l => /PVC case drain/.test(l.desc)).material).toBe('pvc');
+  });
+
+  // The guard that would have caught the original bug. A line carrying a pipe
+  // size is a line somebody buys by the foot; if the pricer cannot tell what
+  // it is, it lands on the bid free.
+  it('leaves no sized line the pricer cannot recognise', () => {
+    const KNOWN = new Set(['copper', 'insulation', 'pvc']);
+    const orphans = lines.filter(l => l.pipeSize && !l.fittingType && !KNOWN.has(l.material));
+    expect(orphans.map(l => l.desc), 'a sized line with no material tag prices at $0').toEqual([]);
+  });
+});
+
+// ── AND THEY WERE INSULATED AT THE WRONG TEMPERATURE ────────────────────────
+// The note on this line has always read "the drop is insulated at the circuit
+// temperature, same as the run it came off". The pricer charged 3/4" medium
+// wall for every one of them. A low-temp drop takes 1" wall — on 1-1/8 that is
+// $4.78 a foot against $2.83.
+describe('the drop is insulated at the circuit temperature', () => {
+  it('asks for the low-temp wall on a low-temp circuit', () => {
+    const l = caseHookupLines({ ...DROP, tempType: 'low' })
+      .find(x => /Case drop insulation/.test(x.desc));
+    expect(l.insulCategory).toBe('lowSuction');
+  });
+
+  it('asks for the medium wall on a medium-temp circuit', () => {
+    const l = caseHookupLines({ ...DROP, tempType: 'medium' })
+      .find(x => /Case drop insulation/.test(x.desc));
+    expect(l.insulCategory).toBe('medSuction');
+  });
+
+  it('charges the medium wall when nobody said, which is the old answer', () => {
+    // An omission has to cost what it cost before, not a new wrong number.
+    expect(caseHookupLines(DROP).find(x => /Case drop insulation/.test(x.desc)).insulCategory)
+      .toBe('medSuction');
+  });
+
+  // ── THE MERGE KEY IS THE DESCRIPTION ──────────────────────────────────────
+  // The caller merges these lines by desc across circuits. Two 1-1/8 drops at
+  // different temperatures would collapse into one line, and one of the two
+  // prices would win for both.
+  it('names the temperature, so two drops at one size cannot merge', () => {
+    const low = caseHookupLines({ ...DROP, tempType: 'low' })
+      .find(x => /Case drop insulation/.test(x.desc)).desc;
+    const med = caseHookupLines({ ...DROP, tempType: 'medium' })
+      .find(x => /Case drop insulation/.test(x.desc)).desc;
+    expect(low).toMatch(/Low Temp$/);
+    expect(med).toMatch(/Med Temp$/);
+    expect(low).not.toBe(med);
+  });
+});
+
+describe('the materials step prices off the tag', () => {
+  const src = readFileSync(new URL('../steps/Step4_Materials.jsx', import.meta.url), 'utf8');
+
+  it('does not match on a description that can be reworded', () => {
+    expect(src, 'the description regex that priced every case drop at $0 is back')
+      .not.toMatch(/\/stubs\$\/\.test\(l\.desc\)/);
+  });
+
+  it('branches on what the line is made of', () => {
+    expect(src).toMatch(/l\.material === 'copper'/);
+    expect(src).toMatch(/l\.material === 'insulation'/);
+  });
+
+  it('uses the category the line asked for, not a hardcoded one', () => {
+    expect(src).toMatch(/insulRate\(l\.pipeSize, rates, l\.insulCategory/);
+  });
+
+  it('passes the circuit temperature in', () => {
+    expect(src).toMatch(/tempType: c\.tempType/);
   });
 });
