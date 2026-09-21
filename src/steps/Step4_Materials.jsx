@@ -12,7 +12,7 @@ import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { caseHookupLines, spareRiserPlan, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID, DEFAULT_SPARE_DROPS } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
-import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Select, Row, TblInput, TblArea, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { PURCHASE_UNITS } from '../components/purchaseUnits.js';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
@@ -454,7 +454,7 @@ function ResidentialEquipment({ onNext, onBack }) {
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {parts.map((p, i) => (
               <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, background: i%2===0?'transparent':colors.surface+'30' }}>
-                <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
+                <TblArea value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1, minWidth: 0 }} />
                 {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
                 <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
                 {/* The quick-add chips are all packages priced whole — one
@@ -814,15 +814,21 @@ function BidMaterials({ onGenerate }) {
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead>
                   <tr style={{ background:colors.card2 }}>
+                    {/* Description gets an explicit share of the table. A
+                        <textarea> carries an intrinsic width of about 20
+                        characters, so an auto-layout table sizes this column
+                        NARROWER than the <input> it replaced — wrapping the
+                        text into a ribbon two words wide instead of fixing
+                        anything. */}
                     {['Description','Qty','Unit','Unit Cost','Total',''].map(h => (
-                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:10, color:colors.textDim, textTransform:'uppercase', borderBottom:`1px solid ${colors.border}` }}>{h}</th>
+                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:10, color:colors.textDim, textTransform:'uppercase', borderBottom:`1px solid ${colors.border}`, ...(h==='Description' ? { width:'45%' } : null) }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {state.lineItems.filter(i=>i.section===section).map((item,idx) => (
                     <tr key={item.id} style={{ background:idx%2===0?'transparent':colors.surface+'30' }}>
-                      <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblInput value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} /></td>
+                      <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblArea value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} /></td>
                       <td style={{ padding:'7px 12px', borderBottom:`1px solid ${colors.border}` }}><TblInput type="number" value={item.qty} onChange={e=>updateItem(item.id,'qty',e.target.value)} style={{ width:55, textAlign:'center', fontFamily:"'DM Mono',monospace" }} /></td>
                       {/* Was plain text. Every generated line fills this in
                           correctly, but a hand-added Misc row was stamped 'ea'
@@ -957,7 +963,7 @@ function SupplyHouseList() {
             {state.supplyItems.filter(i=>i.category===cat).map((item,idx)=>(
               <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:`1px solid ${colors.border+'60'}` }}>
                 <TblInput value={item.partId} onChange={e=>updateItem(item.id,'partId',e.target.value)} placeholder="Part #" style={{ width:80, fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
-                <TblInput value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} placeholder="Description" style={{ flex:1 }} />
+                <TblArea value={item.desc} onChange={e=>updateItem(item.id,'desc',e.target.value)} placeholder="Description" style={{ flex:1, minWidth:0 }} />
                 {!item.unitCost && <PriceMatchChip desc={item.desc} partId={item.partId} onFill={price => updateItem(item.id, 'unitCost', price)} />}
                 <TblInput type="number" value={item.qty} onChange={e=>updateItem(item.id,'qty',e.target.value)} placeholder="Qty" style={{ width:50, textAlign:'center', fontFamily:"'DM Mono',monospace", flexShrink:0 }} />
                 {/* This list EXPORTS a Unit column to the supply house, and
