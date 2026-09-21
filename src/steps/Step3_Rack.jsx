@@ -126,8 +126,12 @@ export default function Step3_Rack({ onNext, onBack }) {
                         importer was written — it was simply never shown, so a
                         line reading "80" gave no way to tell 80 feet of
                         pre-insulated tubing from 80 fittings. */}
+                    {/* See the note on the Bid Materials table: a <textarea>
+                        is intrinsically ~20 characters wide, so this column
+                        needs an explicit share or it comes out narrower than
+                        the single-line input it replaced. */}
                     {['Part #', 'Description', 'Qty', 'Unit', 'Supplied By', 'Unit Cost', 'Total', ''].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${colors.border}`, ...(h === 'Description' ? { width: '35%' } : null) }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -138,7 +142,7 @@ export default function Step3_Rack({ onNext, onBack }) {
                         <TblInput value={p.partId} onChange={e => updateRackPart(p.id, 'partId', e.target.value)} style={{ fontFamily: "'DM Mono', monospace", width: 80 }} />
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
-                        <TblInput value={p.desc} onChange={e => updateRackPart(p.id, 'desc', e.target.value)} />
+                        <TblArea value={p.desc} onChange={e => updateRackPart(p.id, 'desc', e.target.value)} />
                       </td>
                       <td style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                         <TblInput type="number" value={p.qty} onChange={e => updateRackPart(p.id, 'qty', e.target.value)} style={{ width: 50, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />

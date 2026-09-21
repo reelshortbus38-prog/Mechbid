@@ -3,7 +3,7 @@ import { useStore, fmt, uid, loadCompanyProfile, saveCompanyProfile, calcResLine
 import { captureCompanyDefaults, describeCompanyDefaults, ownershipNote, unitsOwnership, COMPANY_DEFAULT_KEYS, CREW_KEY } from '../state/companyDefaults.js';
 import { computeBidTotals, bidLetterBreakdown, marginAnalysis, markupForTargetMargin, escalationExposure, escalationClause } from './bidTotals.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Row, Input, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Row, Input, TblInput, TblArea, UnitSelect, EmptyState } from '../components/UI.jsx';
 import {
   newRental, rentalLineTotal, rentalsSummary, rateBreakNote, RENTAL_UNITS, COMMON_RENTALS,
 } from '../components/rentals.js';
@@ -334,7 +334,7 @@ function RentedEquipment() {
         return (
           <div key={r.id} style={{ padding: '7px 0', borderBottom: `1px solid ${colors.border}40` }}>
             <Row style={{ gap: 8, alignItems: 'center' }}>
-              <TblInput value={r.desc} onChange={e => upd(r.id, 'desc', e.target.value)} placeholder="What is rented" style={{ flex: 1 }} />
+              <TblArea value={r.desc} onChange={e => upd(r.id, 'desc', e.target.value)} placeholder="What is rented" style={{ flex: 1, minWidth: 0 }} />
               <TblInput type="number" value={r.qty || ''} onChange={e => upd(r.id, 'qty', e.target.value)} placeholder="Qty"
                 style={{ width: 55, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
               <UnitSelect value={r.unit || 'week'} options={RENTAL_UNITS} onChange={u => upd(r.id, 'unit', u)} />

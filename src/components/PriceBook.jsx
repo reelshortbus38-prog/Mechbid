@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { uid, fmt, fmtDec, useStore } from '../state/store.js';
 import { colors } from '../styles/theme.js';
-import { Btn, Card, SLabel, Input, Row, TblInput, EmptyState } from './UI.jsx';
+import { Btn, Card, SLabel, Input, Row, TblInput, TblArea, EmptyState } from './UI.jsx';
 import {
   BUILTIN_SUPPLIERS, loadCustomSuppliers, displaySuppliers,
   addCustomSupplier, removeCustomSupplier,
@@ -523,7 +523,7 @@ export default function PriceBookModal({ onClose }) {
                     >
                       {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                     </select>
-                    <TblInput value={e.desc} onChange={ev => updateEntry(e.id, 'desc', ev.target.value)} placeholder="Description" style={{ flex: 1 }} />
+                    <TblArea value={e.desc} onChange={ev => updateEntry(e.id, 'desc', ev.target.value)} placeholder="Description" style={{ flex: 1, minWidth: 0 }} />
                     <TblInput value={e.partId} onChange={ev => updateEntry(e.id, 'partId', ev.target.value)} placeholder="Part #" style={{ width: 90, fontFamily: "'DM Mono', monospace", flexShrink: 0 }} />
                     <TblInput value={e.unit} onChange={ev => updateEntry(e.id, 'unit', ev.target.value)} placeholder="ea/ft" style={{ width: 50, textAlign: 'center', flexShrink: 0 }} />
                     <Row style={{ gap: 2, flexShrink: 0 }}>

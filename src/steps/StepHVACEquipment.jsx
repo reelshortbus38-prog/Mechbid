@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore, uid, fmt, defaultHvacPriceFor } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { markEdited } from '../components/manualEdits.js';
-import { Btn, Card, SLabel, Input, Select, Row, TblInput, UnitSelect, EmptyState } from '../components/UI.jsx';
+import { Btn, Card, SLabel, Input, Select, Row, TblInput, TblArea, UnitSelect, EmptyState } from '../components/UI.jsx';
 import { searchSupplier } from '../api/ai.js';
 import { PriceMatchChip, SupplierSwitcher, loadPriceBook, savePriceBook, findPriceMatch } from '../components/PriceBook.jsx';
 import { parseDuctDesc, ductPurchase, ductAccessories, ductAccessoryDesc, DEFAULT_DUCT_ACCESSORY_PCT } from '../components/ductwork.js';
@@ -373,7 +373,7 @@ function MiscParts() {
   // padding than the old rows — on a 100-line table that alone halves the scroll.
   const renderPartRow = (p, i) => (
     <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 10px', borderBottom: `1px solid ${colors.border}`, background: i % 2 === 0 ? 'transparent' : colors.surface + '30' }}>
-      <TblInput value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1 }} />
+      <TblArea value={p.desc} onChange={e => updatePart(p.id, 'desc', e.target.value)} placeholder="Description" style={{ flex: 1, minWidth: 0 }} />
       {!p.unitCost && <PriceMatchChip desc={p.desc} onFill={price => updatePart(p.id, 'unitCost', price)} />}
       <TblInput type="number" value={p.qty} onChange={e => updatePart(p.id, 'qty', e.target.value)} placeholder="Qty" style={{ width: 45, textAlign: 'center', fontFamily: "'DM Mono', monospace" }} />
       {/* What that Qty is IN. A "8" beside fabricated duct is eight POUNDS and
