@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   hangerBasis, basisText, hangerLines, saddleCounts,
   DEFAULT_SPACING_FT, normalizeSpacing, ROD_SIZE,
+  copperOd, insulationWall, saddleSizeFor,
 } from './hangers.js';
 
 const norm = s => String(s || '');
@@ -73,19 +74,39 @@ describe('the trapeze lines', () => {
     for (const l of lines) expect(l.qty).toBe(0);
   });
 
-  it('marks the four the estimator has to supply', () => {
+  it('marks every line the estimator has to supply', () => {
     // The pre-flight check keys off this flag, not off the wording, so the
     // description can improve without breaking the warning.
-    expect(lines.filter(l => l.hangerManual)).toHaveLength(4);
+    // Eight now, not four. The loose-hardware lot became four separate parts
+    // at the mechanic's request, and an unflagged zero is a line nobody is
+    // told about — splitting one into four would have been a step backwards.
+    expect(lines.filter(l => l.hangerManual)).toHaveLength(8);
+    expect(lines.every(l => l.hangerManual)).toBe(true);
   });
 
-  it('buys strut and rod by the stick, hangers by the each, hardware as a lot', () => {
+  it('buys strut and rod by the stick and everything else by the each', () => {
     const unitOf = re => lines.find(l => re.test(l.desc))?.unit;
     expect(unitOf(/^Pipe Hangers/)).toBe('ea');
     expect(unitOf(/^Unistrut/)).toBe('stick');
     expect(unitOf(/All-Thread Rod/)).toBe('stick');
     expect(unitOf(/Beam clamps/)).toBe('ea');
-    expect(unitOf(/Strut Nuts/)).toBe('lot');
+    expect(unitOf(/^Strut Nuts/)).toBe('ea');
+  });
+
+  // ── "the nuts, washers, and rod couplings need to be separated" ───────────
+  // One lot line covered all of these. A strut nut and a rod coupling are
+  // different parts at different prices from different bins, and a lot priced
+  // as a guess cannot be checked against a supplier quote — which is what this
+  // list is for.
+  it('prices the loose hardware as four parts, not one lot', () => {
+    const descs = lines.map(l => l.desc);
+    for (const part of [/^Strut Nuts/, /Rod Couplings/, /Hex Nuts/, /Flat Washers/]) {
+      expect(descs.filter(d => part.test(d)), String(part)).toHaveLength(1);
+    }
+    // And the line they replaced is gone, rather than sitting alongside them
+    // double-counting the same hardware.
+    expect(descs.some(d => /Nuts & Washers/.test(d))).toBe(false);
+    expect(lines.some(l => l.unit === 'lot')).toBe(false);
   });
 
   it('runs one thread size across rod, clamps and loose hardware', () => {
@@ -94,9 +115,9 @@ describe('the trapeze lines', () => {
     // constant, three descriptions — they cannot drift apart.
     expect(ROD_SIZE).toBe('3/8"');
     const sized = lines.filter(l => l.desc.includes(ROD_SIZE));
-    expect(sized).toHaveLength(3);
-    expect(sized.map(l => l.desc.match(/All-Thread Rod|Beam clamps|Rod Couplings/)?.[0]).sort())
-      .toEqual(['All-Thread Rod', 'Beam clamps', 'Rod Couplings']);
+    expect(sized).toHaveLength(5);
+    expect(sized.map(l => l.desc.match(/All-Thread Rod|Beam clamps|Rod Couplings|Hex Nuts|Flat Washers/)?.[0]).sort())
+      .toEqual(['All-Thread Rod', 'Beam clamps', 'Flat Washers', 'Hex Nuts', 'Rod Couplings']);
   });
 
   it('carries beam clamps, which the takeoff used to leave off entirely', () => {
@@ -157,33 +178,35 @@ describe('saddleCounts', () => {
     // Eleven circuits × 150 ft of 2-1/8" suction = 1,650 ft, 275 saddles. This
     // is the same summed footage that was wrong for trapezes, and it is right
     // here, because eleven pipes cross each support point.
-    const suction = saddleCounts(ELEVEN, 6, norm).find(s => s.pipeSize === '2-1/8');
+    const suction = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 5);
     expect(suction.ft).toBe(1650);
     expect(suction.qty).toBe(275);
   });
 
   it('grows when circuits are added — unlike the trapeze count', () => {
     const one = saddleCounts([ELEVEN[0]], 6, norm)[0].qty;
-    const all = saddleCounts(ELEVEN, 6, norm).find(s => s.pipeSize === '2-1/8').qty;
+    const all = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 5).qty;
     expect(all).toBe(one * 11);
   });
 
   it('saddles low-temp liquid but not medium-temp liquid', () => {
     // Medium-temp liquid is not insulated, so there is nothing to protect.
-    const sizes = saddleCounts(ELEVEN, 6, norm).map(s => s.pipeSize);
-    expect(sizes).toContain('7/8');
-    const liquid = saddleCounts(ELEVEN, 6, norm).find(s => s.pipeSize === '7/8');
+    const sizes = saddleCounts(ELEVEN, 6, norm).map(s => s.saddleSize);
+    expect(sizes).toContain(4);
+    const liquid = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 4);
     expect(liquid.ft).toBe(5 * 150); // the five low-temp circuits only
   });
 
   it('skips riser-only drops', () => {
     const withRiser = [...ELEVEN, { isRiserOnly: true, riserLength: 300, sucRiser: '1-3/8' }];
-    expect(saddleCounts(withRiser, 6, norm).map(s => s.pipeSize)).not.toContain('1-3/8');
+    // 1-3/8 medium temp is a 4" saddle, and the only 4" here comes from the
+    // low-temp liquid at 750 ft. A riser folded into it would show as more.
+    expect(saddleCounts(withRiser, 6, norm).find(s => s.saddleSize === 4).ft).toBe(750);
   });
 
   it('follows the same spacing spec the hangers do', () => {
-    const at6 = saddleCounts(ELEVEN, 6, norm).find(s => s.pipeSize === '2-1/8').qty;
-    const at8 = saddleCounts(ELEVEN, 8, norm).find(s => s.pipeSize === '2-1/8').qty;
+    const at6 = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 5).qty;
+    const at8 = saddleCounts(ELEVEN, 8, norm).find(s => s.saddleSize === 5).qty;
     expect(at6).toBe(275);
     expect(at8).toBe(207);
   });
@@ -226,11 +249,113 @@ describe('in-floor circuits', () => {
     const only = saddleCounts([buried], 6, norm);
     expect(only).toEqual([]);
     const mixed = saddleCounts([overhead, buried], 6, norm);
-    expect(mixed.find(s => s.pipeSize === '2-1/8').ft).toBe(150);
+    expect(mixed.find(s => s.saddleSize === 5).ft).toBe(150);
   });
 
   it('still hangs a riser-only drop, which is not in the floor', () => {
     const riser = { id: 'r', isRiserOnly: true, riserLength: 20, sucRiser: '1-3/8' };
     expect(hangerBasis([overhead, riser], 0, 6).routeFt).toBe(150);
+  });
+});
+
+// ── THE SADDLE SPEC, FROM THE MECHANIC WHO INSTALLS THEM ─────────────────────
+// The takeoff named saddles after the pipe inside them — "1-3/8" Pipe Saddles"
+// — which is not something anybody can order. A saddle goes around the
+// FINISHED line, copper plus insulation both sides.
+//
+//   "for saddles can they be changed to 2", 3", 4" and so on. For the 2"
+//    saddles we run 5/8 copper with 1/2" insulation and below. 3" is for
+//    medium temp 7/8-1 1/8 copper with 3/4 insulation. For 4" 1 3/8-1 5/8 with
+//    3/4" insulation and smaller low temp runs with 1" insulation then 5"
+//    saddles for anything larger"
+//
+// Encoded as geometry rather than as a lookup of those four sentences, so a
+// size he did not list still lands somewhere defensible. These assertions are
+// the four sentences, checked against the geometry.
+describe('what size saddle a line takes', () => {
+  it('2" — 5/8 and below', () => {
+    expect(saddleSizeFor('5/8', 'medium')).toBe(2);
+    expect(saddleSizeFor('1/2', 'medium')).toBe(2);
+    expect(saddleSizeFor('3/8', 'low')).toBe(2);
+  });
+
+  it('3" — medium temp 7/8 through 1-1/8', () => {
+    expect(saddleSizeFor('7/8', 'medium')).toBe(3);
+    expect(saddleSizeFor('1-1/8', 'medium')).toBe(3);
+  });
+
+  it('4" — 1-3/8 through 1-5/8, and the smaller low-temp runs', () => {
+    expect(saddleSizeFor('1-3/8', 'medium')).toBe(4);
+    expect(saddleSizeFor('1-5/8', 'medium')).toBe(4);
+    expect(saddleSizeFor('7/8', 'low')).toBe(4);
+    expect(saddleSizeFor('1-1/8', 'low')).toBe(4);
+  });
+
+  it('5" — anything larger', () => {
+    expect(saddleSizeFor('2-1/8', 'medium')).toBe(5);
+    expect(saddleSizeFor('1-3/8', 'low')).toBe(5);
+    expect(saddleSizeFor('3-1/8', 'medium')).toBe(5);
+  });
+
+  // ── THE CASE THAT PROVES IT IS GEOMETRY AND NOT A LOOKUP TABLE ────────────
+  // 7/8 low temp and 1-3/8 medium temp are two different pipes with two
+  // different insulation walls, and they finish at exactly the same 2.875".
+  // He put both in a 4". A table of his sentences would have got there too; it
+  // would not have got the sizes he never mentioned.
+  it('lands two different pipes in the same saddle when they finish the same', () => {
+    const a = copperOd('7/8') + 2 * insulationWall('7/8', 'low');
+    const b = copperOd('1-3/8') + 2 * insulationWall('1-3/8', 'medium');
+    expect(a).toBeCloseTo(2.875);
+    expect(b).toBeCloseTo(2.875);
+    expect(saddleSizeFor('7/8', 'low')).toBe(saddleSizeFor('1-3/8', 'medium'));
+  });
+
+  it('puts ONE pipe size in two saddles depending on the temperature', () => {
+    // The thing the old naming could not express at all: the line item said
+    // "7/8" and that was the whole answer, whichever temperature it ran at.
+    expect(saddleSizeFor('7/8', 'medium')).toBe(3);
+    expect(saddleSizeFor('7/8', 'low')).toBe(4);
+  });
+
+  it('reads the sizes the way the app writes them', () => {
+    expect(copperOd('1-3/8')).toBeCloseTo(1.375);
+    expect(copperOd('1 3/8')).toBeCloseTo(1.375);
+    expect(copperOd('5/8"')).toBeCloseTo(0.625);
+    expect(copperOd('2')).toBe(2);
+  });
+
+  it('refuses to size a line it cannot read, instead of guessing one', () => {
+    for (const junk of ['', null, undefined, 'TBD', 'see plan', '??']) {
+      expect(saddleSizeFor(junk, 'low'), String(junk)).toBe(0);
+    }
+  });
+});
+
+describe('a line whose size cannot be read', () => {
+  // The old version keyed saddles on the raw string, so an unreadable size
+  // still produced a line. Dropping it silently would be a quantity going
+  // missing from a bid with nothing said, which is worse than an ugly line.
+  const unreadable = [{ id: 'x', runLength: 120, sucHoriz: 'see plan', tempType: 'low' }];
+
+  it('still produces a line, under a saddle size of 0', () => {
+    const [row] = saddleCounts(unreadable, 6, norm);
+    expect(row.saddleSize).toBe(0);
+    expect(row.qty).toBe(20);
+    expect(row.covers).toEqual(['see plan" LT']);
+  });
+
+  it('does not merge it into a real saddle size', () => {
+    const mixed = saddleCounts([...unreadable, ...ELEVEN], 6, norm);
+    expect(mixed.find(s => s.saddleSize === 0).ft).toBe(120);
+    expect(mixed.find(s => s.saddleSize === 5).ft).toBe(1650);
+  });
+});
+
+describe('what the saddle line says it covers', () => {
+  it('names the copper that ended up in each saddle', () => {
+    // So the sizing can be checked on the line rather than taken on faith.
+    const all = saddleCounts(ELEVEN, 6, norm);
+    expect(all.find(s => s.saddleSize === 5).covers).toEqual(['2-1/8" LT', '2-1/8" MT']);
+    expect(all.find(s => s.saddleSize === 4).covers).toEqual(['7/8" LT']);
   });
 });

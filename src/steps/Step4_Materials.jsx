@@ -1184,9 +1184,16 @@ export default function Step4_Materials({ onNext, onBack }) {
     hangerLines(state.circuits, hdr.horizFt, spacingFt)
       .forEach(l => items.push({ id: uid(), ...l }));
 
+    // Named by the SADDLE, which is what gets ordered, with the copper it
+    // covers spelled out so the sizing can be checked rather than trusted.
     saddleCounts(state.circuits, spacingFt, normalizePipeSize).forEach(s => {
-      items.push({ id: uid(), section: 'Hardware', pipeSize: s.pipeSize, unit: 'ea',
-        desc: `${s.pipeSize}" Pipe Saddles (Insuguard) @ ${spacingFt}ft spacing`,
+      const covers = s.covers.join(', ');
+      items.push({ id: uid(), section: 'Hardware', saddleSize: s.saddleSize, unit: 'ea',
+        desc: s.saddleSize > 0
+          ? `${s.saddleSize}" Pipe Saddles (Insuguard) @ ${spacingFt}ft spacing — ${covers}`
+          : `Pipe Saddles (Insuguard) @ ${spacingFt}ft spacing — SIZE UNKNOWN, the copper size on `
+            + `these lines could not be read (${covers}). Set the line sizes on the Circuits step, `
+            + 'or size the saddles by hand.',
         qty: s.qty, unitCost: 0, total: 0 });
     });
 
