@@ -464,6 +464,52 @@ These are held by tests that fail if the code and the policy drift apart:
 
 ---
 
+## What does NOT apply — HIPAA and SOC 2
+
+Both will get asked about, by a tester or eventually by a GC's IT department.
+They are different kinds of thing and both are commonly claimed falsely.
+
+### HIPAA does not apply
+
+It covers **Protected Health Information**: individually identifiable health
+data held by healthcare providers, health plans, clearinghouses or their
+business associates. Coldgauge holds drawings, takeoffs, pricing and labor
+hours, and is none of those entity types.
+
+The edge case worth answering out loud, because somebody will raise it: bidding
+HVAC work at a hospital does not change this. A mechanical plan of a building is
+not individually identifiable health information about a person. The building
+being a hospital does not make its ductwork PHI.
+
+### SOC 2 is not a law
+
+It is a **voluntary audit** paid for by the company being audited, producing a
+report about its security controls. Nobody can require it of you legally. It
+exists because enterprise procurement departments demand it from vendors, and a
+Type II runs tens of thousands of dollars, takes months of evidence collection
+and has to be redone every year.
+
+**A vendor's SOC 2 does not transfer.** Supabase is SOC 2 Type II; Vercel
+publishes a current Type 2 report. That is genuinely worth having — it means the
+infrastructure holding other people's drawings has audited controls.
+
+| Can say | Cannot say |
+|---|---|
+| "built on SOC 2 Type II infrastructure" | "Coldgauge is SOC 2 compliant" |
+
+The second is a misrepresentation, and the people who ask are the people who
+check. Claiming a compliance posture you do not hold is worse than holding none:
+one is a startup being honest about its stage, the other is a vendor that lied
+on the first question it was asked.
+
+### So what does apply
+
+The two the policy already names — GDPR if a UK or EU user signs up, CCPA at
+California's thresholds — and the contractor's own NDA with his GC, which the
+policy deliberately hands back to him rather than pretending to cover.
+
+---
+
 ## What the policy deliberately does not promise
 
 > Even so: do not upload material you are not permitted to disclose to a
