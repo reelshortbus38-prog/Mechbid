@@ -1064,7 +1064,7 @@ export function otRuleConflict(crew, { daysPerWeek = 0, otAfterHours = 0, weekly
 // agreement or the job's state. It reports what the other rule would cost and
 // leaves the choice where it belongs.
 export function otRuleGap(crew, {
-  daysPerWeek = 0, otAfterHours = 0, weeklyOtHours = 0, otMult = 1,
+  daysPerWeek = 0, otAfterHours = 0, weeklyOtHours = 0, otMult = 1, shopBasis = '',
 } = {}) {
   const dpw = parseFloat(daysPerWeek) || 0;
   const t = parseFloat(otAfterHours) || 0;
@@ -1077,6 +1077,12 @@ export function otRuleGap(crew, {
   // Neither set is otReview's subject, not this one. Both set is
   // otRuleConflict's. This is only about the half-configured case.
   if (dailySet === weeklySet) return null;
+  // The shop has told us which rule it pays. If that is the rule that is set,
+  // there is no second opinion worth printing — and repeating it on every job
+  // after the answer is known is how a real warning stops being read.
+  // 'both' matches neither single rule, so a shop that pays both still hears
+  // about the half that is missing.
+  if (shopBasis && shopBasis === (dailySet ? 'daily' : 'weekly')) return null;
 
   const cfg = { otAfterHours: t, weeklyOtHours: w, daysPerWeek: dpw };
   let configured = 0, wouldBe = 0, hrsPerWeek = 0;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, uid, saveJob, getLastSaveError, loadAllJobs, saveAllJobs, deleteJob, exportAllJobsJSON, importJobsJSON, loadCompanyProfile } from '../state/store.js';
-import { companyDefaultPatch, companyCrew } from '../state/companyDefaults.js';
+import { companyDefaultPatch, companyCrew, companyOtRule } from '../state/companyDefaults.js';
 import { hydrateFileCache, forgetFiles, setCloudFiles, cachedEntries, loadCachedFile } from '../api/fileCache.js';
 import { uploadFile, downloadFile, removeFiles, listCloudFiles } from '../lib/fileSync.js';
 import { runCatchUp } from '../lib/fileCatchUp.js';
@@ -254,8 +254,10 @@ export default function Wizard() {
     const patch = companyDefaultPatch(profile, state.rates);
     if (Object.keys(patch).length) dispatch({ type: 'MERGE', payload: patch });
     const crew = companyCrew(profile, uid);
-    if (crew.length) {
-      dispatch({ type: 'SET', key: 'flatJob', value: { crew, weeks: 0, daysPerWeek: 5, ootPerDay: 0 } });
+    const otRule = companyOtRule(profile);
+    if (crew.length || Object.keys(otRule).length) {
+      dispatch({ type: 'SET', key: 'flatJob',
+        value: { crew, weeks: 0, daysPerWeek: 5, ootPerDay: 0, ...otRule } });
     }
     setShowJobs(false);
     setStepIndex(0);
