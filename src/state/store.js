@@ -958,6 +958,72 @@ export function otRuleConflict(crew, { daysPerWeek = 0, otAfterHours = 0, weekly
   };
 }
 
+// ── THE RULE THAT IS SET PRODUCES NOTHING, AND THE OTHER ONE WOULD ──────────
+// Reported from a live bid: a whole-job crew on four ten-hour days, weekly
+// threshold set to 40, and no overtime anywhere on the screen.
+//
+// That is arithmetically correct — four tens is exactly forty — and it is also
+// the single most misleading thing this step can show, because every shop that
+// pays past eight in a DAY owes eight overtime hours a man on that schedule.
+//
+// Nothing said so. otReview goes quiet the moment ANY threshold is set, on the
+// reasoning that somebody who configured a rule has thought about it. And
+// otRuleConflict needs a daily threshold to compare against, so it cannot speak
+// about the case where the daily rule is the one missing. Between the two, the
+// configuration that most needs a second look is the one that gets silence.
+//
+// So: when exactly one rule is set, and it yields nothing on this schedule, and
+// the other standard rule would have yielded something — say so. Both
+// directions matter and they are mirror images:
+//
+//   4x10, weekly 40 set    0 OT owed    daily 8 would owe 8 hrs/man/week
+//   6x8,  daily 8 set      0 OT owed    weekly 40 would owe 8 hrs/man/week
+//
+// This does NOT decide which rule is right — the app cannot know the shop's
+// agreement or the job's state. It reports what the other rule would cost and
+// leaves the choice where it belongs.
+export function otRuleGap(crew, {
+  daysPerWeek = 0, otAfterHours = 0, weeklyOtHours = 0, otMult = 1,
+} = {}) {
+  const dpw = parseFloat(daysPerWeek) || 0;
+  const t = parseFloat(otAfterHours) || 0;
+  const w = parseFloat(weeklyOtHours) || 0;
+  const men = (crew || []).length;
+  if (!men || !(dpw > 0)) return null;
+
+  const dailySet = t > 0;
+  const weeklySet = w > 0;
+  // Neither set is otReview's subject, not this one. Both set is
+  // otRuleConflict's. This is only about the half-configured case.
+  if (dailySet === weeklySet) return null;
+
+  const cfg = { otAfterHours: t, weeklyOtHours: w, daysPerWeek: dpw };
+  let configured = 0, wouldBe = 0, hrsPerWeek = 0;
+  for (const mem of crew) {
+    const hrs = parseFloat(mem?.hrsPerDay) || STANDARD_DAY_HOURS;
+    configured += memberOtHours(mem, cfg) * dpw;
+    wouldBe += dailySet
+      ? Math.max(0, hrs * dpw - STANDARD_WEEK_HOURS)
+      : Math.max(0, hrs - STANDARD_DAY_HOURS) * dpw;
+    hrsPerWeek = Math.max(hrsPerWeek, hrs * dpw);
+  }
+  // The point is the silence. A rule that is already billing overtime is not
+  // hiding anything, whatever the other rule would have said.
+  if (configured > 0 || !(wouldBe > 0)) return null;
+
+  return {
+    missing: dailySet ? 'weekly' : 'daily',
+    otHoursPerWeek: wouldBe,          // crew total
+    perManPerWeek: wouldBe / men,
+    hrsPerWeek,
+    men,
+    // A threshold with a 1x multiplier splits the hours and then prices both
+    // halves the same. Setting the missing rule would change nothing at all
+    // until this is raised, and that is worth saying in the same breath.
+    multiplierInert: !((parseFloat(otMult) || 1) > 1),
+  };
+}
+
 // ── TRAVEL TIME IS PAID HOURS, NOT A PER DIEM ───────────────────────────────
 // Travel was living inside the out-of-town dollar figure alongside meals and
 // hotel, which hid it from everything that makes it labor: it never took the
