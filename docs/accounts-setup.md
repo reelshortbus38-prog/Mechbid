@@ -132,26 +132,49 @@ browser.)
 Redeploy. The Sign-In button appears, sign-up/login works, and saving a job
 mirrors it to the cloud.
 
-## Closing the app while it is in testing
+## The account wall
 
-Two things together make it invitation-only. Either alone is not enough.
+Once the two env vars above are set, **an account is required to use the app**.
+A signed-out visitor gets a screen with sign-up and sign-in on it; there is
+nothing to configure to switch this on.
 
-**1. Turn off public sign-ups.** Supabase → Authentication → Providers → Email →
-turn **Enable sign ups** OFF. Create each invited account by hand under
-Authentication → **Users → Add user**, and send them the email and password you
-set. Without this, anyone can create their own account.
+The reason is storage, not access control. Signed out, a bid lives in this
+browser's localStorage and nowhere else — and Safari private browsing discards
+that when the tab closes, while ordinary iPad Safari purges it after roughly a
+week of not visiting the site. Neither warns anybody and neither is
+recoverable. Signed in, the same job is pushed to the user's row as soon as it
+is saved.
 
-**2. Set the flag in Vercel.** Add `VITE_INVITE_ONLY=true` (Production and
-Preview), then redeploy. Without this the app still runs local-only for a
-signed-out visitor, so disabling sign-ups blocks nothing.
+**It shows by default, and the escape hatch is `VITE_OPEN_ACCESS=true`.** Set
+that in Vercel and redeploy to let signed-out visitors back in to a local-only
+app. This is the opposite default from the invite gate it replaced, because the
+failure directions are opposite: the old wall was sign-in only, so a stray flag
+could lock out anybody without a hand-made account. This one has a sign-up form
+on it, so a stray flag costs a visitor fifteen seconds — while the wall being
+accidentally *down* costs somebody a takeoff, silently, a week later. A typo in
+`VITE_OPEN_ACCESS` therefore leaves the wall standing.
 
-To open the app up again: delete the env var, redeploy, and re-enable sign-ups.
-No code change.
+Two rules still make it defensive: it will NOT show if Supabase is unconfigured
+(signing in and signing up both need it, and the app is designed to run
+local-only without it), or while a session is still being restored (that flashes
+a sign-up screen at somebody already signed in, whose natural response is to
+create a second account).
 
-The gate is deliberately defensive — it will NOT show if the flag is missing or
-misspelt, if Supabase is unconfigured, or while a session is still being
-restored. All three exist so a bad env var cannot lock the owner out of an app
-whose only door is a sign-in form.
+### Closing it to the public again
+
+Supabase → Authentication → **Sign In / Providers → Email** → turn **Allow new
+users to sign up** OFF, and create accounts by hand under Authentication →
+**Users → Add user** (check *Auto Confirm User*). The wall stays up either way;
+this only controls whether the sign-up form on it succeeds.
+
+### Before opening it to strangers
+
+- **Real SMTP.** Supabase's built-in sender is rate-limited and frequently
+  spam-foldered. Configure a provider under Authentication → Emails → SMTP
+  first, or confirmation and password-reset mail quietly fails to arrive.
+- **Then turn "Confirm email" back on.** In that order. With it on and the
+  built-in sender still doing the mailing, new users never get in and mostly do
+  not tell you.
 
 ## How the sync behaves
 
