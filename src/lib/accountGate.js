@@ -60,6 +60,45 @@ export function shouldGate({ openAccess, configured, loading, user } = {}) {
   return !user;
 }
 
+// ── HOW LONG A PASSWORD HAS TO BE ────────────────────────────────────────────
+// Supabase is the authority on this, not the app: Authentication → Sign In /
+// Providers → Email → "Minimum password length". Whatever is set there is what
+// actually decides, and the number on this screen is a courtesy.
+//
+// A courtesy that disagrees with the authority is worse than no courtesy at
+// all. The screen said "At least 6 characters" while the project required 10,
+// so an 8-character password passed the app's own check, went to Supabase, and
+// came back refused — leaving somebody looking at a rule they had followed and
+// an error saying they had not.
+//
+// So the number lives here once, and both the hint and the check read it. They
+// cannot drift from each other. They can still drift from SUPABASE, which no
+// amount of client code can prevent — hence the env var, so the deployment can
+// be corrected without a code change, and hence the rule that Supabase's own
+// refusal is shown through unedited when they do disagree.
+export const DEFAULT_MIN_PASSWORD = 10;
+export const MIN_PASSWORD_VAR = 'VITE_MIN_PASSWORD_LENGTH';
+
+export function minPasswordLength(raw) {
+  const n = Number(String(raw ?? '').trim());
+  // Supabase's own floor is 6; anything below it, or unreadable, is a
+  // misconfiguration, and falling back to the stricter default is the safe
+  // direction — a hint that asks for MORE than required annoys somebody, a
+  // hint that asks for less refuses them after they have typed it.
+  if (!Number.isFinite(n) || n < 6) return DEFAULT_MIN_PASSWORD;
+  return Math.floor(n);
+}
+
+// What is wrong with the form as typed, or '' if nothing is. Sign-in does NOT
+// apply the minimum: an account made before the rule changed still has its old
+// password, and refusing to even attempt it would lock that person out of an
+// account that works.
+export function formProblem({ email, password, min, signingUp } = {}) {
+  if (!String(email || '').trim() || !password) return 'Enter your email and a password.';
+  if (signingUp && password.length < min) return `Passwords need at least ${min} characters.`;
+  return '';
+}
+
 // ── WHAT THE SCREEN DOES WITH WHAT CAME BACK ─────────────────────────────────
 // Kept out of the component so it can be tested without a browser. Two of the
 // three branches below are ones a person only meets when something has already

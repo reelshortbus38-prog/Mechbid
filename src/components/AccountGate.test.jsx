@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import AccountGate, { AccountWall } from './AccountGate.jsx';
+import { DEFAULT_MIN_PASSWORD, formProblem } from '../lib/accountGate.js';
 
 // These render statically — nothing here can tap anything. That is fine for
 // this screen, because unlike most panels in this app it is not collapsed: the
@@ -58,9 +59,27 @@ describe('the wall a signed-out visitor meets', () => {
   });
 
   it('says the password minimum instead of just disabling the button', () => {
-    // Supabase rejects anything under 6. A button that silently does nothing is
-    // indistinguishable from an app that is broken.
-    expect(wall()).toMatch(/At least 6 characters/);
+    // A button that silently does nothing is indistinguishable from an app
+    // that is broken.
+    expect(wall()).toMatch(/At least \d+ characters/);
+  });
+
+  // ── THE HINT AND THE RULE ARE THE SAME NUMBER ─────────────────────────────
+  // This was hardcoded to 6 in two places while the Supabase project required
+  // 10. Both places agreed with each other and neither agreed with reality, so
+  // an 8-character password passed the app and was refused by the server.
+  //
+  // Read from the module rather than written as a literal: a test carrying its
+  // own copy of the number is a third place to drift.
+  it('shows the number the form actually enforces', () => {
+    const html = wall();
+    const shown = /At least (\d+) characters/.exec(html);
+    expect(shown, 'no password hint on the screen at all').toBeTruthy();
+    expect(Number(shown[1])).toBe(DEFAULT_MIN_PASSWORD);
+    expect(formProblem({
+      email: 'pat@example.com', password: 'x'.repeat(DEFAULT_MIN_PASSWORD - 1),
+      min: DEFAULT_MIN_PASSWORD, signingUp: true,
+    })).toContain(String(DEFAULT_MIN_PASSWORD));
   });
 
   // ── THE REASON IS THE PERSUASIVE PART ──────────────────────────────────────

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseFlag, shouldGate, OPEN_ACCESS_VAR, authOutcome,
   ALREADY_NOTE, CONFIRM_NOTE, UNKNOWN_ERROR,
+  DEFAULT_MIN_PASSWORD, MIN_PASSWORD_VAR, minPasswordLength, formProblem,
 } from './accountGate.js';
 
 // A signed-out visitor to a normally-configured deployment, with nothing set.
@@ -83,6 +84,72 @@ describe('opening the app deliberately', () => {
     // Nothing to show either way — just guarding against a rule ordering that
     // returns true from the open-access branch.
     expect(shouldGate({ ...VISITOR, openAccess: 'true', user: { id: 'u1' } })).toBe(false);
+  });
+});
+
+// ── HOW LONG A PASSWORD HAS TO BE ────────────────────────────────────────────
+// The screen said 6 while the Supabase project required 10. An 8-character
+// password passed the app's own check, went to Supabase, and came back
+// refused — so the person was looking at a rule they had followed and an error
+// saying they had not.
+describe('the password minimum', () => {
+  it('matches what the Supabase project is set to', () => {
+    // If this is ever changed in Supabase again, it changes here too — or in
+    // VITE_MIN_PASSWORD_LENGTH, which is why that exists.
+    expect(DEFAULT_MIN_PASSWORD).toBe(10);
+    expect(MIN_PASSWORD_VAR).toBe('VITE_MIN_PASSWORD_LENGTH');
+  });
+
+  it('takes the deployment at its word when it sets one', () => {
+    expect(minPasswordLength('12')).toBe(12);
+    expect(minPasswordLength(' 8 ')).toBe(8);
+    expect(minPasswordLength(20)).toBe(20);
+  });
+
+  it('falls back to the stricter default rather than to something unusable', () => {
+    // A hint asking for MORE than required annoys somebody. A hint asking for
+    // less refuses them after they have typed it, which is the failure this
+    // whole section exists to stop — so a bad value must not soften the rule.
+    for (const junk of [undefined, null, '', 'ten', '0', '3', '-5', 'NaN']) {
+      expect(minPasswordLength(junk), String(junk)).toBe(DEFAULT_MIN_PASSWORD);
+    }
+  });
+
+  it('never returns a fraction, because a character count is not fractional', () => {
+    expect(minPasswordLength('10.7')).toBe(10);
+  });
+});
+
+describe('what is wrong with the form as typed', () => {
+  const ok = { email: 'pat@example.com', password: 'abcdefghij', min: 10 };
+
+  it('says nothing when nothing is wrong', () => {
+    expect(formProblem({ ...ok, signingUp: true })).toBe('');
+    expect(formProblem({ ...ok, signingUp: false })).toBe('');
+  });
+
+  it('asks for the fields it needs before spending a round trip', () => {
+    expect(formProblem({ ...ok, email: '', signingUp: true })).toMatch(/email and a password/i);
+    expect(formProblem({ ...ok, email: '   ', signingUp: true })).toMatch(/email and a password/i);
+    expect(formProblem({ ...ok, password: '', signingUp: true })).toMatch(/email and a password/i);
+  });
+
+  it('names the same number the hint shows', () => {
+    // The whole point. Any drift between these two puts a rule on the screen
+    // that the screen itself does not enforce.
+    expect(formProblem({ ...ok, password: 'short', min: 10, signingUp: true }))
+      .toBe('Passwords need at least 10 characters.');
+    expect(formProblem({ ...ok, password: 'short', min: 14, signingUp: true }))
+      .toBe('Passwords need at least 14 characters.');
+  });
+
+  // ── SIGNING IN IS NOT SIGNING UP ──────────────────────────────────────────
+  // Raising the minimum does not rewrite anybody's existing password. An
+  // account made under the old rule still has a shorter one and still works;
+  // refusing to even attempt it would lock that person out of a live account
+  // over a rule that was introduced after they joined.
+  it('does not apply the minimum to somebody signing IN', () => {
+    expect(formProblem({ ...ok, password: 'abc123', min: 10, signingUp: false })).toBe('');
   });
 });
 

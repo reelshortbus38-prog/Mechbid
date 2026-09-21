@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { colors } from '../styles/theme.js';
 import { Btn } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { shouldGate, authOutcome } from '../lib/accountGate.js';
+import { shouldGate, authOutcome, minPasswordLength, formProblem } from '../lib/accountGate.js';
 import { BRAND_HEAD, BRAND_TAIL } from './brand.js';
 
 // ── THE ACCOUNT WALL ─────────────────────────────────────────────────────────
@@ -66,11 +66,14 @@ export function AccountWall({ signIn, signUp }) {
   const [note, setNote] = useState('');
 
   const signingUp = mode === 'signup';
-  const tooShort = signingUp && password.length > 0 && password.length < 6;
+  // One number, read by the hint below and by the check in submit(), so the
+  // screen cannot tell somebody a rule the screen itself does not apply.
+  const min = minPasswordLength(import.meta.env.VITE_MIN_PASSWORD_LENGTH);
+  const tooShort = signingUp && password.length > 0 && password.length < min;
 
   async function submit() {
-    if (!email.trim() || !password) { setErr('Enter your email and a password.'); return; }
-    if (signingUp && password.length < 6) { setErr('Passwords need at least 6 characters.'); return; }
+    const problem = formProblem({ email, password, min, signingUp });
+    if (problem) { setErr(problem); return; }
     setBusy(true); setErr(''); setNote('');
     try {
       const r = signingUp ? await signUp(email.trim(), password) : await signIn(email.trim(), password);
@@ -160,7 +163,7 @@ export function AccountWall({ signIn, signUp }) {
             // Said up front rather than enforced by a dead button. A disabled
             // control with no explanation is the same as no explanation.
             <div style={{ fontSize: 11, color: tooShort ? colors.yellow : colors.textDim, marginTop: -3 }}>
-              At least 6 characters.
+              At least {min} characters.
             </div>
           )}
         </div>

@@ -98,6 +98,30 @@ production (users get a confirm link before they can sign in), or turn it off fo
 faster pilot testing. The app handles both: if confirmation is required, sign-up
 shows "check your email," otherwise it signs the user straight in.
 
+## 3b. Password rules — set in TWO places or not at all
+
+Supabase → Authentication → **Sign In / Providers → Email → Minimum password
+length** is what actually decides. The wall shows the requirement on screen and
+checks it before spending a round trip, and it reads that number from
+`DEFAULT_MIN_PASSWORD` in `src/lib/accountGate.js` (currently **10**), or from
+`VITE_MIN_PASSWORD_LENGTH` in Vercel if that is set.
+
+**If you change it in Supabase, change it here too.** They drifted once — the
+screen said 6 while the project required 10, so an 8-character password passed
+the app's own check and came back refused, leaving the user looking at a rule
+they had followed and an error saying they had not. No client code can detect
+that disagreement; the only protection is setting both.
+
+Setting `VITE_MIN_PASSWORD_LENGTH` in Vercel and redeploying avoids a code
+change. A value below 6 or one that is not a number is ignored in favour of the
+stricter built-in default, because a hint asking for more than required only
+annoys somebody, while a hint asking for less refuses them after they have
+typed it.
+
+If you also turn on **required character types** (lowercase, uppercase, digits,
+symbols), say so — the screen does not mention those yet and would have the
+same problem.
+
 ## 4. Point auth at the right domain
 
 Supabase → **Authentication → URL Configuration**:
