@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, calcRackLaborTotal, jobCrewManHours, loadCompanyProfile, saveCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
+import { useStore, uid, fmt, calcLaborPeriodCost, calcTotalLabor, calcFlatJobCost, jobLaborTotal, jobCrew, calcFieldTaskCost, calcFieldTasksTotal, avgCrewRate, estimateCircuitLabor, DEFAULT_LABOR_UNITS, ootOpts, jobOOTTotal, ootBasisComparison, crewTravelCount, otReview, otRuleConflict, otRuleGap, calcRackLaborTotal, jobCrewManHours, loadCompanyProfile, saveCompanyProfile, DAYS_PER_WEEK_OPTIONS, STANDARD_WEEK_HOURS } from '../state/store.js';
 import { colors } from '../styles/theme.js';
 import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptyState } from '../components/UI.jsx';
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
 import { hasCompanyDefaults } from '../state/companyDefaults.js';
+import { fieldValue, fieldNumber } from '../state/numberField.js';
 import { ootIsItemised, ootBreakdown, ootLines, newOotRates } from '../components/outOfTown.js';
 import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
@@ -162,7 +163,9 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
             {period.otMult > 1 && (
               <div>
                 <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT Multiplier (×)</div>
-                <Input type="number" value={period.otMult} onChange={e => onUpdate('otMult', parseFloat(e.target.value) || 1)} step="0.1" placeholder="1.5" />
+                <Input type="number" value={fieldValue(period.otMult)}
+                  onChange={e => onUpdate('otMult', fieldNumber(e.target.value))} step="0.1"
+                  placeholder="1 — straight time" />
               </div>
             )}
             {/* Travel is HOURS, at each traveling man's own rate. It used to
@@ -1203,6 +1206,17 @@ export default function Step5_Labor({ onNext, onBack }) {
       weeklyOtHours: STANDARD_WEEK_HOURS,
     })
     : null;
+  // The mirror of otClash: exactly one rule set, and it happens to owe nothing.
+  // otClash cannot speak here — it needs a daily threshold to compare against,
+  // and the daily threshold is usually the missing one.
+  const otGap = laborMode === 'flat'
+    ? otRuleGap(flat.crew, {
+      daysPerWeek: flat.daysPerWeek,
+      otAfterHours: flat.otAfterHours,
+      weeklyOtHours: flat.weeklyOtHours,
+      otMult: flat.otMult,
+    })
+    : null;
 
   // One click rather than opening every period. A multiplier already set is
   // left alone; only a missing one gets the standard 1.5.
@@ -1360,6 +1374,40 @@ export default function Step5_Labor({ onNext, onBack }) {
       )}
 
       {/* ── The two overtime rules disagreeing on this schedule ── */}
+      {otGap && (
+        <Card style={{ borderColor: `${colors.yellow}55` }}>
+          <SLabel>⏱ This schedule owes no overtime — check that that is right</SLabel>
+          <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginTop: 6 }}>
+            The crew works <strong style={{ color: colors.text }}>{otGap.hrsPerWeek} hours a week</strong> over{' '}
+            {flat.daysPerWeek} days, and the {otGap.missing === 'daily' ? 'weekly' : 'daily'} threshold that is
+            set comes to <strong style={{ color: colors.text }}>zero overtime</strong>. That is arithmetic, not
+            an oversight — but it is only the whole answer if your rule is the one that is set.
+            {otGap.missing === 'daily' ? (
+              <>
+                {' '}A shop that pays past <strong>eight in a day</strong> — most union agreements, and the law
+                in some states — owes{' '}
+                <strong style={{ color: colors.yellow }}>{otGap.perManPerWeek} overtime hours a man each week</strong>
+                {otGap.men > 1 && <> ({otGap.otHoursPerWeek} for the crew)</>} on this schedule. Set{' '}
+                <strong>OT after (hrs/day)</strong> to 8 if that is your rule.
+              </>
+            ) : (
+              <>
+                {' '}Nobody passes eight in a day here, but the week runs past forty, so the federal rule owes{' '}
+                <strong style={{ color: colors.yellow }}>{otGap.perManPerWeek} overtime hours a man each week</strong>
+                {otGap.men > 1 && <> ({otGap.otHoursPerWeek} for the crew)</>}. Set{' '}
+                <strong>OT after (hrs/week)</strong> to 40 or the bid is short those hours.
+              </>
+            )}
+            {otGap.multiplierInert && (
+              <div style={{ marginTop: 8, color: colors.yellow }}>
+                The OT multiplier is 1×, so overtime hours are priced the same as straight time. Setting a
+                threshold changes nothing until that is raised — 1.5 is the usual figure.
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {otClash && (
         <Card style={{ borderColor: `${colors.yellow}55` }}>
           <SLabel>📅 The two overtime rules disagree on a {flat.daysPerWeek}-day week</SLabel>
@@ -1642,8 +1690,9 @@ export default function Step5_Labor({ onNext, onBack }) {
             </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT Multiplier (×)</div>
-              <Input type="number" value={flat.otMult || ''}
-                onChange={e => setFlat({ otMult: parseFloat(e.target.value) || 1 })} step="0.1" placeholder="1.5" />
+              <Input type="number" value={fieldValue(flat.otMult)}
+                onChange={e => setFlat({ otMult: fieldNumber(e.target.value) })} step="0.1"
+                placeholder="1 — straight time" />
             </div>
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>OT after (hrs/week)</div>
