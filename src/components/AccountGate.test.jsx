@@ -22,8 +22,32 @@ describe('the wall a signed-out visitor meets', () => {
     expect(html).toMatch(/Create account/);
   });
 
-  it('gives a way across for somebody who already has one', () => {
-    expect(wall()).toMatch(/Already have an account\? Sign in/);
+  // ── THE ONE THE OWNER FOUND, WITHIN A MINUTE OF IT GOING LIVE ─────────────
+  //   "There's no sign up button to tap... Shouldn't there be a sign in button
+  //    to tap"
+  //
+  // Signing in was a line of dim grey text at the bottom with no underline and
+  // no border. It was reachable — it just did not look like a control, which
+  // for a returning user whose session expired is the same as not being there.
+  //
+  // Both modes are a segmented control now, and this is the assertion that
+  // keeps them there. Note it could NOT have been written against the old
+  // layout in a way that would have caught it: the text link WAS in the markup,
+  // so any test asking "is signing in reachable" passed. What was missing was
+  // that it looked like something you could press, and the closest mechanical
+  // stand-in for that is being a button with a border, next to the other one.
+  it('shows both choices as controls before anything is tapped', () => {
+    const html = wall();
+    expect(html).toMatch(/<button[^>]*>New account<\/button>/);
+    expect(html).toMatch(/<button[^>]*>Sign in<\/button>/);
+  });
+
+  it('marks which of the two is selected', () => {
+    // Two identically-styled buttons say nothing about which form is on screen,
+    // which is most of the way back to the problem this replaced.
+    const tabs = [...wall().matchAll(/<button([^>]*)>(?:New account|Sign in)<\/button>/g)];
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0][1], 'the two mode buttons are styled identically').not.toBe(tabs[1][1]);
   });
 
   it('takes an email and a password', () => {

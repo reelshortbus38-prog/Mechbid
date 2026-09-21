@@ -22,6 +22,27 @@ import { BRAND_HEAD, BRAND_TAIL } from './brand.js';
 //   session did expire is one tap away, and the "already registered" branch in
 //   authOutcome moves them across by itself.
 //
+// ── BOTH CHOICES ARE BUTTONS, AT THE TOP ─────────────────────────────────────
+// The first version put "Create account" on a submit button at the bottom and
+// left signing in as a line of dim grey text under it. Two things went wrong
+// with that, both reported by the owner within a minute of it going live:
+//
+//   "There's no sign up button to tap. When I tap create account it asks for
+//    email and password. Shouldn't it send you to a page to create your
+//    account or something. Shouldn't there be a sign in button to tap"
+//
+// The sign-in link did not read as tappable — grey text, no underline, no
+// border, below the fold of attention. And a form that is already on screen
+// under a button labelled "Create account" reads as a button that NAVIGATES to
+// the signup form, so pressing it with the fields empty looks like it refused
+// rather than like it validated.
+//
+// So the two modes are now a segmented control at the top, the same shape the
+// terms screen uses for Terms / Privacy, and both words are visible as controls
+// before anybody touches anything. A separate page for each was the other
+// option and is worse here: another load and another tap on an iPad, to show
+// the same two fields.
+//
 // ── SAY WHY, NOT JUST NO ─────────────────────────────────────────────────────
 // The reason for the wall is not "please register." It is that a bid built
 // signed-out lives in this browser's localStorage, and iPad Safari empties that
@@ -93,6 +114,25 @@ export function AccountWall({ signIn, signUp }) {
           REFRIGERATION + HVAC · ONE ESTIMATOR
         </div>
 
+        {/* Both choices, as controls, before anything is typed. */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          {/* "New account" rather than "Create account", so the selector and
+              the green button underneath it are not the same words twice. */}
+          {[['signup', 'New account'], ['signin', 'Sign in']].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => { if (mode !== k) swap(); }}
+              style={{
+                flex: 1, minHeight: 44, borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                border: `1px solid ${mode === k ? colors.green : colors.border}`,
+                background: mode === k ? colors.greenFaint : 'transparent',
+                color: mode === k ? colors.green : colors.textDim,
+              }}
+            >{label}</button>
+          ))}
+        </div>
+
         <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 6 }}>
           {signingUp ? 'Create an account to start a bid' : 'Sign in to your account'}
         </div>
@@ -119,7 +159,7 @@ export function AccountWall({ signIn, signUp }) {
           {signingUp && (
             // Said up front rather than enforced by a dead button. A disabled
             // control with no explanation is the same as no explanation.
-            <div style={{ fontSize: 10.5, color: tooShort ? colors.yellow : colors.textMuted, marginTop: -3 }}>
+            <div style={{ fontSize: 11, color: tooShort ? colors.yellow : colors.textDim, marginTop: -3 }}>
               At least 6 characters.
             </div>
           )}
@@ -135,18 +175,7 @@ export function AccountWall({ signIn, signUp }) {
           </Btn>
         </div>
 
-        <button
-          onClick={swap}
-          style={{
-            background: 'transparent', border: 'none', color: colors.textDim, fontSize: 11.5,
-            cursor: 'pointer', marginTop: 14, padding: 0, width: '100%', textAlign: 'center',
-            fontFamily: "'DM Sans', sans-serif",
-          }}
-        >
-          {signingUp ? 'Already have an account? Sign in' : 'No account yet? Create one'}
-        </button>
-
-        <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 16, lineHeight: 1.6 }}>
+        <div style={{ fontSize: 11, color: colors.textDim, marginTop: 18, lineHeight: 1.6 }}>
           Trouble getting in? Email <span style={{ color: colors.textDim }}>support@coldgauge.com</span>.
         </div>
       </div>
