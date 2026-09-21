@@ -24,6 +24,7 @@ import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote, cfmNote } from '../components/sheetOverlap.js';
 import { missingSizeNote } from '../api/runEvidence.js';
 import { rememberFile } from '../api/fileCache.js';
+import { filesToAnalyze, fileStatusOf, analyzedFiles } from '../components/analyzeQueue.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
 import { pipeDescSize, isHydronicService, COPPER_MAX_IN } from '../components/pipePricing.js';
@@ -130,7 +131,7 @@ export default function Step1_Setup({ onNext }) {
   // ── ANALYZE: builds a list of pending items for human review.
   // NOTHING here touches circuits/rackTasks/fieldTasks/rackParts/projName directly anymore.
   async function analyzeAll() {
-    const modeFiles = state.uploadedFiles.filter(f => f.mode === state.mode && fileStatuses[f.id] !== 'done');
+    const modeFiles = filesToAnalyze(state.uploadedFiles, state.mode, fileStatuses);
     if (modeFiles.length === 0 && (!emailText.trim() || fileStatuses[PASTED_ID] === 'done')) return;
 
     setAnalyzing(true);
@@ -1067,6 +1068,9 @@ export default function Step1_Setup({ onNext }) {
         }
 
         setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'done' }));
+        // Saved with the job, so this survives leaving the step, a reload, and
+        // opening the job on another device. See components/analyzeQueue.js.
+        if (fileMeta.type !== 'pastedText') dispatch({ type: 'MARK_FILE_ANALYZED', id: fileMeta.id });
 
       } catch (err) {
         console.error('File error:', fileMeta.name, err);
@@ -1397,8 +1401,32 @@ export default function Step1_Setup({ onNext }) {
   });
   const modeResults = forMode(state.extractionResults, state.mode);
   const modeFlags = forMode(state.flags, state.mode);
-  const hasFiles = modeFiles.length > 0
+  // Which files this trade still has to read, and which it has already read.
+  // The second list used to be knowable only while this step stayed mounted.
+  const pendingFiles = filesToAnalyze(state.uploadedFiles, state.mode, fileStatuses);
+  const doneFiles = analyzedFiles(state.uploadedFiles, state.mode, fileStatuses);
+  // Every file's status as the list should show it: the live one while this
+  // step is mounted, the stored one after that.
+  const shownStatuses = Object.fromEntries(
+    (state.uploadedFiles || []).map(f => [f.id, fileStatusOf(f, fileStatuses)]),
+  );
+  // Only offer the button when there is something new to read. Leaving it
+  // enabled over an all-analyzed set gives a button that spins and does
+  // nothing, which reads as the app being broken.
+  const hasFiles = pendingFiles.length > 0
     || (emailText.trim().length > 0 && fileStatuses[PASTED_ID] !== 'done');
+
+  // Put every file in this trade back in the queue. Re-analysis is sometimes
+  // the point — the CO₂ note on the Materials step says so in as many words.
+  function reanalyzeAll() {
+    dispatch({ type: 'CLEAR_FILE_ANALYZED', mode: state.mode });
+    setFileStatuses(prev => {
+      const next = { ...prev };
+      for (const f of modeFiles) delete next[f.id];
+      delete next[PASTED_ID];
+      return next;
+    });
+  }
 
   // Fresh session (nothing named, saved, or uploaded) → lead with the pitch.
   // The claim that separates Coldgauge from the HVAC-only takeoff tools is the
@@ -1636,7 +1664,7 @@ export default function Step1_Setup({ onNext }) {
       {modeFiles.length > 0 && (
         <Card>
           <SLabel>Uploaded Files</SLabel>
-          <FileList fileStatuses={fileStatuses} />
+          <FileList fileStatuses={shownStatuses} />
         </Card>
       )}
 
@@ -1685,7 +1713,7 @@ export default function Step1_Setup({ onNext }) {
             ))}
           </div>
         </Row>
-        {modeFiles.some(f => fileStatuses[f.id] === 'done') && (
+        {doneFiles.length > 0 && (
           <div style={{ fontSize: 11, color: colors.textDim, marginTop: 8, lineHeight: 1.5 }}>
             Files have already been analyzed. Changing this now only affects the next analysis — anything
             already read stays where it landed, and you can move it by hand or re-analyze.
@@ -1693,11 +1721,34 @@ export default function Step1_Setup({ onNext }) {
         )}
       </Card>
 
-      {/* Analyze button */}
+      {/* Analyze button. The label counts what will actually be read, because
+          "Analyze All Documents" over a set where all but one are already done
+          is a promise to spend money on work that is finished. */}
       <Btn variant="green" onClick={analyzeAll} disabled={analyzing || !hasFiles}
         style={{ width: '100%', justifyContent: 'center', padding: '16px', fontSize: 15 }}>
-        {analyzing ? <><Spinner /> &nbsp;Analyzing...</> : '🔍 Analyze All Documents & Extract Takeoff'}
+        {analyzing ? <><Spinner /> &nbsp;Analyzing...</>
+          : doneFiles.length > 0 && pendingFiles.length > 0
+            ? `🔍 Analyze ${pendingFiles.length} new document${pendingFiles.length === 1 ? '' : 's'}`
+            : '🔍 Analyze All Documents & Extract Takeoff'}
       </Btn>
+
+      {/* ── ALREADY READ ──────────────────────────────────────────────────────
+          Files stay analyzed across leaving the step, a reload and another
+          device now, so the set that will be SKIPPED has to be visible — and
+          there has to be a way to put it back. */}
+      {doneFiles.length > 0 && (
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px',
+          background: colors.surface, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11.5, color: colors.textDim, flex: 1, lineHeight: 1.5, minWidth: 180 }}>
+            {doneFiles.length} document{doneFiles.length === 1 ? ' has' : 's have'} already been read and
+            {doneFiles.length === 1 ? ' is' : ' are'} skipped — analyzing again costs money and hands back
+            findings this takeoff already has.
+          </span>
+          <Btn variant="ghost" size="sm" onClick={reanalyzeAll} disabled={analyzing}>
+            ↻ Re-analyze everything
+          </Btn>
+        </div>
+      )}
 
       {/* Results */}
       {modeResults.length > 0 && (
