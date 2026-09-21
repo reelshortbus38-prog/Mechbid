@@ -11,6 +11,11 @@ import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { SILICONE, consumableLine } from '../components/consumables.js';
+import { filterDrierLines, SECTION as FILTER_SECTION } from '../components/filtersDriers.js';
+
+// Sections the price autofill covers. See where it is used for what happens
+// to a section left off this list.
+const PRICED_SECTIONS = ['Hardware', 'Consumables', FILTER_SECTION];
 import { caseHookupLines, spareRiserPlan, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID, DEFAULT_SPARE_DROPS } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, TblArea, UnitSelect, EmptyState } from '../components/UI.jsx';
@@ -958,6 +963,9 @@ function SupplyHouseList() {
     items.push({ id:uid(), partId:'', desc:'Nitrogen — pressure test & purge', qty:0, unit:'cylinder', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Brazing rod (15% silver)', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', ...consumableLine(SILICONE, { category:'Consumables' }) });
+    filterDrierLines(state.circuits, normalizePipeSize).forEach(l => items.push({
+      id:uid(), partId:'', desc:l.desc, qty:l.qty, unit:l.unit, unitCost:0, total:0,
+      category:'Filters & Driers' }));
     if (isCO2) {
       items.push({ id:uid(), partId:'', desc:'High-pressure fittings (K65 / CO₂-rated, 1300+ psi)', qty:0, unit:'lot', unitCost:0, total:0, category:'Consumables' });
       items.push({ id:uid(), partId:'', desc:'CO₂ leak detection / sensors', qty:0, unit:'ea', unitCost:0, total:0, category:'Consumables' });
@@ -1310,6 +1318,13 @@ export default function Step4_Materials({ onNext, onBack }) {
         unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: note });
     });
 
+    // Suction filters and liquid line driers. They were on no list at all —
+    // not folded in elsewhere, simply absent, which on a rack job is a set of
+    // parts that get bought and never bid. Zero quantities: see the module for
+    // why the app does not guess how many.
+    filterDrierLines(state.circuits, normalizePipeSize)
+      .forEach(l => items.push({ id: uid(), ...l }));
+
     // Consumables an RC crew actually burns through on a remodel — quantities
     // start at 0 so nothing is charged until you fill in what applies.
     items.push({id:uid(),section:'Consumables',desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb',qty:0,unit:'lb',unitCost:0,total:0});
@@ -1351,7 +1366,11 @@ export default function Step4_Materials({ onNext, onBack }) {
     const priceBook = loadPriceBook();
     items.forEach(it => {
       if (it.unitCost > 0) return;
-      if (it.section !== 'Hardware' && it.section !== 'Consumables') return;
+      // A section missing from this list gets NO pricing at all — not the
+      // shipped defaults and, more to the point, not the shop's own price
+      // book. Adding a section without adding it here makes every line in it
+      // free and silent.
+      if (!PRICED_SECTIONS.includes(it.section)) return;
       const m = findPriceMatch(priceBook, { desc: it.desc });
       const price = m ? (parseFloat(m.entry.price) || 0) : defaultHardwarePrice(it.desc);
       if (price > 0) {
