@@ -1285,6 +1285,9 @@ export default function Step4_Materials({ onNext, onBack }) {
         // Medium-temp liquid is not insulated, but the suction stub always is,
         // and that is the only stub this insulates.
         insulate: true,
+        // The drop is insulated at the CIRCUIT's temperature — a low-temp drop
+        // takes 1" wall, not the 3/4" this charged for every one of them.
+        tempType: c.tempType,
       }).forEach(l => {
         const prev = hookupMerged.get(l.desc);
         // A 'lot' line is one lot however many circuits asked for it.
@@ -1309,10 +1312,21 @@ export default function Step4_Materials({ onNext, onBack }) {
           unitCost = hit.price;
           note = [l.notes, fittingNote(hit)].filter(Boolean).join(' · ');
         }
-      } else if (l.pipeSize && /stubs$/.test(l.desc)) {
+      } else if (l.material === 'copper' && l.pipeSize) {
+        // ── THIS WAS MATCHING ON THE DESCRIPTION, AND THE DESCRIPTION MOVED ──
+        // The test was /stubs$/, from when these lines read "… stubs". They
+        // read "… Case drops — suction" and "… Case drops — liquid" now, so
+        // the branch matched NOTHING and every case drop on every bid priced
+        // at $0. On one store that is 25 ft of 1-3/8 and 40 ft of 5/8 — about
+        // $880 of copper, free, with the insulation on the same drop priced
+        // correctly right beside it because ITS name still ended the way the
+        // regex expected.
+        //
+        // Pricing now keys off what the line IS, which the generator states,
+        // rather than off what it happens to be called.
         unitCost = hpPipeRate(copperRate(l.pipeSize, rates).rate, state.systemType, hpMult);
-      } else if (l.pipeSize && /insulation$/.test(l.desc)) {
-        unitCost = insulRate(l.pipeSize, rates, 'medSuction').rate;
+      } else if (l.material === 'insulation' && l.pipeSize) {
+        unitCost = insulRate(l.pipeSize, rates, l.insulCategory || 'medSuction').rate;
       }
       items.push({ id: uid(), section: l.section, desc: l.desc, qty: l.qty, unit: l.unit,
         unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: note });
