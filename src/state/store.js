@@ -624,6 +624,28 @@ export function reducer(state, action) {
     case 'CLEAR_DELETED_LINE_ITEMS':
       return { ...state, deletedLineItems: [] };
 
+    // ── WHICH FILES HAVE BEEN READ ──────────────────────────────────────────
+    // This lived in component state, so it was forgotten every time the Setup
+    // step unmounted — and the next Analyze put the whole plan set back
+    // through vision, at real money a sheet, and handed back every finding as
+    // a fresh review item against a takeoff that already had it.
+    //
+    // On the file, in the job: saved, synced, and still true when the job
+    // opens on another device.
+    case 'MARK_FILE_ANALYZED':
+      return { ...state, uploadedFiles: (state.uploadedFiles || []).map(f =>
+        f.id === action.id ? { ...f, analyzedAt: action.at || new Date().toISOString() } : f) };
+    // Clearing it puts the file back in the queue. Re-analysis is sometimes
+    // the point — switching a job to CO₂ is the app's own example — so this
+    // skips a file by default and never prevents it.
+    case 'CLEAR_FILE_ANALYZED':
+      return { ...state, uploadedFiles: (state.uploadedFiles || []).map(f => {
+        if (action.id && f.id !== action.id) return f;
+        if (action.mode && f.mode !== action.mode) return f;
+        const { analyzedAt, ...rest } = f;
+        return rest;
+      }) };
+
     // Supply items
     case 'ADD_SUPPLY_ITEM':
       return { ...state, supplyItems: [...state.supplyItems, action.item] };
