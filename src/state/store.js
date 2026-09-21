@@ -75,6 +75,7 @@ const DEFAULT_HW_PRICES = [
   [/pvc.*tape|insulation tape/i, 6.00], // per roll
   [/emery cloth|sand cloth/i, 12.00],   // per roll
   [/fire caulk/i, 14.00],            // per tube
+  [/silicone/i, 9.00],               // NSF/food-zone sealant, per tube
   [/refrigerant oil/i, 60.00],       // POE, per gal
 ];
 export function defaultHardwarePrice(desc) {

@@ -10,6 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt, HARD_STICK_FT } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
+import { SILICONE, consumableLine } from '../components/consumables.js';
 import { caseHookupLines, spareRiserPlan, DEFAULT_STUB_FT, DEFAULT_CASE_FT, DEFAULT_DRAIN_SIZE, DEFAULT_STUB_SUCTION, DEFAULT_STUB_LIQUID, DEFAULT_SPARE_DROPS } from '../components/caseHookup.js';
 import { dedupeFlags } from '../components/flagDedupe.js';
 import { Btn, Card, SLabel, Input, Select, Row, TblInput, TblArea, UnitSelect, EmptyState } from '../components/UI.jsx';
@@ -956,6 +957,7 @@ function SupplyHouseList() {
     items.push({ id:uid(), partId:'', desc: isCO2 ? 'CO₂ Refrigerant (R-744) — charge by lb' : 'Refrigerant — verify type (R-448A / R-407A) & charge by lb', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Nitrogen — pressure test & purge', qty:0, unit:'cylinder', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Brazing rod (15% silver)', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
+    items.push({ id:uid(), partId:'', ...consumableLine(SILICONE, { category:'Consumables' }) });
     if (isCO2) {
       items.push({ id:uid(), partId:'', desc:'High-pressure fittings (K65 / CO₂-rated, 1300+ psi)', qty:0, unit:'lot', unitCost:0, total:0, category:'Consumables' });
       items.push({ id:uid(), partId:'', desc:'CO₂ leak detection / sensors', qty:0, unit:'ea', unitCost:0, total:0, category:'Consumables' });
@@ -1321,6 +1323,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     items.push({id:uid(),section:'Consumables',desc:'PVC / Insulation Tape',qty:0,unit:'roll',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Emery Cloth / Sand Cloth',qty:0,unit:'roll',unitCost:0,total:0});
     items.push({id:uid(),section:'Consumables',desc:'Fire Caulk — Wall/Ceiling Penetrations',qty:0,unit:'tube',unitCost:0,total:0});
+    items.push({ id:uid(), section:'Consumables', ...consumableLine(SILICONE) });
     items.push({id:uid(),section:'Consumables',desc:'Refrigerant Oil — verify POE grade',qty:0,unit:'gal',unitCost:0,total:0});
     if (isCO2) {
       // CO₂-specific items that are easy to forget and pressure-rating critical.
