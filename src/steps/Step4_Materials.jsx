@@ -726,7 +726,9 @@ function BidMaterials({ onGenerate }) {
   }
 
   function removeItem(id) {
-    dispatch({ type: 'SET', key: 'lineItems', value: state.lineItems.filter(i=>i.id!==id) });
+    // Not a plain SET — REMOVE_LINE_ITEM keeps the row and its position on an
+    // undo trail. See the reducer for why undo has to restore the index.
+    dispatch({ type: 'REMOVE_LINE_ITEM', id });
   }
 
   function addFitting() {
@@ -850,6 +852,46 @@ function BidMaterials({ onGenerate }) {
           </div>
         ))
       )}
+      {/* ── UNDO A DELETE ────────────────────────────────────────────────────
+          "if you delete a material and didn't mean to how can you get it back
+           without having to type it back in"
+
+          Newest first, and each row goes back where it was. Retyping a
+          generated line is not a small job — the description carries the
+          sizing, the spacing spec and the note saying where the quantity came
+          from — and regenerating to recover one row overwrites every hand edit
+          on the list. */}
+      {(state.deletedLineItems || []).length > 0 && (
+        <div style={{ border:`1px solid ${colors.border}`, borderRadius:8, padding:'10px 12px',
+          background:colors.surface, display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:11, color:colors.textDim }}>
+              Deleted just now — tap to put it back
+            </span>
+            <button
+              onClick={() => dispatch({ type:'CLEAR_DELETED_LINE_ITEMS' })}
+              style={{ background:'transparent', border:'none', color:colors.textMuted, fontSize:11,
+                cursor:'pointer', padding:0, fontFamily:"'DM Sans', sans-serif" }}
+            >Dismiss</button>
+          </div>
+          {(state.deletedLineItems || []).map((d, i) => (
+            <button
+              key={`${d.item.id}-${i}`}
+              onClick={() => dispatch({ type:'RESTORE_LINE_ITEM', at:i })}
+              style={{ display:'flex', alignItems:'center', gap:8, width:'100%', textAlign:'left',
+                background:colors.card2, border:`1px solid ${colors.border}`, borderRadius:6,
+                padding:'8px 10px', cursor:'pointer', color:colors.text, fontSize:12,
+                fontFamily:"'DM Sans', sans-serif", minHeight:38 }}
+            >
+              <span style={{ color:colors.green, fontWeight:700, flexShrink:0 }}>↩ Undo</span>
+              <span style={{ color:colors.textDim, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {d.item.qty || 0} {d.item.unit || 'ea'} · {d.item.desc || 'Untitled line'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {grandTotal > 0 && (
         <div style={{ display:'flex', justifyContent:'flex-end', padding:'12px 0' }}>
           <div style={{ textAlign:'right' }}>
@@ -1194,6 +1236,11 @@ export default function Step4_Materials({ onNext, onBack }) {
           : `Pipe Saddles (Insuguard) @ ${spacingFt}ft spacing — SIZE UNKNOWN, the copper size on `
             + `these lines could not be read (${covers}). Set the line sizes on the Circuits step, `
             + 'or size the saddles by hand.',
+        // Left at 0 deliberately. The price autofill below runs price book →
+        // shipped default → $0, and it SKIPS any line that already has a cost —
+        // so pricing the saddle here would quietly override the shop's own
+        // saved price with a shipped one. The $2-and-a-dollar-an-inch defaults
+        // live in DEFAULT_HW_PRICES, which is the layer the price book beats.
         qty: s.qty, unitCost: 0, total: 0 });
     });
 

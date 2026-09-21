@@ -37,6 +37,10 @@ import { manHoursOf } from '../steps/laborUnits.js';
 // the small sizes are wide (1-1/8 spans $15 to $21, a 40% spread). Correct any
 // row in the rates panel; an existing job keeps whatever it has already tuned,
 // and "Load default prices" pulls this table in fresh.
+// How many deleted material rows stay recoverable. Ten is more than anybody
+// deletes by accident in one sitting and small enough that it costs nothing.
+export const DELETED_TRAIL_MAX = 10;
+
 export const DEFAULT_CU_RATES = {
   '1/4': 3.00, '3/8': 5.00, '1/2': 6.00, '5/8': 8.25, '7/8': 10.00,
   '1-1/8': 18.00, '1-3/8': 22.00, '1-5/8': 27.00, '2-1/8': 38.00, '2-5/8': 54.00, '3-1/8': 72.00,
@@ -48,6 +52,16 @@ export const DEFAULT_CU_RATES = {
 // prices, saved as they edit) always wins over these.
 const DEFAULT_HW_PRICES = [
   [/pipe hangers?/i, 3.50],          // clevis/loop hanger, each
+  // Saddles are priced by the saddle, $2 at 2" and a dollar an inch up from
+  // there. These sit BEFORE the unsized fallback because the lookup takes the
+  // first regex that matches, and every one of them would also match the
+  // fallback. \b keeps the 2" entry off a 12" line if one ever appears.
+  [/\b2" pipe saddles?|\b2" insuguard/i, 2.00],
+  [/\b3" pipe saddles?|\b3" insuguard/i, 3.00],
+  [/\b4" pipe saddles?|\b4" insuguard/i, 4.00],
+  [/\b5" pipe saddles?|\b5" insuguard/i, 5.00],
+  // Still reached by a hand-typed line, or by a generated one whose copper
+  // size could not be read. The middle of the range is the least wrong guess.
   [/pipe saddles?|insuguard/i, 3.00], // insulation cradle, each
   [/unistrut/i, 25.00],              // 1-5/8" 12ga, 10' stick
   [/all-?thread/i, 8.00],            // 3/8" rod, 10' stick
@@ -294,6 +308,8 @@ export const initialState = {
   jobFacts: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
+  // Deleted material rows, newest first, so an accidental × is recoverable.
+  deletedLineItems: [],
   supplyItems: [],
   fieldTasks: [],
   // Dated RC schedule items — separate from fieldTasks (which is the labor-hours
@@ -564,6 +580,48 @@ export function reducer(state, action) {
       return { ...state, laborPeriods: state.laborPeriods.map(p => p.id === action.id ? { ...p, ...action.updates } : p) };
     case 'REMOVE_LABOR_PERIOD':
       return { ...state, laborPeriods: state.laborPeriods.filter(p => p.id !== action.id) };
+
+    // ── DELETING A MATERIAL IS UNDOABLE ──────────────────────────────────────
+    // "if you delete a material and didn't mean to how can you get it back
+    //  without having to type it back in"
+    //
+    // You could not. The × removed the row and that was the end of it — and on
+    // a generated line that is not a small retype: the description carries the
+    // sizing, the spacing spec and the note explaining where the quantity came
+    // from. Regenerating to get one row back overwrites every hand edit on the
+    // list, so the recovery was worse than the mistake.
+    //
+    // The removed row keeps its INDEX so undo puts it back where it was rather
+    // than at the bottom of its section, which on a hundred-line list is the
+    // difference between undo and "find it again".
+    //
+    // Capped, and it is a trail rather than a single slot: deleting three rows
+    // and wanting the first one back is exactly when this is needed.
+    case 'REMOVE_LINE_ITEM': {
+      const items = state.lineItems || [];
+      const index = items.findIndex(i => i.id === action.id);
+      if (index < 0) return state;
+      return {
+        ...state,
+        lineItems: items.filter(i => i.id !== action.id),
+        deletedLineItems: [{ item: items[index], index }, ...(state.deletedLineItems || [])]
+          .slice(0, DELETED_TRAIL_MAX),
+      };
+    }
+    case 'RESTORE_LINE_ITEM': {
+      const trail = state.deletedLineItems || [];
+      // Default to the most recent, which is what an undo button means.
+      const at = action.at ?? 0;
+      const entry = trail[at];
+      if (!entry) return state;
+      const items = [...(state.lineItems || [])];
+      // The list has moved on since the delete, so the old index is a hint and
+      // not a promise. Clamping beats throwing a row away or crashing.
+      items.splice(Math.min(entry.index, items.length), 0, entry.item);
+      return { ...state, lineItems: items, deletedLineItems: trail.filter((_, i) => i !== at) };
+    }
+    case 'CLEAR_DELETED_LINE_ITEMS':
+      return { ...state, deletedLineItems: [] };
 
     // Supply items
     case 'ADD_SUPPLY_ITEM':
