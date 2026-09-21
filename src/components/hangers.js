@@ -118,12 +118,93 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
     // on the list.
     { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
       desc: `${R} Beam clamps — bar joist attachment (2 per hanger, one per rod drop; check the spec, some jobs call for welded or bolted attachment instead)` },
-    // Loose hardware stays one lot. Nuts and washers are genuinely pocket
-    // change and nobody counts them; the beam clamps that used to be lumped in
-    // with items like this are now their own line above, because they are not.
-    { section: 'Hardware', unit: 'lot', qty: 0, unitCost: 0, total: 0,
-      desc: `Strut Nuts, ${R} Rod Couplings, Nuts & Washers` },
+    // ── FOUR LINES, NOT ONE LOT ─────────────────────────────────────────────
+    // This was a single line reading "Strut Nuts, 3/8" Rod Couplings, Nuts &
+    // Washers", on the reasoning written here before: nuts and washers are
+    // pocket change and nobody counts them.
+    //
+    // From the mechanic who installs them: "the nuts, washers, and rod
+    // couplings need to be separated."
+    //
+    // They are not one thing. A strut nut and a rod coupling are different
+    // parts at different prices from different bins, and a lot line priced as
+    // a guess cannot be checked against a supplier quote — which is what the
+    // materials list is for. Bundling them made the cheap ones invisible and
+    // the coupling, which is not cheap, invisible with them.
+    //
+    // All four are hangerManual so the pre-flight lists them. Four zeros
+    // nobody is told about is worse than the one zero this replaced.
+    { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
+      desc: 'Strut Nuts — channel nuts, strut-to-rod and clamp-to-strut' },
+    { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
+      desc: `${R} Rod Couplings — rod-to-rod splices; how many depends on drop length and how rod is cut` },
+    { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
+      desc: `${R} Hex Nuts` },
+    { section: 'Hardware', hangerManual: true, unit: 'ea', qty: 0, unitCost: 0, total: 0,
+      desc: `${R} Flat Washers` },
   ];
+}
+
+// ── A SADDLE IS SIZED TO THE INSULATION, NOT TO THE COPPER ──────────────────
+// The takeoff named these after the pipe inside them — "1-3/8" Pipe Saddles",
+// "7/8" Pipe Saddles" — which is not a thing anybody can order. From the
+// mechanic: "for saddles can they be changed to 2", 3", 4" and so on."
+//
+// A saddle goes around the FINISHED line: copper plus insulation on both
+// sides. Two lines of different copper land in the same saddle, and one copper
+// size lands in two different saddles depending on how thick the insulation is
+// — which on a refrigeration job means depending on whether it is low temp.
+// His spec, verbatim:
+//
+//   2"   5/8 copper with 1/2" insulation, and below
+//   3"   medium temp 7/8 - 1-1/8 with 3/4" insulation
+//   4"   1-3/8 - 1-5/8 with 3/4", and smaller low-temp runs with 1"
+//   5"   anything larger
+//
+// Encoded as the geometry rather than as a lookup of his four sentences, so a
+// size he did not list still lands somewhere defensible. The breakpoints below
+// reproduce every case he gave — including the one that proves the model:
+// 7/8 low temp and 1-3/8 medium temp both finish at 2.875" and both take a 4".
+export const SMALL_LINE_MAX_OD = 0.625;   // 5/8 and below
+export const INSULATION_WALL = { small: 0.5, medium: 0.75, low: 1 };
+// Finished outside diameter at or under `maxOd` takes `size`; past the last
+// one, the largest saddle.
+export const SADDLE_BREAKS = [
+  { maxOd: 1.625, size: 2 },
+  { maxOd: 2.625, size: 3 },
+  { maxOd: 3.125, size: 4 },
+];
+export const LARGEST_SADDLE = 5;
+
+// "1-3/8" → 1.375. Returns 0 for anything unreadable, which the caller has to
+// handle rather than price.
+export function copperOd(size) {
+  const s = String(size ?? '').replace(/"/g, '').trim().replace(/\s+/g, '-');
+  if (!s) return 0;
+  const m = /^(?:(\d+)-)?(\d+)\/(\d+)$/.exec(s);
+  if (m) {
+    const den = Number(m[3]);
+    if (!den) return 0;
+    return (m[1] ? Number(m[1]) : 0) + Number(m[2]) / den;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function insulationWall(size, tempType) {
+  const od = copperOd(size);
+  if (!(od > 0)) return 0;
+  if (od <= SMALL_LINE_MAX_OD) return INSULATION_WALL.small;
+  return tempType === 'low' ? INSULATION_WALL.low : INSULATION_WALL.medium;
+}
+
+// → 2 | 3 | 4 | 5, or 0 when the copper size cannot be read.
+export function saddleSizeFor(size, tempType) {
+  const od = copperOd(size);
+  if (!(od > 0)) return 0;
+  const finished = od + 2 * insulationWall(size, tempType);
+  for (const b of SADDLE_BREAKS) if (finished <= b.maxOd + 1e-9) return b.size;
+  return LARGEST_SADDLE;
 }
 
 // Saddles, which DO calculate. One per pipe per support point over every
@@ -136,7 +217,7 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
 // → [{ pipeSize, qty }] sorted by size, for the caller to turn into line items.
 export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, normalize = (s) => String(s || '')) {
   const spacing = normalizeSpacing(spacingFt);
-  const bySize = {};
+  const bySaddle = new Map();
   for (const c of circuits) {
     if (c?.isRiserOnly) continue;
     // Nothing in the floor rides in a saddle either — a saddle exists to stop
@@ -144,16 +225,31 @@ export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, norm
     if (c?.inFloor) continue;
     const run = parseFloat(c?.runLength) || 0;
     if (run <= 0) continue;
-    const add = (size) => {
+    const add = (size, tempType) => {
       if (!size) return;
-      const k = normalize(size);
-      bySize[k] = (bySize[k] || 0) + run;
+      // 0 means the size could not be read. It is NOT dropped: a line that
+      // exists and cannot be sized is a thing the estimator has to see, and
+      // the old version at least printed the raw string. It groups under a
+      // saddle size of 0 and the caller says so on the line.
+      const saddle = saddleSizeFor(size, tempType);
+      const e = bySaddle.get(saddle)
+        || { saddleSize: saddle, ft: 0, covers: new Set() };
+      e.ft += run;
+      e.covers.add(`${normalize(size)}" ${tempType === 'low' ? 'LT' : 'MT'}`);
+      bySaddle.set(saddle, e);
     };
-    add(c.sucHoriz);
+    add(c.sucHoriz, c.tempType);
     // Medium-temp liquid is not insulated, so it carries no saddle.
-    if (c.tempType === 'low') add(c.liqHoriz);
+    if (c.tempType === 'low') add(c.liqHoriz, c.tempType);
   }
-  return Object.entries(bySize).map(([pipeSize, ft]) => ({
-    pipeSize, ft, qty: Math.ceil(ft / spacing),
-  }));
+  return [...bySaddle.values()]
+    .sort((a, b) => a.saddleSize - b.saddleSize)
+    .map(e => ({
+      saddleSize: e.saddleSize,
+      ft: e.ft,
+      qty: Math.ceil(e.ft / spacing),
+      // What copper ended up in this saddle, so the estimator can check the
+      // sizing on the line instead of taking it on faith.
+      covers: [...e.covers].sort(),
+    }));
 }
