@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   hangerBasis, basisText, hangerLines, saddleCounts,
   DEFAULT_SPACING_FT, normalizeSpacing, ROD_SIZE,
-  copperOd, insulationWall, saddleSizeFor,
+  copperOd, insulationWall, saddleSizeFor, saddlePrice,
+  SADDLE_SIZES, SADDLE_BASE_PRICE,
 } from './hangers.js';
 
 const norm = s => String(s || '');
@@ -192,16 +193,19 @@ describe('saddleCounts', () => {
   it('saddles low-temp liquid but not medium-temp liquid', () => {
     // Medium-temp liquid is not insulated, so there is nothing to protect.
     const sizes = saddleCounts(ELEVEN, 6, norm).map(s => s.saddleSize);
-    expect(sizes).toContain(4);
-    const liquid = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 4);
+    // 7/8 low-temp LIQUID: 1/2" insulation, 1.875" finished, a 3" saddle. The
+    // same 7/8 as SUCTION would be 1" insulation and a 4".
+    expect(sizes).toContain(3);
+    const liquid = saddleCounts(ELEVEN, 6, norm).find(s => s.saddleSize === 3);
     expect(liquid.ft).toBe(5 * 150); // the five low-temp circuits only
   });
 
   it('skips riser-only drops', () => {
     const withRiser = [...ELEVEN, { isRiserOnly: true, riserLength: 300, sucRiser: '1-3/8' }];
-    // 1-3/8 medium temp is a 4" saddle, and the only 4" here comes from the
-    // low-temp liquid at 750 ft. A riser folded into it would show as more.
-    expect(saddleCounts(withRiser, 6, norm).find(s => s.saddleSize === 4).ft).toBe(750);
+    // Nothing about the saddle list changes, which is the whole claim —
+    // stronger than checking one bucket, and it cannot be satisfied by the
+    // riser quietly landing in some other size.
+    expect(saddleCounts(withRiser, 6, norm)).toEqual(saddleCounts(ELEVEN, 6, norm));
   });
 
   it('follows the same spacing spec the hangers do', () => {
@@ -273,10 +277,11 @@ describe('in-floor circuits', () => {
 // size he did not list still lands somewhere defensible. These assertions are
 // the four sentences, checked against the geometry.
 describe('what size saddle a line takes', () => {
-  it('2" — 5/8 and below', () => {
-    expect(saddleSizeFor('5/8', 'medium')).toBe(2);
-    expect(saddleSizeFor('1/2', 'medium')).toBe(2);
-    expect(saddleSizeFor('3/8', 'low')).toBe(2);
+  it('2" — 5/8 and below on medium-temp suction, and the liquid lines', () => {
+    expect(saddleSizeFor('5/8', 'medium', 'suction')).toBe(2);
+    expect(saddleSizeFor('1/2', 'medium', 'suction')).toBe(2);
+    expect(saddleSizeFor('5/8', 'low', 'liquid')).toBe(2);
+    expect(saddleSizeFor('3/8', 'low', 'liquid')).toBe(2);
   });
 
   it('3" — medium temp 7/8 through 1-1/8', () => {
@@ -341,7 +346,7 @@ describe('a line whose size cannot be read', () => {
     const [row] = saddleCounts(unreadable, 6, norm);
     expect(row.saddleSize).toBe(0);
     expect(row.qty).toBe(20);
-    expect(row.covers).toEqual(['see plan" LT']);
+    expect(row.covers).toEqual(['see plan" LT suction']);
   });
 
   it('does not merge it into a real saddle size', () => {
@@ -355,7 +360,92 @@ describe('what the saddle line says it covers', () => {
   it('names the copper that ended up in each saddle', () => {
     // So the sizing can be checked on the line rather than taken on faith.
     const all = saddleCounts(ELEVEN, 6, norm);
-    expect(all.find(s => s.saddleSize === 5).covers).toEqual(['2-1/8" LT', '2-1/8" MT']);
-    expect(all.find(s => s.saddleSize === 4).covers).toEqual(['7/8" LT']);
+    expect(all.find(s => s.saddleSize === 5).covers).toEqual(['2-1/8" LT suction', '2-1/8" MT suction']);
+    expect(all.find(s => s.saddleSize === 3).covers).toEqual(['7/8" LT liquid']);
+  });
+});
+
+// ── THE CORRECTION ───────────────────────────────────────────────────────────
+// The first version read "5/8 copper with 1/2" insulation and below" as a rule
+// about SIZE and applied it to any line 5/8 or smaller, whatever the line was
+// doing. From the mechanic:
+//
+//   "Low temp is always 1" insulation no matter the size on the suction.
+//    Liquid line is still 1/2"."
+//
+// Size decides only the medium-temp suction case. The other two are decided by
+// what the line IS.
+describe('insulation is a function of the line, not only its size', () => {
+  it('low-temp suction is 1 inch at every size', () => {
+    for (const size of ['3/8', '1/2', '5/8', '7/8', '1-1/8', '1-3/8', '2-1/8']) {
+      expect(insulationWall(size, 'low', 'suction'), size).toBe(1);
+    }
+  });
+
+  it('liquid is half an inch at every size', () => {
+    for (const size of ['3/8', '5/8', '7/8', '1-1/8']) {
+      expect(insulationWall(size, 'low', 'liquid'), size).toBe(0.5);
+    }
+  });
+
+  it('medium-temp suction is the one that still goes by size', () => {
+    expect(insulationWall('5/8', 'medium', 'suction')).toBe(0.5);
+    expect(insulationWall('7/8', 'medium', 'suction')).toBe(0.75);
+    expect(insulationWall('1-5/8', 'medium', 'suction')).toBe(0.75);
+  });
+
+  // The two saddle sizes that moved when this was corrected. Named so that a
+  // change back is a failure with a reason attached rather than a diff.
+  it('moves a small low-temp suction line up a saddle', () => {
+    // 5/8 low temp suction: was read as 1/2" insulation and a 2" saddle.
+    // 0.625 + 2(1) = 2.625 → a 3".
+    expect(saddleSizeFor('5/8', 'low', 'suction')).toBe(3);
+  });
+
+  it('moves a low-temp liquid line down a saddle', () => {
+    // 7/8 low temp liquid: was getting 1" insulation and a 4" saddle.
+    // 0.875 + 2(0.5) = 1.875 → a 3".
+    expect(saddleSizeFor('7/8', 'low', 'liquid')).toBe(3);
+  });
+
+  it('puts the SAME pipe in two saddles depending on what it carries', () => {
+    // The thing the role argument exists for, and the reason the generated
+    // line names the role: a 7/8 low-temp circuit has both of these on it.
+    expect(saddleSizeFor('7/8', 'low', 'suction')).toBe(4);
+    expect(saddleSizeFor('7/8', 'low', 'liquid')).toBe(3);
+  });
+
+  it('leaves every case he gave for medium temp exactly where it was', () => {
+    expect(saddleSizeFor('5/8', 'medium', 'suction')).toBe(2);
+    expect(saddleSizeFor('7/8', 'medium', 'suction')).toBe(3);
+    expect(saddleSizeFor('1-1/8', 'medium', 'suction')).toBe(3);
+    expect(saddleSizeFor('1-3/8', 'medium', 'suction')).toBe(4);
+    expect(saddleSizeFor('1-5/8', 'medium', 'suction')).toBe(4);
+    expect(saddleSizeFor('2-1/8', 'medium', 'suction')).toBe(5);
+  });
+});
+
+// "let's start at $2 for the 2" and go up a dollar for each inch."
+describe('what a saddle costs', () => {
+  it('is two dollars at two inches and a dollar an inch up', () => {
+    expect(saddlePrice(2)).toBe(2);
+    expect(saddlePrice(3)).toBe(3);
+    expect(saddlePrice(4)).toBe(4);
+    expect(saddlePrice(5)).toBe(5);
+  });
+
+  it('prices every size the sizer can produce', () => {
+    // A size that can come out of saddleSizeFor and has no price is a saddle
+    // that lands on the bid at $0.
+    for (const n of SADDLE_SIZES) expect(saddlePrice(n), `${n}"`).toBeGreaterThan(0);
+    expect(SADDLE_BASE_PRICE).toBe(2);
+  });
+
+  it('refuses to price a saddle size it does not recognise', () => {
+    // Including 0, which is what an unreadable copper size produces. A made-up
+    // price on a line nobody could size is worse than a zero somebody notices.
+    for (const junk of [0, 1, -3, null, undefined, 'big']) {
+      expect(saddlePrice(junk), String(junk)).toBe(0);
+    }
   });
 });

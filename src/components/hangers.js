@@ -165,8 +165,26 @@ export function hangerLines(circuits = [], headerHorizFt = 0, spacingFt = DEFAUL
 // size he did not list still lands somewhere defensible. The breakpoints below
 // reproduce every case he gave — including the one that proves the model:
 // 7/8 low temp and 1-3/8 medium temp both finish at 2.875" and both take a 4".
-export const SMALL_LINE_MAX_OD = 0.625;   // 5/8 and below
-export const INSULATION_WALL = { small: 0.5, medium: 0.75, low: 1 };
+// ── INSULATION IS A FUNCTION OF THE LINE'S JOB, NOT JUST ITS SIZE ───────────
+// The first version of this read his "5/8 copper with 1/2" insulation and
+// below" as a rule about SIZE, and applied it to anything 5/8 or smaller
+// whatever the line was doing. Corrected by the mechanic:
+//
+//   "Low temp is always 1" insulation no matter the size on the suction.
+//    Liquid line is still 1/2"."
+//
+// So there are three cases, and size only decides one of them:
+//
+//   low temp suction    1"     always, at every size
+//   liquid              1/2"   always  (medium-temp liquid is not insulated
+//                                       at all, so it never reaches here)
+//   medium temp suction 1/2" at 5/8 and below, 3/4" above
+//
+// What this changes from the size-only reading: a small low-temp suction line
+// was getting 1/2" and a 2" saddle, and takes 1" and a 3". A low-temp liquid
+// line above 5/8 was getting 1" and is 1/2".
+export const SMALL_LINE_MAX_OD = 0.625;   // 5/8 and below, medium-temp suction
+export const INSULATION_WALL = { small: 0.5, medium: 0.75, low: 1, liquid: 0.5 };
 // Finished outside diameter at or under `maxOd` takes `size`; past the last
 // one, the largest saddle.
 export const SADDLE_BREAKS = [
@@ -191,20 +209,39 @@ export function copperOd(size) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-export function insulationWall(size, tempType) {
+export function insulationWall(size, tempType, role = 'suction') {
   const od = copperOd(size);
   if (!(od > 0)) return 0;
-  if (od <= SMALL_LINE_MAX_OD) return INSULATION_WALL.small;
-  return tempType === 'low' ? INSULATION_WALL.low : INSULATION_WALL.medium;
+  if (role === 'liquid') return INSULATION_WALL.liquid;
+  if (tempType === 'low') return INSULATION_WALL.low;
+  return od <= SMALL_LINE_MAX_OD ? INSULATION_WALL.small : INSULATION_WALL.medium;
 }
 
 // → 2 | 3 | 4 | 5, or 0 when the copper size cannot be read.
-export function saddleSizeFor(size, tempType) {
+export function saddleSizeFor(size, tempType, role = 'suction') {
   const od = copperOd(size);
   if (!(od > 0)) return 0;
-  const finished = od + 2 * insulationWall(size, tempType);
+  const finished = od + 2 * insulationWall(size, tempType, role);
   for (const b of SADDLE_BREAKS) if (finished <= b.maxOd + 1e-9) return b.size;
   return LARGEST_SADDLE;
+}
+
+// ── WHAT A SADDLE COSTS ──────────────────────────────────────────────────────
+// "let's start at $2 for the 2" and go up a dollar for each inch."
+//
+// This was one flat $3.00 for every saddle on the job, which was survivable
+// while the line was named after the copper and nobody could tell the sizes
+// apart. Now that a store generates 2" through 5" lines separately, charging
+// the same for all of them is a visible error rather than a hidden one.
+export const SMALLEST_SADDLE = 2;
+export const SADDLE_BASE_PRICE = 2;
+export const SADDLE_PRICE_PER_INCH = 1;
+export const SADDLE_SIZES = [2, 3, 4, 5];
+
+export function saddlePrice(saddleSize) {
+  const n = Number(saddleSize) || 0;
+  if (!(n >= SMALLEST_SADDLE)) return 0;
+  return SADDLE_BASE_PRICE + (n - SMALLEST_SADDLE) * SADDLE_PRICE_PER_INCH;
 }
 
 // Saddles, which DO calculate. One per pipe per support point over every
@@ -225,22 +262,25 @@ export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, norm
     if (c?.inFloor) continue;
     const run = parseFloat(c?.runLength) || 0;
     if (run <= 0) continue;
-    const add = (size, tempType) => {
+    const add = (size, tempType, role) => {
       if (!size) return;
       // 0 means the size could not be read. It is NOT dropped: a line that
       // exists and cannot be sized is a thing the estimator has to see, and
       // the old version at least printed the raw string. It groups under a
       // saddle size of 0 and the caller says so on the line.
-      const saddle = saddleSizeFor(size, tempType);
+      const saddle = saddleSizeFor(size, tempType, role);
       const e = bySaddle.get(saddle)
         || { saddleSize: saddle, ft: 0, covers: new Set() };
       e.ft += run;
-      e.covers.add(`${normalize(size)}" ${tempType === 'low' ? 'LT' : 'MT'}`);
+      // The ROLE is on the label because it is now half the sizing: the same
+      // 7/8 in the same circuit takes a different saddle as suction than as
+      // liquid, and a line reading only "7/8 LT" could not be checked.
+      e.covers.add(`${normalize(size)}" ${tempType === 'low' ? 'LT' : 'MT'} ${role}`);
       bySaddle.set(saddle, e);
     };
-    add(c.sucHoriz, c.tempType);
+    add(c.sucHoriz, c.tempType, 'suction');
     // Medium-temp liquid is not insulated, so it carries no saddle.
-    if (c.tempType === 'low') add(c.liqHoriz, c.tempType);
+    if (c.tempType === 'low') add(c.liqHoriz, c.tempType, 'liquid');
   }
   return [...bySaddle.values()]
     .sort((a, b) => a.saddleSize - b.saddleSize)
