@@ -130,3 +130,39 @@ describe('the overtime multiplier can be cleared', () => {
     expect(crewDayCost(men, { otMult: 1.5, otAfterHours: 8 })).toBe(1100);
   });
 });
+
+// ── THE SHOP'S OWN RULE ──────────────────────────────────────────────────────
+// "We pay overtime after 40 in a week."
+//
+// That is a fact about the agreement, not about the store being bid. It was
+// living on individual labor PERIODS, so it was re-decided on every job —
+// usually by leaving it alone — and otMult was hardcoded to 1 when a period
+// was created. A 1x multiplier splits the hours into straight and overtime and
+// then prices both halves the same, so a shop that never touched it had
+// overtime machinery that could not move a total.
+describe('once the shop has said which rule it pays', () => {
+  const FOUR_TEN = { daysPerWeek: 4, otAfterHours: 0, weeklyOtHours: 40, otMult: 1.5 };
+
+  it('stops asking about the other one', () => {
+    // The card is right and it has been answered. Repeating it on every job
+    // after that is how a real warning stops being read.
+    expect(otRuleGap(crew(4, 10), { ...FOUR_TEN, shopBasis: 'weekly' })).toBeNull();
+  });
+
+  it('still asks when the shop has said nothing', () => {
+    expect(otRuleGap(crew(4, 10), FOUR_TEN)).toBeTruthy();
+    expect(otRuleGap(crew(4, 10), { ...FOUR_TEN, shopBasis: '' })).toBeTruthy();
+  });
+
+  it('still speaks when the job is set to a rule the shop does NOT pay', () => {
+    // Shop pays weekly; this job has a daily threshold and no weekly one. The
+    // gap is real and pointing the other way.
+    const daily = { daysPerWeek: 6, otAfterHours: 8, weeklyOtHours: 0, otMult: 1.5 };
+    expect(otRuleGap(crew(3, 8), { ...daily, shopBasis: 'weekly' })).toBeTruthy();
+  });
+
+  it('still speaks to a shop that pays BOTH about the half that is missing', () => {
+    // 'both' matches neither single rule, deliberately.
+    expect(otRuleGap(crew(4, 10), { ...FOUR_TEN, shopBasis: 'both' })).toBeTruthy();
+  });
+});

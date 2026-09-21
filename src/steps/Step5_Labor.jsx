@@ -5,7 +5,7 @@ import { Btn, Card, SLabel, Input, Row, Col, Divider, TblInput, TblArea, EmptySt
 import CrewBuilder from '../components/CrewBuilder.jsx';
 import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
-import { hasCompanyDefaults } from '../state/companyDefaults.js';
+import { hasCompanyDefaults, companyOtRule, OT_RULE_KEY } from '../state/companyDefaults.js';
 import { fieldValue, fieldNumber } from '../state/numberField.js';
 import { ootIsItemised, ootBreakdown, ootLines, newOotRates } from '../components/outOfTown.js';
 import {
@@ -1137,7 +1137,11 @@ export default function Step5_Labor({ onNext, onBack }) {
         crew: preset ? preset.crew.map(m => ({ id: uid(), role: m.role, rate: m.rate, hrsPerDay: 8 })) : [],
         days: 0,
         isNight: preset ? preset.isNight : false,
+        // The SHOP's overtime rule, if it has told us one. Hardcoding otMult
+        // to 1 here is what made every new period price overtime at straight
+        // time, on every job, until somebody noticed.
         otMult: 1,
+        ...companyOtRule(loadCompanyProfile()),
         // The SHOP's night premium, not the app's. Still editable per period —
         // a Sunday changeover is not a Tuesday night.
         nightMult: parseFloat(state.nightPremium) || 1.5,
@@ -1215,6 +1219,10 @@ export default function Step5_Labor({ onNext, onBack }) {
       otAfterHours: flat.otAfterHours,
       weeklyOtHours: flat.weeklyOtHours,
       otMult: flat.otMult,
+      // The shop has said which rule it pays. Asking about the other one on
+      // every job after that is noise, and noise is how a real warning stops
+      // being read.
+      shopBasis: loadCompanyProfile()[OT_RULE_KEY]?.basis,
     })
     : null;
 

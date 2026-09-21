@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { reducer, initialState, DELETED_TRAIL_MAX, defaultHardwarePrice } from './store.js';
+import {
+  captureOtRule, companyOtRule, captureCompanyDefaults, hasCompanyDefaults,
+  describeCompanyDefaults, OT_RULE_KEY,
+} from './companyDefaults.js';
 
 // ── "if you delete a material and didn't mean to how can you get it back" ────
 // You could not. The × removed the row and that was the end of it.
@@ -119,5 +123,69 @@ describe('the shipped default price for a saddle', () => {
     // match. Anything else matching "2\"" must not have been caught by them.
     expect(defaultHardwarePrice('Unistrut')).toBe(25);
     expect(defaultHardwarePrice('3/8" All-Thread Rod')).toBe(8);
+  });
+});
+
+// ── THE SHOP'S OVERTIME RULE IS A SHOP FACT ──────────────────────────────────
+describe('capturing and seeding the overtime rule', () => {
+  it('reads the weekly rule off a job set up correctly', () => {
+    const r = captureOtRule({ laborMode: 'flat', flatJob: { weeklyOtHours: 40, otMult: 1.5 } });
+    expect(r).toEqual({ basis: 'weekly', afterHours: 0, weeklyHours: 40, mult: 1.5 });
+  });
+
+  it('reads a daily rule, and both together', () => {
+    expect(captureOtRule({ laborMode: 'flat', flatJob: { otAfterHours: 8, otMult: 1.5 } }).basis).toBe('daily');
+    const both = captureOtRule({ laborMode: 'flat', flatJob: { otAfterHours: 8, weeklyOtHours: 40, otMult: 2 } });
+    expect(both.basis).toBe('both');
+    expect(both.afterHours).toBe(8);
+    expect(both.weeklyHours).toBe(40);
+  });
+
+  it('takes it off the first labor period when the job is not flat', () => {
+    const r = captureOtRule({ laborPeriods: [{ weeklyOtHours: 40, otMult: 1.5 }] });
+    expect(r.basis).toBe('weekly');
+  });
+
+  it('stores nothing when no threshold is set', () => {
+    // Capturing here would store "this shop pays no overtime", which is a
+    // claim nobody made.
+    expect(captureOtRule({ laborMode: 'flat', flatJob: { otMult: 1.5 } })).toBeNull();
+    expect(captureOtRule({})).toBeNull();
+  });
+
+  it('refuses to store a 1x multiplier as the shop premium', () => {
+    // 1 is the hardcoded default nobody chose. Saving it would make the shop's
+    // stored rule the bug — every future job seeded to price overtime at
+    // straight time, and this time on purpose.
+    expect(captureOtRule({ laborMode: 'flat', flatJob: { weeklyOtHours: 40, otMult: 1 } }).mult).toBe(0);
+    expect(companyOtRule({ otRule: { basis: 'weekly', weeklyHours: 40, mult: 0 } }))
+      .toEqual({ weeklyOtHours: 40 });
+  });
+
+  it('seeds a new period or flat job with it', () => {
+    expect(companyOtRule({ otRule: { basis: 'weekly', afterHours: 0, weeklyHours: 40, mult: 1.5 } }))
+      .toEqual({ weeklyOtHours: 40, otMult: 1.5 });
+    expect(companyOtRule({})).toEqual({});
+  });
+
+  it('is carried by the save-my-numbers button', () => {
+    const captured = captureCompanyDefaults(
+      { laborMode: 'flat', flatJob: { weeklyOtHours: 40, otMult: 1.5 }, markupPct: 20 }, [],
+    );
+    expect(captured[OT_RULE_KEY].basis).toBe('weekly');
+    expect(hasCompanyDefaults({ [OT_RULE_KEY]: { basis: 'weekly' } })).toBe(true);
+  });
+
+  it('says so on the settings card, premium and all', () => {
+    const lines = describeCompanyDefaults({ [OT_RULE_KEY]: { basis: 'weekly', weeklyHours: 40, mult: 1.5 } });
+    expect(lines.join(' ')).toMatch(/overtime past 40 in a week at 1\.5×/);
+  });
+
+  it('says plainly when a stored rule has no premium on it', () => {
+    // The silent failure: a rule that splits the hours and prices both halves
+    // the same. "1×" would read as a setting; "NO premium set" reads as a job
+    // to do.
+    const lines = describeCompanyDefaults({ [OT_RULE_KEY]: { basis: 'weekly', weeklyHours: 40, mult: 0 } });
+    expect(lines.join(' ')).toMatch(/NO premium set/);
   });
 });

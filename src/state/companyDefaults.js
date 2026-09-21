@@ -81,6 +81,56 @@ export const CREW_KEY = 'standardCrew';
 // manHoursJob.rate, so it is handled explicitly the way the crew is.
 export const MANHOUR_RATE_KEY = 'manHoursRate';
 
+// ── WHICH OVERTIME RULE THIS SHOP PAYS ───────────────────────────────────────
+// "We pay overtime after 40 in a week."
+//
+// That is a fact about the shop's agreement. It does not change from store to
+// store, and it was living on individual labor PERIODS — so it was re-decided
+// on every bid, usually by leaving it alone, and the multiplier was hardcoded
+// to 1 at the moment a period was created. A 1x multiplier splits the hours
+// into straight and overtime and then prices both halves the same, so a shop
+// that never touched it had overtime machinery that could not move a total.
+//
+// Kept OUT of COMPANY_DEFAULT_KEYS for the same reason the crew is: those are
+// keys that map one-to-one onto a top-level job field, and a test holds them
+// to it. This one maps into a labor period and into flatJob, so it seeds
+// explicitly.
+//
+// BOTH thresholds can be set at once — a state with a daily rule stacking on
+// top of the federal weekly one — so the basis has three values, not two.
+export const OT_RULE_KEY = 'otRule';
+
+export function captureOtRule(state = {}) {
+  const unit = state.laborMode === 'flat'
+    ? (state.flatJob || {})
+    : ((state.laborPeriods || [])[0] || {});
+  const daily = parseFloat(unit.otAfterHours) || 0;
+  const weekly = parseFloat(unit.weeklyOtHours) || 0;
+  const mult = parseFloat(unit.otMult) || 0;
+  // Nothing set is not a rule. Capturing it would store "this shop pays no
+  // overtime", which is a claim nobody made.
+  if (!(daily > 0) && !(weekly > 0)) return null;
+  return {
+    basis: daily > 0 && weekly > 0 ? 'both' : (daily > 0 ? 'daily' : 'weekly'),
+    afterHours: daily > 0 ? daily : 0,
+    weeklyHours: weekly > 0 ? weekly : 0,
+    // Only a real premium is stored. A 1 here is the hardcoded default nobody
+    // chose, and storing it would make the shop's saved rule the bug.
+    mult: mult > 1 ? mult : 0,
+  };
+}
+
+// The fields to seed onto a NEW labor period or flat job.
+export function companyOtRule(profile = {}) {
+  const r = profile[OT_RULE_KEY];
+  if (!r) return {};
+  const out = {};
+  if (Number(r.afterHours) > 0) out.otAfterHours = Number(r.afterHours);
+  if (Number(r.weeklyHours) > 0) out.weeklyOtHours = Number(r.weeklyHours);
+  if (Number(r.mult) > 1) out.otMult = Number(r.mult);
+  return out;
+}
+
 // ── THE PART OF `rates` THE SHOP OWNS ────────────────────────────────────────
 // state.rates was left out of the shop profile entirely, and it is three
 // different kinds of thing wearing one name:
@@ -129,6 +179,8 @@ export function captureCompanyDefaults(state = {}, crew = []) {
     if (isSet(state.rates?.[k])) rates[k] = state.rates[k];
   }
   if (Object.keys(rates).length) out.rates = rates;
+  const ot = captureOtRule(state);
+  if (ot) out[OT_RULE_KEY] = ot;
   // Roles and rates carry; ids do not — a new job mints its own.
   const list = (crew || []).filter(m => m && isSet(m.role));
   if (list.length) {
@@ -165,6 +217,7 @@ export function companyDefaultPatch(profile = {}, baseRates = {}) {
 export function hasCompanyDefaults(profile = {}) {
   return COMPANY_DEFAULT_KEYS.some(k => isSet(profile[k]))
     || (profile[CREW_KEY] || []).length > 0
+    || !!profile[OT_RULE_KEY]
     || Object.keys(profile.rates || {}).length > 0;
 }
 
@@ -223,6 +276,15 @@ export function describeCompanyDefaults(profile = {}) {
   if (isSet(profile.unitsBasis)) {
     const words = { new: 'ground-up', closed: 'closed-store remodel', live: 'live-store remodel' };
     out.push(`labor units measured on ${words[profile.unitsBasis] || profile.unitsBasis} work`);
+  }
+  const ot = profile[OT_RULE_KEY];
+  if (ot) {
+    const parts = [];
+    if (Number(ot.weeklyHours) > 0) parts.push(`past ${ot.weeklyHours} in a week`);
+    if (Number(ot.afterHours) > 0) parts.push(`past ${ot.afterHours} in a day`);
+    // The multiplier is said even when it is missing, because a stored rule
+    // with no premium is the one that quietly prices overtime at straight time.
+    out.push(`overtime ${parts.join(' and ')} at ${Number(ot.mult) > 1 ? `${ot.mult}×` : 'NO premium set'}`);
   }
   const r = profile.rates || {};
   if (isSet(r.wasteFactor)) out.push(`${r.wasteFactor}% waste`);
