@@ -6,8 +6,8 @@
 // and the bill arrived here. It took `max_tokens` from the caller too, so the
 // size of each of those requests was theirs to choose.
 //
-// The invite gate did not help. VITE_INVITE_ONLY is a browser variable and the
-// gate is a React component: it hides the wizard from somebody who loads the
+// The account wall in front of the app does not help. It is a React component
+// deciding what to render: it hides the wizard from somebody who loads the
 // site, and does nothing whatever about a direct POST to /api/.
 //
 // So: a valid signed-in user, checked against Supabase, on every endpoint that
