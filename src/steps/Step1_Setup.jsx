@@ -23,7 +23,8 @@ import { dedupeFlags } from '../components/flagDedupe.js';
 import { resolveCoverageFlags } from '../components/flagCoverage.js';
 import { resolveHvacPartCounts, tallyNote, cfmNote } from '../components/sheetOverlap.js';
 import { missingSizeNote } from '../api/runEvidence.js';
-import { rememberFile } from '../api/fileCache.js';
+import { rememberFile, loadCachedFile } from '../api/fileCache.js';
+import { resolveFile, missingFileNote } from '../components/fileResolve.js';
 import { filesToAnalyze, fileStatusOf, analyzedFiles } from '../components/analyzeQueue.js';
 import { triageFlags } from '../components/flagTriage.js';
 import { parseDuctDesc, linearDeviceFt } from '../components/ductwork.js';
@@ -491,10 +492,22 @@ export default function Step1_Setup({ onNext }) {
     // per-file passes (client sums counts and keeps the per-screenshot tally).
     const hvacGroupIds = new Set();
     if (isHvacTrade(state.mode)) {
-      const groupEntries = modeFiles
-        .filter(f => f.type === 'image')
-        .map(f => ({ meta: f, file: fileObjects.current[f.id] }))
-        .filter(x => x.file);
+      // ── THE RELOAD BIT HERE TOO, AND IT FAILS WORSE ─────────────────────
+      // This read fileObjects.current directly, so after a reload every entry
+      // filtered out, the group came back empty, and the combined read simply
+      // did not happen. No error — each screenshot went through the per-file
+      // loop below instead, which ADDS the counts where the shots overlap.
+      // A missing file at least announces itself; this one hands back a
+      // takeoff that is quietly too big.
+      const groupEntries = (await Promise.all(
+        modeFiles
+          .filter(f => f.type === 'image')
+          .map(async f => {
+            const file = await resolveFile(f, fileObjects.current[f.id], loadCachedFile);
+            if (file && !fileObjects.current[f.id]) fileObjects.current[f.id] = file;
+            return { meta: f, file };
+          }),
+      )).filter(x => x.file);
       if (groupEntries.length > 1) {
         groupEntries.forEach(x => { hvacGroupIds.add(x.meta.id); });
         setFileStatuses(prev => ({ ...prev, ...Object.fromEntries(groupEntries.map(x => [x.meta.id, 'analyzing'])) }));
@@ -536,11 +549,15 @@ export default function Step1_Setup({ onNext }) {
       if (hvacGroupIds.has(fileMeta.id)) continue;
       setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'analyzing' }));
 
-      // Get actual File object from ref. The pasted-text entry has no File —
-      // its content is already in hand.
-      const file = fileMeta.type === 'pastedText' ? null : fileObjects.current[fileMeta.id];
+      // The File object from this session's ref — and, when that is empty,
+      // off the device. A ref does not survive a reload, and every sheet
+      // used to report itself missing while its blob sat in IndexedDB where
+      // the upload put it. See components/fileResolve.js.
+      const file = await resolveFile(fileMeta, fileObjects.current[fileMeta.id], loadCachedFile);
+      // Put it back so a second pass in this session does not hit the disk.
+      if (file && !fileObjects.current[fileMeta.id]) fileObjects.current[fileMeta.id] = file;
       if (!file && fileMeta.type !== 'pastedText') {
-        newResults.push(`❌ ${fileMeta.name}: File not found — please re-upload`);
+        newResults.push(`❌ ${missingFileNote(fileMeta.name)}`);
         setFileStatuses(prev => ({ ...prev, [fileMeta.id]: 'error' }));
         continue;
       }
