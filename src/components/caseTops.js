@@ -31,8 +31,47 @@ import {
 } from './caseSizes.js';
 import { saddleSizeFor } from './hangers.js';
 
+// ── STRUT IS BOUGHT IN STICKS AND USED IN PIECES ────────────────────────────
+// "The strut on top of the cases is usually no longer than 2' or so. So it's
+//  not full sticks. We cut them down from 10' sticks. So we get 5 2' struts
+//  from one stick which is enough to pipe a 12' and 8' case."
+//
+// The 2 ft default was right, and the sentence after it corrected the
+// arithmetic. This counted FOOTAGE and divided by ten, which quietly assumes
+// the offcut from one stick can be joined to the next. It cannot — a piece is
+// a piece, and what a stick yields is how many whole ones come out of it.
+//
+// At 2 ft the two agree, which is why it looked fine: 16 pieces is 32 ft is
+// four sticks either way. At 4 ft they part company. Five pieces is 20 ft,
+// which the footage way calls two sticks — but a 10 ft stick yields two 4 ft
+// pieces and a 2 ft offcut, so five pieces takes THREE sticks. The footage
+// model under-buys by one stick on every job that cuts longer than half a
+// stick evenly divides.
+//
+// His own check on the spacing rule, worth keeping: five pieces is "enough to
+// pipe a 12' and 8' case" — 3 on the twelve and 2 on the eight.
 export const DEFAULT_STRUT_PIECE_FT = 2;
 export const STRUT_STICK_FT = 10;
+
+// How many whole pieces come out of one stick, and how many sticks a count of
+// pieces takes. A piece longer than a stick is not a cut, it is a splice, and
+// the footage answer is the right one for it.
+export function piecesPerStick(pieceFt, stickFt = STRUT_STICK_FT) {
+  const piece = Number(pieceFt) > 0 ? Number(pieceFt) : DEFAULT_STRUT_PIECE_FT;
+  const stick = Number(stickFt) > 0 ? Number(stickFt) : STRUT_STICK_FT;
+  return Math.floor(stick / piece);
+}
+
+export function strutSticks(pieces, pieceFt = DEFAULT_STRUT_PIECE_FT, stickFt = STRUT_STICK_FT) {
+  const n = Math.max(0, Math.round(Number(pieces) || 0));
+  if (!n) return 0;
+  const per = piecesPerStick(pieceFt, stickFt);
+  if (per >= 1) return Math.ceil(n / per);
+  // Longer than a whole stick: back to footage, because it is spliced anyway.
+  const piece = Number(pieceFt) > 0 ? Number(pieceFt) : DEFAULT_STRUT_PIECE_FT;
+  const stick = Number(stickFt) > 0 ? Number(stickFt) : STRUT_STICK_FT;
+  return Math.ceil((n * piece) / stick);
+}
 
 const INSUL_LABEL = {
   medSuction: 'suction, Med Temp',
@@ -141,14 +180,16 @@ export function caseTopLines(circuits = [], {
 
   if (supports > 0) {
     const piece = Number(strutPieceFt) > 0 ? Number(strutPieceFt) : DEFAULT_STRUT_PIECE_FT;
+    const per = piecesPerStick(piece);
     lines.push({
       section: 'Case Hookups', material: 'hardware',
-      desc: `Unistrut — case tops (${STRUT_STICK_FT}' sticks)`,
-      qty: Math.ceil((supports * piece) / STRUT_STICK_FT), unit: 'stick',
-      supports,
-      notes: `${supports} support(s) at ${strutSpacingFt} ft spacing across ${cases} case(s), `
-        + `${piece} ft per piece — ${basisNote}. The PIECE LENGTH is an assumption, not a `
-        + 'measurement; set it on the rates panel if your strut is cut longer or shorter.',
+      desc: `Unistrut — case tops (${STRUT_STICK_FT}' sticks, cut to ${piece} ft)`,
+      qty: strutSticks(supports, piece), unit: 'stick',
+      supports, piecesPerStick: per,
+      notes: `${supports} piece(s) at ${strutSpacingFt} ft spacing across ${cases} case(s)`
+        + (per >= 1 ? `, ${per} per stick` : ', spliced from more than one stick each')
+        + ` — ${basisNote}. Set the piece length on the rates panel if you cut them longer `
+        + 'or shorter.',
     });
   }
 

@@ -61,7 +61,7 @@ describe('the case tops on Food Lion 774 rack A', () => {
 // and no saddles at all — the second time in three days a grep has held a dead
 // branch up as working. The logic moved into components/caseTops.js so a test
 // can ask what is on the list.
-import { caseTopLines } from './caseTops.js';
+import { caseTopLines, piecesPerStick, strutSticks } from './caseTops.js';
 
 const norm = s => String(s || '').replace(/"/g, '').trim();
 const A1 = { circuitId: 'A1', caseSizeText: "8'8'12'12'12'12'", sucHoriz: '1-3/8', liqHoriz: '1/2', tempType: 'medium' };
@@ -157,14 +157,24 @@ describe('the settings a chain can change', () => {
     expect(lineFor(wide, /Unistrut — case tops/).supports).toBe(12);
   });
 
-  it('takes a different piece length', () => {
+  it('takes a different piece length, and counts PIECES not feet', () => {
+    // 16 pieces at 4 ft. By footage that is 64 ft and seven sticks; by the cut
+    // it is two whole pieces per stick and EIGHT. The footage answer leaves
+    // the job a piece short, because the 2 ft offcut off each stick cannot be
+    // joined to the next one.
     const long = caseTopLines([A1], { normalize: norm, strutPieceFt: 4 });
-    expect(lineFor(long, /Unistrut — case tops/).qty).toBe(Math.ceil((16 * 4) / 10));
+    expect(lineFor(long, /Unistrut — case tops/).qty).toBe(8);
+    expect(Math.ceil((16 * 4) / 10)).toBe(7);
   });
 
-  it('says the piece length is an assumption, because nobody gave me one', () => {
-    expect(lineFor(caseTopLines([A1], { normalize: norm }), /Unistrut/).notes)
-      .toMatch(/PIECE LENGTH is an assumption/);
+  it('says how the sticks were counted, so the number can be checked', () => {
+    // The piece length is his now, not a guess — "usually no longer than 2' or
+    // so" — so the line states the yield rather than apologising for a number
+    // nobody gave.
+    const strut = lineFor(caseTopLines([A1], { normalize: norm }), /Unistrut/);
+    expect(strut.notes).toMatch(/16 piece\(s\)/);
+    expect(strut.notes).toMatch(/5 per stick/);
+    expect(strut.notes).toMatch(/Set the piece length on the rates panel/);
   });
 
   it('says whether the case lengths came off the schedule or off a default', () => {
@@ -189,5 +199,56 @@ describe('the materials step still wires it up', () => {
   it('prices the hardware through the price book first', () => {
     expect(src).toMatch(/l\.material === 'hardware'/);
     expect(src).toMatch(/findPriceMatch\(priceBookNow, \{ desc: l\.desc \}\)/);
+  });
+});
+
+// ── STRUT IS BOUGHT IN STICKS AND USED IN PIECES ─────────────────────────────
+// "we get 5 2' struts from one stick which is enough to pipe a 12' and 8' case"
+//
+// The 2 ft default was right. The sentence after it corrected the arithmetic:
+// this was counting FOOTAGE and dividing by ten, which assumes the offcut from
+// one stick joins to the next. It does not.
+describe('how many sticks of strut', () => {
+  it('gets five 2 ft pieces out of a 10 ft stick', () => {
+    expect(piecesPerStick(2)).toBe(5);
+    expect(strutSticks(5, 2)).toBe(1);
+    expect(strutSticks(6, 2)).toBe(2);
+  });
+
+  it('agrees with his own check of the spacing rule', () => {
+    // "enough to pipe a 12' and 8' case" — 3 on the twelve, 2 on the eight.
+    const lines = caseTopLines([{ caseSizeText: "12'8'", sucHoriz: '1-1/8', tempType: 'medium' }], { normalize: norm });
+    const strut = lineFor(lines, /Unistrut — case tops/);
+    expect(strut.supports).toBe(5);
+    expect(strut.qty).toBe(1);
+  });
+
+  // ── WHERE THE OLD ARITHMETIC WAS WRONG ────────────────────────────────────
+  // At 2 ft the two models agree, which is why it looked fine. At 4 ft they do
+  // not: five pieces is 20 ft, which by footage is two sticks — but a 10 ft
+  // stick yields two 4 ft pieces and a 2 ft offcut, so five pieces takes
+  // three. The footage model under-buys.
+  it('does not assume the offcut joins to the next stick', () => {
+    expect(piecesPerStick(4)).toBe(2);
+    expect(strutSticks(5, 4)).toBe(3);
+    expect(Math.ceil((5 * 4) / 10)).toBe(2);   // what it used to say
+  });
+
+  it('handles a piece that is longer than a stick', () => {
+    // Not a cut — a splice. Footage is the right answer for that one.
+    expect(piecesPerStick(12)).toBe(0);
+    expect(strutSticks(2, 12)).toBe(3);
+  });
+
+  it('buys nothing for no pieces', () => {
+    expect(strutSticks(0, 2)).toBe(0);
+    expect(strutSticks(null, 2)).toBe(0);
+  });
+
+  it('says the yield on the line, so the count can be checked', () => {
+    const strut = lineFor(caseTopLines([A1], { normalize: norm }), /Unistrut — case tops/);
+    expect(strut.piecesPerStick).toBe(5);
+    expect(strut.notes).toMatch(/5 per stick/);
+    expect(strut.desc).toMatch(/cut to 2 ft/);
   });
 });
