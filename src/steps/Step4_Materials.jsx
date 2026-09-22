@@ -11,6 +11,7 @@ import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { SILICONE, consumableLine } from '../components/consumables.js';
+import { circuitCaseTopFeet, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
 import { filterDrierLines, SECTION as FILTER_SECTION } from '../components/filtersDriers.js';
 
 // Sections the price autofill covers. See where it is used for what happens
@@ -1113,6 +1114,8 @@ export default function Step4_Materials({ onNext, onBack }) {
     // once, rather than riding inside each circuit's run length — which on a
     // thirty-circuit loop would buy thirty headers.
     const insulMedLiquid = insulatesMedLiquid(rates);
+    // Off means the run lengths on this job already carry the case tops.
+    const caseTops = rates.caseTopCopper !== false;
     const hdr = foldHeaders(state.headers || [], normalizePipeSize, insulMedLiquid);
     Object.entries(hdr.copperBySize).forEach(([size, ft]) => {
       copperBySize[size] = (copperBySize[size] || 0) + ft;
@@ -1342,6 +1345,54 @@ export default function Step4_Materials({ onNext, onBack }) {
       items.push({ id: uid(), section: l.section, desc: l.desc, qty: l.qty, unit: l.unit,
         unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: note });
     });
+
+    // ── COPPER ALONG THE CASE TOPS ────────────────────────────────────────
+    // "there needs to be a way to add copper for piping the tops of the cases.
+    //  Generally a 12' case would need 13' for the top."
+    //
+    // Both lines run the length of the lineup, so this is asked for twice at
+    // whatever the run sizes are — the drop reduces AT the case, so the pipe
+    // across the tops is still run size.
+    //
+    // Sizes come off the Kysor Size column where the schedule has one, and
+    // fall back to the case count at the job's default case length. The line
+    // says which, because a number off the schedule and a number off a default
+    // are not worth the same.
+    if (caseTops) {
+      const topSuc = {}, topLiq = {};
+      let topBasis = '', topCases = 0;
+      state.circuits.forEach(c => {
+        if (c?.isRiserOnly) return;
+        const r = circuitCaseTopFeet(c, { defaultCaseFt: rates.caseFt ?? DEFAULT_CASE_FT });
+        if (!(r.ft > 0)) return;
+        topCases += r.cases;
+        // 'count' is the weaker basis, so it wins the label: a mixed job has
+        // to read as the least certain thing in it.
+        if (r.basis === 'count' || !topBasis) topBasis = r.basis;
+        const add = (bucket, size) => {
+          if (!size) return;
+          const k = normalizePipeSize(size);
+          bucket[k] = (bucket[k] || 0) + r.ft;
+        };
+        add(topSuc, c.sucHoriz);
+        add(topLiq, c.liqHoriz);
+      });
+      const basisNote = topBasis === 'sizes'
+        ? 'case lengths off the schedule'
+        : `no case lengths on the schedule — ${rates.caseFt ?? DEFAULT_CASE_FT} ft assumed per case`;
+      const pushTops = (bucket, label) => {
+        Object.entries(bucket).forEach(([size, ft]) => {
+          if (ft <= 0) return;
+          const rate = hpPipeRate(copperRate(size, rates).rate, state.systemType, hpMult);
+          const q = Math.ceil(ft);
+          items.push({ id: uid(), section: 'Case Hookups', desc: `${size}" ${label}`,
+            qty: q, unit: 'ft', unitCost: rate, total: q * rate, pipeSize: size, material: 'copper',
+            notes: `${topCases} case(s), each case length + ${CASE_TOP_EXTRA_FT} ft for the jog to the next — ${basisNote}` });
+        });
+      };
+      pushTops(topSuc, 'Case-top run — suction');
+      pushTops(topLiq, 'Case-top run — liquid');
+    }
 
     // Suction filters and liquid line driers. They were on no list at all —
     // not folded in elsewhere, simply absent, which on a rack job is a set of
@@ -1681,6 +1732,29 @@ export function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsM
               where is something you read off the piping drawing by walking the
               route. So it is all or nothing, and the default is all, because
               that is how the work gets bid. */}
+          {/* ── CASE TOPS ──────────────────────────────────────────────────
+              Off for a job whose run lengths were measured all the way to the
+              last case, where this would be the same pipe twice. */}
+          <div style={{ marginTop:14, padding:'10px 12px', background:colors.surface, borderRadius:8 }}>
+            <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
+              <input
+                type="checkbox"
+                checked={state.rates?.caseTopCopper !== false}
+                onChange={e => dispatch({ type:'SET_RATES_MISC', key:'caseTopCopper', value: e.target.checked })}
+                style={{ width:18, height:18, flexShrink:0, marginTop:1, accentColor:colors.green, cursor:'pointer' }}
+              />
+              <span style={{ fontSize:12, color:colors.text, lineHeight:1.5 }}>
+                Add copper for piping the case tops
+                <span style={{ display:'block', fontSize:11, color:colors.textDim, marginTop:3 }}>
+                  Suction and liquid both run the length of the lineup — each case length plus
+                  {' '}{CASE_TOP_EXTRA_FT} ft for the jog to the next one. Case lengths come off the Kysor
+                  Size column where the schedule has them, otherwise the case count at the case length
+                  above. Turn this off if your run lengths were measured all the way to the last case,
+                  or it is the same pipe twice.
+                </span>
+              </span>
+            </label>
+          </div>
           <div style={{ marginTop:14, padding:'10px 12px', background:colors.surface, borderRadius:8 }}>
             <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
               <input
