@@ -142,3 +142,47 @@ export function circuitCaseSizes(circuit = {}) {
 export function circuitSizeCheck(circuit = {}) {
   return sizesAgree(circuit.caseSizeText, circuit.caseModelText);
 }
+
+// ── THE TOPS ARE SUPPORTED, AND I ASSUMED THEY WERE NOT ─────────────────────
+// Shipped the case-top copper and its insulation on the reasoning that the
+// pipe sits on the cases and hangs off nothing. Flagged it as an assumption,
+// and it was wrong:
+//
+//   "The case tops down get saddles and unistrut. Not sure if every grocery
+//    chain does this but food lion most definitely does. I usually space the
+//    strut out 3 on 12' case 2 on 8' and below."
+//
+// Both of his numbers are one support every four feet — 12/4 is 3, 8/4 is 2 —
+// with a floor of two, because a 6 ft case still takes two and a 4 ft panel
+// cannot be held up by one. So the rule is the spacing, not a lookup of the
+// two sizes he named, and a 10 ft case or a 21 ft island lands somewhere
+// sensible instead of nowhere.
+//
+// He also said he is not sure every chain does it this way. It is a spec, like
+// the 6 ft hanger spacing that carries the same warning — so the spacing is a
+// setting, not a constant.
+export const STRUT_SPACING_FT = 4;
+export const MIN_STRUT_PER_CASE = 2;
+
+export function strutPerCase(caseFt, spacingFt = STRUT_SPACING_FT) {
+  const len = Number(caseFt);
+  if (!Number.isFinite(len) || len <= 0) return 0;
+  const spacing = Number(spacingFt) > 0 ? Number(spacingFt) : STRUT_SPACING_FT;
+  return Math.max(MIN_STRUT_PER_CASE, Math.ceil(len / spacing));
+}
+
+// Support points across a whole lineup. Each one is a piece of strut, and each
+// INSULATED line crossing it is a saddle — the same rule that holds everywhere
+// else in this app: a cradle at every point the pipe crosses a support.
+export function caseTopSupports(cases = [], spacingFt = STRUT_SPACING_FT) {
+  return (cases || []).reduce((n, len) => n + strutPerCase(len, spacingFt), 0);
+}
+
+// From whatever the takeoff knows, the same way circuitCaseTopFeet does.
+export function circuitCaseTopSupports(circuit = {}, { defaultCaseFt = 12, spacingFt = STRUT_SPACING_FT } = {}) {
+  const sizes = circuitCaseSizes(circuit).cases;
+  if (sizes.length) return caseTopSupports(sizes, spacingFt);
+  const count = Math.round(Number(circuit.caseCount) || 0);
+  if (count > 0) return count * strutPerCase(Number(defaultCaseFt) > 0 ? Number(defaultCaseFt) : 12, spacingFt);
+  return 0;
+}

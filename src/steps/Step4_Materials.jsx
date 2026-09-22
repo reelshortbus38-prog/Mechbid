@@ -11,7 +11,8 @@ import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { SILICONE, consumableLine } from '../components/consumables.js';
-import { circuitCaseTopFeet, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
+import { STRUT_SPACING_FT, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
+import { caseTopLines } from '../components/caseTops.js';
 import { filterDrierLines, SECTION as FILTER_SECTION } from '../components/filtersDriers.js';
 
 // Sections the price autofill covers. See where it is used for what happens
@@ -1309,6 +1310,9 @@ export default function Step4_Materials({ onNext, onBack }) {
         else hookupMerged.set(l.desc, { ...l });
       });
     });
+    // Read once for the whole case-hookup pass — the strut and saddles above
+    // the cases price through it, so the shop's saved prices win here too.
+    const priceBookNow = loadPriceBook();
     [...hookupMerged.values()].forEach(l => {
       // Copper stubs price off the same rate table the runs use; everything
       // else starts at 0 for the estimator to price.
@@ -1341,95 +1345,36 @@ export default function Step4_Materials({ onNext, onBack }) {
         unitCost = hpPipeRate(copperRate(l.pipeSize, rates).rate, state.systemType, hpMult);
       } else if (l.material === 'insulation' && l.pipeSize) {
         unitCost = insulRate(l.pipeSize, rates, l.insulCategory || 'medSuction').rate;
+      } else if (l.material === 'hardware') {
+        // Strut and saddles above the cases. Through findPriceMatch first, so
+        // the shop's own saved price wins — a line that priced itself on the
+        // way out of the generator would quietly override it.
+        const m = findPriceMatch(priceBookNow, { desc: l.desc });
+        unitCost = m ? (parseFloat(m.entry.price) || 0) : defaultHardwarePrice(l.desc);
       }
       items.push({ id: uid(), section: l.section, desc: l.desc, qty: l.qty, unit: l.unit,
         unitCost, total: l.qty * unitCost, pipeSize: l.pipeSize, notes: note });
     });
 
-    // ── COPPER ALONG THE CASE TOPS ────────────────────────────────────────
-    // "there needs to be a way to add copper for piping the tops of the cases.
-    //  Generally a 12' case would need 13' for the top."
+    // ── EVERYTHING ABOVE THE CASES ────────────────────────────────────────
+    // Copper, insulation, strut and saddles, built in components/caseTops.js
+    // so a test can ask what is on the list. This was twenty lines here, and a
+    // source-grep test held it up as working while the support count was
+    // short-circuited to zero.
     //
-    // Both lines run the length of the lineup, so this is asked for twice at
-    // whatever the run sizes are — the drop reduces AT the case, so the pipe
-    // across the tops is still run size.
-    //
-    // Sizes come off the Kysor Size column where the schedule has one, and
-    // fall back to the case count at the job's default case length. The line
-    // says which, because a number off the schedule and a number off a default
-    // are not worth the same.
+    // The lines come back UNPRICED and go through the same pricer as every
+    // other case-hookup line below, so the shop's price book beats the shipped
+    // defaults here exactly as it does everywhere else.
     if (caseTops) {
-      const topSuc = {}, topLiq = {};
-      // Insulation on the same footage, bucketed by size AND category — the
-      // wall depends on the circuit's temperature, so two circuits at one pipe
-      // size do not necessarily share a line.
-      const topInsul = new Map();   // `${category}|${size}` → ft
-      let topBasis = '', topCases = 0;
-      state.circuits.forEach(c => {
-        if (c?.isRiserOnly) return;
-        const r = circuitCaseTopFeet(c, { defaultCaseFt: rates.caseFt ?? DEFAULT_CASE_FT });
-        if (!(r.ft > 0)) return;
-        topCases += r.cases;
-        // 'count' is the weaker basis, so it wins the label: a mixed job has
-        // to read as the least certain thing in it.
-        if (r.basis === 'count' || !topBasis) topBasis = r.basis;
-        const add = (bucket, size) => {
-          if (!size) return;
-          const k = normalizePipeSize(size);
-          bucket[k] = (bucket[k] || 0) + r.ft;
-        };
-        add(topSuc, c.sucHoriz);
-        add(topLiq, c.liqHoriz);
-
-        // ── AND THE INSULATION ON IT ────────────────────────────────────────
-        // Shipped the copper without this. The case-top run is the same pipe
-        // at the same temperature as the run it came off, so it is insulated
-        // exactly like it — and like the drop below it, which has carried its
-        // own insulation line all along. 70 ft of bare suction on one circuit.
-        const addInsul = (size, category) => {
-          if (!size || !category) return;
-          const key = `${category}|${normalizePipeSize(size)}`;
-          topInsul.set(key, (topInsul.get(key) || 0) + r.ft);
-        };
-        const isLow = c.tempType === 'low';
-        addInsul(c.sucHoriz, isLow ? 'lowSuction' : 'medSuction');
-        // Liquid follows the same rule the runs follow: low temp always,
-        // medium temp when this job insulates it.
-        if (isLow) addInsul(c.liqHoriz, 'lowLiquid');
-        else if (insulMedLiquid) addInsul(c.liqHoriz, MED_LIQUID_INSUL_CATEGORY);
-      });
-      const basisNote = topBasis === 'sizes'
-        ? 'case lengths off the schedule'
-        : `no case lengths on the schedule — ${rates.caseFt ?? DEFAULT_CASE_FT} ft assumed per case`;
-      const pushTops = (bucket, label) => {
-        Object.entries(bucket).forEach(([size, ft]) => {
-          if (ft <= 0) return;
-          const rate = hpPipeRate(copperRate(size, rates).rate, state.systemType, hpMult);
-          const q = Math.ceil(ft);
-          items.push({ id: uid(), section: 'Case Hookups', desc: `${size}" ${label}`,
-            qty: q, unit: 'ft', unitCost: rate, total: q * rate, pipeSize: size, material: 'copper',
-            notes: `${topCases} case(s), each case length + ${CASE_TOP_EXTRA_FT} ft for the jog to the next — ${basisNote}` });
-        });
-      };
-      pushTops(topSuc, 'Case-top run — suction');
-      pushTops(topLiq, 'Case-top run — liquid');
-
-      const INSUL_TOP_LABEL = {
-        medSuction: `Case-top insulation — suction, Med Temp (${INSUL_WALL.medSuction} wall)`,
-        lowSuction: `Case-top insulation — suction, Low Temp (${INSUL_WALL.lowSuction} wall)`,
-        lowLiquid: `Case-top insulation — liquid (${INSUL_WALL.lowLiquid} wall)`,
-      };
-      [...topInsul.entries()].forEach(([key, ft]) => {
-        if (ft <= 0) return;
-        const [category, size] = key.split('|');
-        const rate = insulRate(size, rates, category).rate;
-        const q = Math.ceil(ft);
-        items.push({ id: uid(), section: 'Case Hookups',
-          desc: `${size}" ${INSUL_TOP_LABEL[category] || INSUL_CATEGORY_LABEL[category]}`,
-          qty: q, unit: 'ft', unitCost: rate, total: q * rate,
-          pipeSize: size, material: 'insulation', insulCategory: category,
-          notes: `the tops are insulated at the circuit temperature, same as the run they came off — ${basisNote}` });
-      });
+      caseTopLines(state.circuits, {
+        normalize: normalizePipeSize,
+        defaultCaseFt: rates.caseFt ?? DEFAULT_CASE_FT,
+        strutSpacingFt: rates.caseTopStrutFt ?? STRUT_SPACING_FT,
+        strutPieceFt: rates.caseTopStrutPieceFt,
+        insulMedLiquid,
+        medLiquidCategory: MED_LIQUID_INSUL_CATEGORY,
+        insulWall: INSUL_WALL,
+      }).forEach(l => hookupMerged.set(l.desc, { ...l }));
     }
 
     // Suction filters and liquid line driers. They were on no list at all —
