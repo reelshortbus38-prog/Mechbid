@@ -115,3 +115,52 @@ describe('the endpoint hands out the column without reading it', () => {
     expect(api).not.toMatch(/parseCaseSizes|sizesAgree/);
   });
 });
+
+// ── THE RUNS STOP AT THE CASE ────────────────────────────────────────────────
+// Asked whether the BPR run lengths already carry the case tops, because if
+// they did, generating this would buy the same pipe twice. From the mechanic:
+//
+//   "The main run goes to the case but there's nothing for the tops of the
+//    cases or any piping beyond the drop."
+//
+// So the tops are additive, the default is right — and the same sentence says
+// there is nothing for ANY piping past the drop, which is what caught the
+// insulation missing off the line that had just shipped.
+describe('insulation on the case-top run', () => {
+  const src = readFileSync(new URL('../steps/Step4_Materials.jsx', import.meta.url), 'utf8');
+
+  it('exists at all, which it did not when the copper shipped', () => {
+    // The drop below it has carried its own insulation line all along. The run
+    // across the tops is the same pipe at the same temperature and went bare.
+    expect(src).toMatch(/Case-top insulation — suction, Med Temp/);
+    expect(src).toMatch(/Case-top insulation — suction, Low Temp/);
+    expect(src).toMatch(/Case-top insulation — liquid/);
+  });
+
+  it('takes the wall from the circuit temperature, not a fixed one', () => {
+    expect(src).toMatch(/addInsul\(c\.sucHoriz, isLow \? 'lowSuction' : 'medSuction'\)/);
+  });
+
+  it('follows the job on medium-temp liquid, same as the runs do', () => {
+    expect(src).toMatch(/if \(isLow\) addInsul\(c\.liqHoriz, 'lowLiquid'\)/);
+    expect(src).toMatch(/else if \(insulMedLiquid\) addInsul\(c\.liqHoriz, MED_LIQUID_INSUL_CATEGORY\)/);
+  });
+
+  // Two circuits at the same pipe size and different temperatures take
+  // different walls at different prices. Bucketing on size alone would put
+  // them on one line and charge one of the two walls for both.
+  it('buckets on temperature as well as size', () => {
+    expect(src).toMatch(/const topInsul = new Map\(\)/);
+    expect(src).toMatch(/const key = `\$\{category\}\|\$\{normalizePipeSize\(size\)\}`/);
+  });
+
+  it('is priced off the insulation table, not left at zero', () => {
+    expect(src).toMatch(/const rate = insulRate\(size, rates, category\)\.rate/);
+  });
+
+  it('is tagged so the pricer can see it, like every other sized line', () => {
+    // The case drops priced at $0 for a year because nothing said what they
+    // were made of.
+    expect(src).toMatch(/material: 'insulation', insulCategory: category/);
+  });
+});

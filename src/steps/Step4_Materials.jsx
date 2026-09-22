@@ -1360,6 +1360,10 @@ export default function Step4_Materials({ onNext, onBack }) {
     // are not worth the same.
     if (caseTops) {
       const topSuc = {}, topLiq = {};
+      // Insulation on the same footage, bucketed by size AND category — the
+      // wall depends on the circuit's temperature, so two circuits at one pipe
+      // size do not necessarily share a line.
+      const topInsul = new Map();   // `${category}|${size}` → ft
       let topBasis = '', topCases = 0;
       state.circuits.forEach(c => {
         if (c?.isRiserOnly) return;
@@ -1376,6 +1380,23 @@ export default function Step4_Materials({ onNext, onBack }) {
         };
         add(topSuc, c.sucHoriz);
         add(topLiq, c.liqHoriz);
+
+        // ── AND THE INSULATION ON IT ────────────────────────────────────────
+        // Shipped the copper without this. The case-top run is the same pipe
+        // at the same temperature as the run it came off, so it is insulated
+        // exactly like it — and like the drop below it, which has carried its
+        // own insulation line all along. 70 ft of bare suction on one circuit.
+        const addInsul = (size, category) => {
+          if (!size || !category) return;
+          const key = `${category}|${normalizePipeSize(size)}`;
+          topInsul.set(key, (topInsul.get(key) || 0) + r.ft);
+        };
+        const isLow = c.tempType === 'low';
+        addInsul(c.sucHoriz, isLow ? 'lowSuction' : 'medSuction');
+        // Liquid follows the same rule the runs follow: low temp always,
+        // medium temp when this job insulates it.
+        if (isLow) addInsul(c.liqHoriz, 'lowLiquid');
+        else if (insulMedLiquid) addInsul(c.liqHoriz, MED_LIQUID_INSUL_CATEGORY);
       });
       const basisNote = topBasis === 'sizes'
         ? 'case lengths off the schedule'
@@ -1392,6 +1413,23 @@ export default function Step4_Materials({ onNext, onBack }) {
       };
       pushTops(topSuc, 'Case-top run — suction');
       pushTops(topLiq, 'Case-top run — liquid');
+
+      const INSUL_TOP_LABEL = {
+        medSuction: `Case-top insulation — suction, Med Temp (${INSUL_WALL.medSuction} wall)`,
+        lowSuction: `Case-top insulation — suction, Low Temp (${INSUL_WALL.lowSuction} wall)`,
+        lowLiquid: `Case-top insulation — liquid (${INSUL_WALL.lowLiquid} wall)`,
+      };
+      [...topInsul.entries()].forEach(([key, ft]) => {
+        if (ft <= 0) return;
+        const [category, size] = key.split('|');
+        const rate = insulRate(size, rates, category).rate;
+        const q = Math.ceil(ft);
+        items.push({ id: uid(), section: 'Case Hookups',
+          desc: `${size}" ${INSUL_TOP_LABEL[category] || INSUL_CATEGORY_LABEL[category]}`,
+          qty: q, unit: 'ft', unitCost: rate, total: q * rate,
+          pipeSize: size, material: 'insulation', insulCategory: category,
+          notes: `the tops are insulated at the circuit temperature, same as the run they came off — ${basisNote}` });
+      });
     }
 
     // Suction filters and liquid line driers. They were on no list at all —
