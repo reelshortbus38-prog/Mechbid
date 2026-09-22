@@ -29,9 +29,16 @@ export const newHeader = (id) => ({
 
 // Which insulation bucket a header belongs in, or null for the one combination
 // that does not get insulated at all.
-export function headerInsulCategory(header = {}) {
+// `medLiquid` says whether medium-temp liquid is insulated on this job. It is
+// a LOCATION question — unconditioned space needs it, conditioned space does
+// not — and a header fold cannot tell which it runs through, so the job-level
+// setting decides. See MED_LIQUID_INSUL_CATEGORY in state/store.js.
+export function headerInsulCategory(header = {}, medLiquid = false) {
   const low = header.tempType === 'low';
-  if (header.lineType === 'liquid') return low ? 'lowLiquid' : null;
+  if (header.lineType === 'liquid') {
+    if (low) return 'lowLiquid';
+    return medLiquid ? 'medLiquid' : null;
+  }
   return low ? 'lowSuction' : 'medSuction';
 }
 
@@ -39,11 +46,11 @@ export function headerInsulCategory(header = {}) {
 // normalize: the app's pipe-size normalizer, passed in so this module stays
 // free of store imports.
 //
-// → { copperBySize, medSucBySize, lowSucBySize, lowLiqBySize, horizFt }
+// → { copperBySize, medSucBySize, lowSucBySize, lowLiqBySize, medLiqBySize, horizFt }
 // Buckets are keyed the same way the circuit fold keys them, so a caller merges
 // rather than special-cases.
-export function foldHeaders(headers = [], normalize = (s) => String(s || '')) {
-  const copperBySize = {}, medSucBySize = {}, lowSucBySize = {}, lowLiqBySize = {};
+export function foldHeaders(headers = [], normalize = (s) => String(s || ''), medLiquid = false) {
+  const copperBySize = {}, medSucBySize = {}, lowSucBySize = {}, lowLiqBySize = {}, medLiqBySize = {};
   let horizFt = 0;
 
   for (const h of headers) {
@@ -56,13 +63,14 @@ export function foldHeaders(headers = [], normalize = (s) => String(s || '')) {
     // way a circuit's horizontal run does.
     horizFt += ft;
 
-    const cat = headerInsulCategory(h);
+    const cat = headerInsulCategory(h, medLiquid);
     if (cat === 'medSuction') medSucBySize[size] = (medSucBySize[size] || 0) + ft;
     else if (cat === 'lowSuction') lowSucBySize[size] = (lowSucBySize[size] || 0) + ft;
     else if (cat === 'lowLiquid') lowLiqBySize[size] = (lowLiqBySize[size] || 0) + ft;
+    else if (cat === 'medLiquid') medLiqBySize[size] = (medLiqBySize[size] || 0) + ft;
   }
 
-  return { copperBySize, medSucBySize, lowSucBySize, lowLiqBySize, horizFt };
+  return { copperBySize, medSucBySize, lowSucBySize, lowLiqBySize, medLiqBySize, horizFt };
 }
 
 // Merge a header bucket into a circuit bucket, in place-free fashion.

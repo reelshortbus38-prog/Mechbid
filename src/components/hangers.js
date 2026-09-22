@@ -252,7 +252,13 @@ export function saddlePrice(saddleSize) {
 // free of store imports.
 //
 // → [{ pipeSize, qty }] sorted by size, for the caller to turn into line items.
-export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, normalize = (s) => String(s || '')) {
+// `medLiquid` says whether this job insulates medium-temp liquid. A saddle
+// exists to stop a hanger crushing insulation, so an uninsulated line does not
+// take one — but that WAS hardcoded as "medium-temp liquid is never
+// insulated", which is not true: it is not insulated in conditioned space and
+// is in unconditioned space, and most shops bid all of it. The two questions
+// have to move together or the job buys insulation with nothing to hold it.
+export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, normalize = (s) => String(s || ''), medLiquid = false) {
   const spacing = normalizeSpacing(spacingFt);
   const bySaddle = new Map();
   for (const c of circuits) {
@@ -279,8 +285,9 @@ export function saddleCounts(circuits = [], spacingFt = DEFAULT_SPACING_FT, norm
       bySaddle.set(saddle, e);
     };
     add(c.sucHoriz, c.tempType, 'suction');
-    // Medium-temp liquid is not insulated, so it carries no saddle.
-    if (c.tempType === 'low') add(c.liqHoriz, c.tempType, 'liquid');
+    // Low-temp liquid is always insulated. Medium-temp liquid is insulated
+    // when the job says so, and then it needs a cradle like anything else.
+    if (c.tempType === 'low' || medLiquid) add(c.liqHoriz, c.tempType, 'liquid');
   }
   return [...bySaddle.values()]
     .sort((a, b) => a.saddleSize - b.saddleSize)

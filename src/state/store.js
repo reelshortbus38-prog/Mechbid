@@ -65,6 +65,13 @@ const DEFAULT_HW_PRICES = [
   [/pipe saddles?|insuguard/i, 3.00], // insulation cradle, each
   [/unistrut/i, 25.00],              // 1-5/8" 12ga, 10' stick
   [/all-?thread/i, 8.00],            // 3/8" rod, 10' stick
+  // Priced by the mechanic: "$1.40 each or $133.00 for a case of 100." The
+  // EACH price is the default because it is the one that cannot under-bid — a
+  // job that buys cases comes in $7 a hundred under, a job priced at the case
+  // rate and bought loose comes in over. This line had no entry at all and was
+  // landing at $0 on every bid: two per hanger, a hundred on a fifty-hanger
+  // store.
+  [/beam clamps?/i, 1.40],           // 3/8", each; cases of 100
   [/oxygen/i, 60.00],                // cylinder swap
   [/acetylene/i, 90.00],             // cylinder swap
   [/nitrogen/i, 35.00],              // cylinder swap
@@ -205,6 +212,38 @@ export const INSUL_CATEGORY_LABEL = {
   lowSuction: `Low Temp Suction (${INSUL_WALL.lowSuction} wall)`,
   lowLiquid: `Low Temp Liquid (${INSUL_WALL.lowLiquid} wall)`,
 };
+
+// ── MEDIUM-TEMP LIQUID IS A LOCATION QUESTION, NOT A TEMPERATURE ONE ────────
+// The app treated it as settled: medium-temp liquid is not insulated, full
+// stop. From the mechanic:
+//
+//   "Medium temp doesn't need insulation on liquid line in conditioned areas
+//    but does need it in unconditioned areas. I'm pretty sure we bid the job
+//    with all lines insulated anyways."
+//
+// So the honest answer depends on where each foot runs — back room against
+// sales floor — and that is a thing you read off a piping drawing by walking
+// the route, not something this takeoff can split. He asked whether it could.
+// It cannot, not reliably, and a guess at the split would be a number with a
+// decimal point and nothing behind it.
+//
+// What it CAN do is the thing the trade already does: insulate all of it. That
+// is how they bid, it is never short, and the line is editable for a shop that
+// wants to trim the conditioned footage by hand.
+//
+// DEFAULT ON, which raises a new bid against what the same job costed before.
+// That is the point — the material was being left off — but it is a change to
+// a number, so it is a setting and it says which way it goes.
+//
+// The WALL is 1/2", the same as low-temp liquid, and it prices off the same
+// table deliberately: same product, same thickness, same money. Two tables
+// holding one price is two tables that drift.
+export const MED_LIQUID_INSUL_CATEGORY = 'lowLiquid';
+export const DEFAULT_INSULATE_MED_LIQUID = true;
+
+export function insulatesMedLiquid(rates = {}) {
+  return rates?.insulateMedLiquid !== false;
+}
 
 // Elastomeric (Armaflex-type) $/ft by pipe size, for the wall named above.
 // Replaced 2026-08-19 from Virginia market pricing the estimator pulled, quoted

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { INSUL_WALL, INSUL_CATEGORY_LABEL } from '../state/store.js';
+import { INSUL_WALL, INSUL_CATEGORY_LABEL, MED_LIQUID_INSUL_CATEGORY, insulatesMedLiquid } from '../state/store.js';
 import { fittingPrice, fittingPriceForPair, fittingNote } from '../components/fittingPrices.js';
 import { useStore, uid, fmt, fmtDec, normalizePipeSize, calcLaborPeriodCost, ootOpts, calcTotalLabor, calcManHoursCost, jobLaborTotal, calcResLinesetTotal, defaultHardwarePrice, circuitCases, softCopperAvailable, SOFT_COPPER_MAX, DEFAULT_LABOR_UNITS } from '../state/store.js';
 import { computeBidTotals } from './bidTotals.js';
@@ -1112,7 +1112,8 @@ export default function Step4_Materials({ onNext, onBack }) {
     // The shared header is ONE pipe every circuit taps. It is folded in here,
     // once, rather than riding inside each circuit's run length — which on a
     // thirty-circuit loop would buy thirty headers.
-    const hdr = foldHeaders(state.headers || [], normalizePipeSize);
+    const insulMedLiquid = insulatesMedLiquid(rates);
+    const hdr = foldHeaders(state.headers || [], normalizePipeSize, insulMedLiquid);
     Object.entries(hdr.copperBySize).forEach(([size, ft]) => {
       copperBySize[size] = (copperBySize[size] || 0) + ft;
     });
@@ -1191,6 +1192,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     const medSucBySize = {};
     const lowSucBySize = {};
     const lowLiqBySize = {};
+    const medLiqBySize = {};
     state.circuits.forEach(c=>{
       const run = parseFloat(c.runLength)||0, riser = parseFloat(c.riserLength)||0;
       const isLow = c.tempType === 'low';
@@ -1206,9 +1208,12 @@ export default function Step4_Materials({ onNext, onBack }) {
       }
       addSuc(c.sucHoriz, run);
       addSuc(c.sucRiser, riser);
-      if (isLow && c.liqHoriz) {
+      if (c.liqHoriz) {
         const k = normalizePipeSize(c.liqHoriz);
-        lowLiqBySize[k] = (lowLiqBySize[k]||0) + run + riser;
+        if (isLow) lowLiqBySize[k] = (lowLiqBySize[k]||0) + run + riser;
+        // Medium-temp liquid, when the job insulates it. A location question
+        // the takeoff cannot split — see MED_LIQUID_INSUL_CATEGORY.
+        else if (insulMedLiquid) medLiqBySize[k] = (medLiqBySize[k]||0) + run + riser;
       }
     });
 
@@ -1217,6 +1222,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     Object.entries(hdr.medSucBySize).forEach(([k, v]) => { medSucBySize[k] = (medSucBySize[k]||0) + v; });
     Object.entries(hdr.lowSucBySize).forEach(([k, v]) => { lowSucBySize[k] = (lowSucBySize[k]||0) + v; });
     Object.entries(hdr.lowLiqBySize).forEach(([k, v]) => { lowLiqBySize[k] = (lowLiqBySize[k]||0) + v; });
+    Object.entries(hdr.medLiqBySize || {}).forEach(([k, v]) => { medLiqBySize[k] = (medLiqBySize[k]||0) + v; });
 
     function pushInsulLines(bySize, category, label) {
       Object.entries(bySize).forEach(([size, footage]) => {
@@ -1229,6 +1235,11 @@ export default function Step4_Materials({ onNext, onBack }) {
     pushInsulLines(medSucBySize, 'medSuction', `Suction Insulation — Med Temp (${INSUL_WALL.medSuction} wall)`);
     pushInsulLines(lowSucBySize, 'lowSuction', `Suction Insulation — Low Temp (${INSUL_WALL.lowSuction} wall)`);
     pushInsulLines(lowLiqBySize, 'lowLiquid', `Liquid Insulation — Low Temp (${INSUL_WALL.lowLiquid} wall)`);
+    // Same 1/2" wall and the same rate table as low-temp liquid, because it is
+    // the same product. The description says which line it is on, so the two
+    // never merge and either can be trimmed by hand.
+    pushInsulLines(medLiqBySize, MED_LIQUID_INSUL_CATEGORY,
+      `Liquid Insulation — Med Temp (${INSUL_WALL.lowLiquid} wall)`);
 
     // ── Hardware & consumables ────────────────────────────────────────────
     // Trapeze materials generate at ZERO and saddles calculate. See
@@ -1238,7 +1249,7 @@ export default function Step4_Materials({ onNext, onBack }) {
 
     // Named by the SADDLE, which is what gets ordered, with the copper it
     // covers spelled out so the sizing can be checked rather than trusted.
-    saddleCounts(state.circuits, spacingFt, normalizePipeSize).forEach(s => {
+    saddleCounts(state.circuits, spacingFt, normalizePipeSize, insulMedLiquid).forEach(s => {
       const covers = s.covers.join(', ');
       items.push({ id: uid(), section: 'Hardware', saddleSize: s.saddleSize, unit: 'ea',
         desc: s.saddleSize > 0
@@ -1664,6 +1675,31 @@ export function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsM
               <Input type="number" value={fieldValue(state.markupPct)} onChange={e=>dispatch({type:'SET',key:'markupPct',value:fieldNumber(e.target.value)})} style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
           </Row>
+          {/* ── MEDIUM-TEMP LIQUID ─────────────────────────────────────────
+              A location question the takeoff cannot answer: unconditioned
+              space needs it, conditioned space does not, and which foot is
+              where is something you read off the piping drawing by walking the
+              route. So it is all or nothing, and the default is all, because
+              that is how the work gets bid. */}
+          <div style={{ marginTop:14, padding:'10px 12px', background:colors.surface, borderRadius:8 }}>
+            <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
+              <input
+                type="checkbox"
+                checked={insulatesMedLiquid(state.rates)}
+                onChange={e => dispatch({ type:'SET_RATES_MISC', key:'insulateMedLiquid', value: e.target.checked })}
+                style={{ width:18, height:18, flexShrink:0, marginTop:1, accentColor:colors.green, cursor:'pointer' }}
+              />
+              <span style={{ fontSize:12, color:colors.text, lineHeight:1.5 }}>
+                Insulate medium-temp liquid lines ({INSUL_WALL.lowLiquid} wall)
+                <span style={{ display:'block', fontSize:11, color:colors.textDim, marginTop:3 }}>
+                  Medium-temp liquid needs insulation in unconditioned space and does not in conditioned
+                  space. The app cannot tell which foot runs where — that is a walk of the piping drawing —
+                  so this covers all of it or none of it. On by default, because that is how the job gets
+                  bid; trim the footage on the line if only the back room needs it.
+                </span>
+              </span>
+            </label>
+          </div>
           <Row style={{ gap:20, flexWrap:'wrap', marginTop:12 }}>
             <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:colors.text }}>
               <input type="checkbox" checked={!!state.rates?.setsTxv}
