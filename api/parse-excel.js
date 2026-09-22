@@ -673,6 +673,19 @@ function parseKysorWarren(wb, circuits, meta, allNew) {
       const evap  = parseFloat(String(row.getCell(9).value||'').replace('+',''))||0;
       const app   = String(row.getCell(7).value||row.getCell(5).value||'');
       const note  = String(row.getCell(4).value||'');
+      // ── COLUMN 2 WAS BEING SKIPPED ──────────────────────────────────────
+      // Every column around it was read and this one was not. It holds the
+      // case lengths — "8'8'12'12'12'12'" — which is what the copper along
+      // the case tops is measured from, and the only place on any document
+      // that states them. Column 3 (Model) states the same footage a second
+      // way ("64' IDD5SL").
+      //
+      // The TEXT is carried out of here and the reading happens on the client,
+      // in src/components/caseSizes.js. This file is CommonJS and that one is
+      // a module; copying the parser to both sides of that line is how two
+      // readings of the same column start disagreeing about what a lineup is.
+      const sizeText  = String(row.getCell(2).value||'');
+      const modelText = String(row.getCell(3).value||'');
 
       circuits.push({
         circuitId: circId, rack,
@@ -682,6 +695,10 @@ function parseKysorWarren(wb, circuits, meta, allNew) {
         sucHoriz: sh, sucRiser: sr, liqHoriz: lh,
         tempType: evap < 0 ? 'low' : 'medium',
         application: app, isRiserOnly: riserOnly,
+        // Read by src/components/caseSizes.js — including the walk-ins and
+        // floor areas that share this column, which it classifies out.
+        ...(sizeText ? { caseSizeText: sizeText } : {}),
+        ...(modelText ? { caseModelText: modelText } : {}),
         colorType, notes: [riserOnly ? 'RISER — new riser drop' : allNew ? 'NEW STORE — new circuit' : 'NEW CIRCUIT — new copper run', note].filter(Boolean).join(' — ')
       });
     }
