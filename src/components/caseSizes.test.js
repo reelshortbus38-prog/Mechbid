@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseCaseSizes, modelTotalFt, sizesAgree, caseTopFeet, circuitCaseTopFeet,
-  CASE_TOP_EXTRA_FT,
+  CASE_TOP_EXTRA_FT, strutPerCase, caseTopSupports, circuitCaseTopSupports,
+  STRUT_SPACING_FT, MIN_STRUT_PER_CASE,
 } from './caseSizes.js';
 
 // ── EVERY ROW HERE IS REAL ───────────────────────────────────────────────────
@@ -161,5 +162,59 @@ describe('what a circuit contributes', () => {
     const r = circuitCaseTopFeet({});
     expect(r.ft).toBe(0);
     expect(r.basis).toBe('unknown');
+  });
+});
+
+// ── "3 on 12' case 2 on 8' and below" ────────────────────────────────────────
+// The case-top copper shipped with no supports at all, on my assumption that
+// the pipe sits on the cases and hangs off nothing. It was flagged as an
+// assumption and it was wrong.
+describe('strut across the case tops', () => {
+  it('is the two numbers he gave', () => {
+    expect(strutPerCase(12)).toBe(3);
+    expect(strutPerCase(8)).toBe(2);
+  });
+
+  // ── THE RULE IS THE SPACING, NOT A LOOKUP OF HIS TWO SIZES ───────────────
+  // Both of his numbers are one support every four feet. Encoding the spacing
+  // means a 10 ft case or a 21 ft island lands somewhere sensible rather than
+  // nowhere — the same reason the saddle sizes were built as geometry.
+  it('is one support every four feet, which is what those two numbers are', () => {
+    expect(STRUT_SPACING_FT).toBe(4);
+    expect(strutPerCase(16)).toBe(4);
+    expect(strutPerCase(21)).toBe(6);
+    expect(strutPerCase(10)).toBe(3);
+  });
+
+  it('never puts fewer than two under a case', () => {
+    // "2 on 8' and below" — a 6 ft case still takes two, and a 4 ft panel
+    // cannot be held up by one.
+    expect(MIN_STRUT_PER_CASE).toBe(2);
+    for (const len of [8, 6, 4, 3, 1]) expect(strutPerCase(len), `${len} ft`).toBe(2);
+  });
+
+  it('takes a different spacing when a chain runs one', () => {
+    // "Not sure if every grocery chain does this but food lion most definitely
+    // does." A spec, like the 6 ft hanger spacing — so it is a setting.
+    expect(strutPerCase(12, 6)).toBe(2);
+    expect(strutPerCase(24, 6)).toBe(4);
+  });
+
+  it('gives nothing to a case with no length', () => {
+    for (const junk of [0, -4, null, undefined, 'x']) expect(strutPerCase(junk), String(junk)).toBe(0);
+  });
+
+  it('adds up across a lineup', () => {
+    // A1: 8'8'12'12'12'12' → 2+2+3+3+3+3
+    expect(caseTopSupports(parseCaseSizes("8'8'12'12'12'12'").cases)).toBe(16);
+  });
+
+  it('falls back to the case count at the default length', () => {
+    expect(circuitCaseTopSupports({ caseCount: 4 }, { defaultCaseFt: 12 })).toBe(12);
+    expect(circuitCaseTopSupports({ caseSizeText: "12'12'" })).toBe(6);
+  });
+
+  it('gives a walk-in none, same as it gets no copper', () => {
+    expect(circuitCaseTopSupports({ caseSizeText: "16' x 27' x 8.5'" })).toBe(0);
   });
 });

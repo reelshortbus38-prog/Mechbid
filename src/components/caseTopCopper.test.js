@@ -54,113 +54,140 @@ describe('the case tops on Food Lion 774 rack A', () => {
   });
 });
 
-describe('the materials step generates it', () => {
-  const src = readFileSync(new URL('../steps/Step4_Materials.jsx', import.meta.url), 'utf8');
+// ── BEHAVIOUR, NOT GREP ──────────────────────────────────────────────────────
+// Everything below used to be a source-grep over Step4_Materials.jsx, and a
+// grep cannot see a dead code path. Short-circuiting the support count to zero
+// left every one of those checks green while the generator produced no strut
+// and no saddles at all — the second time in three days a grep has held a dead
+// branch up as working. The logic moved into components/caseTops.js so a test
+// can ask what is on the list.
+import { caseTopLines } from './caseTops.js';
 
-  it('runs both lines down the tops, not just suction', () => {
-    expect(src).toMatch(/Case-top run — suction/);
-    expect(src).toMatch(/Case-top run — liquid/);
+const norm = s => String(s || '').replace(/"/g, '').trim();
+const A1 = { circuitId: 'A1', caseSizeText: "8'8'12'12'12'12'", sucHoriz: '1-3/8', liqHoriz: '1/2', tempType: 'medium' };
+const lineFor = (lines, re) => lines.find(l => re.test(l.desc));
+
+describe('what comes back for a lineup', () => {
+  const lines = caseTopLines([A1], { normalize: norm });
+
+  it('runs BOTH lines down the tops', () => {
+    expect(lineFor(lines, /Case-top run — suction/).qty).toBe(70);
+    expect(lineFor(lines, /Case-top run — liquid/).qty).toBe(70);
   });
 
-  it('prices it as copper off the rate table', () => {
-    expect(src).toMatch(/pushTops\(topSuc, 'Case-top run — suction'\)/);
-    expect(src).toMatch(/hpPipeRate\(copperRate\(size, rates\)\.rate/);
+  it('insulates them at the circuit temperature', () => {
+    const suc = lineFor(lines, /Case-top insulation — suction/);
+    expect(suc.insulCategory).toBe('medSuction');
+    expect(suc.qty).toBe(70);
   });
 
-  it('skips a riser-only drop, which has no lineup', () => {
-    expect(src).toMatch(/if \(c\?\.isRiserOnly\) return;[\s\S]{0,200}circuitCaseTopFeet/);
+  it('buys strut, in the sticks it comes in', () => {
+    // 8'8'12'12'12'12' → 2+2+3+3+3+3 = 16 supports, 2 ft each, 32 ft, 4 sticks.
+    const strut = lineFor(lines, /Unistrut — case tops/);
+    expect(strut.supports).toBe(16);
+    expect(strut.qty).toBe(4);
+    expect(strut.unit).toBe('stick');
   });
 
-  // The double-count this could cause, made switchable rather than argued
-  // about: a job whose run lengths were measured to the last case already has
-  // this pipe.
-  // ── THE SWITCH HAS TO REACH THE GENERATOR ────────────────────────────────
-  // The first version of this asserted /caseTopCopper !== false/ anywhere in
-  // the file — and the CHECKBOX contains that string too. Replacing the
-  // generator's read with a hardcoded `true` left the test green: the box
-  // still rendered, still toggled, still saved, and the copper generated
-  // regardless. A dead switch is worse than no switch, because somebody turns
-  // it off and believes they have.
-  it('can be turned off for a job whose runs already include it', () => {
-    expect(src, 'the generator no longer reads the setting')
-      .toMatch(/const caseTops = rates\.caseTopCopper !== false/);
-    expect(src).toMatch(/if \(caseTops\)/);
-    expect(src).toMatch(/same pipe twice/);
+  it('buys a saddle per insulated line at every support', () => {
+    // 1-3/8 MT suction → 4"; 1/2 liquid at 1/2" wall → 2". Sixteen of each.
+    expect(lineFor(lines, /^4" Pipe Saddles .* case tops/).qty).toBe(16);
+    expect(lineFor(lines, /^2" Pipe Saddles .* case tops/).qty).toBe(16);
   });
 
-  it('shows the box in the same state the generator reads', () => {
-    expect(src).toMatch(/checked=\{state\.rates\?\.caseTopCopper !== false\}/);
-  });
-
-  // A number off a schedule and a number off a default are not worth the same,
-  // and the line has to say which it is.
-  it('says on the line where the case lengths came from', () => {
-    expect(src).toMatch(/case lengths off the schedule/);
-    expect(src).toMatch(/no case lengths on the schedule/);
-  });
-});
-
-describe('the endpoint hands out the column without reading it', () => {
-  const api = readFileSync(new URL('../../api/parse-excel.js', import.meta.url), 'utf8');
-
-  it('carries the Size and Model text off the Kysor sheet', () => {
-    expect(api).toMatch(/const sizeText\s*=\s*String\(row\.getCell\(2\)\.value\|\|''\)/);
-    expect(api).toMatch(/const modelText\s*=\s*String\(row\.getCell\(3\)\.value\|\|''\)/);
-    expect(api).toMatch(/caseSizeText: sizeText/);
-  });
-
-  it('does not carry a second copy of the parser', () => {
-    // Two readings of one column, on two sides of the CommonJS line, is how
-    // they start disagreeing about what counts as a lineup.
-    expect(api).not.toMatch(/parseCaseSizes|sizesAgree/);
+  it('prices nothing itself', () => {
+    // The caller prices these through the same path as every other case-hookup
+    // line, so the shop's price book beats the shipped defaults. A line that
+    // arrives carrying a cost skips that entirely.
+    for (const l of lines) expect(l.unitCost, l.desc).toBeUndefined();
   });
 });
 
-// ── THE RUNS STOP AT THE CASE ────────────────────────────────────────────────
-// Asked whether the BPR run lengths already carry the case tops, because if
-// they did, generating this would buy the same pipe twice. From the mechanic:
-//
-//   "The main run goes to the case but there's nothing for the tops of the
-//    cases or any piping beyond the drop."
-//
-// So the tops are additive, the default is right — and the same sentence says
-// there is nothing for ANY piping past the drop, which is what caught the
-// insulation missing off the line that had just shipped.
-describe('insulation on the case-top run', () => {
+describe('what it refuses to do', () => {
+  it('gives a walk-in nothing at all', () => {
+    expect(caseTopLines([{ caseSizeText: "16' x 27' x 8.5'", sucHoriz: '1-1/8' }], { normalize: norm }))
+      .toEqual([]);
+  });
+
+  it('skips a riser-only drop, which has no lineup under it', () => {
+    const riser = { ...A1, isRiserOnly: true };
+    expect(caseTopLines([riser], { normalize: norm })).toEqual([]);
+  });
+
+  it('returns an empty list rather than empty lines when there are no cases', () => {
+    expect(caseTopLines([], { normalize: norm })).toEqual([]);
+    expect(caseTopLines([{ sucHoriz: '7/8' }], { normalize: norm })).toEqual([]);
+  });
+
+  // A saddle protects insulation. A line carrying none has nothing to protect.
+  it('does not cradle a liquid line the job leaves bare', () => {
+    const bare = caseTopLines([A1], { normalize: norm, insulMedLiquid: false });
+    expect(lineFor(bare, /Case-top insulation — liquid/)).toBeFalsy();
+    expect(lineFor(bare, /^2" Pipe Saddles/)).toBeFalsy();
+    // The suction side is untouched — it is insulated either way.
+    expect(lineFor(bare, /^4" Pipe Saddles/).qty).toBe(16);
+    expect(lineFor(bare, /Case-top run — liquid/).qty).toBe(70);
+  });
+});
+
+describe('two circuits at one size and two temperatures', () => {
+  // The mistake made twice already: bucketing insulation on size alone puts
+  // them on one line and charges one wall for both.
+  const med = { caseSizeText: "12'", sucHoriz: '1-1/8', liqHoriz: '1/2', tempType: 'medium' };
+  const low = { caseSizeText: "12'", sucHoriz: '1-1/8', liqHoriz: '1/2', tempType: 'low' };
+  const lines = caseTopLines([med, low], { normalize: norm });
+
+  it('gives them separate insulation lines', () => {
+    const cats = lines.filter(l => l.material === 'insulation' && l.pipeSize === '1-1/8')
+      .map(l => l.insulCategory).sort();
+    expect(cats).toEqual(['lowSuction', 'medSuction']);
+  });
+
+  it('still merges the copper, which does not care about temperature', () => {
+    expect(lines.filter(l => /Case-top run — suction/.test(l.desc))).toHaveLength(1);
+    expect(lineFor(lines, /Case-top run — suction/).qty).toBe(26);
+  });
+});
+
+describe('the settings a chain can change', () => {
+  it('takes a different strut spacing', () => {
+    // "Not sure if every grocery chain does this but food lion most definitely
+    // does." A spec, like the 6 ft hanger spacing.
+    const wide = caseTopLines([A1], { normalize: norm, strutSpacingFt: 6 });
+    expect(lineFor(wide, /Unistrut — case tops/).supports).toBe(12);
+  });
+
+  it('takes a different piece length', () => {
+    const long = caseTopLines([A1], { normalize: norm, strutPieceFt: 4 });
+    expect(lineFor(long, /Unistrut — case tops/).qty).toBe(Math.ceil((16 * 4) / 10));
+  });
+
+  it('says the piece length is an assumption, because nobody gave me one', () => {
+    expect(lineFor(caseTopLines([A1], { normalize: norm }), /Unistrut/).notes)
+      .toMatch(/PIECE LENGTH is an assumption/);
+  });
+
+  it('says whether the case lengths came off the schedule or off a default', () => {
+    const fromSchedule = lineFor(caseTopLines([A1], { normalize: norm }), /Case-top run — suction/);
+    expect(fromSchedule.notes).toMatch(/case lengths off the schedule/);
+    const fromCount = lineFor(
+      caseTopLines([{ caseCount: 3, sucHoriz: '7/8', tempType: 'medium' }], { normalize: norm, defaultCaseFt: 12 }),
+      /Case-top run — suction/,
+    );
+    expect(fromCount.notes).toMatch(/no case lengths on the schedule/);
+  });
+});
+
+describe('the materials step still wires it up', () => {
   const src = readFileSync(new URL('../steps/Step4_Materials.jsx', import.meta.url), 'utf8');
 
-  it('exists at all, which it did not when the copper shipped', () => {
-    // The drop below it has carried its own insulation line all along. The run
-    // across the tops is the same pipe at the same temperature and went bare.
-    expect(src).toMatch(/Case-top insulation — suction, Med Temp/);
-    expect(src).toMatch(/Case-top insulation — suction, Low Temp/);
-    expect(src).toMatch(/Case-top insulation — liquid/);
+  it('calls the module and can be switched off', () => {
+    expect(src).toMatch(/const caseTops = rates\.caseTopCopper !== false/);
+    expect(src).toMatch(/caseTopLines\(state\.circuits, \{/);
   });
 
-  it('takes the wall from the circuit temperature, not a fixed one', () => {
-    expect(src).toMatch(/addInsul\(c\.sucHoriz, isLow \? 'lowSuction' : 'medSuction'\)/);
-  });
-
-  it('follows the job on medium-temp liquid, same as the runs do', () => {
-    expect(src).toMatch(/if \(isLow\) addInsul\(c\.liqHoriz, 'lowLiquid'\)/);
-    expect(src).toMatch(/else if \(insulMedLiquid\) addInsul\(c\.liqHoriz, MED_LIQUID_INSUL_CATEGORY\)/);
-  });
-
-  // Two circuits at the same pipe size and different temperatures take
-  // different walls at different prices. Bucketing on size alone would put
-  // them on one line and charge one of the two walls for both.
-  it('buckets on temperature as well as size', () => {
-    expect(src).toMatch(/const topInsul = new Map\(\)/);
-    expect(src).toMatch(/const key = `\$\{category\}\|\$\{normalizePipeSize\(size\)\}`/);
-  });
-
-  it('is priced off the insulation table, not left at zero', () => {
-    expect(src).toMatch(/const rate = insulRate\(size, rates, category\)\.rate/);
-  });
-
-  it('is tagged so the pricer can see it, like every other sized line', () => {
-    // The case drops priced at $0 for a year because nothing said what they
-    // were made of.
-    expect(src).toMatch(/material: 'insulation', insulCategory: category/);
+  it('prices the hardware through the price book first', () => {
+    expect(src).toMatch(/l\.material === 'hardware'/);
+    expect(src).toMatch(/findPriceMatch\(priceBookNow, \{ desc: l\.desc \}\)/);
   });
 });
