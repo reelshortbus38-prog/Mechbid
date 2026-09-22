@@ -348,8 +348,10 @@ export const initialState = {
   jobFacts: [],
   rackParts: [], rackTasks: [],
   lineItems: [],
-  // Deleted material rows, newest first, so an accidental × is recoverable.
-  deletedLineItems: [],
+  // Deleted rows per list, newest first, so an accidental × is recoverable.
+  // Keyed by the state key the rows came out of — lineItems, hvacParts,
+  // resParts — because all three delete the same way.
+  deletedItems: {},
   supplyItems: [],
   fieldTasks: [],
   // Dated RC schedule items — separate from fieldTasks (which is the labor-hours
@@ -621,7 +623,7 @@ export function reducer(state, action) {
     case 'REMOVE_LABOR_PERIOD':
       return { ...state, laborPeriods: state.laborPeriods.filter(p => p.id !== action.id) };
 
-    // ── DELETING A MATERIAL IS UNDOABLE ──────────────────────────────────────
+    // ── DELETING A LINE IS UNDOABLE, ON EVERY LIST ──────────────────────────
     // "if you delete a material and didn't mean to how can you get it back
     //  without having to type it back in"
     //
@@ -631,37 +633,53 @@ export function reducer(state, action) {
     // from. Regenerating to get one row back overwrites every hand edit on the
     // list, so the recovery was worse than the mistake.
     //
-    // The removed row keeps its INDEX so undo puts it back where it was rather
-    // than at the bottom of its section, which on a hundred-line list is the
-    // difference between undo and "find it again".
+    // "For the undo button can you make sure it's also on both hvac sides."
     //
-    // Capped, and it is a trail rather than a single slot: deleting three rows
-    // and wanting the first one back is exactly when this is needed.
-    case 'REMOVE_LINE_ITEM': {
-      const items = state.lineItems || [];
-      const index = items.findIndex(i => i.id === action.id);
+    // It was on the refrigeration materials list only. Commercial HVAC parts
+    // and residential parts delete the same way and are typed BY HAND, so a
+    // mis-tap there loses work that no regenerate can rebuild at all.
+    //
+    // So the action takes the list it operates on rather than naming one. One
+    // rule, three lists, and a fourth costs a prop.
+    //
+    // The removed row keeps its INDEX so undo puts it back where it was rather
+    // than at the bottom — on a hundred-line list that is the difference
+    // between undo and "find it again".
+    //
+    // Capped, and a trail rather than a single slot: deleting three rows and
+    // wanting the first one back is exactly when this is needed.
+    case 'REMOVE_LIST_ITEM': {
+      const list = state[action.key] || [];
+      const index = list.findIndex(i => i.id === action.id);
       if (index < 0) return state;
+      const trail = (state.deletedItems || {})[action.key] || [];
       return {
         ...state,
-        lineItems: items.filter(i => i.id !== action.id),
-        deletedLineItems: [{ item: items[index], index }, ...(state.deletedLineItems || [])]
-          .slice(0, DELETED_TRAIL_MAX),
+        [action.key]: list.filter(i => i.id !== action.id),
+        deletedItems: {
+          ...(state.deletedItems || {}),
+          [action.key]: [{ item: list[index], index }, ...trail].slice(0, DELETED_TRAIL_MAX),
+        },
       };
     }
-    case 'RESTORE_LINE_ITEM': {
-      const trail = state.deletedLineItems || [];
+    case 'RESTORE_LIST_ITEM': {
+      const trail = (state.deletedItems || {})[action.key] || [];
       // Default to the most recent, which is what an undo button means.
       const at = action.at ?? 0;
       const entry = trail[at];
       if (!entry) return state;
-      const items = [...(state.lineItems || [])];
+      const list = [...(state[action.key] || [])];
       // The list has moved on since the delete, so the old index is a hint and
       // not a promise. Clamping beats throwing a row away or crashing.
-      items.splice(Math.min(entry.index, items.length), 0, entry.item);
-      return { ...state, lineItems: items, deletedLineItems: trail.filter((_, i) => i !== at) };
+      list.splice(Math.min(entry.index, list.length), 0, entry.item);
+      return {
+        ...state,
+        [action.key]: list,
+        deletedItems: { ...(state.deletedItems || {}), [action.key]: trail.filter((_, i) => i !== at) },
+      };
     }
-    case 'CLEAR_DELETED_LINE_ITEMS':
-      return { ...state, deletedLineItems: [] };
+    case 'CLEAR_DELETED_LIST':
+      return { ...state, deletedItems: { ...(state.deletedItems || {}), [action.key]: [] } };
 
     // ── WHICH FILES HAVE BEEN READ ──────────────────────────────────────────
     // This lived in component state, so it was forgotten every time the Setup

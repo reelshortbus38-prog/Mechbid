@@ -13,6 +13,7 @@ import { groupHvacParts, partGroupOf } from '../components/partGroups.js';
 import { PURCHASE_UNITS, unitFor, rowUnit } from '../components/purchaseUnits.js';
 import ChargeAdderCalc from '../components/ChargeCalc.jsx';
 import { pctOr, fieldNumber } from '../state/numberField.js';
+import UndoDelete from '../components/UndoDelete.jsx';
 
 const HVAC_EQUIP_TYPES = [
   'Rooftop Unit (RTU)',
@@ -383,7 +384,7 @@ function MiscParts() {
       <TblInput type="number" value={p.unitCost || ''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
       <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
       <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
-      <button onClick={() => dispatch({ type: 'SET', key: 'hvacParts', value: parts.filter(x => x.id !== p.id) })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+      <button onClick={() => dispatch({ type: 'REMOVE_LIST_ITEM', key: 'hvacParts', id: p.id })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
     </div>
   );
 
@@ -439,6 +440,9 @@ function MiscParts() {
           </div>
         </Card>
       )}
+      {/* HVAC parts are typed by hand or come off a takeoff that a regenerate
+          would rebuild wholesale. Either way a mis-tapped × loses work. */}
+      <UndoDelete listKey="hvacParts" what="part" />
     </div>
   );
 }

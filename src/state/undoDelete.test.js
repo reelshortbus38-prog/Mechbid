@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
 import { reducer, initialState, DELETED_TRAIL_MAX, defaultHardwarePrice } from './store.js';
 import {
   captureOtRule, companyOtRule, captureCompanyDefaults, hasCompanyDefaults,
@@ -17,17 +18,23 @@ import {
 
 const row = (id, desc) => ({ id, section: 'Hardware', desc, qty: 4, unit: 'ea', unitCost: 3, total: 12 });
 const LIST = [row('a', 'first'), row('b', 'second'), row('c', 'third')];
-const start = { ...initialState, lineItems: LIST, deletedLineItems: [] };
+const start = { ...initialState, lineItems: LIST, deletedItems: {} };
 
-const del = (state, id) => reducer(state, { type: 'REMOVE_LINE_ITEM', id });
-const undo = (state, at) => reducer(state, { type: 'RESTORE_LINE_ITEM', ...(at === undefined ? {} : { at }) });
+// The action takes the list it operates on. It was hardcoded to lineItems
+// until the owner asked for the same button on both HVAC sides — and those
+// lists are typed BY HAND, so a mis-tap there loses work no regenerate can
+// rebuild at all.
+const del = (state, id, key = 'lineItems') => reducer(state, { type: 'REMOVE_LIST_ITEM', key, id });
+const undo = (state, at, key = 'lineItems') =>
+  reducer(state, { type: 'RESTORE_LIST_ITEM', key, ...(at === undefined ? {} : { at }) });
+const trailOf = (state, key = 'lineItems') => (state.deletedItems || {})[key] || [];
 
 describe('deleting a material row', () => {
   it('removes it and remembers it', () => {
     const after = del(start, 'b');
     expect(after.lineItems.map(i => i.id)).toEqual(['a', 'c']);
-    expect(after.deletedLineItems).toHaveLength(1);
-    expect(after.deletedLineItems[0].item.desc).toBe('second');
+    expect(trailOf(after)).toHaveLength(1);
+    expect(trailOf(after)[0].item.desc).toBe('second');
   });
 
   it('puts it back where it was, not at the end', () => {
@@ -45,7 +52,7 @@ describe('deleting a material row', () => {
   it('takes the row off the trail once it is back', () => {
     // Otherwise undo twice puts two copies on the bid.
     const back = undo(del(start, 'b'));
-    expect(back.deletedLineItems).toHaveLength(0);
+    expect(trailOf(back)).toHaveLength(0);
     expect(undo(back).lineItems.map(i => i.id)).toEqual(['a', 'b', 'c']);
   });
 });
@@ -56,10 +63,10 @@ describe('deleting several', () => {
     // needed, and a one-deep undo cannot do it.
     let s = del(del(del(start, 'a'), 'b'), 'c');
     expect(s.lineItems).toHaveLength(0);
-    expect(s.deletedLineItems.map(d => d.item.id)).toEqual(['c', 'b', 'a']);
+    expect(trailOf(s).map(d => d.item.id)).toEqual(['c', 'b', 'a']);
     s = undo(s, 2);                       // the one deleted first
     expect(s.lineItems.map(i => i.id)).toEqual(['a']);
-    expect(s.deletedLineItems.map(d => d.item.id)).toEqual(['c', 'b']);
+    expect(trailOf(s).map(d => d.item.id)).toEqual(['c', 'b']);
   });
 
   it('undoes the most recent when nothing says which', () => {
@@ -68,10 +75,10 @@ describe('deleting several', () => {
   });
 
   it('stops growing at the cap', () => {
-    let s = { ...initialState, lineItems: Array.from({ length: 30 }, (_, i) => row(`r${i}`, `row ${i}`)), deletedLineItems: [] };
+    let s = { ...initialState, lineItems: Array.from({ length: 30 }, (_, i) => row(`r${i}`, `row ${i}`)), deletedItems: {} };
     for (let i = 0; i < 20; i++) s = del(s, `r${i}`);
-    expect(s.deletedLineItems).toHaveLength(DELETED_TRAIL_MAX);
-    expect(s.deletedLineItems[0].item.id).toBe('r19');
+    expect(trailOf(s)).toHaveLength(DELETED_TRAIL_MAX);
+    expect(trailOf(s)[0].item.id).toBe('r19');
   });
 });
 
@@ -95,8 +102,8 @@ describe('when undo has nothing to do', () => {
   });
 
   it('clears the trail when asked', () => {
-    const s = reducer(del(start, 'b'), { type: 'CLEAR_DELETED_LINE_ITEMS' });
-    expect(s.deletedLineItems).toEqual([]);
+    const s = reducer(del(start, 'b'), { type: 'CLEAR_DELETED_LIST', key: 'lineItems' });
+    expect(trailOf(s)).toEqual([]);
     expect(s.lineItems.map(i => i.id)).toEqual(['a', 'c']);
   });
 });
@@ -187,5 +194,82 @@ describe('capturing and seeding the overtime rule', () => {
     // to do.
     const lines = describeCompanyDefaults({ [OT_RULE_KEY]: { basis: 'weekly', weeklyHours: 40, mult: 0 } });
     expect(lines.join(' ')).toMatch(/NO premium set/);
+  });
+});
+
+// ── "For the undo button can you make sure it's also on both hvac sides." ────
+// It was on the refrigeration materials list only. Commercial HVAC parts and
+// residential parts delete exactly the same way, and both are typed BY HAND —
+// a generated materials line can at least be rebuilt by regenerating, at the
+// cost of every edit on the list, but a part somebody typed is simply gone.
+describe('every list with an ×', () => {
+  const part = (id, desc) => ({ id, desc, qty: 2, unit: 'ea', unitCost: 40, total: 80 });
+  const LISTS = ['lineItems', 'hvacParts', 'resParts'];
+
+  it.each(LISTS)('%s deletes onto its own trail', key => {
+    const s0 = { ...initialState, [key]: [part('a', 'first'), part('b', 'second')], deletedItems: {} };
+    const s1 = del(s0, 'b', key);
+    expect(s1[key].map(i => i.id)).toEqual(['a']);
+    expect(trailOf(s1, key)).toHaveLength(1);
+    expect(trailOf(s1, key)[0].item.desc).toBe('second');
+  });
+
+  it.each(LISTS)('%s puts the row back where it was', key => {
+    const s0 = { ...initialState, [key]: [part('a'), part('b'), part('c')], deletedItems: {} };
+    const back = undo(del(s0, 'b', key), undefined, key);
+    expect(back[key].map(i => i.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  // The trails are separate. Deleting an HVAC part must not offer to undo a
+  // refrigeration line, and undoing one must not empty the other.
+  it('keeps the lists apart', () => {
+    let s = {
+      ...initialState,
+      lineItems: [part('m1', 'a material')],
+      hvacParts: [part('h1', 'an hvac part')],
+      resParts: [part('r1', 'a res part')],
+      deletedItems: {},
+    };
+    s = del(s, 'm1', 'lineItems');
+    s = del(s, 'h1', 'hvacParts');
+    expect(trailOf(s, 'lineItems')).toHaveLength(1);
+    expect(trailOf(s, 'hvacParts')).toHaveLength(1);
+    expect(trailOf(s, 'resParts')).toHaveLength(0);
+
+    s = undo(s, 0, 'hvacParts');
+    expect(s.hvacParts.map(i => i.id)).toEqual(['h1']);
+    expect(s.lineItems).toEqual([]);              // still deleted
+    expect(trailOf(s, 'lineItems')).toHaveLength(1);  // still recoverable
+  });
+
+  it('does not invent a list that is not there', () => {
+    const s = del({ ...initialState, deletedItems: {} }, 'x', 'nothingHere');
+    expect(s.deletedItems).toEqual({});
+  });
+});
+
+// ── THE × HAS TO DISPATCH THE UNDOABLE ACTION ────────────────────────────────
+// The reducer tests prove the trail works and the render tests prove the bar
+// appears when there IS one. Neither catches a delete button that went back to
+// a plain filter — the bar simply never appears, and nothing is red.
+//
+// A static render cannot press a button, so this reads the handlers. It is a
+// grep, and greps have been wrong three times this session — but what it
+// guards is genuinely a source fact (which action this onClick sends), and the
+// two halves either side of it are behavioural.
+describe('the delete buttons are wired to the trail', () => {
+  const FILES = [
+    ['../steps/Step4_Materials.jsx', ['lineItems', 'resParts']],
+    ['../steps/StepHVACEquipment.jsx', ['hvacParts']],
+  ];
+
+  it.each(FILES)('%s deletes through REMOVE_LIST_ITEM', (file, keys) => {
+    const src = readFileSync(new URL(file, import.meta.url), 'utf8');
+    for (const key of keys) {
+      expect(src, `${file}: ${key} still deletes with a plain filter`)
+        .toMatch(new RegExp(`REMOVE_LIST_ITEM', key: '${key}'`));
+      expect(src, `${file}: ${key} has a filter-delete left in it`)
+        .not.toMatch(new RegExp(`key: '${key}', value: parts\\.filter\\(x => x\\.id !== p\\.id\\)`));
+    }
   });
 });
