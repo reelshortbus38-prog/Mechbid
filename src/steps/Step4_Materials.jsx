@@ -13,6 +13,7 @@ import { hangerLines, saddleCounts } from '../components/hangers.js';
 import { SILICONE, consumableLine } from '../components/consumables.js';
 import { STRUT_SPACING_FT, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
 import { caseTopLines } from '../components/caseTops.js';
+import { stickRounding, roundingNote } from '../components/stickRounding.js';
 import { filterDrierLines, SECTION as FILTER_SECTION } from '../components/filtersDriers.js';
 
 // Sections the price autofill covers. See where it is used for what happens
@@ -1136,7 +1137,7 @@ export default function Step4_Materials({ onNext, onBack }) {
       const look = copperRate(size, rates);
       const rate=hpPipeRate(look.rate, state.systemType, hpMult);
       const qty=Math.ceil(footage*wasteFactor);
-      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,baseQty:footage,
+      items.push({id:uid(),section:'Copper',desc:`${size}" ${copperLabel}`,qty,unit:'ft',unitCost:rate,total:qty*rate,pipeSize:size,material:'copper',baseQty:footage,
         notes:[
           hardInFloor.has(size)
             ? `runs in the floor but priced as HARD copper — soft ACR is not drawn above ${SOFT_COPPER_MAX}", so there is no coil at this size. No hangers or saddles either way, and still jointed every stick.`
@@ -1164,7 +1165,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     if (spare) {
       const look = copperRate(spare.size, rates);
       const rate = hpPipeRate(look.rate, state.systemType, hpMult);
-      items.push({ id:uid(), section:'Copper', desc:`${spare.size}" ${copperLabel} — spare for unfound drops`,
+      items.push({ id:uid(), section:'Copper', material:'copper', desc:`${spare.size}" ${copperLabel} — spare for unfound drops`,
         qty:spare.ft, unit:'ft', unitCost:rate, total:spare.ft*rate, pipeSize:spare.size, spareRiser:true,
         notes:[`${spare.basis} — a drop over 5 ft can turn up anywhere on a route and only shows on a walk`,
           look.source==='none'?unratedNote(spare.size):'', hpNote].filter(Boolean).join(' · ')});
@@ -1448,6 +1449,26 @@ export default function Step4_Materials({ onNext, onBack }) {
           + 'Those lines are priced at $0 and are not in your total. Set a rate for each in the rates panel below '
           + '(large sizes like 3-5/8 and 4-1/8 turn up on loop systems, where the shared suction main is the biggest run on the job).',
       }]) } });
+    }
+    // ── AND THE ORDER IS IN WHOLE STICKS ──────────────────────────────────
+    // Last, because it pools every foot of hard copper on the job — run,
+    // drops, case tops, spares — and it has to see all of them. After the
+    // fittings allowance too, deliberately: the allowance is a percentage of
+    // the copper this job USES, and rounding up to the next stick is a
+    // purchase, not more pipe in the store.
+    //
+    // Its own line per size rather than padding somebody else's quantity: a
+    // line that says "275 ft run × 11 circuits" has to keep saying the truth,
+    // and this is the one adjustment an estimator might want to delete.
+    if (rates.roundCopperToSticks !== false) {
+      const stick = Number(rates.copperStickFt) > 0 ? Number(rates.copperStickFt) : HARD_STICK_FT;
+      stickRounding(items, stick).forEach(r => {
+        const rate = hpPipeRate(copperRate(r.pipeSize, rates).rate, state.systemType, hpMult);
+        items.push({ id: uid(), section: 'Copper', pipeSize: r.pipeSize, stickRounding: true,
+          desc: `${r.pipeSize}" ${copperLabel} — up to ${r.sticks} full ${stick} ft stick(s)`,
+          qty: r.addFt, unit: 'ft', unitCost: rate, total: r.addFt * rate,
+          notes: roundingNote(r, stick) });
+      });
     }
     dispatch({ type:'SET', key:'lineItems', value:items });
   }
