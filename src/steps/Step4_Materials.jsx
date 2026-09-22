@@ -14,6 +14,7 @@ import { SILICONE, consumableLine } from '../components/consumables.js';
 import { STRUT_SPACING_FT, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
 import { caseTopLines } from '../components/caseTops.js';
 import { stickRounding, roundingNote } from '../components/stickRounding.js';
+import UndoDelete from '../components/UndoDelete.jsx';
 import { filterDrierLines, SECTION as FILTER_SECTION } from '../components/filtersDriers.js';
 
 // Sections the price autofill covers. See where it is used for what happens
@@ -474,7 +475,7 @@ function ResidentialEquipment({ onNext, onBack }) {
                 <TblInput type="number" value={p.unitCost||''} onChange={e => updatePart(p.id, 'unitCost', e.target.value)} placeholder="$" style={{ width: 70, textAlign: 'right', fontFamily: "'DM Mono', monospace" }} />
                 <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: colors.green, minWidth: 60, textAlign: 'right' }}>{fmt(p.total)}</span>
                 <button onClick={() => searchSupplier(p.desc, supplier)} style={{ background: colors.blue, border: 'none', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>🔍</button>
-                <button onClick={() => dispatch({ type: 'SET', key: 'resParts', value: parts.filter(x => x.id !== p.id) })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+                <button onClick={() => dispatch({ type: 'REMOVE_LIST_ITEM', key: 'resParts', id: p.id })} style={{ background: colors.red, border: 'none', color: '#fff', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
               </div>
             ))}
             <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between' }}>
@@ -483,6 +484,9 @@ function ResidentialEquipment({ onNext, onBack }) {
             </div>
           </Card>
         )}
+        {/* Residential parts are typed by hand — nothing in the app can
+            rebuild one, so a mis-tap here loses work outright. */}
+        <UndoDelete listKey="resParts" what="part" />
       </div>
 
       {/* ── LABOR ─────────────────────────────────────────────────────────── */}
@@ -737,7 +741,7 @@ function BidMaterials({ onGenerate }) {
   function removeItem(id) {
     // Not a plain SET — REMOVE_LINE_ITEM keeps the row and its position on an
     // undo trail. See the reducer for why undo has to restore the index.
-    dispatch({ type: 'REMOVE_LINE_ITEM', id });
+    dispatch({ type: 'REMOVE_LIST_ITEM', key: 'lineItems', id });
   }
 
   function addFitting() {
@@ -861,45 +865,7 @@ function BidMaterials({ onGenerate }) {
           </div>
         ))
       )}
-      {/* ── UNDO A DELETE ────────────────────────────────────────────────────
-          "if you delete a material and didn't mean to how can you get it back
-           without having to type it back in"
-
-          Newest first, and each row goes back where it was. Retyping a
-          generated line is not a small job — the description carries the
-          sizing, the spacing spec and the note saying where the quantity came
-          from — and regenerating to recover one row overwrites every hand edit
-          on the list. */}
-      {(state.deletedLineItems || []).length > 0 && (
-        <div style={{ border:`1px solid ${colors.border}`, borderRadius:8, padding:'10px 12px',
-          background:colors.surface, display:'flex', flexDirection:'column', gap:8 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:11, color:colors.textDim }}>
-              Deleted just now — tap to put it back
-            </span>
-            <button
-              onClick={() => dispatch({ type:'CLEAR_DELETED_LINE_ITEMS' })}
-              style={{ background:'transparent', border:'none', color:colors.textMuted, fontSize:11,
-                cursor:'pointer', padding:0, fontFamily:"'DM Sans', sans-serif" }}
-            >Dismiss</button>
-          </div>
-          {(state.deletedLineItems || []).map((d, i) => (
-            <button
-              key={`${d.item.id}-${i}`}
-              onClick={() => dispatch({ type:'RESTORE_LINE_ITEM', at:i })}
-              style={{ display:'flex', alignItems:'center', gap:8, width:'100%', textAlign:'left',
-                background:colors.card2, border:`1px solid ${colors.border}`, borderRadius:6,
-                padding:'8px 10px', cursor:'pointer', color:colors.text, fontSize:12,
-                fontFamily:"'DM Sans', sans-serif", minHeight:38 }}
-            >
-              <span style={{ color:colors.green, fontWeight:700, flexShrink:0 }}>↩ Undo</span>
-              <span style={{ color:colors.textDim, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {d.item.qty || 0} {d.item.unit || 'ea'} · {d.item.desc || 'Untitled line'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      <UndoDelete listKey="lineItems" what="material" />
 
       {grandTotal > 0 && (
         <div style={{ display:'flex', justifyContent:'flex-end', padding:'12px 0' }}>
