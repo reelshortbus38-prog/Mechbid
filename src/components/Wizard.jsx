@@ -23,6 +23,7 @@ import Step6_Proposal from '../steps/Step6_Proposal.jsx';
 import StepHVACEquipment from '../steps/StepHVACEquipment.jsx';
 import PriceBookModal, { loadDefaultSupplier } from './PriceBook.jsx';
 import FileViewerPanel from './FileViewer.jsx';
+import RunningTotal from './RunningTotal.jsx';
 
 // ── STEP DEFINITIONS PER MODE ──────────────────────────────────────────────────
 const STEPS_BY_MODE = {
@@ -367,6 +368,9 @@ export default function Wizard() {
             <Btn variant="surface" size="sm" onClick={() => setShowPriceBook(true)}>📖 Prices</Btn>
             <Btn variant="surface" size="sm" onClick={() => { setJobs(loadAllJobs()); setShowJobs(true); }}>💾 Jobs</Btn>
             <Btn variant="surface" size="sm" onClick={() => setShowDocs(true)}>📁 Docs</Btn>
+            {/* The one number the whole exercise is for, from any step —
+                it only ever appeared on the Proposal, five taps away. */}
+            <RunningTotal />
             <AuthButton onSignedIn={() => setJobs(loadAllJobs())} />
             <Btn variant="green" size="sm" onClick={handleSave}>Save</Btn>
             {saveIndicator && <span style={{ fontSize: 11, color: colors.green }}>{saveIndicator}</span>}
