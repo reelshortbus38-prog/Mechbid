@@ -46,14 +46,46 @@ export function ootIsItemised(rates) {
     || num(rates.fuelPerTruckDay) > 0;
 }
 
-// Nights a period sleeps away. Defaults to the days worked, which is the
-// conservative read — a crew that is there for five days and drives home on the
-// last one enters four, and one that stays over the weekend enters more. The
-// app cannot know which, so it takes the number rather than inventing a rule.
-export function ootNights(days, nights) {
+// ── A WEEK OF WORK IS ONE FEWER NIGHT THAN IT IS DAYS ───────────────────────
+// This defaulted to the days worked, described here as "the conservative read
+// — the app cannot know which, so it takes the number rather than inventing a
+// rule." There IS a rule, and it came from the mechanic in one line:
+//
+//   "Well with 4 days a week that would be 3 nights a week"
+//
+// You drive up the first morning and home the last evening, so every week away
+// is one night short of its days. On the job in front of him — 27 weeks at 4
+// days — that is 81 nights, not 108. Four rooms at $120 made the old default
+// $12,960 too much, on a figure nobody had reason to look at because it was
+// never shown.
+//
+// "Conservative" was the wrong word for it too. Over-buying copper is
+// conservative; over-booking a hotel is just wrong, and it is wrong in the
+// direction that loses the bid.
+//
+// WITHOUT A DAYS-PER-WEEK it still falls back to a night per day. A period
+// that carries total days and no week length cannot be divided into weeks, and
+// guessing five would be the invented rule this replaces.
+//
+// Set nights by hand and none of this applies — a crew that drives up Sunday
+// night sleeps a night per day, and the box is there to say so.
+export function ootNights(days, nights, daysPerWeek) {
   const d = num(days);
   const n = nights === '' || nights === undefined || nights === null ? null : num(nights);
-  return n === null ? d : n;
+  if (n !== null) return n;
+  return defaultNights(d, daysPerWeek);
+}
+
+// Days worked, less one night for each week away.
+export function defaultNights(days, daysPerWeek) {
+  const d = num(days);
+  const dpw = num(daysPerWeek);
+  if (!(d > 0)) return 0;
+  // One day a week is a day trip, not a stay; anything under two cannot be a
+  // week with a drive home in it.
+  if (!(dpw > 1)) return d;
+  const weeks = Math.ceil(d / dpw);
+  return Math.max(0, d - weeks);
 }
 
 // Rooms for a crew, rounded UP — three men two to a room is two rooms, not
@@ -69,10 +101,10 @@ export function ootRooms(travelers, personsPerRoom) {
 // travelers is the count of crew who actually travel — the crew card already
 // carries that per man, because somebody local to the store does not get a
 // hotel room.
-export function ootBreakdown({ days = 0, nights, travelers = 0, rates } = {}) {
+export function ootBreakdown({ days = 0, nights, travelers = 0, rates, daysPerWeek } = {}) {
   const r = { ...newOotRates(), ...(rates || {}) };
   const d = num(days);
-  const n = ootNights(d, nights);
+  const n = ootNights(d, nights, daysPerWeek);
   const people = Math.max(0, Math.round(num(travelers)));
   const rooms = ootRooms(people, r.personsPerRoom);
   const trucks = Math.max(0, Math.round(num(r.trucks)));

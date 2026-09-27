@@ -7,7 +7,7 @@ import ScheduleRackReference from '../components/ScheduleRackReference.jsx';
 import { forMode } from '../state/tradeScope.js';
 import { hasCompanyDefaults, companyOtRule, OT_RULE_KEY } from '../state/companyDefaults.js';
 import { fieldValue, fieldNumber } from '../state/numberField.js';
-import { ootIsItemised, ootBreakdown, ootLines, newOotRates } from '../components/outOfTown.js';
+import { ootIsItemised, ootBreakdown, ootLines, newOotRates, defaultNights } from '../components/outOfTown.js';
 import {
   loadLaborHistory, saveLaborHistory, recordFromEstimate, recordRatio,
   laborHistorySummary, suggestedUnitScale, scaleLaborUnits, recordBasis, comparableHours,
@@ -80,6 +80,7 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
     ? ootBreakdown({
       days: parseFloat(period.days) || 0, nights: period.nights,
       travelers: crewTravelCount(period.crew), rates: jobState.ootRates,
+      daysPerWeek: period.daysPerWeek,
     })
     : null;
 
@@ -193,7 +194,7 @@ function LaborPeriodCard({ period, onUpdate, onRemove, defaultExpanded, periodNa
               <div>
                 <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Hotel nights</div>
                 <Input type="number" value={period.nights ?? ''} onChange={e => onUpdate('nights', e.target.value)}
-                  placeholder={String(Math.round(parseFloat(period.days) || 0))} />
+                  placeholder={String(defaultNights(parseFloat(period.days) || 0, period.daysPerWeek))} />
               </div>
             ) : (
               <div>
@@ -1173,6 +1174,7 @@ export default function Step5_Labor({ onNext, onBack }) {
     ? ootBreakdown({
       days: flatCost.days, nights: flat.nights,
       travelers: crewTravelCount(flat.crew), rates: state.ootRates,
+      daysPerWeek: flat.daysPerWeek,
     })
     : null;
   const otWarn = otReview(state);
@@ -1702,7 +1704,7 @@ export default function Step5_Labor({ onNext, onBack }) {
                 <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Hotel nights</div>
                 <Input type="number" value={flat.nights ?? ''}
                   onChange={e => setFlat({ nights: e.target.value })}
-                  placeholder={String(Math.round(flatCost.days || 0))} />
+                  placeholder={String(defaultNights(flatCost.days, flat.daysPerWeek))} />
               </div>
             ) : (
               <div>
@@ -1753,7 +1755,11 @@ export default function Step5_Labor({ onNext, onBack }) {
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4,
                 paddingTop: 4, borderTop: `1px solid ${colors.border}`, color: colors.text }}>
-                <span>Out of town — {flatCost.days} day(s), {flatOotBd.nights} night(s)</span>
+                <span>
+                  Out of town — {flatCost.days} day(s), {flatOotBd.nights} night(s)
+                  {flat.nights === '' || flat.nights === undefined || flat.nights === null
+                    ? ` (${flat.daysPerWeek || 5} on, drive home — set nights if you stay over)` : ''}
+                </span>
                 <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{fmt(flatOotBd.total)}</span>
               </div>
             </div>

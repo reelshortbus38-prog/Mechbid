@@ -953,7 +953,7 @@ export function crewTravelCount(crew) {
   return (crew || []).filter(m => m && m.travels !== false).length;
 }
 
-export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, outOfTown = true, ootRates, nights } = {}) {
+export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, outOfTown = true, ootRates, nights, daysPerWeek } = {}) {
   if (outOfTown === false) return 0;
   const d = parseFloat(days) || 0;
   if (!(d > 0)) return 0;
@@ -963,7 +963,7 @@ export function ootCost(days, ootPerDay, crew, { ootBasis = DEFAULT_OOT_BASIS, o
   // used before, and a job that has never been itemised still prices on it,
   // so nothing repriced when this shipped.
   if (ootIsItemised(ootRates)) {
-    return ootBreakdown({ days: d, nights, travelers: crewTravelCount(crew), rates: ootRates }).total;
+    return ootBreakdown({ days: d, nights, travelers: crewTravelCount(crew), rates: ootRates, daysPerWeek }).total;
   }
   const per = parseFloat(ootPerDay) || 0;
   if (!(per > 0)) return 0;
@@ -1208,7 +1208,7 @@ export function calcLaborPeriodCost(period, opts = {}) {
   const days = parseFloat(period.days) || 0;
   // Nights ride with the PERIOD, because that is where the days are — a crew
   // that drives home on Friday sleeps four nights on a five-day period.
-  const oot = ootCost(days, period.ootPerDay, period.crew, { ...opts, nights: period.nights });
+  const oot = ootCost(days, period.ootPerDay, period.crew, { ...opts, nights: period.nights, daysPerWeek: period.daysPerWeek });
   const labor = crewDayCost(period.crew, {
     otMult: period.otMult,
     otAfterHours: period.otAfterHours,
@@ -1252,7 +1252,7 @@ export function calcFlatJobCost(flat, opts = {}) {
     weeklyOtHours: f.weeklyOtHours,
     daysPerWeek: f.daysPerWeek,
   }) * days;
-  const oot = ootCost(days, f.ootPerDay, f.crew, { ...opts, nights: f.nights });
+  const oot = ootCost(days, f.ootPerDay, f.crew, { ...opts, nights: f.nights, daysPerWeek: f.daysPerWeek });
   const travel = travelCost(f.crew, f.travelHrs, { otMult: f.otMult, premium: !!f.travelPremium });
   return { days, labor, travel, oot, total: labor + travel + oot };
 }
