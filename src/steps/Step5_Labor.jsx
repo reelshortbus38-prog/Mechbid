@@ -1167,6 +1167,14 @@ export default function Step5_Labor({ onNext, onBack }) {
   const ootCompare = ootBasisComparison(state);
   const oRates = { ...newOotRates(), ...(state.ootRates || {}) };
   const itemisedOot = ootIsItemised(state.ootRates);
+  // The whole-job crew's own out-of-town figure, on the same footing the
+  // period cards have had.
+  const flatOotBd = itemisedOot && laborMode === 'flat'
+    ? ootBreakdown({
+      days: flatCost.days, nights: flat.nights,
+      travelers: crewTravelCount(flat.crew), rates: state.ootRates,
+    })
+    : null;
   const otWarn = otReview(state);
   // ── WHICH METHOD IS PRICING THIS JOB ───────────────────────────────────────
   const bidMethod = resolveBidMethod(state.bidMethod);
@@ -1676,10 +1684,32 @@ export default function Step5_Labor({ onNext, onBack }) {
                   placeholder="5" style={{ width: 58, textAlign: 'center' }} />
               </div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
-              <Input type="number" value={flat.ootPerDay || ''} onChange={e => setFlat({ ootPerDay: parseFloat(e.target.value) || 0 })} placeholder="0" />
-            </div>
+            {/* ── THE ITEMISED RATES REACH THIS CARD TOO ─────────────────────
+                The period editor swaps this box for "Hotel nights" once meals,
+                hotel or fuel are set, and says so: "the $/day boxes on the
+                period cards are now nights." The whole-job card was never
+                given the same branch.
+                So a whole-job crew showed "Out of Town ($/day) 0" while the
+                bid was charging meals, hotel and fuel underneath — a box
+                reading zero over an expense that is running.
+                And with no nights box, f.nights stayed undefined, which
+                ootNights reads as "every day is a night". A 27-week job at 4
+                days a week booked 108 hotel nights for a crew that drives
+                home on the last day — 27 nights too many, four rooms at $120,
+                nearly thirteen thousand dollars. */}
+            {itemisedOot ? (
+              <div>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Hotel nights</div>
+                <Input type="number" value={flat.nights ?? ''}
+                  onChange={e => setFlat({ nights: e.target.value })}
+                  placeholder={String(Math.round(flatCost.days || 0))} />
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Out of Town ($/day)</div>
+                <Input type="number" value={flat.ootPerDay || ''} onChange={e => setFlat({ ootPerDay: parseFloat(e.target.value) || 0 })} placeholder="0" />
+              </div>
+            )}
             <div>
               <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 6 }}>Travel (hrs/man)</div>
               <Input type="number" value={flat.travelHrs || ''} onChange={e => setFlat({ travelHrs: parseFloat(e.target.value) || 0 })} placeholder="0" />
@@ -1708,6 +1738,26 @@ export default function Step5_Labor({ onNext, onBack }) {
                 onChange={e => setFlat({ weeklyOtHours: parseFloat(e.target.value) || 0 })} placeholder="40" />
             </div>
           </div>
+
+          {/* What the itemised rates actually come to on this job, so the
+              number is legible rather than one that appeared on the Proposal.
+              The period cards have had this; the whole-job card had nothing. */}
+          {itemisedOot && flatOotBd && flatOotBd.total > 0 && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 14, padding: '8px 10px',
+              background: colors.surface, borderRadius: 6, lineHeight: 1.7 }}>
+              {ootLines(flatOotBd).map(l => (
+                <div key={l.key} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{l.label}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(l.amount)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4,
+                paddingTop: 4, borderTop: `1px solid ${colors.border}`, color: colors.text }}>
+                <span>Out of town — {flatCost.days} day(s), {flatOotBd.nights} night(s)</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{fmt(flatOotBd.total)}</span>
+              </div>
+            </div>
+          )}
 
           <SLabel>Crew ({flat.crew.length})</SLabel>
           <CrewBuilder crew={flat.crew} onChange={crew => setFlat({ crew })}
