@@ -10,7 +10,7 @@ import { hpPipeRate, hpPipeNote, DEFAULT_HP_PIPE_MULTIPLIER } from '../component
 import { copperRate, insulRate, unratedCopperSizes, unratedNote, riserPurchaseFt, HARD_STICK_FT } from '../components/copperRates.js';
 import { foldHeaders } from '../components/headers.js';
 import { hangerLines, saddleCounts, hangerBasis } from '../components/hangers.js';
-import { dripPanLine, PAN_LENGTH_FT, PAN_MAX_WIDTH_IN } from '../components/dripPans.js';
+import DripPanCalc from '../components/DripPanCalc.jsx';
 import { SILICONE, consumableLine } from '../components/consumables.js';
 import { STRUT_SPACING_FT, CASE_TOP_EXTRA_FT } from '../components/caseSizes.js';
 import { caseTopLines } from '../components/caseTops.js';
@@ -817,6 +817,10 @@ function BidMaterials({ onGenerate }) {
         </div>
       )}
 
+      {/* Not generated — a store with no drop ceiling needs none, and a line
+          that turns up on every job reading zero is one people scroll past. */}
+      <DripPanCalc />
+
       {state.lineItems.length === 0 ? (
         <Card><EmptyState icon="🔧" title="No materials yet" subtitle="Click Generate from Circuits to auto-build the materials list" /></Card>
       ) : (
@@ -1219,19 +1223,6 @@ export default function Step4_Materials({ onNext, onBack }) {
     hangerLines(state.circuits, hdr.horizFt, spacingFt)
       .forEach(l => items.push({ id: uid(), ...l }));
 
-    // Drip pans, off the same ROUTE the trapezes use — a pan sits under the
-    // pipe, so one run of them catches whatever is above it. Which part of
-    // that route is over a sales floor or under a drop ceiling is a walk of
-    // the plan, so it is asked for rather than guessed.
-    {
-      const pan = dripPanLine({
-        routeFt: hangerBasis(state.circuits, hdr.horizFt, spacingFt).routeFt,
-        coveredFt: rates.dripPanCoveredFt,
-        panFt: rates.dripPanFt,
-        maxWidthIn: rates.dripPanWidthIn,
-      });
-      if (pan) items.push({ id: uid(), ...pan });
-    }
 
     // Named by the SADDLE, which is what gets ordered, with the copper it
     // covers spelled out so the sizing can be checked rather than trusted.
@@ -1701,13 +1692,6 @@ export function RatesPanel({ open, onToggle, summary, state, dispatch, fittingsM
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Case Length (ft)</div>
               <Input type="number" value={state.rates?.caseFt ?? DEFAULT_CASE_FT} onChange={e=>dispatch({type:'SET_RATES_MISC',key:'caseFt',value:parseFloat(e.target.value)||0})} style={{ fontFamily:"'DM Mono',monospace" }} />
-            </div>
-            <div style={{ flex:1, minWidth:120 }}>
-              {/* The one number on the drip pan line nobody can calculate. */}
-              <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Drip pan route (ft)</div>
-              <Input type="number" value={fieldValue(state.rates?.dripPanCoveredFt)}
-                onChange={e=>dispatch({type:'SET_RATES_MISC',key:'dripPanCoveredFt',value:fieldNumber(e.target.value)})}
-                placeholder="over sales floor" style={{ fontFamily:"'DM Mono',monospace" }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ fontSize:10, color:colors.textDim, marginBottom:4 }}>Support Spacing (ft)</div>
