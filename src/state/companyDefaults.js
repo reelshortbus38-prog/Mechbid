@@ -154,6 +154,10 @@ export function companyOtRule(profile = {}) {
 // copper today.
 export const COMPANY_RATE_KEYS = [
   'wasteFactor',
+  // Whether this shop brakes its own drip pans or buys them built. A fact
+  // about the shop's building, not about the store being bid — "Other
+  // companies may have to buy them already built."
+  'dripPanSource',
   'fittingsMode', 'fittingsPct', 'fittingsMarkupPct',
   'hydronicFittingsPct',
   'ductAccessoryPct',
