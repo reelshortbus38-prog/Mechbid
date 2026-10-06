@@ -36,6 +36,31 @@
 //
 // Pure — no React, no store.
 
+// ── WHAT GETS BOUGHT IS A SHEET ─────────────────────────────────────────────
+// "we get sheet metal in 4' x 8' sheets and we fabricate our own in our shop.
+//  Other companies may have to buy them already built"
+//
+// Two things in one sentence.
+//
+// The line said linear feet of blank, which is a true description of what gets
+// CUT and not of anything anybody orders. A 4x8 sheet is 48" across, a blank is
+// 20", so a sheet yields TWO pans and 8" of scrap down one edge. 72 pans is 36
+// sheets — that is the number on a purchase order, and "576 ft of 20" stock"
+// is not.
+//
+// Three across would need a blank under 16", which is the pan floor with no
+// lips. It does not fit and the arithmetic says so rather than rounding its way
+// into a sheet that does not exist.
+//
+// AND NOT EVERY SHOP HAS A BRAKE. His does; he said plainly that others do not.
+// A shop that buys them finished wants pans by the each, not sheets they have
+// no way to fold — so it is a setting, and it is the kind that belongs to the
+// company rather than the job, because it is a fact about the shop's building.
+export const SHEET_WIDTH_IN = 48;
+export const SHEET_LENGTH_FT = 8;
+export const SOURCE_FABRICATE = 'fabricate';
+export const SOURCE_BUY = 'buy';
+
 export const PAN_LENGTH_FT = 8;
 export const PAN_WIDTH_IN = 16;
 export const LIP_IN = 1.5;
@@ -61,7 +86,22 @@ export function circuitsPerPan({ widthIn = PAN_WIDTH_IN, circuitWidthIn = CIRCUI
   return Math.max(1, Math.floor(num(widthIn, PAN_WIDTH_IN) / num(circuitWidthIn, CIRCUIT_WIDTH_IN)));
 }
 
-// → { long, wide, pans, blankFt } — pans along the route and across the bundle.
+// Whole pans out of one sheet. A pan longer than the sheet cannot be made from
+// one at all — that is a splice, not a cut, and it returns 0 so the caller can
+// say so instead of quietly selling a sheet that will not do it.
+export function pansPerSheet({
+  widthIn = PAN_WIDTH_IN, lipIn = LIP_IN, foldIn = FOLD_IN, panFt = PAN_LENGTH_FT,
+  sheetWidthIn = SHEET_WIDTH_IN, sheetLengthFt = SHEET_LENGTH_FT,
+} = {}) {
+  const blank = blankWidthIn({ widthIn, lipIn, foldIn });
+  const sheetW = num(sheetWidthIn, SHEET_WIDTH_IN);
+  const sheetL = num(sheetLengthFt, SHEET_LENGTH_FT);
+  if (num(panFt, PAN_LENGTH_FT) > sheetL) return 0;
+  return Math.floor(sheetW / blank);
+}
+
+// → { long, wide, pans, blankFt, sheets } — pans along the route and across the
+// bundle, and the sheets they are cut from.
 export function panLayout({
   coveredFt = 0, circuits = 1, panFt = PAN_LENGTH_FT,
   widthIn = PAN_WIDTH_IN, circuitWidthIn = CIRCUIT_WIDTH_IN,
@@ -73,11 +113,19 @@ export function panLayout({
   const long = Math.ceil(ft / len);
   const wide = Math.max(1, Math.ceil((Math.round(Number(circuits) || 0) || 1) / perPan));
   const pans = long * wide;
-  return { long, wide, pans, blankFt: pans * len, perPan };
+  const per = pansPerSheet({ ...arguments[0], panFt: len });
+  return {
+    long, wide, pans, blankFt: pans * len, perPan,
+    perSheet: per,
+    // 0 per sheet means the pan is longer than the sheet. No sheet count is
+    // honest there, and a note on the line says why.
+    sheets: per > 0 ? Math.ceil(pans / per) : 0,
+  };
 }
 
-// The material line. Flat stock and a pan count — the shop time to brake them
-// is labor and is deliberately not priced here.
+// The material line. SHEETS for a shop that fabricates, finished PANS for one
+// that does not — the shop time to brake them is labor either way and is
+// deliberately not priced here.
 export function dripPanLines(opts = {}) {
   const l = panLayout(opts);
   if (!(l.pans > 0)) return [];
@@ -87,16 +135,38 @@ export function dripPanLines(opts = {}) {
   const lip = num(opts.lipIn, LIP_IN);
   const fold = num(opts.foldIn, FOLD_IN);
   const fmtIn = n => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
+  const layoutNote = `${l.pans} pan(s) — ${l.long} along the route × ${l.wide} across `
+    + `(${l.perPan} circuit(s) per pan at ${fmtIn(num(opts.circuitWidthIn, CIRCUIT_WIDTH_IN))}" each).`;
+
+  if (opts.source === SOURCE_BUY) {
+    return [{
+      section: 'Hardware', dripPan: true, dripPanSource: SOURCE_BUY,
+      desc: `Drip pans — ${fmtIn(width)}" × ${len}', bought finished`,
+      qty: l.pans, unit: 'ea', unitCost: 0, total: 0,
+      pans: l.pans, panLong: l.long, panWide: l.wide,
+      notes: layoutNote,
+    }];
+  }
+
+  const sheetW = num(opts.sheetWidthIn, SHEET_WIDTH_IN);
+  const sheetL = num(opts.sheetLengthFt, SHEET_LENGTH_FT);
+  const sheetNote = l.perSheet > 0
+    ? `${l.perSheet} pan(s) per ${fmtIn(sheetW / 12)}' × ${fmtIn(sheetL)}' sheet `
+      + `(${fmtIn(blank)}" blank into ${fmtIn(sheetW)}"), `
+      + `${fmtIn(sheetW - l.perSheet * blank)}" off the edge of each.`
+    : `A ${len}' pan does not come out of a ${fmtIn(sheetL)}' sheet — order longer stock or `
+      + 'splice, and set the pan length to what you actually brake.';
 
   return [{
-    section: 'Hardware',
-    dripPan: true,
-    desc: `Drip pan sheet metal — ${fmtIn(blank)}" blank × ${len}' per pan, broken to `
-      + `${fmtIn(width)}" wide with ${fmtIn(lip)}" lips and a ${fmtIn(fold)}" hem`,
-    qty: l.blankFt, unit: 'ft', unitCost: 0, total: 0,
-    pans: l.pans, panLong: l.long, panWide: l.wide, blankWidthIn: blank,
-    notes: `${l.pans} pan(s) — ${l.long} along the route × ${l.wide} across `
-      + `(${l.perPan} circuit(s) per pan at ${fmtIn(num(opts.circuitWidthIn, CIRCUIT_WIDTH_IN))}" each). `
-      + `${l.blankFt} linear ft of ${fmtIn(blank)}" stock. Shop time to brake them is labor, not here.`,
+    section: 'Hardware', dripPan: true, dripPanSource: SOURCE_FABRICATE,
+    desc: l.sheets > 0
+      ? `Sheet metal for drip pans — ${fmtIn(sheetW / 12)}' × ${fmtIn(sheetL)}' sheets`
+      : `Sheet metal for drip pans — ${fmtIn(blank)}" blank × ${len}' per pan`,
+    qty: l.sheets > 0 ? l.sheets : l.blankFt,
+    unit: l.sheets > 0 ? 'sheet' : 'ft',
+    unitCost: 0, total: 0,
+    pans: l.pans, panLong: l.long, panWide: l.wide, blankWidthIn: blank, sheets: l.sheets,
+    notes: `${layoutNote} ${sheetNote} Broken to ${fmtIn(width)}" wide with ${fmtIn(lip)}" lips `
+      + `and a ${fmtIn(fold)}" hem. Shop time to brake them is labor, not here.`,
   }];
 }

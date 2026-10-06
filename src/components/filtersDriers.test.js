@@ -15,7 +15,7 @@ import {
 const norm = s => String(s || '').replace(/"/g, '').trim();
 
 describe('suction filters', () => {
-  const lines = suctionFilterLines();
+  const lines = suctionFilterLines('remodel');
 
   it('is the three sizes he named, and only those', () => {
     // Unlike the saddles, no rule was given that would let a fourth size be
@@ -43,10 +43,36 @@ describe('suction filters', () => {
     for (const l of lines) expect(l.desc).toMatch(/one per suction group/i);
   });
 
-  it('mentions the cores, which are a separate order', () => {
-    // The shell is bought once; the core is what gets changed at start-up and
-    // is a line somebody forgets.
-    for (const l of lines) expect(l.desc).toMatch(/core/i);
+  // ── "We just buy the suction filter cores not the shell." ────────────────
+  // The line read "shell with replaceable core" and added, helpfully and
+  // wrongly, that cores are ordered separately. On a remodel the shell is
+  // already on the rack — these jobs are revisions to existing Margaux racks —
+  // so what the job buys is the core. A shell is several times the price of a
+  // core, so the old line was not just mislabelled, it was high.
+  it('buys the CORE on a remodel, not the shell', () => {
+    for (const l of suctionFilterLines('remodel')) {
+      expect(l.desc).toMatch(/Suction Filter CORE/);
+      expect(l.desc).toMatch(/shell is already on the rack/);
+      expect(l.desc).not.toMatch(/shell AND core/);
+    }
+  });
+
+  it('buys both on a new rack, where there is no shell to fill', () => {
+    for (const l of suctionFilterLines('New Store')) {
+      expect(l.desc).toMatch(/shell AND core/);
+      expect(l.desc).toMatch(/no shell in place/);
+    }
+  });
+
+  it('defaults to the remodel, which is what these jobs are', () => {
+    expect(suctionFilterLines()[0].desc).toBe(suctionFilterLines('remodel')[0].desc);
+    expect(suctionFilterLines(undefined)[0].desc).toMatch(/CORE/);
+  });
+
+  // A remodel that adds a suction group DOES need a shell, and the app cannot
+  // tell that from the project type.
+  it('says on the remodel line what to do when a group is new', () => {
+    expect(suctionFilterLines('remodel')[0].desc).toMatch(/Add the shell by hand/);
   });
 });
 
@@ -120,6 +146,14 @@ describe('the new section is priced', () => {
     // an easy thing to miss.
     expect(src).toMatch(/PRICED_SECTIONS\.includes\(it\.section\)/);
     expect(src).not.toMatch(/it\.section !== 'Hardware' && it\.section !== 'Consumables'/);
+  });
+
+  it('tells the builder which kind of job this is', () => {
+    // A remodel buys cores, a new rack buys shells too. The job already says
+    // which, so this reads it rather than asking again — and both call sites
+    // have to pass it or one list orders the wrong part.
+    expect((src.match(/filterDrierLines\(state\.circuits, normalizePipeSize, state\.projectType\)/g) || []).length)
+      .toBe(2);
   });
 
   it('generates them on both lists, from the shared builder', () => {

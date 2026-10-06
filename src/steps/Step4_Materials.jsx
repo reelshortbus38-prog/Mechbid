@@ -937,7 +937,7 @@ function SupplyHouseList() {
     items.push({ id:uid(), partId:'', desc:'Nitrogen — pressure test & purge', qty:0, unit:'cylinder', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', desc:'Brazing rod (15% silver)', qty:0, unit:'lb', unitCost:0, total:0, category:'Consumables' });
     items.push({ id:uid(), partId:'', ...consumableLine(SILICONE, { category:'Consumables' }) });
-    filterDrierLines(state.circuits, normalizePipeSize).forEach(l => items.push({
+    filterDrierLines(state.circuits, normalizePipeSize, state.projectType).forEach(l => items.push({
       id:uid(), partId:'', desc:l.desc, qty:l.qty, unit:l.unit, unitCost:0, total:0,
       category:'Filters & Driers' }));
     if (isCO2) {
@@ -1354,7 +1354,7 @@ export default function Step4_Materials({ onNext, onBack }) {
     // not folded in elsewhere, simply absent, which on a rack job is a set of
     // parts that get bought and never bid. Zero quantities: see the module for
     // why the app does not guess how many.
-    filterDrierLines(state.circuits, normalizePipeSize)
+    filterDrierLines(state.circuits, normalizePipeSize, state.projectType)
       .forEach(l => items.push({ id: uid(), ...l }));
 
     // Consumables an RC crew actually burns through on a remodel — quantities
