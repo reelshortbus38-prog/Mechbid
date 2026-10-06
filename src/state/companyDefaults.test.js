@@ -270,6 +270,21 @@ describe('rates: practice travels, prices do not', () => {
     expect(patch.rates.wasteFactor).toBe(15);          // the shop's practice wins
   });
 
+  // ── WHETHER THE SHOP OWNS A BRAKE ─────────────────────────────────────────
+  // "we get sheet metal in 4' x 8' sheets and we fabricate our own in our
+  //  shop. Other companies may have to buy them already built"
+  //
+  // That is a fact about the shop's building, not about the store being bid, so
+  // it is exactly the kind of thing that gets set once and then follows the
+  // contractor. A shop with no brake should never see a sheet count twice.
+  it('remembers whether the shop fabricates its own drip pans', () => {
+    const profile = captureCompanyDefaults({ rates: { dripPanSource: 'buy' } }, []);
+    expect(profile.rates.dripPanSource).toBe('buy');
+    // And it wins over the app's shipped default on the next job.
+    expect(companyDefaultPatch(profile, { dripPanSource: 'fabricate' }).rates.dripPanSource)
+      .toBe('buy');
+  });
+
   it('seeds no rates at all when the shop has stored none', () => {
     expect(companyDefaultPatch({}, { cu: { '7/8': 9.9 } }).rates).toBeUndefined();
   });

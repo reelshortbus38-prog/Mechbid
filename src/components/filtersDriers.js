@@ -30,7 +30,24 @@ export const SECTION = 'Filters & Driers';
 
 export const SUCTION_FILTER_SIZES = [3, 4, 5];
 
-export function suctionFilterLines() {
+// ── THE CORE IS THE PART THAT GETS BOUGHT ───────────────────────────────────
+// The line read "shell with replaceable core" and added, helpfully and
+// wrongly, that "cores are ordered separately". From the mechanic:
+//
+//   "We just buy the suction filter cores not the shell."
+//
+// On a remodel the shell is already on the rack — these jobs are revisions to
+// existing Margaux racks — so what the job buys is the core that goes in it.
+// A line reading "Suction Filter" on a remodel is a part nobody orders, and
+// worse, it prices like one: a shell is several times a core, so a bid built
+// on it is high on a line somebody will eventually question.
+//
+// A NEW STORE IS THE OTHER WAY. There is no shell to put a core in, so it
+// takes both. The job already states which it is, so this reads that rather
+// than asking again — and the line SAYS which it assumed, because a remodel
+// that happens to be adding a new suction group does need the shell.
+export function suctionFilterLines(projectType = 'remodel') {
+  const newRack = String(projectType || '').toLowerCase().startsWith('new');
   return SUCTION_FILTER_SIZES.map(size => ({
     section: SECTION,
     filterSize: size,
@@ -38,9 +55,12 @@ export function suctionFilterLines() {
     qty: 0,
     unitCost: 0,
     total: 0,
-    desc: `${size}" Suction Filter — shell with replaceable core. One per suction group at the `
-      + 'rack; count from the rack layout. Cores are ordered separately and are the part that '
-      + 'gets changed at start-up.',
+    desc: newRack
+      ? `${size}" Suction Filter — shell AND core. New rack, so there is no shell in place to `
+        + 'take a core. One per suction group; count from the rack layout.'
+      : `${size}" Suction Filter CORE — the shell is already on the rack. One per suction group `
+        + 'being changed; count from the rack layout. Add the shell by hand if this job sets a '
+        + 'new suction group.',
   }));
 }
 
@@ -78,6 +98,6 @@ export function liquidDrierLine(circuits = [], normalize = s => String(s || ''))
 }
 
 // Both, ready to push. The caller adds ids.
-export function filterDrierLines(circuits = [], normalize = s => String(s || '')) {
-  return [...suctionFilterLines(), liquidDrierLine(circuits, normalize)];
+export function filterDrierLines(circuits = [], normalize = s => String(s || ''), projectType = 'remodel') {
+  return [...suctionFilterLines(projectType), liquidDrierLine(circuits, normalize)];
 }
