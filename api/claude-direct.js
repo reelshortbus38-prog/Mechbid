@@ -34,7 +34,7 @@ function toOpenAiMessages(messages) {
 // in more informative ways. It is never authoritative — its finds become
 // "verify this" flags, and its read is only used at all when the primary
 // failed outright, and then only with a fallbackModel marker attached.
-const { requireUser, cappedMaxTokens } = require('./requireUser.js');
+const { requireUser, cappedMaxTokens, checkBudget, noteUsage } = require('./requireUser.js');
 
 const SECOND_MODEL = process.env.COLDGAUGE_SECOND_MODEL || 'openai/gpt-4o';
 
@@ -61,7 +61,7 @@ const SECOND_MODEL = process.env.COLDGAUGE_SECOND_MODEL || 'openai/gpt-4o';
 const OR_PRIVACY = { data_collection: 'deny', zdr: true };
 
 
-async function secondOpinion(messages, system, max_tokens) {
+async function secondOpinion(messages, system, max_tokens, onUsage = () => {}) {
   if (!process.env.OPENROUTER_API_KEY) return null;
   try {
     const orMessages = system ? [{ role: 'system', content: system }, ...toOpenAiMessages(messages)] : toOpenAiMessages(messages);
@@ -78,6 +78,9 @@ async function secondOpinion(messages, system, max_tokens) {
     });
     const data = await response.json();
     if (!response.ok) return null;
+    // The cross-check is a second paid call. Best-effort for the ANSWER does
+    // not make it free, so its usage comes back to be recorded.
+    onUsage(data.usage || null);
     return data.choices?.[0]?.message?.content || null;
   } catch {
     return null; // the second opinion is best-effort — never fail the primary
@@ -119,10 +122,17 @@ module.exports = async function handler(req, res) {
   const gate = await requireUser(req);
   if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
+  // This is the expensive one — a page image per request, and a cross-check
+  // doubling it. It is the endpoint a bulk upload would actually land on.
+  const budget = await checkBudget({ req, user: gate.user });
+  if (!budget.ok) return res.status(budget.status).json({ error: budget.error });
+
   try {
     const { messages, system, max_tokens, model, crossCheck } = req.body;
     if (!messages) return res.status(400).json({ error: 'No messages provided' });
     const activeModel = model || VISION_MODEL;
+    // Both calls push whatever the provider reported; the ledger gets the sum.
+    const spent = [];
 
     // Primary (Claude) and the cross-check second opinion (GPT-4o) run in
     // PARALLEL, each with its own cap. Running them back-to-back with an
@@ -152,6 +162,10 @@ module.exports = async function handler(req, res) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || `Anthropic API error ${response.status}`);
+      // Recorded even when the text turns out unusable below: the tokens were
+      // spent either way, and a failure path that costs nothing to the ledger
+      // is the cheapest way around the cap.
+      spent.push(data.usage || null);
       // Normalize to text-only blocks: a thinking block can land BEFORE the
       // text block, so never assume content[0] is the answer — join every
       // text block there is (reading [0].text turned good answers into
@@ -161,7 +175,7 @@ module.exports = async function handler(req, res) {
       if (!text) throw new Error('Anthropic returned no text content');
       return [{ type: 'text', text }];
     })();
-    const secondPromise = crossCheck ? secondOpinion(messages, system, max_tokens) : Promise.resolve(null);
+    const secondPromise = crossCheck ? secondOpinion(messages, system, max_tokens, u => spent.push(u)) : Promise.resolve(null);
 
     let content = null, primaryErr = null;
     try { content = await primaryPromise; } catch (e) { primaryErr = e; }
@@ -173,6 +187,7 @@ module.exports = async function handler(req, res) {
       // second model is the weaker reader, so this MUST be marked: an
       // unlabelled backup read is a quietly worse takeoff, and the client
       // turns fallbackModel into a warning naming the sheet.
+    await noteUsage({ req, user: gate.user, usage: spent, bytes: budget.bytes, endpoint: 'claude-direct' });
       return res.status(200).json({
         content: [{ type: 'text', text: second }],
         fallbackModel: SECOND_MODEL,
@@ -180,12 +195,16 @@ module.exports = async function handler(req, res) {
       });
     }
     if (content == null) {
+      // A failed read is not a free read. Whatever the providers charged for
+      // the attempt goes on the ledger before the error goes back.
+    await noteUsage({ req, user: gate.user, usage: spent, bytes: budget.bytes, endpoint: 'claude-direct' });
       return res.status(502).json({ error: primaryErr?.message || 'Vision analysis failed' });
     }
 
     // Normalize to the same { content: [{ type: 'text', text }] } shape
     // api/claude.js returns. The second opinion rides along for the client
     // to diff — best-effort, absent on any failure.
+    await noteUsage({ req, user: gate.user, usage: spent, bytes: budget.bytes, endpoint: 'claude-direct' });
     return res.status(200).json({ content, ...(second ? { secondOpinion: second } : {}) });
   } catch (err) {
     return res.status(500).json({ error: err.message });

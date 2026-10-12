@@ -190,3 +190,69 @@ create policy "own job files — delete" on storage.objects
 -- anon included — but the policy still requires auth.uid() = user_id, and for
 -- an anonymous request auth.uid() is NULL, so NULL = user_id is never true and
 -- no rows come back.
+
+-- ── API USAGE ──────────────────────────────────────────────────────────────
+-- A spend ledger, one row per paid AI call. api/requireUser.js sums the last 24
+-- hours before each request and refuses when the account is over budget.
+--
+-- WHY THIS EXISTS. requireUser closed the open proxy and cappedMaxTokens
+-- bounded a single answer, but nothing bounded how MANY requests one account
+-- could make. While the only two accounts were a father and a son that was
+-- theoretical. The moment a link goes out to strangers it is the live
+-- exposure: signup is free, email confirmation is off, and reading a plan set
+-- is the most expensive thing this app does.
+--
+-- WHY NO SERVICE-ROLE KEY. The rows are written with the CALLER'S access
+-- token, so RLS scopes them exactly as it scopes a job — and the service-role
+-- key stays out of a request path that handles user input, which is the one
+-- place it must never be. The values written are the server's, not the
+-- caller's: the token counts come from the provider's own usage block.
+create table if not exists public.api_usage (
+  id        bigserial   primary key,
+  user_id   uuid        not null references auth.users (id) on delete cascade,
+  at        timestamptz not null default now(),
+  tokens    integer     not null default 0,
+  -- Which endpoint spent it: 'claude', 'claude-direct', 'parse-excel'. Only
+  -- for reading the ledger later — nothing enforces against it.
+  endpoint  text
+);
+
+-- The only query that runs against this in anger: one user, recent rows first.
+create index if not exists api_usage_user_at_idx on public.api_usage (user_id, at desc);
+
+alter table public.api_usage enable row level security;
+
+-- ── SELECT AND INSERT ONLY, AND THAT IS THE WHOLE POINT ────────────────────
+-- An account may read its own ledger and add to it. There is deliberately NO
+-- update policy and NO delete policy, so a row cannot be edited down or
+-- removed to buy more budget. Append-only is what makes the sum trustworthy.
+--
+-- Note what this means for the privacy policy's deletion promise: these rows
+-- are metering records, they hold no document content — a token count and an
+-- endpoint name — and they are removed with the account by the cascade above.
+drop policy if exists "own usage — select" on public.api_usage;
+create policy "own usage — select" on public.api_usage
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "own usage — insert" on public.api_usage;
+create policy "own usage — insert" on public.api_usage
+  for insert with check (auth.uid() = user_id);
+
+-- ── CHECK IT WORKED ────────────────────────────────────────────────────────
+-- Two policies, no more. A third named 'update' or 'delete' would undo the
+-- reason this table is shaped the way it is.
+--
+--   select policyname, cmd, qual, with_check from pg_policies
+--    where schemaname = 'public' and tablename = 'api_usage' order by cmd;
+--
+-- And to see what accounts are actually spending, which is how the limit in
+-- DAILY_TOKEN_BUDGET should eventually be set — it starts as a guess:
+--
+--   select user_id, endpoint, sum(tokens) as tokens, count(*) as calls
+--     from public.api_usage where at > now() - interval '7 days'
+--    group by user_id, endpoint order by tokens desc;
+--
+-- Old rows are only useful for that question. Nothing reads past 24 hours, so
+-- pruning them whenever is safe:
+--
+--   delete from public.api_usage where at < now() - interval '90 days';

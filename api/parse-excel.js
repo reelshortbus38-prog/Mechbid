@@ -1,4 +1,4 @@
-const { requireUser } = require('./requireUser.js');
+const { requireUser, checkBudget, noteUsage } = require('./requireUser.js');
 const ExcelJS = require('exceljs');
 const { isPartsOrderForm, parsePartsOrderForm, formTypeOf, storeNumberOf } = require('./partsOrderForm.js');
 const { formatFromSignals } = require('./bprFormat.js');
@@ -257,7 +257,7 @@ function sheetToText(ws, maxRows = 80, maxCols = 30) {
 // trained on is somebody else's confidential document, and it cannot be undone.
 const OR_PRIVACY = { data_collection: 'deny', zdr: true };
 
-async function callOpenRouter(messages, system) {
+async function callOpenRouter(messages, system, onUsage = () => {}) {
   // Prefer Anthropic direct with a current-generation Claude model — stronger
   // document extraction than the older gpt-4o path, which matters most on
   // unfamiliar spreadsheet formats. Falls THROUGH to OpenRouter on any
@@ -286,6 +286,9 @@ async function callOpenRouter(messages, system) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || `Anthropic error ${response.status}`);
+      // What the call cost, back to the handler's ledger. A spreadsheet
+      // extraction is a model call like any other and is billed like one.
+      onUsage(data.usage || null);
       return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     } catch (e) {
       if (!process.env.OPENROUTER_API_KEY) throw e;
@@ -306,11 +309,12 @@ async function callOpenRouter(messages, system) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `OpenRouter error ${response.status}`);
+  onUsage(data.usage || null);
   return data.choices?.[0]?.message?.content || '';
 }
 
 // ── AI EXTRACTION ──────────────────────────────────────────────────────────────
-async function extractWithAI(sheetsText, fileName, format) {
+async function extractWithAI(sheetsText, fileName, format, onUsage = () => {}) {
   const isRefrig = format !== 'hvac';
 
   const systemPrompt = isRefrig
@@ -381,7 +385,7 @@ Return JSON:
   const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
 
   try {
-    const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt);
+    const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt, onUsage);
     const clean = text.replace(/```json|```/g,'').trim();
     return JSON.parse(clean);
   } catch(e) {
@@ -451,7 +455,7 @@ function detectAndExtractERF(wb) {
   };
 }
 
-async function extractPartsOrderForm(sheetsText, fileName) {
+async function extractPartsOrderForm(sheetsText, fileName, onUsage = () => {}) {
   const systemPrompt = `You are an expert commercial refrigeration estimator reading a parts order form (e.g. a Kysor Warren or case-manufacturer parts order template). Return ONLY valid JSON.`;
 
   const extractionTarget = `This is a PARTS ORDER FORM, not a circuit schedule — do not look for circuit IDs, run lengths, or pipe sizes. Extract only the actual order line items: Part Number, Qty, Description, and Where Used (case number or location), ignoring any unrelated reference tables that may be embedded in the same sheet (e.g. sales rep or state lookup lists — these are template boilerplate, not order data).
@@ -470,7 +474,7 @@ Return JSON:
 
   const userMessage = `File: ${fileName}\n\nSheet data:\n${sheetsText}\n\n${extractionTarget}`;
 
-  const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt);
+  const text = await callOpenRouter([{ role: 'user', content: userMessage }], systemPrompt, onUsage);
   const clean = text.replace(/```json|```/g,'').trim();
   return JSON.parse(clean);
 }
@@ -921,6 +925,16 @@ module.exports = async function handler(req, res) {
   const gate = await requireUser(req);
   if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
+  // A spreadsheet upload is a model call too, and the base64 workbook makes it
+  // the largest body this app sends — so it is both size-capped and metered.
+  const budget = await checkBudget({ req, user: gate.user });
+  if (!budget.ok) return res.status(budget.status).json({ error: budget.error });
+
+  // Whatever the extraction calls report, collected here. onSpend is handed
+  // down to them; the finally below writes the total once, on every path out.
+  const spent = [];
+  const onSpend = u => spent.push(u);
+
   try {
     const {fileData, fileName, projectType} = req.body;
     if(!fileData) return res.status(400).json({error:'No file data'});
@@ -998,7 +1012,7 @@ module.exports = async function handler(req, res) {
           let partsResult = null;
           let extractError = null;
           try {
-            partsResult = await extractPartsOrderForm(allText, fileName);
+            partsResult = await extractPartsOrderForm(allText, fileName, onSpend);
           } catch(e) {
             extractError = e.message;
           }
@@ -1041,7 +1055,7 @@ module.exports = async function handler(req, res) {
         try {
           const xlsWb = XLSX.read(buffer, {type:'buffer'});
           const allText = sheetsToTextGeneric(xlsWb, false);
-          const aiResult = await extractWithAI(allText, fileName, 'refrigeration');
+          const aiResult = await extractWithAI(allText, fileName, 'refrigeration', onSpend);
           if(aiResult?.circuits?.length) {
             mergeAICircuits(aiResult, circuits);
             if(aiResult.storeName && !meta.storeName) meta.storeName = aiResult.storeName;
@@ -1078,7 +1092,7 @@ module.exports = async function handler(req, res) {
         let partsResult = null;
         let extractError = null;
         try {
-          partsResult = await extractPartsOrderForm(allText, fileName);
+          partsResult = await extractPartsOrderForm(allText, fileName, onSpend);
         } catch(e) {
           extractError = e.message;
         }
@@ -1115,7 +1129,7 @@ module.exports = async function handler(req, res) {
         const allSheetsText = sheetsToTextGeneric(wb, true);
 
         if(allSheetsText.trim().length > 100) {
-          const aiResult = await extractWithAI(allSheetsText, fileName, format);
+          const aiResult = await extractWithAI(allSheetsText, fileName, format, onSpend);
           if(aiResult) {
             // Merge AI circuits (avoids duplicates)
             mergeAICircuits(aiResult, circuits);
@@ -1187,5 +1201,16 @@ module.exports = async function handler(req, res) {
 
   } catch(err) {
     return res.status(500).json({error: err.message});
+  } finally {
+    // In a finally, because this handler has a dozen ways out — an early
+    // return on a format it cannot read, a 400, a throw — and the tokens are
+    // spent before most of them. Recording at each return site would mean
+    // finding every one of them, and missing one would be a free path.
+    //
+    // Nothing is written when nothing was spent: a workbook parsed entirely
+    // without AI pushes no usage, so it costs the account nothing.
+    if (spent.length) {
+      await noteUsage({ req, user: gate.user, usage: spent, bytes: budget.bytes, endpoint: 'parse-excel' });
+    }
   }
 };
