@@ -6,7 +6,7 @@
 // If the Anthropic call fails for ANY reason (bad param, model change, outage),
 // the request automatically retries through OpenRouter/gpt-4o rather than
 // surfacing an error to the estimator mid-upload.
-const { requireUser, cappedMaxTokens } = require('./requireUser.js');
+const { requireUser, cappedMaxTokens, checkBudget, noteUsage } = require('./requireUser.js');
 
 const CLAUDE_MODEL = process.env.COLDGAUGE_TEXT_MODEL || 'claude-sonnet-5';
 
@@ -49,7 +49,14 @@ async function callAnthropic({ messages, system, max_tokens }) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `Anthropic error ${response.status}`);
-  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  // The usage block rides back with the text. It is what the call actually
+  // cost, and api/requireUser.js records it against the account — an estimate
+  // from the request size is only the fallback for a provider that says
+  // nothing.
+  return {
+    text: (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(''),
+    usage: data.usage || null,
+  };
 }
 
 
@@ -89,7 +96,12 @@ async function callOpenRouter({ messages, system, max_tokens, temperature }) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `OpenRouter error ${response.status}`);
-  return data.choices?.[0]?.message?.content || '';
+  // OpenRouter is OpenAI-shaped, so its usage block is prompt_/completion_;
+  // tokensFrom reads either.
+  return {
+    text: data.choices?.[0]?.message?.content || '',
+    usage: data.usage || null,
+  };
 }
 
 // CommonJS to match every other file in api/. This was the one `export
@@ -103,6 +115,12 @@ module.exports = async function handler(req, res) {
   const gate = await requireUser(req);
   if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
 
+  // And how much this account has already spent. Signing in is free and open,
+  // so being signed in is not by itself a reason to be allowed an unbounded
+  // number of plan-set reads — see api/requireUser.js.
+  const budget = await checkBudget({ req, user: gate.user });
+  if (!budget.ok) return res.status(budget.status).json({ error: budget.error });
+
   try {
     const messages = req.body.messages || [];
     const system = req.body.system;
@@ -112,12 +130,13 @@ module.exports = async function handler(req, res) {
     const temperature = typeof req.body.temperature === 'number' ? req.body.temperature : 0;
 
     let text = null;
+    let usage = null;
     let lastError = null;
     let fallbackModel = null;
 
     if (process.env.ANTHROPIC_API_KEY) {
       try {
-        text = await callAnthropic({ messages, system, max_tokens });
+        ({ text, usage } = await callAnthropic({ messages, system, max_tokens }));
       } catch (e) {
         lastError = e;
       }
@@ -125,7 +144,7 @@ module.exports = async function handler(req, res) {
 
     if (text == null && process.env.OPENROUTER_API_KEY) {
       try {
-        text = await callOpenRouter({ messages, system, max_tokens, temperature });
+        ({ text, usage } = await callOpenRouter({ messages, system, max_tokens, temperature }));
         // gpt-4o is an older, weaker reader than the primary. Silently
         // substituting it meant a few timed-out chunks of a 40-page set were
         // extracted at lower quality with nothing in the UI saying so. Mark
@@ -139,6 +158,11 @@ module.exports = async function handler(req, res) {
     if (text == null) {
       return res.status(500).json({ error: lastError?.message || 'No AI provider configured (set ANTHROPIC_API_KEY or OPENROUTER_API_KEY)' });
     }
+
+    // Awaited, not fired and forgotten: this function may be frozen the
+    // instant it responds, and a ledger that loses its writes is a cap that
+    // never trips.
+    await noteUsage({ req, user: gate.user, usage, bytes: budget.bytes, endpoint: 'claude' });
 
     return res.status(200).json({
       content: [{ type: 'text', text }],
