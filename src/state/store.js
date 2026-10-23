@@ -63,6 +63,32 @@ const DEFAULT_HW_PRICES = [
   // Still reached by a hand-typed line, or by a generated one whose copper
   // size could not be read. The middle of the range is the least wrong guess.
   [/pipe saddles?|insuguard/i, 3.00], // insulation cradle, each
+  // ── DRIP PAN SHEET, BY GAUGE ──────────────────────────────────────────────
+  // Priced by the mechanic: "We use 26gauge. 4' by 8' sheets. I'm pretty sure
+  // they are $60 a sheet." That is the 26 ga row, and it is the anchor.
+  //
+  // The others are not separate quotes — they are his number scaled by how
+  // much steel is in the sheet, because that is what moves the price. Standard
+  // galvanized thicknesses: 28 ga is .0187", 26 is .0217", 24 is .0276", 22 is
+  // .0336", 20 is .0396". Each row is $60 × its thickness ÷ .0217.
+  //
+  // Scaling by thickness is not exactly how a supply house prices steel —
+  // there is handling in every sheet regardless — so these run slightly wide
+  // at the far ends. They are a default, and the price book replaces whichever
+  // one this shop actually buys the first time it is corrected. The point is
+  // that a shop switching to 24 ga does not quietly keep paying 26 ga money,
+  // which is what a single entry matching every gauge would have done.
+  //
+  // These sit BEFORE the unsized fallback: the lookup takes the first regex
+  // that matches, and every one of them would also match it.
+  [/drip pans? — 28 ?ga/i, 52.00],   // 4'x8' galvanized sheet
+  [/drip pans? — 26 ?ga/i, 60.00],   // ← his price, his gauge
+  [/drip pans? — 24 ?ga/i, 76.00],
+  [/drip pans? — 22 ?ga/i, 93.00],
+  [/drip pans? — 20 ?ga/i, 109.00],
+  // A gauge nobody listed, or a line typed by hand. 26 is what this trade
+  // actually uses for pans, so it is the least wrong guess.
+  [/sheet metal for drip pans/i, 60.00],
   [/unistrut/i, 25.00],              // 1-5/8" 12ga, 10' stick
   [/all-?thread/i, 8.00],            // 3/8" rod, 10' stick
   // Priced by the mechanic: "$1.40 each or $133.00 for a case of 100." The

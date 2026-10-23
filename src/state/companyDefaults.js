@@ -158,6 +158,10 @@ export const COMPANY_RATE_KEYS = [
   // about the shop's building, not about the store being bid — "Other
   // companies may have to buy them already built."
   'dripPanSource',
+  // And what thickness they brake them out of. 26 is what this shop buys; a
+  // shop on 24 pays about a quarter more a sheet, so it is worth following
+  // them from job to job rather than being re-entered each time.
+  'dripPanGauge',
   'fittingsMode', 'fittingsPct', 'fittingsMarkupPct',
   'hydronicFittingsPct',
   'ductAccessoryPct',
