@@ -6,7 +6,7 @@ import { hangerBasis } from './hangers.js';
 import {
   dripPanLines, panLayout, blankWidthIn,
   PAN_LENGTH_FT, PAN_WIDTH_IN, LIP_IN, FOLD_IN, CIRCUIT_WIDTH_IN,
-  SHEET_WIDTH_IN, SHEET_LENGTH_FT, SOURCE_FABRICATE, SOURCE_BUY,
+  SHEET_WIDTH_IN, SHEET_LENGTH_FT, SOURCE_FABRICATE, SOURCE_BUY, PAN_GAUGE,
 } from './dripPans.js';
 import { fieldValue, fieldNumber, numberOr } from '../state/numberField.js';
 
@@ -89,6 +89,7 @@ export function DripPanBody({ onAdded = () => {} }) {
     lipIn: numberOr(state.rates?.dripPanLipIn, LIP_IN),
     foldIn: numberOr(state.rates?.dripPanFoldIn, FOLD_IN),
     circuitWidthIn: numberOr(state.rates?.circuitWidthIn, CIRCUIT_WIDTH_IN),
+    gauge: numberOr(state.rates?.dripPanGauge, PAN_GAUGE),
   };
   const layout = panLayout(opts);
   const blank = blankWidthIn(opts);
@@ -140,6 +141,14 @@ export function DripPanBody({ onAdded = () => {} }) {
             onChange={e => dispatch({ type: 'SET_RATES_MISC', key: 'circuitWidthIn', value: fieldNumber(e.target.value) })}
             placeholder={String(CIRCUIT_WIDTH_IN)} style={{ fontFamily: "'DM Mono',monospace" }} />
         </div>
+        {fabricating && (
+          <div style={{ flex: 1, minWidth: 150 }}>
+            <div style={{ fontSize: 10, color: colors.textDim, marginBottom: 4 }}>Sheet gauge</div>
+            <Input type="number" value={fieldValue(state.rates?.dripPanGauge)}
+              onChange={e => dispatch({ type: 'SET_RATES_MISC', key: 'dripPanGauge', value: fieldNumber(e.target.value) })}
+              placeholder={String(PAN_GAUGE)} style={{ fontFamily: "'DM Mono',monospace" }} />
+          </div>
+        )}
       </Row>
 
       {layout.pans > 0 ? (
@@ -159,7 +168,7 @@ export function DripPanBody({ onAdded = () => {} }) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 4,
             borderTop: `1px solid ${colors.border}`, color: colors.text }}>
-            <span>{fabricating ? 'Sheet metal' : 'Pans to buy'}</span>
+            <span>{fabricating ? `Sheet metal (${opts.gauge} ga)` : 'Pans to buy'}</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
               {fabricating
                 ? `${layout.sheets} sheet(s) at ${layout.perSheet} per`

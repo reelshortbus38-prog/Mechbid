@@ -277,9 +277,12 @@ describe('rates: practice travels, prices do not', () => {
   // That is a fact about the shop's building, not about the store being bid, so
   // it is exactly the kind of thing that gets set once and then follows the
   // contractor. A shop with no brake should never see a sheet count twice.
-  it('remembers whether the shop fabricates its own drip pans', () => {
-    const profile = captureCompanyDefaults({ rates: { dripPanSource: 'buy' } }, []);
+  it('remembers whether the shop fabricates its own drip pans, and in what gauge', () => {
+    const profile = captureCompanyDefaults({ rates: { dripPanSource: 'buy', dripPanGauge: 24 } }, []);
     expect(profile.rates.dripPanSource).toBe('buy');
+    // The gauge sets the price of the sheet, so re-entering it per job is how
+    // a shop ends up bidding 26 ga money on 24 ga material.
+    expect(profile.rates.dripPanGauge).toBe(24);
     // And it wins over the app's shipped default on the next job.
     expect(companyDefaultPatch(profile, { dripPanSource: 'fabricate' }).rates.dripPanSource)
       .toBe('buy');

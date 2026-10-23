@@ -61,6 +61,21 @@ export const SHEET_LENGTH_FT = 8;
 export const SOURCE_FABRICATE = 'fabricate';
 export const SOURCE_BUY = 'buy';
 
+// ── THE GAUGE IS PART OF THE ORDER ──────────────────────────────────────────
+// "We use 26gauge. 4' by 8' sheets. I'm pretty sure they are $60 a sheet and
+//  you get 2 16" wide pans out of each 4x8"
+//
+// The sheet count was already right — two pans out of a 4x8 is what the blank
+// arithmetic works out, and it is good to have that confirmed by somebody who
+// buys them rather than only by the geometry.
+//
+// What was missing is the gauge, and it is not a detail: it sets the price.
+// 26 is thin enough to brake easily and stiff enough for a pan nobody walks
+// on. A shop ordering 24 pays about a quarter more for the same sheet, so the
+// number has to be ON the line — both so the order is right and so the price
+// book has something to key the real price to.
+export const PAN_GAUGE = 26;
+
 export const PAN_LENGTH_FT = 8;
 export const PAN_WIDTH_IN = 16;
 export const LIP_IN = 1.5;
@@ -157,11 +172,16 @@ export function dripPanLines(opts = {}) {
     : `A ${len}' pan does not come out of a ${fmtIn(sheetL)}' sheet — order longer stock or `
       + 'splice, and set the pan length to what you actually brake.';
 
+  // The gauge goes in the DESCRIPTION, not just the notes. The description is
+  // what the price book keys on and what gets read off onto an order, and a
+  // sheet ordered in the wrong thickness is the wrong material arriving.
+  const ga = Math.round(num(opts.gauge, PAN_GAUGE));
+
   return [{
-    section: 'Hardware', dripPan: true, dripPanSource: SOURCE_FABRICATE,
+    section: 'Hardware', dripPan: true, dripPanSource: SOURCE_FABRICATE, gauge: ga,
     desc: l.sheets > 0
-      ? `Sheet metal for drip pans — ${fmtIn(sheetW / 12)}' × ${fmtIn(sheetL)}' sheets`
-      : `Sheet metal for drip pans — ${fmtIn(blank)}" blank × ${len}' per pan`,
+      ? `Sheet metal for drip pans — ${ga} ga, ${fmtIn(sheetW / 12)}' × ${fmtIn(sheetL)}' sheets`
+      : `Sheet metal for drip pans — ${ga} ga, ${fmtIn(blank)}" blank × ${len}' per pan`,
     qty: l.sheets > 0 ? l.sheets : l.blankFt,
     unit: l.sheets > 0 ? 'sheet' : 'ft',
     unitCost: 0, total: 0,

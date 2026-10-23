@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { StateProvider } from '../state/StateProvider.jsx';
-import { initialState } from '../state/store.js';
+import { initialState, defaultHardwarePrice } from '../state/store.js';
 import DripPanCalc, { DripPanBody } from './DripPanCalc.jsx';
 import {
   blankWidthIn, circuitsPerPan, panLayout, dripPanLines, pansPerSheet,
@@ -108,7 +108,7 @@ describe('the line it produces', () => {
   it('is sheets, not linear feet of blank', () => {
     expect(l.unit).toBe('sheet');
     expect(l.qty).toBe(36);          // 72 pans ÷ 2 per sheet
-    expect(l.desc).toMatch(/Sheet metal for drip pans — 4' × 8' sheets/);
+    expect(l.desc).toMatch(/Sheet metal for drip pans — 26 ga, 4' × 8' sheets/);
   });
 
   it('states the yield and the scrap, so the count can be checked', () => {
@@ -276,5 +276,106 @@ describe('the fabricate / buy choice on the card', () => {
       <StateProvider initial={{ ...JOB, dripPanCoveredFt: undefined }}><DripPanBody /></StateProvider>,
     );
     expect(blank).toMatch(/Enter the covered feet/);
+  });
+});
+
+// ── AND THE SHEET HAS A PRICE NOW ───────────────────────────────────────────
+// "We use 26gauge. 4' by 8' sheets. I'm pretty sure they are $60 a sheet and
+//  you get 2 16" wide pans out of each 4x8"
+//
+// Two separate facts arrived in that sentence. The second one confirms the
+// arithmetic this module already did from the blank width — worth having
+// confirmed by somebody who buys them rather than only by the geometry.
+//
+// The first was missing entirely, and it is what makes the line cost money.
+// Until this, every drip pan line on every bid came out at $0 — the same
+// failure as the beam clamps and the case drops, which is now the third time
+// a generated line has sat at zero because nothing in the price table matched
+// its description.
+describe('what a sheet costs', () => {
+  const price = desc => defaultHardwarePrice(desc);
+
+  it('prices the line this module actually produces', () => {
+    // Not a hand-written string. The real description, straight off the
+    // builder — because the price table matches on description, and a test
+    // that prices its own invented wording proves nothing about the bid.
+    const [l] = dripPanLines({ coveredFt: 96, circuits: 11 });
+    expect(price(l.desc)).toBe(60);
+    expect(l.qty * price(l.desc)).toBe(2160);   // 36 sheets
+  });
+
+  it('is his gauge at his price', () => {
+    expect(price('Sheet metal for drip pans — 26 ga, 4\' × 8\' sheets')).toBe(60);
+  });
+
+  // ── A DIFFERENT GAUGE MUST NOT QUIETLY TAKE 26 GA MONEY ──────────────────
+  // The trap in a single table entry: it would match every gauge and price
+  // them all at $60, so a shop switching to 24 would keep paying for 26
+  // with nothing on the screen saying so.
+  it('charges more for heavier sheet and less for lighter', () => {
+    const at = ga => price(`Sheet metal for drip pans — ${ga} ga, 4' × 8' sheets`);
+    expect(at(28)).toBeLessThan(at(26));
+    expect(at(24)).toBeGreaterThan(at(26));
+    expect(at(22)).toBeGreaterThan(at(24));
+    expect(at(20)).toBeGreaterThan(at(22));
+  });
+
+  it('scales by how much steel is in the sheet, not by guesswork', () => {
+    // $60 × thickness ÷ .0217 (26 ga), to the nearest dollar.
+    const at = ga => price(`Sheet metal for drip pans — ${ga} ga, 4' × 8' sheets`);
+    const expected = { 28: 0.0187, 26: 0.0217, 24: 0.0276, 22: 0.0336, 20: 0.0396 };
+    for (const [ga, thick] of Object.entries(expected)) {
+      expect(at(ga), `${ga} ga`).toBe(Math.round(60 * thick / 0.0217));
+    }
+  });
+
+  it('still prices a gauge nobody listed, rather than dropping to zero', () => {
+    // A zero on a material line reads as free. 26 is what the trade uses for
+    // pans, so an unlisted gauge lands there and stays correctable.
+    expect(price('Sheet metal for drip pans — 30 ga, 4\' × 8\' sheets')).toBe(60);
+  });
+
+  // The pans a shop BUYS are a different part with a different price, and
+  // this shop does not buy them — so there is no number to put on it, and
+  // guessing one would be worse than the zero that asks.
+  it('does not put sheet money on a finished pan', () => {
+    const [l] = dripPanLines({ coveredFt: 96, circuits: 11, source: SOURCE_BUY });
+    expect(price(l.desc)).toBe(0);
+  });
+});
+
+// ── THE GAUGE HAS TO BE SETTABLE, OR THE OTHER PRICES ARE DEAD CODE ─────────
+// A price table with five gauges in it and a gauge nobody can change is four
+// rows that never run and one shop that cannot tell you they switched.
+describe('setting the gauge', () => {
+  const JOB = {
+    ...initialState, mode: 'Commercial Refrigeration',
+    dripPanCoveredFt: 96,
+    circuits: [
+      { id: 'a', runLength: 150, sucHoriz: '1-3/8', liqHoriz: '5/8', tempType: 'medium' },
+      { id: 'b', runLength: 120, sucHoriz: '7/8', liqHoriz: '1/2', tempType: 'low' },
+    ],
+  };
+  const body = rates => renderToStaticMarkup(
+    <StateProvider initial={{ ...JOB, rates: { ...JOB.rates, ...rates } }}><DripPanBody /></StateProvider>,
+  );
+
+  it('offers the field, and shows 26 until somebody says otherwise', () => {
+    const html = body({});
+    expect(html).toMatch(/Sheet gauge/);
+    expect(html).toMatch(/Sheet metal \(26 ga\)/);
+  });
+
+  it('follows what the shop set, onto the card and onto the line', () => {
+    expect(body({ dripPanGauge: 24 })).toMatch(/Sheet metal \(24 ga\)/);
+    const [l] = dripPanLines({ coveredFt: 96, circuits: 11, gauge: 24 });
+    expect(l.desc).toMatch(/24 ga/);
+    expect(defaultHardwarePrice(l.desc)).toBe(76);
+  });
+
+  // A shop that buys them finished has no sheet and no gauge. Asking for one
+  // is asking a question that has no answer on that job.
+  it('is not asked of a shop that buys them built', () => {
+    expect(body({ dripPanSource: SOURCE_BUY })).not.toMatch(/Sheet gauge/);
   });
 });
